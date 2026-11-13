@@ -153,7 +153,7 @@ export function DatePicker({ value, defaultValue, onChange, name, className, min
             <div id={titleId} className="text-sm font-medium" aria-live="polite">{monthFmt.format(new Date(Date.UTC(vy, vm, 1)))}</div>
             <button type="button" onClick={() => shiftMonth(1)} className="grid size-9 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-ink" aria-label="Next month"><ChevronRight className="size-4" /></button>
           </div>
-          <table role="grid" aria-labelledby={titleId} className="w-full border-separate border-spacing-0.5" onKeyDown={onGridKey}>
+          <table data-no-resize role="grid" aria-labelledby={titleId} className="w-full border-separate border-spacing-0.5" onKeyDown={onGridKey}>
             <thead>
               <tr>{["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => <th key={d} scope="col" abbr={d} className="py-1 text-[11px] font-normal text-muted">{d[0]}</th>)}</tr>
             </thead>

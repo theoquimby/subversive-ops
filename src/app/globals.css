@@ -380,3 +380,67 @@ summary { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .callout-ring { animation: none; opacity: 0; }
 }
+
+/* ---- Tables: resizable columns, nothing cut off -------------------------------------- */
+/* Handles are added by <TableResize/> (src/components/table-resize.tsx). */
+[data-resizable] th:not(.sticky) {
+  position: relative;
+}
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  bottom: 0;
+  z-index: 2;
+  width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.col-resizer::after {
+  content: "";
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 5px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--border-strong, var(--border));
+  opacity: 0;
+  transition: opacity 120ms;
+}
+th:hover > .col-resizer::after,
+.col-resizer:hover::after,
+.col-resizing .col-resizer:active::after {
+  opacity: 1;
+}
+.col-resizer:hover::after,
+.col-resizing .col-resizer:active::after {
+  background: var(--ink);
+}
+@media (pointer: coarse) {
+  .col-resizer { width: 20px; right: -10px; }
+  .col-resizer::after { left: 9px; opacity: 0.6; }
+}
+th:last-child > .col-resizer { right: 0; }
+.col-resizing,
+.col-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+/* Text in table cells wraps instead of being cut off with "…". */
+[data-resizable] td :is(.truncate, [class*="line-clamp-"]):not(button, button *, [role="combobox"], [role="combobox"] *, input) {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+[data-resizable] td [class*="line-clamp-"]:not(button, button *) {
+  -webkit-line-clamp: unset;
+  display: block;
+}
+[data-resizable] td.truncate {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}

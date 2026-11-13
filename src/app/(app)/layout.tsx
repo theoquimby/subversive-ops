@@ -1,3 +1,4 @@
+import { TableResize } from "@/components/table-resize";
 import { CommandPalette, type Command } from "@/components/command-palette";
 import { ConfirmProvider } from "@/components/dialog";
 import { Nav } from "@/components/nav";
@@ -110,6 +111,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <RouteProgress />
       <Nav role={session.role} name={session.name} logout={signOut} />
       <CommandPalette commands={commands} />
+      <TableResize />
       <HelpProvider userId={session.userId} />
       <main className="pb-[var(--tabbar)] lg:pl-60 lg:pb-0">
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 lg:py-12">{children}</div>
