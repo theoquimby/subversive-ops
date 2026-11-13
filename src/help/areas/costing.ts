@@ -384,7 +384,7 @@ Names are matched loosely, so "grnd beef" finds "Ground beef". Before you press 
     area: "menu",
     route: "/menu",
     title: "Menu costs",
-    body: "Every recipe's plate cost, menu price and food cost % against target, re-costed whenever a supplier price changes. Draft beer and the allergen chart are one tap away; New recipe adds one.",
+    body: "Every recipe's plate cost, menu price and food cost % against target, re-costed whenever a supplier price changes. Draft beer and the allergen chart are one tap away; New recipe adds one, and Bulk add pastes many at once from a spreadsheet.",
     related: ["menu.list", "menu.editor", "menu.draftBeer", "menu.allergenChart"],
   },
   {

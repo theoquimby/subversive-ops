@@ -52,6 +52,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
           <>
             <LinkButton href="/menu/draft-beer" data-tour="menu.draft-beer-link">Draft beer</LinkButton>
             <LinkButton href="/menu/allergens" data-tour="menu.allergens-link">Allergens</LinkButton>
+            <LinkButton href="/import?for=recipes">Bulk add</LinkButton>
             <LinkButton href={`/menu/new?kind=${isArchived ? "MENU" : kind}`} variant="primary">New recipe</LinkButton>
           </>
         }

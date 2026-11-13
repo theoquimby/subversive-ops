@@ -14,8 +14,8 @@ type Source = "file" | "paste" | "link";
 const KIND_LABEL: Record<TableKind, string> = { ingredients: "Ingredients & prices", recipes: "Recipes", skip: "Skip this tab" };
 const REQUIRED: Record<TableKind, string[]> = { ingredients: ["ingredient"], recipes: ["ingredient", "qty"], skip: [] };
 
-export function ImportFlow() {
-  const [source, setSource] = useState<Source>("file");
+export function ImportFlow({ focus }: { focus?: "recipes" } = {}) {
+  const [source, setSource] = useState<Source>(focus === "recipes" ? "paste" : "file");
   const [tables, setTables] = useState<DetectedTable[]>([]);
   const [plan, setPlan] = useState<ImportPlan | null>(null);
   const [result, setResult] = useState<ApplyResult | null>(null);
@@ -90,9 +90,13 @@ export function ImportFlow() {
           )}
           {source === "paste" && (
             <>
-              <p className="text-sm text-muted">Select the cells in Google Sheets or Excel (include the header row), copy, and paste here. Paste several tables one after another.</p>
+              {focus === "recipes" ? (
+                <p className="text-sm text-muted">Select your recipe rows in Sheets or Excel <b>with the header row</b> — for example <i>Recipe · Ingredient · Qty · Unit</i> — copy, and paste here. One recipe per paste works too: leave out the Recipe column and type its name below. Paste as many as you like, one after another.</p>
+              ) : (
+                <p className="text-sm text-muted">Select the cells in Google Sheets or Excel (include the header row), copy, and paste here. Paste several tables one after another.</p>
+              )}
               <Input value={pasteName} onChange={(e) => setPasteName(e.target.value)} placeholder="Name (optional — e.g. a recipe name if this is one recipe)" />
-              <Textarea value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={"Ingredient\tSupplier\tPrice\tPack\nGround beef\tGreene County Beef\t61.50\t10 lb"} className="num min-h-40 font-mono text-xs" />
+              <Textarea value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={focus === "recipes" ? "Recipe\tIngredient\tQty\tUnit\nSmash burger\tGround beef\t4\toz\nSmash burger\tBrioche bun\t1\tea" : "Ingredient\tSupplier\tPrice\tPack\nGround beef\tGreene County Beef\t61.50\t10 lb"} className="num min-h-40 font-mono text-xs" />
             </>
           )}
           {source === "link" && (

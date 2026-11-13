@@ -42,6 +42,7 @@ async function managerCommands(): Promise<Command[]> {
     { id: "go-events", label: "Events", group: "Go to", href: "/events" },
     { id: "do-event", label: "Add an event (game, music, closure)", group: "Do", href: "/events", hint: "forecast" },
     { id: "go-settings", label: "Settings", group: "Go to", href: "/settings" },
+    { id: "do-bulk-recipes", label: "Bulk add recipes (paste from a spreadsheet)", group: "Do", href: "/import?for=recipes", hint: "import recipes sheet" },
     { id: "go-suppliers", label: "Suppliers (add or edit)", group: "Go to", href: "/settings#suppliers", hint: "vendor distributor store" },
     { id: "go-brief", label: "Weekly brief", group: "Go to", href: "/brief" },
     { id: "go-ask", label: "Ask a question about the numbers", group: "Do", href: "/ask", hint: "ask" },

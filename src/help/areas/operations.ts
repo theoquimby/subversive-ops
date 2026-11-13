@@ -805,7 +805,9 @@ export const importing: HelpEntry[] = [
     route: "/import",
     title: "Import your sheets",
     body: "Bring in your existing ingredient list, prices and recipes from Excel or Google Sheets in one go. Nothing is saved until you've reviewed it.",
-    article: `1. **Choose a source** — upload a file, paste cells from a sheet, or paste a Google Sheets link.
+    article: `**Only want recipes?** Use **Bulk add** on [Menu costs](/menu) (or [this link](/import?for=recipes)): copy just your recipe rows — with a header like *Recipe · Ingredient · Qty · Unit* — and paste. No need to link the whole spreadsheet. Ingredients that don't exist yet are created for you.
+
+1. **Choose a source** — upload a file, paste cells from a sheet, or paste a Google Sheets link.
 2. **Read sheet.** Every tab is read and given a guess: ingredients & prices, recipes, or skip.
 3. **Check each tab** — what it is and which column is which. The first three rows are shown so you can tell.
 4. **Review import** shows what will be created and anything worth a look.
