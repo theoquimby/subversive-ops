@@ -12,6 +12,7 @@ import { upcoming } from "./areas/upcoming";
 import { finalParity } from "./areas/final";
 import { training } from "./areas/training";
 import { insights } from "./areas/insights";
+import { drafting } from "./areas/drafting";
 import { quickbooks } from "./areas/quickbooks";
 import { tables } from "./areas/tables";
 import { kegs } from "./areas/kegs";
@@ -69,6 +70,7 @@ export const HELP: HelpEntry[] = [
   ...finalParity,
   ...training,
   ...insights,
+  ...drafting,
   ...quickbooks,
   ...kegs,
 ];

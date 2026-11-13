@@ -73,6 +73,7 @@ export async function squareMenuReview() {
     ignoredCount: items.filter((i) => i.ignored).length,
     needIngredients: new Set(items.filter((i) => i.recipeId && emptyRecipes.has(i.recipeId)).map((i) => i.recipeId)).size,
     hasMeta,
+    emptyRecipes,
   };
 }
 
@@ -90,6 +91,8 @@ export interface SquareItemRow {
   deleted: boolean;
   sold: number;
   suggestion: { recipeId: string; recipeName: string; confidence: number } | null;
+  /** Linked to a recipe that has no ingredient lines yet. */
+  recipeEmpty?: boolean;
   /** Linked recipe's menu price, and Square − menu when they differ. */
   menuPrice: number | null;
   drift: { diff: number | null; conflict: boolean } | null;
@@ -122,6 +125,7 @@ export async function squareItemRows() {
       deleted: i.deleted,
       sold: sold.get(i.squareId) ?? 0,
       suggestion: s ? { recipeId: s.recipeId, recipeName: s.recipeName, confidence: s.confidence } : null,
+      recipeEmpty: !!i.recipeId && r.emptyRecipes.has(i.recipeId),
       menuPrice: i.recipeId ? menuPrice.get(i.recipeId) ?? null : null,
       drift: d ? { diff: d.diff, conflict: d.conflict } : null,
     };

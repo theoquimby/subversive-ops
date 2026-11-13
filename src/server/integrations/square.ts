@@ -24,6 +24,9 @@ interface CatalogObject {
     category_id?: string;
     categories?: { id: string }[];
     reporting_category?: { id: string };
+    description?: string;
+    description_plaintext?: string;
+    modifier_list_info?: { modifier_list_id: string; enabled?: boolean }[];
     variations?: { id: string; is_deleted?: boolean; item_variation_data?: { name?: string; price_money?: MoneyAmount } }[];
   };
   category_data?: { name?: string };
@@ -43,6 +46,10 @@ export interface SellableObject {
   price: number | null;
   category: string | null;
   archived: boolean;
+  /** Item description from Square (helps draft a recipe). */
+  description?: string | null;
+  /** Names of the modifier lists on the item, e.g. ["Add-ons", "Temperature"]. */
+  modifiers?: string[];
 }
 
 const dollars = (m?: MoneyAmount) => (m?.amount != null ? m.amount / 100 : null);
@@ -66,15 +73,18 @@ export async function listSellables(client: SquareClient): Promise<SellableObjec
   } while (cursor);
 
   const out: SellableObject[] = [];
+  const listNames = new Map(lists.map((l) => [l.id, l.modifier_list_data?.name ?? ""]));
   for (const o of items) {
     const d = o.item_data!;
+    const description = (d.description_plaintext ?? d.description ?? "").trim() || null;
+    const modifiers = (d.modifier_list_info ?? []).filter((m) => m.enabled !== false).map((m) => listNames.get(m.modifier_list_id)).filter((n): n is string => !!n);
     const catId = d.categories?.[0]?.id ?? d.reporting_category?.id ?? d.category_id;
     const category = (catId && categories.get(catId)) || null;
     const vars = (d.variations ?? []).filter((v) => !v.is_deleted);
     for (const v of vars) {
       const vName = v.item_variation_data?.name;
       const name = vars.length > 1 && vName && vName !== "Regular" ? `${d.name} · ${vName}` : (d.name ?? "Item");
-      out.push({ squareId: v.id, squareName: name, squareType: "ITEM_VARIATION", baseName: name, price: dollars(v.item_variation_data?.price_money), category, archived: !!d.is_archived });
+      out.push({ squareId: v.id, squareName: name, squareType: "ITEM_VARIATION", baseName: name, price: dollars(v.item_variation_data?.price_money), category, archived: !!d.is_archived, description, modifiers });
     }
   }
   for (const o of lists) {

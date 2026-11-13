@@ -99,3 +99,14 @@ export function parseQuickLine(raw: string, items: QuickItem[]): ParsedLine | nu
   const unitForItem = best ? (unit && best.units.map(normalizeUnit).includes(unit) ? best.units[best.units.map(normalizeUnit).indexOf(unit)] : unit ?? best.units[0]) : unit ?? "each";
   return { raw, qty: qty ?? 1, unit: unitForItem, item: best };
 }
+
+/**
+ * Split a line into quantity, unit and the rest: "1 1/2 cups flour" →
+ * { qty: 1.5, unit: "cup", name: "flour" }. qty/unit are null when absent.
+ * `knownUnits` adds custom units (slice, bun…) on top of the standard ones.
+ */
+export function splitQtyUnit(text: string, knownUnits: Iterable<string> = []): { qty: number | null; unit: string | null; name: string } {
+  const known = new Set([...knownUnits].map(normalizeUnit));
+  const tokens = text.trim().replace(/^[-•*]\s*/, "").replace(/,/g, " ").split(/\s+/).filter(Boolean);
+  return extract(tokens, known);
+}

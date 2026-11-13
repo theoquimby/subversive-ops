@@ -7,10 +7,11 @@ import { Badge, Button, cx } from "@/components/ui";
 import { money, qty } from "@/lib/format";
 import { setSquareMapping } from "@/server/actions/inline";
 import type { SquareItemRow } from "@/server/services/square-menu";
-import { Check, X } from "lucide-react";
+import { Check, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { acceptSuggestions, applySquarePrices, createRecipesFromSquare, ignoreItems, rejectSuggestions, unignoreItems } from "./square-menu/actions";
+import { draftSquareItems } from "../menu/drafts/actions";
 
 export type { SquareItemRow };
 
@@ -45,8 +46,27 @@ function SuggestionCell({ r }: { r: SquareItemRow }) {
   );
 }
 
+/** Drawer button: draft this item's recipe and open the review page. */
+function DraftOne({ r }: { r: SquareItemRow }) {
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  const [msg, setMsg] = useState<string | null>(null);
+  return (
+    <section>
+      <div className="mb-1.5 text-xs font-medium text-muted">{r.recipeId ? "Recipe has no ingredients yet" : "No recipe yet"}</div>
+      <Button size="sm" disabled={pending} onClick={() => start(async () => {
+        const res = await draftSquareItems([r.squareId]);
+        if (res.error) setMsg(res.error);
+        else router.push("/menu/drafts");
+      })}><Sparkles className="size-3.5" />{pending ? "Drafting…" : "Draft recipe"}</Button>
+      <p className="mt-1.5 text-xs text-muted">{msg ?? "Suggests ingredient lines from your similar recipes. You review it before anything is saved."}</p>
+    </section>
+  );
+}
+
 export function SquareItemsTable({ id, rows, recipes, showSold = true, defaultFilters, help }: { id: string; rows: SquareItemRow[]; recipes: { id: string; name: string; kind: string }[]; showSold?: boolean; defaultFilters?: Record<string, string[]>; help?: string }) {
   const confirm = useConfirm();
+  const router = useRouter();
   const recipeOptions = useMemo(() => recipes.map((r) => ({ value: r.id, label: `${r.name}${r.kind === "MODIFIER" ? " (add-on)" : ""}` })), [recipes]);
   const linkOptions = useMemo(() => [{ value: "", label: "Not linked" }, { value: "__ignore", label: "Ignore (drinks, merch, gift cards)" }, ...recipeOptions], [recipeOptions]);
 
@@ -157,6 +177,7 @@ export function SquareItemsTable({ id, rows, recipes, showSold = true, defaultFi
               <SuggestionCell r={r} />
             </section>
           )}
+          {!r.deleted && (!r.recipeId || r.recipeEmpty) && <DraftOne r={r} />}
         </div>
       )}
       bulkActions={(api) => {
@@ -164,6 +185,7 @@ export function SquareItemsTable({ id, rows, recipes, showSold = true, defaultFi
         const unlinked = api.rows.filter((r) => !r.recipeId && !r.deleted);
         const ignored = api.rows.filter((r) => r.ignored);
         const drifting = api.rows.filter((r) => r.drift && !r.drift.conflict && r.price != null);
+        const draftable = api.rows.filter((r) => !r.deleted && !r.ignored && (!r.recipeId || r.recipeEmpty));
         return (
           <>
             {withSugg.length > 0 && <Button size="sm" variant="primary" disabled={api.pending} onClick={() => api.run(() => acceptSuggestions(withSugg.map((r) => ({ squareId: r.squareId, recipeId: r.suggestion!.recipeId }))))}><Check className="size-3.5" />Accept {withSugg.length}</Button>}
@@ -172,6 +194,11 @@ export function SquareItemsTable({ id, rows, recipes, showSold = true, defaultFi
             {unlinked.length > 0 && <Button size="sm" disabled={api.pending} onClick={async () => {
               if (await confirm({ title: `Create ${unlinked.length} recipe${unlinked.length === 1 ? "" : "s"}?`, body: "Each starts with Square's name, price and category and no ingredients yet. Names you already have are linked instead.", confirmLabel: "Create" })) api.run(() => createRecipesFromSquare(unlinked.map((r) => r.squareId)));
             }}>Create recipes</Button>}
+            {draftable.length > 0 && <Button size="sm" disabled={api.pending} onClick={() => api.run(async () => {
+              const res = await draftSquareItems(draftable.map((r) => r.squareId));
+              if (!res.error) router.push("/menu/drafts");
+              return res;
+            })}><Sparkles className="size-3.5" />Draft recipes ({draftable.length})</Button>}
             {drifting.length > 0 && <Button size="sm" disabled={api.pending} onClick={() => api.run(() => applySquarePrices(drifting.map((r) => ({ recipeId: r.recipeId!, price: r.price! }))))}>Use Square price ({drifting.length})</Button>}
             {unlinked.some((r) => !r.ignored) && <Button size="sm" variant="ghost" disabled={api.pending} onClick={() => api.run(() => ignoreItems(unlinked.filter((r) => !r.ignored).map((r) => r.squareId)))}>Ignore</Button>}
             {ignored.length > 0 && <Button size="sm" variant="ghost" disabled={api.pending} onClick={() => api.run(() => unignoreItems(ignored.map((r) => r.squareId)))}>Un-ignore</Button>}

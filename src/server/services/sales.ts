@@ -15,6 +15,9 @@ export interface CatalogMeta {
   archived: boolean;
   /** No longer in the Square catalog. */
   deleted: boolean;
+  /** Square item description and modifier list names (for recipe drafting). */
+  description?: string | null;
+  modifiers?: string[];
 }
 
 export const CATALOG_META_KEY = "square.catalog";
@@ -45,7 +48,7 @@ export async function syncCatalog() {
   for (const m of existing) {
     if (!live.has(m.squareId)) meta[m.squareId] = { baseName: m.squareName, price: null, category: null, archived: false, deleted: true };
   }
-  for (const s of sellables) meta[s.squareId] = { baseName: s.baseName, price: s.price, category: s.category, archived: s.archived, deleted: false };
+  for (const s of sellables) meta[s.squareId] = { baseName: s.baseName, price: s.price, category: s.category, archived: s.archived, deleted: false, ...(s.description ? { description: s.description } : {}), ...(s.modifiers?.length ? { modifiers: s.modifiers } : {}) };
   await writeSettingJSON(CATALOG_META_KEY, meta);
   await recordSquareSync("catalog", sellables.length, `${creates.length} new`);
   return sellables.length;

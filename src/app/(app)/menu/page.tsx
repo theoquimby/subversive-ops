@@ -14,6 +14,7 @@ import Link from "next/link";
 import { HelpTip, HelpZone } from "@/components/help";
 import { archivedLabel, baseName } from "@/domain/archiveName";
 import { RestoreButton } from "./restore-button";
+import { loadDrafts } from "@/server/services/recipe-drafts";
 
 export const metadata = { title: "Menu costs" };
 
@@ -23,12 +24,13 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
   await requireUser("MANAGER");
   const { kind = "MENU" } = await searchParams;
   const snap = await loadCostingSnapshot();
-  const [{ rows }, noLines, cls, targets, archived] = await Promise.all([
+  const [{ rows }, noLines, cls, targets, archived, drafts] = await Promise.all([
     menuCosts(snap),
     db.recipe.findMany({ where: { lines: { none: {} } }, select: { id: true } }),
     classSettings(),
     costTargets(),
     db.recipe.findMany({ where: { active: false }, select: { id: true, name: true, kind: true, category: true }, orderBy: { name: "asc" } }),
+    loadDrafts(),
   ]);
   const isArchived = kind === "ARCHIVED";
   // Every category in use (menu items and add-ons), with the class it maps to.
@@ -59,6 +61,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
           <>
             <LinkButton href="/menu/draft-beer" data-tour="menu.draft-beer-link">Draft beer</LinkButton>
             <LinkButton href="/menu/allergens" data-tour="menu.allergens-link">Allergens</LinkButton>
+            <LinkButton href="/menu/drafts">{drafts.length ? <>Drafts <span className="num rounded-full bg-warn-bg px-1.5 text-xs text-warn">{drafts.length}</span></> : "Draft recipes"}</LinkButton>
             <LinkButton href="/import?for=recipes">Bulk add</LinkButton>
             <LinkButton href="/menu/new" variant="primary">New recipe</LinkButton>
           </>

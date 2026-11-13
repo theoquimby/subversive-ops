@@ -14,6 +14,7 @@ import { HelpTip, HelpZone } from "@/components/help";
 import { allergensForRecipe } from "@/server/services/allergens";
 import { allergenLabel } from "@/domain/allergens";
 import Link from "next/link";
+import { DraftStart } from "./draft-start";
 
 export default async function RecipePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ kind?: string }> }) {
   await requireUser("MANAGER");
@@ -101,6 +102,7 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
   return (
     <>
       <PageHeader help="menu.editor" title={recipe?.name ?? "New recipe"} back={{ href: `/menu?kind=${initial.kind}`, label: "Menu costs" }} />
+      {(!recipe || recipe.lines.length === 0) && <DraftStart recipeId={recipe?.id ?? null} />}
       {/* Remount after a save so the editor starts clean from what was stored (line ids change on save). */}
       <RecipeEditor key={JSON.stringify(initial)} initial={initial} catalog={catalog} />
       {recipe && allergens && (

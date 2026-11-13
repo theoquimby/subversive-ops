@@ -4,12 +4,13 @@ import { requireUser } from "@/server/auth";
 import { isSquareConnected } from "@/server/services/square";
 import { squareItemRows } from "@/server/services/square-menu";
 import { SquareItemsTable } from "../square-items-table";
+import { loadDrafts } from "@/server/services/recipe-drafts";
 
 export const metadata = { title: "Menu from Square" };
 
 export default async function SquareMenuPage() {
   await requireUser("MANAGER");
-  const [connected, { review: r, rows, recipes }] = await Promise.all([isSquareConnected(), squareItemRows()]);
+  const [connected, { review: r, rows, recipes }, drafts] = await Promise.all([isSquareConnected(), squareItemRows(), loadDrafts()]);
 
   return (
     <>
@@ -17,7 +18,8 @@ export default async function SquareMenuPage() {
         help="sales.squareMenu"
         back={{ href: "/sales", label: "Sales" }}
         title="Menu from Square"
-        description="Match each Square item to its recipe, start recipes for the ones you don't have yet, and keep menu prices in step with what Square charges. Tick rows to accept, reject, link or create in bulk."
+        description="Match each Square item to its recipe, draft recipes for the ones you don't have yet, and keep menu prices in step with what Square charges. Tick rows to accept, reject, link, draft or create in bulk."
+        actions={drafts.length > 0 ? <LinkButton href="/menu/drafts" variant="primary">Review {drafts.length} draft{drafts.length === 1 ? "" : "s"}</LinkButton> : undefined}
       />
 
       {r.items.length === 0 ? (

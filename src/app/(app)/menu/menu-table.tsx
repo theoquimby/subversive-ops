@@ -8,7 +8,10 @@ import { money, pct, qty as fmtQty, signedPct } from "@/lib/format";
 import { setRecipeField } from "@/server/actions/inline";
 import Link from "next/link";
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { Sparkles } from "lucide-react";
 import { archiveRecipes, bulkSetRecipes } from "./actions";
+import { draftEmptyRecipes } from "./drafts/actions";
 
 export interface MenuRow {
   id: string;
@@ -36,6 +39,7 @@ const flag = (r: MenuRow) => (r.needsIngredients ? "Needs ingredients" : r.incom
 
 export function MenuTable({ rows }: { rows: MenuRow[] }) {
   const confirm = useConfirm();
+  const router = useRouter();
   const categories = useMemo(() => [...new Set(rows.map((r) => r.category))].sort().map((c) => ({ value: c, label: c })), [rows]);
 
   const columns = useMemo<Column<MenuRow>[]>(() => [
@@ -153,6 +157,13 @@ export function MenuTable({ rows }: { rows: MenuRow[] }) {
       drawer={(r) => <RecipeDetail r={r} />}
       bulkActions={(api) => (
         <>
+          {api.rows.some((r) => r.needsIngredients) && (
+            <button type="button" disabled={api.pending} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-strong px-2.5 text-sm font-medium hover:bg-surface-2 disabled:opacity-50" onClick={() => api.run(async () => {
+              const res = await draftEmptyRecipes(api.rows.filter((r) => r.needsIngredients).map((r) => r.id));
+              if (!res.error) router.push("/menu/drafts");
+              return res;
+            })}><Sparkles className="size-3.5" />Draft ingredients ({api.rows.filter((r) => r.needsIngredients).length})</button>
+          )}
           <BulkPick label="Category" options={categories} allowNew newLabel="New category" disabled={api.pending} onPick={(v) => api.run(() => bulkSetRecipes(api.keys, "category", v))} />
           <BulkValue label="Target" suffix="%" placeholder="default" disabled={api.pending} onApply={(v) => api.run(() => bulkSetRecipes(api.keys, "targetFoodCostPct", v))} />
           <button type="button" disabled={api.pending} className="inline-flex h-8 items-center rounded-lg px-2.5 text-sm font-medium text-bad hover:bg-bad-bg disabled:opacity-50" onClick={async () => {
@@ -191,7 +202,7 @@ function RecipeDetail({ r }: { r: MenuRow }) {
       )}
       <section>
         <div className="mb-2 text-xs font-medium text-muted">{r.lines.length} line{r.lines.length === 1 ? "" : "s"}</div>
-        {r.lines.length === 0 ? <p className="text-sm text-muted">No ingredients yet. <Link href={`/menu/${r.id}`} className="underline underline-offset-2">Add them</Link>.</p> : (
+        {r.lines.length === 0 ? <p className="text-sm text-muted">No ingredients yet. <Link href={`/menu/${r.id}`} className="underline underline-offset-2">Add them</Link>, or tick it and press Draft ingredients.</p> : (
           <ul className="divide-y divide-border rounded-lg border border-border">
             {[...r.lines].sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1)).map((l, i) => (
               <li key={i} className="flex items-center gap-3 px-3 py-2 text-sm">
