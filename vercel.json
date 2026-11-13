@@ -5,6 +5,10 @@
     {
       "path": "/api/cron/square-sync",
       "schedule": "17 9 * * *"
+    },
+    {
+      "path": "/api/cron/weather",
+      "schedule": "7 10 * * *"
     }
   ]
 }

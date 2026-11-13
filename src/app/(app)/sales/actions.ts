@@ -2,9 +2,11 @@
 
 import { requireUser } from "@/server/auth";
 import { squareConfigured } from "@/server/env";
-import { setAdjustment } from "@/server/services/planning";
+import { parseImpactPct } from "@/domain/events";
+import { setManualAdjustment } from "@/server/services/forecasting";
 import { backfillSales, dailySync } from "@/server/services/sales";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 export async function syncNow(): Promise<{ error?: string; message?: string }> {
   await requireUser("MANAGER");
@@ -30,10 +32,20 @@ export async function backfill(days: number): Promise<{ error?: string; message?
   }
 }
 
+const adjustmentSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  pct: z.string().max(10),
+  reason: z.string().max(200),
+});
 
-export async function saveAdjustment(date: string, form: FormData) {
+/** Manual override for one day: "+15" / "-20" percent (empty clears) plus why. */
+export async function saveAdjustment(input: z.input<typeof adjustmentSchema>): Promise<{ error?: string }> {
   await requireUser("MANAGER");
-  const pct = Number(form.get("pct"));
-  await setAdjustment(date, Number.isFinite(pct) ? 1 + pct / 100 : null);
+  const p = adjustmentSchema.safeParse(input);
+  if (!p.success) return { error: "Check the adjustment." };
+  const m = parseImpactPct(p.data.pct);
+  if (m == null || m <= 0) return { error: "Enter a percent between −99 and +500, like +15 or −20." };
+  await setManualAdjustment(p.data.date, m === 1 ? null : m, p.data.reason);
   revalidatePath("/sales");
+  return {};
 }

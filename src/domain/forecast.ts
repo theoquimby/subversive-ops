@@ -151,3 +151,19 @@ export function learnRainFactor(
   if (ratios.wet.length < 3 || ratios.dry.length < 5) return { factor: 0.93, wetSamples: ratios.wet.length };
   return { factor: Math.min(1.1, Math.max(0.7, mean(ratios.wet) / mean(ratios.dry))), wetSamples: ratios.wet.length };
 }
+
+/**
+ * Fallback hourly shape before any hourly sales are synced: spread across the
+ * opening hours with a gentle peak about two-thirds of the way through.
+ */
+export function defaultHourlyShape(open: number, close: number): number[] {
+  const shares = new Array(24).fill(0);
+  const span = close - open;
+  if (span <= 0) return shares;
+  for (let h = open; h < close; h++) {
+    const x = (h - open + 0.5) / span; // 0..1 through the day
+    shares[h] = 0.4 + Math.exp(-((x - 0.65) ** 2) / 0.08);
+  }
+  const total = shares.reduce((a, b) => a + b, 0);
+  return shares.map((s) => s / total);
+}

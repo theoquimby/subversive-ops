@@ -209,6 +209,16 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
         lines: { create: list.map(([n, q]) => ({ ingredientId: ing.get(n)!, qtyBase: D(q.toFixed(4)) })) } },
     });
   }
+  // Feature demo data (see src/server/demo/README.md).
+  const { seedForecast } = await import("./demo/forecast");
+  await seedForecast(db);
+  const { seedLabor } = await import("./demo/labor");
+  await seedLabor(db);
+  const { seedInvoices } = await import("./demo/invoices");
+  await seedInvoices(db);
+  const { seedReviews } = await import("./demo/reviews");
+  await seedReviews(db);
+
   await db.setting.create({ data: { key: "square.lastSync", value: new Date(Date.now() - 3 * 3600_000).toISOString() } });
 
   console.log(`Seeded ${specs.length} ingredients, ${rows.length} sales rows. Users: Max (manager), Line (staff).`);

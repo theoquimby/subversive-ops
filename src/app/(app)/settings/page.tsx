@@ -8,6 +8,8 @@ import { lastSquareSync } from "@/server/services/sales";
 import { loadDemoData, resetPin, saveTarget, toggleUser } from "./actions";
 import { AddUserForm, ClearDataForm, SupplierForm } from "./forms";
 import { LinkButton } from "@/components/ui";
+import { LaborRulesForm } from "@/app/(app)/labor/rules-form";
+import { getLaborRules } from "@/server/services/labor-rules";
 
 export const metadata = { title: "Settings" };
 
@@ -82,6 +84,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <Button>Save</Button>
           </form>
         </Card>
+      </Section>
+
+      <Section title="Labor rules" description="Pre-filled for New York; the app applies whatever is set here. Check them against current law.">
+        <Card><LaborRulesForm rules={await getLaborRules()} /></Card>
       </Section>
 
       <Section title="Data" description="Clearing removes every ingredient, price, recipe, sale, count and order — handy after trying the demo. Logins are kept.">

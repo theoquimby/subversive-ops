@@ -1,35 +1,61 @@
 "use client";
 
 import clsx from "clsx";
-import { BookOpen, ChartLine, ClipboardList, Carrot, FileUp, LayoutGrid, Scale, LogOut, Receipt, Search, Settings, ShoppingCart, Trash2 } from "lucide-react";
+import { BookOpen, CalendarDays, Carrot, ChartLine, ClipboardList, Clock, FileCheck, FileUp, LayoutGrid, LogOut, MessageSquareText, Receipt, Scale, Search, Settings, ShoppingCart, Sunrise, Target, Trash2, TrendingUp, Users } from "lucide-react";
 import { openCommandPalette } from "./command-palette";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { SessionRole } from "@/server/session";
 
-const MANAGER = [
-  { href: "/", label: "Overview", icon: LayoutGrid },
-  { href: "/menu", label: "Menu costs", icon: BookOpen },
-  { href: "/variance", label: "Margin gap", icon: Scale },
-  { href: "/ingredients", label: "Ingredients", icon: Carrot },
-  { href: "/prices", label: "Prices", icon: Receipt },
-  { href: "/ordering", label: "Ordering", icon: ShoppingCart },
-  { href: "/sales", label: "Sales", icon: ChartLine },
-  { href: "/count", label: "Counts", icon: ClipboardList },
-  { href: "/waste", label: "Waste", icon: Trash2 },
-  { href: "/import", label: "Import sheets", icon: FileUp },
-  { href: "/settings", label: "Settings", icon: Settings },
+type NavItem = { href: string; label: string; icon: typeof LayoutGrid };
+
+// Grouped so ~20 pages stay scannable. Order = how often Max uses them.
+const MANAGER: { title?: string; items: NavItem[] }[] = [
+  { items: [
+    { href: "/", label: "Overview", icon: LayoutGrid },
+    { href: "/brief", label: "Weekly brief", icon: Sunrise },
+  ] },
+  { title: "Food", items: [
+    { href: "/menu", label: "Menu costs", icon: BookOpen },
+    { href: "/variance", label: "Margin gap", icon: Scale },
+    { href: "/ingredients", label: "Ingredients", icon: Carrot },
+    { href: "/prices", label: "Prices", icon: Receipt },
+    { href: "/ordering", label: "Ordering", icon: ShoppingCart },
+    { href: "/invoices", label: "Invoices", icon: FileCheck },
+  ] },
+  { title: "People", items: [
+    { href: "/team", label: "Team", icon: Users },
+    { href: "/labor", label: "Timecards", icon: Clock },
+  ] },
+  { title: "Numbers", items: [
+    { href: "/pnl", label: "P&L", icon: TrendingUp },
+    { href: "/sales", label: "Sales & forecast", icon: ChartLine },
+    { href: "/events", label: "Events", icon: CalendarDays },
+    { href: "/budgets", label: "Budgets", icon: Target },
+    { href: "/reviews", label: "Reviews", icon: MessageSquareText },
+  ] },
+  { title: "Floor", items: [
+    { href: "/count", label: "Counts", icon: ClipboardList },
+    { href: "/waste", label: "Waste", icon: Trash2 },
+  ] },
+  { title: "Setup", items: [
+    { href: "/import", label: "Import sheets", icon: FileUp },
+    { href: "/settings", label: "Settings", icon: Settings },
+  ] },
 ];
-const STAFF = [
-  { href: "/count", label: "Count", icon: ClipboardList },
-  { href: "/waste", label: "Waste", icon: Trash2 },
+const STAFF: { title?: string; items: NavItem[] }[] = [
+  { items: [
+    { href: "/count", label: "Count", icon: ClipboardList },
+    { href: "/waste", label: "Waste", icon: Trash2 },
+  ] },
 ];
 
 const isActive = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
 export function Nav({ role, name, logout }: { role: SessionRole; name: string; logout: () => Promise<void> }) {
   const pathname = usePathname();
-  const items = role === "MANAGER" ? MANAGER : STAFF;
+  const groups = role === "MANAGER" ? MANAGER : STAFF;
+  const items = groups.flatMap((g) => g.items);
   return (
     <>
       {/* Desktop sidebar */}
@@ -40,22 +66,27 @@ export function Nav({ role, name, logout }: { role: SessionRole; name: string; l
           Search or jump to…
           <kbd className="ml-auto rounded border border-border px-1 text-[10px]">⌘K</kbd>
         </button>
-        <nav className="mt-4 flex flex-col gap-0.5">
-          {items.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className={clsx(
-                "flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors",
-                isActive(pathname, href) ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink",
-              )}
-            >
-              <Icon className="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-              {label}
-            </Link>
+        <nav className="mt-3 -mx-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pb-2">
+          {groups.map((g, gi) => (
+            <div key={gi} className="flex flex-col gap-px">
+              {g.title && <div className="px-2.5 pt-1 pb-1 text-[11px] font-medium text-muted">{g.title}</div>}
+              {g.items.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={clsx(
+                    "flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors",
+                    isActive(pathname, href) ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink",
+                  )}
+                >
+                  <Icon className="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
+                  {label}
+                </Link>
+              ))}
+            </div>
           ))}
         </nav>
-        <div className="mt-auto flex items-center justify-between border-t border-border px-2.5 pt-4">
+        <div className="flex items-center justify-between border-t border-border px-2.5 pt-4">
           <div className="min-w-0">
             <div className="truncate text-sm font-medium">{name}</div>
             <div className="text-xs text-muted">{role === "MANAGER" ? "Manager" : "Staff"}</div>
