@@ -10,6 +10,7 @@ import { countUnitsFor, loadCountableIngredients } from "@/server/services/inven
 import { businessToday } from "@/server/services/sales";
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
+import { HelpTip, HelpZone } from "@/components/help";
 
 export const metadata = { title: "Ingredients" };
 
@@ -31,22 +32,23 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
         description="Click any cell to edit. Enter moves down, Tab moves across, and you can paste a column from a spreadsheet."
         actions={<LinkButton href="/ingredients/new" variant="primary">New ingredient</LinkButton>}
       />
-      <form className="mb-4 max-w-xs">
+      <form className="mb-4 max-w-xs" data-tour="ingredients.search">
         <Input name="q" defaultValue={q} placeholder="Search ingredients" type="search" />
       </form>
       {list.length === 0 ? (
         <EmptyState title="No ingredients found" />
       ) : (
+        <HelpZone id="ingredients.grid" tour="ingredients.grid">
         <Table>
           <thead>
             <tr>
               <Th className="w-[30%]">Ingredient</Th>
               <Th className="hidden md:table-cell">Category</Th>
               <Th className="hidden lg:table-cell">Storage</Th>
-              <Th align="right">Cost</Th>
-              <Th align="right" className="w-24">Yield</Th>
-              <Th align="right" className="hidden w-24 sm:table-cell">Buffer</Th>
-              <Th className="hidden w-28 sm:table-cell">Count in</Th>
+              <Th align="right"><span className="inline-flex items-center gap-1">Cost <HelpTip id="ingredients.cost" /></span></Th>
+              <Th align="right" className="w-24"><span className="inline-flex items-center gap-1">Yield <HelpTip id="ingredients.yield" /></span></Th>
+              <Th align="right" className="hidden w-24 sm:table-cell"><span className="inline-flex items-center gap-1">Buffer <HelpTip id="ingredients.buffer" /></span></Th>
+              <Th className="hidden w-28 sm:table-cell"><span className="inline-flex items-center gap-1">Count in <HelpTip id="ingredients.countIn" /></span></Th>
             </tr>
           </thead>
           <tbody>
@@ -89,6 +91,7 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
             })}
           </tbody>
         </Table>
+        </HelpZone>
       )}
     </>
   );

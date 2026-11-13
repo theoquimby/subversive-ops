@@ -8,6 +8,8 @@ import { menuCosts, recentPriceMoves } from "@/server/services/insights";
 import { deliveryWindow } from "@/server/services/planning";
 import { businessToday, lastSquareSync, salesByRecipe } from "@/server/services/sales";
 import Link from "next/link";
+import { HelpTip, HelpZone } from "@/components/help";
+import { onboardingState } from "@/server/services/onboarding";
 
 export const metadata = { title: "Overview" };
 
@@ -15,13 +17,14 @@ export default async function OverviewPage() {
   await requireUser("MANAGER");
   const today = businessToday();
   const snap = await loadCostingSnapshot();
-  const [{ rows }, moves, week, sales7, suppliers, lastSync] = await Promise.all([
+  const [{ rows }, moves, week, sales7, suppliers, lastSync, ob] = await Promise.all([
     menuCosts(snap),
     recentPriceMoves(30, snap),
     salesByRecipe(addDays(today, -7), today),
     db.dailySale.aggregate({ _sum: { netSales: true }, where: { date: { gte: new Date(`${addDays(today, -7)}T00:00:00Z`), lt: new Date(`${today}T00:00:00Z`) } } }),
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     lastSquareSync(),
+    onboardingState(),
   ]);
 
   const sold = rows.filter((r) => r.kind !== "PREP");
@@ -44,16 +47,26 @@ export default async function OverviewPage() {
   return (
     <>
       <PageHeader title="Overview" description={`${dayDate(today)} · Square synced ${relativeTime(lastSync)}`} />
+      {!ob.complete && !ob.dismissed && (
+        <Card className="mb-8 flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <div className="text-sm font-medium">Finish setting up <span className="num font-normal text-muted">· {ob.done} of {ob.total} done</span></div>
+            <div className="mt-1.5 h-1.5 w-48 overflow-hidden rounded-full bg-surface-2"><div className="h-full rounded-full bg-primary" style={{ width: `${(ob.done / ob.total) * 100}%` }} /></div>
+          </div>
+          <LinkButton href={ob.href} size="sm" variant="primary">Continue setup</LinkButton>
+        </Card>
+      )}
 
-      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Food cost, last 7 days" value={pct(theoPct)} hint={`Target ${pct(target, 0)} · theoretical`} tone={theoPct == null ? undefined : theoPct > target ? "bad" : "good"} />
+      <HelpZone id="overview.page" tour="overview.stats" className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label={<span className="inline-flex items-center gap-1.5">Food cost, last 7 days <HelpTip id="overview.foodCost" /></span>} value={pct(theoPct)} hint={`Target ${pct(target, 0)} · theoretical`} tone={theoPct == null ? undefined : theoPct > target ? "bad" : "good"} />
         <Stat label="Sales, last 7 days" value={money(sales7._sum.netSales?.toNumber() ?? 0, { whole: true })} hint="Net, from Square" />
-        <Stat label="Items over target" value={over.length} hint={`of ${sold.length} menu items`} tone={over.length ? "warn" : "good"} />
+        <Stat label={<span className="inline-flex items-center gap-1.5">Items over target <HelpTip id="overview.overTarget" /></span>} value={over.length} hint={`of ${sold.length} menu items`} tone={over.length ? "warn" : "good"} />
         <Stat label="Price increases" value={ups.length} hint="Last 30 days" tone={ups.length ? "warn" : undefined} />
-      </div>
+      </HelpZone>
 
       <div className="grid gap-x-8 lg:grid-cols-5">
-        <Section className="lg:col-span-3" title="Price changes" description="Last 30 days, biggest moves first" actions={<LinkButton href="/prices" variant="ghost" size="sm">All prices →</LinkButton>}>
+        <HelpZone id="overview.priceChanges" tour="overview.price-changes" className="mb-10 lg:col-span-3 [&>section]:mb-0">
+        <Section title="Price changes" description="Last 30 days, biggest moves first" actions={<LinkButton href="/prices" variant="ghost" size="sm">All prices →</LinkButton>}>
           {moves.length === 0 ? (
             <EmptyState title="No price changes">Import a distributor sheet to start tracking prices.</EmptyState>
           ) : (
@@ -75,8 +88,10 @@ export default async function OverviewPage() {
             </Table>
           )}
         </Section>
+        </HelpZone>
 
-        <Section className="lg:col-span-2" title="Over target" description="Menu items above their food cost target" actions={<LinkButton href="/menu" variant="ghost" size="sm">Menu →</LinkButton>}>
+        <HelpZone id="overview.overTarget" tour="overview.over-target" className="mb-10 lg:col-span-2 [&>section]:mb-0">
+        <Section title="Over target" description="Menu items above their food cost target" actions={<LinkButton href="/menu" variant="ghost" size="sm">Menu →</LinkButton>}>
           {over.length === 0 ? (
             <EmptyState title="Everything's on target" />
           ) : (
@@ -96,8 +111,10 @@ export default async function OverviewPage() {
             </Card>
           )}
         </Section>
+        </HelpZone>
       </div>
 
+      <HelpZone id="overview.deliveries" tour="overview.deliveries">
       <Section title="Next deliveries" description="Suggested orders are drafted from forecast sales, recipes and your last count.">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {suppliers.map((s) => {
@@ -120,6 +137,7 @@ export default async function OverviewPage() {
           })}
         </div>
       </Section>
+      </HelpZone>
     </>
   );
 }

@@ -9,6 +9,7 @@ import Link from "next/link";
 import { GridCell, GridSelect } from "@/components/grid";
 import { linkProductToIngredient, setProductPrice } from "@/server/actions/inline";
 import { linkProduct } from "./actions";
+import { HelpTip, HelpZone } from "@/components/help";
 
 export const metadata = { title: "Prices" };
 
@@ -47,12 +48,12 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
         actions={
           <>
             <LinkButton href="/prices/update">Update by hand</LinkButton>
-            <LinkButton href="/prices/import" variant="primary">Import price sheet</LinkButton>
+            <LinkButton href="/prices/import" variant="primary" data-tour="prices.import-button">Import price sheet</LinkButton>
           </>
         }
       />
 
-      <div className="mb-5 flex flex-wrap items-center gap-2">
+      <HelpZone id="prices.filters" tour="prices.filters" className="mb-5 flex flex-wrap items-center gap-2">
         <Link href={qs({ supplier: undefined })} className={cx("rounded-full px-3 py-1 text-sm", !supplierId ? "bg-primary text-primary-ink" : "text-ink-2 hover:bg-surface-2")}>All</Link>
         {suppliers.map((s) => (
           <Link key={s.id} href={qs({ supplier: s.id })} className={cx("rounded-full px-3 py-1 text-sm", supplierId === s.id ? "bg-primary text-primary-ink" : "text-ink-2 hover:bg-surface-2")}>{s.name}</Link>
@@ -66,16 +67,17 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
           {filter && <input type="hidden" name="filter" value={filter} />}
           <Input name="q" defaultValue={q} type="search" placeholder="Search item or #" />
         </form>
-      </div>
+      </HelpZone>
 
       {products.length === 0 ? (
         <EmptyState title={filter === "unlinked" ? "Everything is linked" : "No products yet"} action={!filter && <LinkButton href="/prices/import">Import a price sheet</LinkButton>}>
           {filter === "unlinked" ? "Every supplier product is tied to an ingredient." : "Import a distributor sheet or add products by hand."}
         </EmptyState>
       ) : (
+        <HelpZone id="prices.list">
         <Table>
           <thead>
-            <tr><Th>Item</Th><Th className="hidden lg:table-cell">Pack</Th><Th>Ingredient</Th><Th align="right">Price</Th><Th align="right" className="hidden sm:table-cell">vs 30 days ago</Th></tr>
+            <tr><Th>Item</Th><Th className="hidden lg:table-cell">Pack</Th><Th><span className="inline-flex items-center gap-1">Ingredient <HelpTip id="prices.link" /></span></Th><Th align="right"><span className="inline-flex items-center gap-1">Price <HelpTip id="prices.list.price" /></span></Th><Th align="right" className="hidden sm:table-cell">vs 30 days ago</Th></tr>
           </thead>
           <tbody>
             {products.map((p) => {
@@ -123,6 +125,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
             })}
           </tbody>
         </Table>
+        </HelpZone>
       )}
     </>
   );

@@ -5,6 +5,7 @@ import { setRecipeField } from "@/server/actions/inline";
 import { requireUser } from "@/server/auth";
 import { menuCosts } from "@/server/services/insights";
 import Link from "next/link";
+import { HelpTip, HelpZone } from "@/components/help";
 
 export const metadata = { title: "Menu costs" };
 
@@ -28,19 +29,20 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
         description="Plate costs update automatically whenever a supplier price changes."
         actions={<LinkButton href={`/menu/new?kind=${kind}`} variant="primary">New recipe</LinkButton>}
       />
-      <div className="mb-5 flex gap-1 border-b border-border">
+      <HelpZone id="menu.tabs" tour="menu.tabs" className="mb-5 flex gap-1 border-b border-border">
         {TABS.map((t) => (
           <Link key={t.kind} href={`/menu?kind=${t.kind}`} className={cx("-mb-px border-b-2 px-3 pb-2.5 text-sm", t.kind === kind ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink")}>
             {t.label} <span className="num ml-1 text-muted">{rows.filter((r) => r.kind === t.kind).length}</span>
           </Link>
         ))}
-      </div>
+      </HelpZone>
 
       {list.length === 0 ? (
         <EmptyState title="Nothing here yet" action={<LinkButton href={`/menu/new?kind=${kind}`}>Add one</LinkButton>}>
           {isPrep ? "Prep recipes are sauces, doughs and batches used inside menu items." : "Add a recipe to see its plate cost."}
         </EmptyState>
       ) : (
+        <HelpZone id="menu.list" tour="menu.table">
         <Table>
           <thead>
             <tr>
@@ -48,8 +50,8 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
               <Th className="hidden sm:table-cell">Category</Th>
               {!isPrep && <Th align="right" className="w-28">Price</Th>}
               <Th align="right">{isPrep ? "Batch cost" : "Cost"}</Th>
-              <Th align="right" className="hidden md:table-cell">30 days</Th>
-              {!isPrep && <Th align="right">Food cost / target</Th>}
+              <Th align="right" className="hidden md:table-cell"><span className="inline-flex items-center gap-1">30 days <HelpTip id="menu.list.change" /></span></Th>
+              {!isPrep && <Th align="right"><span className="inline-flex items-center gap-1">Food cost / target <HelpTip id="menu.list.target" /></span></Th>}
             </tr>
           </thead>
           <tbody>
@@ -59,7 +61,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
               return (
                 <Tr key={r.id}>
                   <Td>
-                    <Link href={`/menu/${r.id}`} className="font-medium hover:underline">{r.name}</Link>
+                    <Link href={`/menu/${r.id}`} data-tour="menu.recipe-link" className="font-medium hover:underline">{r.name}</Link>
                     {r.incomplete && <Badge tone="warn" className="ml-2">{r.error ? "Error" : "Missing prices"}</Badge>}
                   </Td>
                   <Td className="hidden text-muted sm:table-cell">{r.category}</Td>
@@ -86,6 +88,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
             })}
           </tbody>
         </Table>
+        </HelpZone>
       )}
     </>
   );

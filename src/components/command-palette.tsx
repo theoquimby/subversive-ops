@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 export interface Command {
   id: string;
   label: string;
-  group: "Go to" | "Do" | "Recipes" | "Ingredients" | "Suppliers";
+  group: "Go to" | "Do" | "Help" | "Recipes" | "Ingredients" | "Suppliers";
   href: string;
   hint?: string;
 }
@@ -44,7 +44,7 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
   useEffect(() => { if (open) requestAnimationFrame(() => inputRef.current?.focus()); }, [open]);
 
   const results = useMemo(() => {
-    const base = q.trim() ? commands : commands.filter((c) => c.group === "Go to" || c.group === "Do");
+    const base = q.trim() ? commands : commands.filter((c) => c.group === "Go to" || c.group === "Do" || c.group === "Help");
     return fuzzyFilter(base, q, (c) => `${c.label} ${c.hint ?? ""}`, 40);
   }, [commands, q]);
 

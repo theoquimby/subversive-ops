@@ -3,6 +3,7 @@
 import { Button, Card, cx, Field, Input, Select } from "@/components/ui";
 import { useActionState, useState } from "react";
 import { logWaste } from "./actions";
+import { HelpTip } from "@/components/help";
 
 const REASONS = ["Spoiled", "Expired", "Dropped", "Overcooked", "Returned", "Other"];
 
@@ -12,7 +13,7 @@ export function WasteForm({ items }: { items: { id: string; name: string; units:
   const [reason, setReason] = useState(REASONS[0]);
   const units = items.find((i) => i.id === itemId)?.units ?? [];
   return (
-    <Card className="p-5">
+    <Card className="p-5" data-tour="waste.form">
       <form action={action} className="space-y-4" key={state?.ok}>
         <Field label="Item">
           <Select name="ingredientId" value={itemId} onChange={(e) => setItemId(e.target.value)} className="h-11 text-base" required>
@@ -26,8 +27,8 @@ export function WasteForm({ items }: { items: { id: string; name: string; units:
             <Select name="unit" className="h-11 text-base" key={itemId}>{units.map((u) => <option key={u}>{u}</option>)}</Select>
           </Field>
         </div>
-        <div>
-          <span className="mb-1.5 block text-[0.8rem] font-medium text-ink-2">Why</span>
+        <div data-tour="waste.reasons">
+          <span className="mb-1.5 flex items-center gap-1.5 text-[0.8rem] font-medium text-ink-2">Why <HelpTip id="waste.reasons" /></span>
           <input type="hidden" name="reason" value={reason} />
           <div className="flex flex-wrap gap-2">
             {REASONS.map((r) => (

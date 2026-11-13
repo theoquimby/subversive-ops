@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { parseQuickLine, type QuickItem } from "@/domain/quickAdd";
 import { archiveRecipe, saveRecipe } from "../actions";
+import { HelpTip, HelpZone } from "@/components/help";
 
 export interface EditorCatalog {
   ingredients: { id: string; name: string; baseUnit: BaseUnit; costPerUsableBase: number | null; conversions: CustomConversion[]; units: string[]; packQtyBase: number | null }[];
@@ -140,7 +141,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
   return (
     <div className={cx(dirty || error ? "pb-24" : "pb-2")}>
       {/* Summary */}
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <HelpZone id="menu.editor.summary" tour="menu.summary" className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Summary label={isPrep ? "Batch cost" : "Plate cost"} value={money(total)} note={incomplete ? <Badge tone="warn">Missing prices</Badge> : null} />
         {isPrep ? (
           <Summary label="Yield" value={`${r.yieldQty} ${r.yieldUnit}`} />
@@ -148,16 +149,16 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
           <>
             <Summary label="Food cost" value={pct(foodCost)} tone={foodCost == null ? undefined : foodCost > target ? "bad" : "good"} note={<span className="text-xs text-muted">target {pct(target, 0)}</span>} />
             <Summary label="Margin" value={r.menuPrice ? money(r.menuPrice - total) : "—"} />
-            <Summary label="Price to hit target" value={total > 0 ? money(total / target) : "—"} />
+            <Summary label={<span className="inline-flex items-center gap-1.5">Price to hit target <HelpTip id="menu.editor.summary" /></span>} value={total > 0 ? money(total / target) : "—"} />
           </>
         )}
-      </div>
+      </HelpZone>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Ingredients */}
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2" data-tour="menu.lines">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold">{isPrep ? "Ingredients per batch" : "Ingredients per serving"}</h2>
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold">{isPrep ? "Ingredients per batch" : "Ingredients per serving"} <HelpTip id="menu.editor.lines" /></h2>
             <span className="text-xs text-muted">{r.lines.length} lines</span>
           </div>
           <div className="divide-y divide-border">
@@ -190,7 +191,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
               );
             })}
           </div>
-          <div className="border-t border-border px-4 py-3">
+          <div className="border-t border-border px-4 py-3" data-tour="menu.quick-add">
             <div className="relative">
               <Plus className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
               <textarea
@@ -200,9 +201,10 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (quick.trim()) addQuick(quick); } }}
                 onPaste={(e) => { const t = e.clipboardData.getData("text/plain"); if (t.includes("\n")) { e.preventDefault(); addQuick(t); } }}
                 placeholder='Type "6 oz ground beef" and press Enter — or paste a whole list'
-                className="block h-10 w-full resize-none rounded-lg border border-dashed border-border-strong bg-transparent py-2.5 pr-3 pl-9 text-sm placeholder:text-muted focus:border-ink-2 focus:border-solid focus:outline-none"
+                className="block h-10 w-full resize-none rounded-lg border border-dashed border-border-strong bg-transparent py-2.5 pr-9 pl-9 text-sm placeholder:text-muted focus:border-ink-2 focus:border-solid focus:outline-none"
                 aria-label="Quick add ingredient"
               />
+              <span className="absolute top-1/2 right-3 flex -translate-y-1/2"><HelpTip id="menu.editor.quickAdd" /></span>
             </div>
             {preview?.item ? (
               <div className="mt-1.5 pl-1 text-xs text-muted">↵ adds <span className="num text-ink">{preview.qty} {preview.unit}</span> {preview.item.name}</div>
@@ -215,7 +217,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
         </Card>
 
         {/* Details */}
-        <Card className="space-y-4 self-start p-4">
+        <Card className="space-y-4 self-start p-4" data-tour="menu.details">
           <h2 className="text-sm font-semibold">Details</h2>
           <Field label="Name"><Input value={r.name} onChange={(e) => update({ name: e.target.value })} placeholder="e.g. Subversive burger" /></Field>
           <div className="grid grid-cols-2 gap-3">
@@ -272,7 +274,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
   );
 }
 
-function Summary({ label, value, note, tone }: { label: string; value: React.ReactNode; note?: React.ReactNode; tone?: "good" | "bad" }) {
+function Summary({ label, value, note, tone }: { label: React.ReactNode; value: React.ReactNode; note?: React.ReactNode; tone?: "good" | "bad" }) {
   return (
     <Card className="p-4">
       <div className="text-[0.8rem] text-muted">{label}</div>

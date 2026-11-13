@@ -6,6 +6,7 @@ import { db } from "@/server/db";
 import { deliveryWindow } from "@/server/services/planning";
 import { businessToday } from "@/server/services/sales";
 import Link from "next/link";
+import { HelpZone } from "@/components/help";
 
 export const metadata = { title: "Ordering" };
 
@@ -22,12 +23,13 @@ export default async function OrderingPage() {
   return (
     <>
       <PageHeader title="Ordering" description="Pick a supplier to get a suggested order for its next delivery." />
+      <HelpZone id="ordering.suppliers" tour="ordering.suppliers">
       <Section title="Suppliers">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {suppliers.map((s) => {
             const w = deliveryWindow(s, today);
             return (
-              <Link key={s.id} href={`/ordering/${s.id}`}>
+              <Link key={s.id} href={`/ordering/${s.id}`} data-tour="ordering.supplier-card">
                 <Card className="h-full p-4 transition-colors hover:border-border-strong">
                   <div className="text-sm font-medium">{s.name}</div>
                   <div className="mt-1 text-xs text-muted">
@@ -46,6 +48,8 @@ export default async function OrderingPage() {
           })}
         </div>
       </Section>
+      </HelpZone>
+      <HelpZone id="ordering.recent" tour="ordering.recent">
       <Section title="Recent orders">
         {orders.length === 0 ? (
           <EmptyState title="No orders yet">Saved orders show up here so deliveries can be checked in.</EmptyState>
@@ -66,6 +70,7 @@ export default async function OrderingPage() {
           </Table>
         )}
       </Section>
+      </HelpZone>
     </>
   );
 }

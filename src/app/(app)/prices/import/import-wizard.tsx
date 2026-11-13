@@ -7,6 +7,7 @@ import { money, signedPct } from "@/lib/format";
 import type { ImportPreview } from "@/server/services/priceImport";
 import { useRef, useState, useTransition } from "react";
 import { commitPriceSheet, previewPriceSheet } from "../actions";
+import { HelpTip } from "@/components/help";
 
 const FIELDS: { key: keyof ColumnMapping; label: string; required: boolean }[] = [
   { key: "sku", label: "Item number", required: true },
@@ -68,26 +69,32 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
     <div className="space-y-6">
       <Card className="p-5">
         <div className="grid gap-4 sm:grid-cols-[1fr_1.4fr_12rem_auto] sm:items-end">
+          <div data-tour="prices.import.supplier">
           <Field label="Supplier">
             <Select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setPreview(null); }}>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
           </Field>
+          </div>
+          <div data-tour="prices.import.file">
           <Field label="File (.xlsx or .csv)">
             <FileDrop ref={fileRef} accept=".csv,.xlsx,.xls" hint="Excel or CSV, as downloaded" onFile={() => setPreview(null)} />
           </Field>
-          <Field label="Prices effective">
+          </div>
+          <div data-tour="prices.import.effective">
+          <Field label={<span className="inline-flex items-center gap-1.5">Prices effective <HelpTip id="prices.import.effective" /></span>}>
             <DatePicker value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} aria-label="Prices effective" />
           </Field>
-          <Button variant="primary" onClick={() => runPreview()} disabled={pending}>{pending && !preview ? "Reading…" : "Preview"}</Button>
+          </div>
+          <Button variant="primary" onClick={() => runPreview()} disabled={pending} data-tour="prices.import.preview">{pending && !preview ? "Reading…" : "Preview"}</Button>
         </div>
         {error && <p className="mt-3 text-sm text-bad">{error}</p>}
       </Card>
 
       {preview && (
-        <Card className="p-5">
+        <Card className="p-5" data-tour="prices.import.columns">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Columns</h2>
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold">Columns <HelpTip id="prices.import.columns" /></h2>
             <span className="text-xs text-muted">Remembered for this supplier next time</span>
           </div>
           <div className="grid gap-3 sm:grid-cols-5">
@@ -105,7 +112,7 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
 
       {d && (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-tour="prices.import.diff">
             <Count label="Price changes" n={d.changed.length} tone={d.changed.length ? "warn" : undefined} />
             <Count label="New products" n={d.newProducts.length} />
             <Count label="Unchanged" n={d.unchanged.length} />

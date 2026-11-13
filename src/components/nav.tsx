@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import { BookOpen, CalendarCheck, CalendarDays, CalendarRange, HandCoins, Carrot, ChartLine, ClipboardList, Clock, FileCheck, FileUp, LayoutGrid, LogOut, MessageSquareText, Receipt, Scale, Search, Settings, ShoppingCart, Sunrise, Target, Trash2, TrendingUp, Users } from "lucide-react";
 import { openCommandPalette } from "./command-palette";
+import { HelpButton } from "./help";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { SessionRole } from "@/server/session";
@@ -90,6 +91,7 @@ export function Nav({ role, name, logout }: { role: SessionRole; name: string; l
             </div>
           ))}
         </nav>
+        <HelpButton className="mb-2" />
         <div className="flex items-center justify-between border-t border-border px-2.5 pt-4">
           <div className="min-w-0">
             <div className="truncate text-sm font-medium">{name}</div>
@@ -108,6 +110,7 @@ export function Nav({ role, name, logout }: { role: SessionRole; name: string; l
         <div className="flex h-14 items-center justify-between px-4">
           <Brand />
           <div className="flex items-center">
+            <HelpButton compact />
             <button onClick={openCommandPalette} className="rounded-md p-2.5 text-ink-2 hover:text-ink" aria-label="Search">
               <Search className="size-5" strokeWidth={1.75} />
             </button>

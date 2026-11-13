@@ -3,6 +3,7 @@
 import { Button, Combobox, Field, Input, Select } from "@/components/ui";
 import { useActionState } from "react";
 import { saveIngredient } from "../actions";
+import { HelpTip } from "@/components/help";
 
 export interface IngredientFormValues {
   id: string | null;
@@ -26,7 +27,7 @@ export function IngredientForm({ v, units, categories, areas }: { v: IngredientF
         <Field label="Storage area"><Combobox name="storageArea" defaultValue={v.storageArea} suggestions={areas} /></Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Measured by" hint="Every quantity is stored in this unit">
+        <Field label={<span className="inline-flex items-center gap-1.5">Measured by <HelpTip id="ingredients.baseUnit" /></span>} hint="Every quantity is stored in this unit">
           <Select name="baseUnit" defaultValue={v.baseUnit}>
             <option value="g">Weight (g)</option>
             <option value="ml">Volume (ml)</option>
@@ -41,8 +42,8 @@ export function IngredientForm({ v, units, categories, areas }: { v: IngredientF
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Yield %" hint="Usable after trim / cook loss"><Input name="yieldPct" type="number" min={1} max={100} step="0.1" defaultValue={v.yieldPct} className="num" /></Field>
-        <Field label="Order buffer %" hint="Extra on top of forecast"><Input name="safetyPct" type="number" min={0} max={200} step="1" defaultValue={v.safetyPct} className="num" /></Field>
+        <Field label={<span className="inline-flex items-center gap-1.5">Yield % <HelpTip id="ingredients.yield" /></span>} hint="Usable after trim / cook loss"><Input name="yieldPct" type="number" min={1} max={100} step="0.1" defaultValue={v.yieldPct} className="num" /></Field>
+        <Field label={<span className="inline-flex items-center gap-1.5">Order buffer % <HelpTip id="ingredients.buffer" /></span>} hint="Extra on top of forecast"><Input name="safetyPct" type="number" min={0} max={200} step="1" defaultValue={v.safetyPct} className="num" /></Field>
       </div>
       <Field label="Notes"><Input name="notes" defaultValue={v.notes} /></Field>
       <div className="flex items-center gap-3">

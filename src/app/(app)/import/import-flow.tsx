@@ -7,6 +7,7 @@ import { FileSpreadsheet, Link2, ClipboardPaste } from "lucide-react";
 import { useRef, useState, useTransition } from "react";
 import { FileDrop, type FileDropHandle } from "@/components/file-drop";
 import { previewPlan, readSource, runImport, type DetectedTable } from "./actions";
+import { HelpTip } from "@/components/help";
 
 type Source = "file" | "paste" | "link";
 
@@ -68,7 +69,7 @@ export function ImportFlow() {
   return (
     <div className="space-y-6 pb-24">
       {/* 1. Source */}
-      <Card>
+      <Card data-tour="import.sources">
         <div className="flex border-b border-border">
           {([
             ["file", "Upload a file", FileSpreadsheet],
@@ -118,9 +119,12 @@ export function ImportFlow() {
                 <div className="font-medium">{t.table.name}</div>
                 <div className="num text-xs text-muted">{t.table.rows.length} rows · {t.table.headers.length} columns</div>
               </div>
+              <div className="flex items-center gap-2">
+              <HelpTip id="import.tabs" />
               <Select value={t.kind} onChange={(e) => update(i, { kind: e.target.value as TableKind })} className="w-52" aria-label="What is this tab?">
                 {(Object.keys(KIND_LABEL) as TableKind[]).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
               </Select>
+              </div>
             </div>
             {t.kind !== "skip" && (
               <div className="space-y-4 p-5">
@@ -151,7 +155,7 @@ export function ImportFlow() {
       {/* 3. Review */}
       {plan && (
         <Card className="p-5">
-          <h2 className="text-sm font-semibold">What will happen</h2>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold">What will happen <HelpTip id="import.review" /></h2>
           <div className="num mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Mini label="Ingredients" value={plan.ingredients.length} hint={`${plan.ingredients.filter((i) => !i.existingId).length} new`} />
             <Mini label="With prices" value={plan.ingredients.filter((i) => i.product?.price != null).length} />

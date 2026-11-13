@@ -1,12 +1,22 @@
 import { CommandPalette, type Command } from "@/components/command-palette";
 import { ConfirmProvider } from "@/components/dialog";
 import { Nav } from "@/components/nav";
+import { HelpProvider } from "@/components/help";
+import { onboardingState } from "@/server/services/onboarding";
+import { headers } from "next/headers";
 import { logout, requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { redirect } from "next/navigation";
 
+const HELP_COMMANDS: Command[] = [
+  { id: "help-center", label: "Help center", group: "Help", href: "/help" },
+  { id: "help-mode", label: "Help mode — explain this page", group: "Help", href: "?help=1", hint: "?" },
+];
+
 const STAFF_COMMANDS: Command[] = [
   { id: "my", label: "My shifts / request time off", group: "Do", href: "/my" },
+  ...HELP_COMMANDS,
+  { id: "tour-counting", label: "Start tour · Counting & waste", group: "Help", href: "/help?tour=counting" },
   { id: "count", label: "Start a count", group: "Do", href: "/count" },
   { id: "waste", label: "Log waste", group: "Do", href: "/waste" },
 ];
@@ -52,7 +62,14 @@ async function managerCommands(): Promise<Command[]> {
     { id: "do-recipe", label: "New recipe", group: "Do", href: "/menu/new" },
     { id: "do-prep", label: "New prep recipe", group: "Do", href: "/menu/new?kind=PREP" },
     { id: "do-ingredient", label: "New ingredient", group: "Do", href: "/ingredients/new" },
-    ...STAFF_COMMANDS,
+    ...STAFF_COMMANDS.filter((c) => !c.id.startsWith("help-")),
+    { id: "go-setup", label: "Finish setting up", group: "Go to", href: "/welcome" },
+    ...HELP_COMMANDS,
+    { id: "tour-overview", label: "Start tour · Overview", group: "Help", href: "/help?tour=overview" },
+    { id: "tour-menu", label: "Start tour · Menu costs & recipe editor", group: "Help", href: "/help?tour=menu" },
+    { id: "tour-prices", label: "Start tour · Importing a price sheet", group: "Help", href: "/help?tour=prices" },
+    { id: "tour-ordering", label: "Start tour · Ordering", group: "Help", href: "/help?tour=ordering" },
+    { id: "tour-ingredients", label: "Start tour · Ingredients grid", group: "Help", href: "/help?tour=ingredients" },
     { id: "do-sync", label: "Sync Square / map items", group: "Do", href: "/sales" },
     ...suppliers.map((s) => ({ id: `inv-${s.id}`, label: `Add invoice · ${s.name}`, group: "Do" as const, href: `/invoices/new?supplier=${s.id}`, hint: "invoice" })),
     ...suppliers.map((s) => ({ id: `order-${s.id}`, label: `Build order · ${s.name}`, group: "Do" as const, href: `/ordering/${s.id}`, hint: "order" })),
@@ -69,12 +86,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     await logout();
     redirect("/login");
   }
+  // First run: a new manager goes through setup before anything else.
+  if (session.role === "MANAGER") {
+    const path = (await headers()).get("x-pathname") ?? "";
+    if (!path.startsWith("/welcome")) {
+      const ob = await onboardingState();
+      if (ob.firstRun) redirect("/welcome");
+    }
+  }
   const commands = session.role === "MANAGER" ? await managerCommands() : STAFF_COMMANDS;
   return (
     <ConfirmProvider>
     <div className="min-h-dvh">
       <Nav role={session.role} name={session.name} logout={signOut} />
       <CommandPalette commands={commands} />
+      <HelpProvider userId={session.userId} />
       <main className="lg:pl-60">
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 lg:py-12">{children}</div>
       </main>

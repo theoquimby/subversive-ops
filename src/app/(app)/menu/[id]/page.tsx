@@ -10,6 +10,7 @@ import { businessToday } from "@/server/services/sales";
 import { notFound } from "next/navigation";
 import { RecipeEditor, type EditorCatalog, type EditorRecipe } from "./recipe-editor";
 import { recipeYieldInBase } from "@/domain/costing";
+import { HelpZone } from "@/components/help";
 
 export default async function RecipePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ kind?: string }> }) {
   await requireUser("MANAGER");
@@ -86,11 +87,13 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
       <PageHeader title={recipe?.name ?? "New recipe"} back={{ href: `/menu?kind=${initial.kind}`, label: "Menu costs" }} />
       <RecipeEditor initial={initial} catalog={catalog} />
       {recipe && (
+        <HelpZone id="menu.editor.history" tour="menu.history">
         <Section title="Plate cost over time" description="Weekly, last six months — recalculated from price history">
           <Card className="p-4">
             <LineChart points={history.map((h) => ({ x: h.date, y: h.cost }))} ariaLabel={`${recipe.name} cost over the last six months`} />
           </Card>
         </Section>
+        </HelpZone>
       )}
     </>
   );

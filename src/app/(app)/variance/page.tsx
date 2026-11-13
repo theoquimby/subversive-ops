@@ -7,6 +7,7 @@ import { db } from "@/server/db";
 import { countPoints, varianceReport } from "@/server/services/variance";
 import Link from "next/link";
 import { PeriodPicker } from "./period-picker";
+import { HelpTip, HelpZone } from "@/components/help";
 
 export const metadata = { title: "Margin gap" };
 
@@ -45,17 +46,18 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
         title="Margin gap"
         description={`${dayDate(r.from)} → ${dayDate(r.to)} · ${r.days} days between counts`}
       />
-      <div className="-mt-4 mb-8">
+      <div className="-mt-4 mb-8" data-tour="variance.period">
         <PeriodPicker points={points.map((p) => ({ id: p.id, label: `${dayDate(p.date)} · ${p.area} · ${p.lines} items` }))} start={start.id} end={end.id} />
       </div>
 
-      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Food cost if recipes were followed" value={pct(theoPct)} hint={`${money(r.theoreticalCost, { whole: true })} on ${money(r.foodSales, { whole: true })} sales`} />
-        <Stat label="Actual food cost" value={pct(actPct)} hint={`${money(r.actualCost, { whole: true })} used`} tone={actPct != null && theoPct != null && actPct - theoPct > 0.015 ? "bad" : undefined} />
+      <HelpZone id="variance.page" tour="variance.stats" className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label={<span className="inline-flex items-center gap-1.5">Food cost if recipes were followed <HelpTip id="variance.theoretical" /></span>} value={pct(theoPct)} hint={`${money(r.theoreticalCost, { whole: true })} on ${money(r.foodSales, { whole: true })} sales`} />
+        <Stat label={<span className="inline-flex items-center gap-1.5">Actual food cost <HelpTip id="variance.actual" /></span>} value={pct(actPct)} hint={`${money(r.actualCost, { whole: true })} used`} tone={actPct != null && theoPct != null && actPct - theoPct > 0.015 ? "bad" : undefined} />
         <Stat label="Logged waste" value={money(r.wasteCost, { whole: true })} hint="Accounted for" />
-        <Stat label="Unexplained" value={money(r.unexplainedCost, { whole: true })} hint={r.foodSales > 0 ? `${pct(r.unexplainedCost / r.foodSales)} of food sales` : undefined} tone={r.unexplainedCost > 0 ? "bad" : "good"} />
-      </div>
+        <Stat label={<span className="inline-flex items-center gap-1.5">Unexplained <HelpTip id="variance.unexplained" /></span>} value={money(r.unexplainedCost, { whole: true })} hint={r.foodSales > 0 ? `${pct(r.unexplainedCost / r.foodSales)} of food sales` : undefined} tone={r.unexplainedCost > 0 ? "bad" : "good"} />
+      </HelpZone>
 
+      <HelpZone id="variance.byIngredient" tour="variance.by-ingredient">
       <Section title="By ingredient" description="Biggest dollar gaps first. Positive = more went out than sales and waste explain.">
         <Table>
           <thead>
@@ -111,6 +113,7 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
           </details>
         )}
       </Section>
+      </HelpZone>
 
       <Card className="p-5 text-sm text-ink-2">
         <div className="font-medium text-ink">Reading this</div>

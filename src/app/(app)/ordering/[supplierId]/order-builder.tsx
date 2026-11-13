@@ -7,6 +7,7 @@ import { dayDate, money, qty, shortDate } from "@/lib/format";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createOrder } from "../actions";
+import { HelpTip } from "@/components/help";
 
 type Line = OrderSuggestion & { onHandNote: string };
 
@@ -35,7 +36,7 @@ export function OrderBuilder(props: {
 
   return (
     <div className="pb-24">
-      <Card className="mb-6 grid gap-4 p-4 sm:grid-cols-3">
+      <Card className="mb-6 grid gap-4 p-4 sm:grid-cols-3" data-tour="ordering.window">
         <Field label="Delivery">
           <Select value={props.deliveryDate} onChange={(e) => go(e.target.value, e.target.value >= props.coverUntil ? addDays(e.target.value, 7) : props.coverUntil)}>
             {props.deliveryOptions.map((d) => <option key={d} value={d}>{dayDate(d)}</option>)}
@@ -46,12 +47,12 @@ export function OrderBuilder(props: {
             {Array.from({ length: 14 }, (_, i) => addDays(props.deliveryDate, i + 1)).map((d) => <option key={d} value={d}>{dayDate(addDays(d, -1))}</option>)}
           </Select>
         </Field>
-        <div className="text-sm text-muted sm:pt-6">Quantities = forecast sales × recipes + buffer − stock you'll have on delivery day.</div>
+        <div className="text-sm text-muted sm:pt-6" data-tour="ordering.formula">Quantities = forecast sales × recipes + buffer − stock you'll have on delivery day. <HelpTip id="ordering.builder.formula" /></div>
       </Card>
 
       {props.problems.length > 0 && (
         <Card className="mb-6 border-warn/30 bg-warn-bg p-4 text-sm text-warn">
-          <div className="font-medium">Some recipe lines couldn't be counted</div>
+          <div className="flex items-center gap-1.5 font-medium">Some recipe lines couldn't be counted <HelpTip id="ordering.builder.problems" /></div>
           <ul className="mt-1 list-disc pl-5">{props.problems.slice(0, 5).map((p) => <li key={p}>{p}</li>)}</ul>
         </Card>
       )}
@@ -61,8 +62,8 @@ export function OrderBuilder(props: {
           <thead>
             <tr className="border-b border-border text-[0.75rem] text-muted">
               <th className="px-4 py-2.5 text-left font-medium">Item</th>
-              <th className="hidden px-4 py-2.5 text-right font-medium md:table-cell">On hand at delivery</th>
-              <th className="hidden px-4 py-2.5 text-right font-medium sm:table-cell">Needed</th>
+              <th className="hidden px-4 py-2.5 text-right font-medium md:table-cell" data-tour="ordering.on-hand"><span className="inline-flex items-center gap-1">On hand at delivery <HelpTip id="ordering.builder.onHand" /></span></th>
+              <th className="hidden px-4 py-2.5 text-right font-medium sm:table-cell"><span className="inline-flex items-center gap-1">Needed <HelpTip id="ordering.builder.needed" /></span></th>
               <th className="px-4 py-2.5 text-right font-medium">Order</th>
               <th className="hidden px-4 py-2.5 text-right font-medium sm:table-cell">Cost</th>
             </tr>
@@ -76,8 +77,8 @@ export function OrderBuilder(props: {
                   <td className="px-4 py-3">
                     <div className="font-medium text-ink">{l.ingredientName}</div>
                     <div className="text-xs text-muted">{l.description} · {money(l.unitPrice)}/{l.purchaseUnit}</div>
-                    {l.status === "needs-setup" && <Badge tone="warn" className="mt-1">Set pack size</Badge>}
-                    {l.status === "needs-count" && <Badge tone="warn" className="mt-1">Count to auto-order</Badge>}
+                    {l.status === "needs-setup" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="warn">Set pack size</Badge><HelpTip id="ordering.builder.needsSetup" /></span>}
+                    {l.status === "needs-count" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="warn">Count to auto-order</Badge><HelpTip id="ordering.builder.needsCount" /></span>}
                   </td>
                   <td className="num hidden px-4 py-3 text-right md:table-cell">
                     {l.status === "needs-count" ? <span className="text-muted">?</span> : packs(Math.max(0, l.projectedAtDelivery), l) == null ? "—" : `${qty(packs(Math.max(0, l.projectedAtDelivery), l), 1)} ${l.purchaseUnit}`}
@@ -85,7 +86,7 @@ export function OrderBuilder(props: {
                   </td>
                   <td className="num hidden px-4 py-3 text-right sm:table-cell">{packs(l.neededForCover, l) == null ? "—" : `${qty(packs(l.neededForCover, l), 1)} ${l.purchaseUnit}`}</td>
                   <td className="px-4 py-3 text-right">
-                    <div className="inline-flex items-center rounded-lg border border-border-strong">
+                    <div className="inline-flex items-center rounded-lg border border-border-strong" data-tour="ordering.qty">
                       <button type="button" className="h-9 w-9 text-ink-2 hover:bg-surface-2" onClick={() => setQtys((s) => ({ ...s, [l.supplierProductId]: Math.max(0, q - 1) }))} aria-label="Less">−</button>
                       <input
                         type="number" inputMode="numeric" min={0} step={1} value={q}
@@ -111,7 +112,7 @@ export function OrderBuilder(props: {
       </Card>
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-8">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-8" data-tour="ordering.save">
           <div className="text-sm">
             <span className="num font-semibold">{money(total)}</span>
             <span className="text-muted"> · {ordering} item{ordering === 1 ? "" : "s"}</span>

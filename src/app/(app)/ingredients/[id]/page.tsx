@@ -12,6 +12,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { addConversion, removeConversion, setPackSize, setPreferredProduct, unlinkProduct } from "../actions";
 import { IngredientForm } from "./ingredient-form";
+import { HelpTip } from "@/components/help";
 
 export default async function IngredientPage({ params }: { params: Promise<{ id: string }> }) {
   await requireUser("MANAGER");
@@ -73,7 +74,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
       <PageHeader title={ing.name} description={`${ing.category} · ${ing.storageArea}`} back={{ href: "/ingredients", label: "Ingredients" }} />
       <div className="grid gap-6 lg:grid-cols-5">
         <div className="space-y-6 lg:col-span-3">
-          <Section title="Bought as" description="Supplier products linked to this ingredient. The starred one sets the cost." className="mb-0">
+          <Section title={<span className="inline-flex items-center gap-1.5">Bought as <HelpTip id="ingredients.boughtAs" /></span>} description="Supplier products linked to this ingredient. The starred one sets the cost." className="mb-0">
             {ing.products.length === 0 ? (
               <Card className="p-5 text-sm text-muted">Not linked to any supplier product yet. Link one from <Link href="/prices?filter=unlinked" className="text-ink underline">Prices</Link>.</Card>
             ) : (
@@ -106,7 +107,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
                           {units.map((u) => <option key={u}>{u}</option>)}
                         </Select>
                         <Button size="sm">Save pack</Button>
-                        {!pack && <Badge tone="warn">Pack size needed for costing</Badge>}
+                        {!pack && <span className="inline-flex items-center gap-1.5"><Badge tone="warn">Pack size needed for costing</Badge><HelpTip id="ingredients.packSize" /></span>}
                         <span className="ml-auto flex gap-1">
                           {!isPreferred && <Button size="sm" variant="ghost" formAction={setPreferredProduct.bind(null, ing.id, p.id)}>Use for cost</Button>}
                           <Button size="sm" variant="ghost" formAction={unlinkProduct.bind(null, ing.id, p.id)}>Unlink</Button>
@@ -123,7 +124,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
             <Card className="p-4"><LineChart points={history} ariaLabel={`${ing.name} cost per ${disp.unit}`} /></Card>
           </Section>
 
-          <Section title="Custom units" description={`For recipes and counts — e.g. 1 slice = 21 g. Base unit is ${base}.`} className="mb-0">
+          <Section title={<span className="inline-flex items-center gap-1.5">Custom units <HelpTip id="ingredients.customUnits" /></span>} description={`For recipes and counts — e.g. 1 slice = 21 g. Base unit is ${base}.`} className="mb-0">
             <Card className="divide-y divide-border">
               {ing.conversions.map((c) => (
                 <form key={c.id} action={removeConversion.bind(null, ing.id, c.id)} className="flex items-center justify-between px-4 py-2.5 text-sm">

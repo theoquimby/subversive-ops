@@ -9,6 +9,7 @@ import { countUnitsFor, loadCountableIngredients } from "@/server/services/inven
 import { wasteLeaderboard } from "@/server/services/variance";
 import { businessToday } from "@/server/services/sales";
 import { WasteForm } from "./waste-form";
+import { HelpZone } from "@/components/help";
 
 export const metadata = { title: "Waste" };
 
@@ -34,6 +35,7 @@ export default async function WastePage() {
       <PageHeader title="Log waste" description="Anything thrown out — so the numbers match what's really used." />
       <WasteForm items={ingredients.map((i) => ({ id: i.id, name: i.name, units: countUnitsFor(i).units }))} />
       {board.length > 0 && (
+        <HelpZone id="waste.leaderboard">
         <Section title="Top loggers" description="Last 30 days. Logging everything keeps food cost honest — thank you!" className="mt-10">
           <Card className="divide-y divide-border">
             {board.slice(0, 5).map((b, i) => (
@@ -45,7 +47,9 @@ export default async function WastePage() {
             ))}
           </Card>
         </Section>
+        </HelpZone>
       )}
+      <HelpZone id="waste.recent">
       <Section title="Last two weeks" description={isManager ? `${money(total)} logged` : undefined} className="mt-10">
         {recent.length === 0 ? <Card className="p-5 text-sm text-muted">Nothing logged yet.</Card> : (
           <Card className="divide-y divide-border">
@@ -67,6 +71,7 @@ export default async function WastePage() {
           </Card>
         )}
       </Section>
+      </HelpZone>
     </div>
   );
 }

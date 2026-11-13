@@ -6,6 +6,7 @@ import { Check } from "lucide-react";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useConfirm } from "@/components/dialog";
 import { discardCount, finishCount, saveCountLine } from "../actions";
+import { HelpTip } from "@/components/help";
 
 interface Item { id: string; name: string; area: string; category: string; base: BaseUnit; units: string[]; conversions: CustomConversion[]; savedBase: number | null }
 
@@ -101,7 +102,7 @@ export function CountSheet({ countId, items }: { countId: string; items: Item[] 
       ))}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
         <div className="mx-auto flex max-w-xl items-center justify-between gap-3 px-4 py-3">
-          <span className="num text-sm text-muted">{done} of {items.length} counted</span>
+          <span className="num flex items-center gap-1.5 text-sm text-muted">{done} of {items.length} counted <HelpTip id="count.autosave" placement="top-start" /></span>
           <div className="flex gap-2">
             <Button variant="ghost" disabled={finishing} onClick={async () => { if (await confirm({ title: "Discard this count?", body: "Everything counted so far will be thrown away.", confirmLabel: "Discard", danger: true })) start(() => discardCount(countId)); }}>Discard</Button>
             <Button variant="primary" size="lg" disabled={finishing || done === 0} onClick={() => start(async () => { await Promise.all(inFlight.current); await finishCount(countId); })}>{finishing ? "Saving…" : "Finish count"}</Button>

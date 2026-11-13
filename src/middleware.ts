@@ -2,12 +2,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/server/session";
 
 // Staff only ever see the floor tools; everything else is manager-only.
-const STAFF_PATHS = ["/my", "/count", "/waste"];
+const STAFF_PATHS = ["/my", "/count", "/waste", "/help"];
 const PUBLIC_PATHS = ["/login", "/api/cron"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next();
+  // Layouts can't read the URL, so pass it along (used for the first-run redirect).
+  const forward = () => {
+    const h = new Headers(req.headers);
+    h.set("x-pathname", pathname);
+    return NextResponse.next({ request: { headers: h } });
+  };
 
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value, process.env.SESSION_SECRET ?? "");
   if (!session) {
@@ -21,7 +27,7 @@ export async function middleware(req: NextRequest) {
     url.pathname = "/my";
     return NextResponse.redirect(url);
   }
-  return NextResponse.next();
+  return forward();
 }
 
 export const config = {

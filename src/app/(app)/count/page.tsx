@@ -5,6 +5,7 @@ import { db } from "@/server/db";
 import { storageAreas } from "@/server/services/inventory";
 import Link from "next/link";
 import { startCount } from "./actions";
+import { HelpZone } from "@/components/help";
 
 export const metadata = { title: "Counts" };
 
@@ -23,6 +24,7 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
       {done && <Card className="mb-6 border-good/30 bg-good-bg p-4 text-sm font-medium text-good">Count saved. Thank you!</Card>}
 
       {open.length > 0 && (
+        <HelpZone id="count.inProgress" tour="count.in-progress">
         <Section title="In progress">
           <Card className="divide-y divide-border">
             {open.map((c) => (
@@ -36,8 +38,10 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
             ))}
           </Card>
         </Section>
+        </HelpZone>
       )}
 
+      <HelpZone id="count.start" tour="count.start">
       <Section title="Start a count">
         <div className="grid grid-cols-2 gap-3">
           {["All", ...areas].map((a) => (
@@ -48,8 +52,10 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
           ))}
         </div>
       </Section>
+      </HelpZone>
 
       {recent.length > 0 && (
+        <HelpZone id="count.recent" tour="count.recent">
         <Section title="Recent counts">
           <Card className="divide-y divide-border">
             {recent.map((c) => (
@@ -60,6 +66,7 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
             ))}
           </Card>
         </Section>
+        </HelpZone>
       )}
     </div>
   );

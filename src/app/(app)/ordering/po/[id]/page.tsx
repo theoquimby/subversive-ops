@@ -6,6 +6,7 @@ import { loadOrder, orderAsText } from "@/server/services/orders";
 import { notFound } from "next/navigation";
 import { deleteDraft, markSent, receiveOrder } from "../../actions";
 import { CopyButton } from "./copy-button";
+import { HelpTip } from "@/components/help";
 
 export const metadata = { title: "Order" };
 
@@ -30,7 +31,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
             <CopyButton text={text} label="Copy as text" />
             <LinkButton href={`/ordering/po/${o.id}/csv`} prefetch={false}>Download CSV</LinkButton>
             {mailto && o.status === "DRAFT" && <LinkButton href={mailto}>Email</LinkButton>}
-            {o.status === "DRAFT" && <form action={markSent.bind(null, o.id)}><Button variant="primary">Mark as sent</Button></form>}
+            {o.status === "DRAFT" && <form action={markSent.bind(null, o.id)} className="flex items-center gap-2"><HelpTip id="ordering.po" /><Button variant="primary">Mark as sent</Button></form>}
           </>
         }
       />
@@ -58,7 +59,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
         </Table>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm"><span className="text-muted">Estimated total</span> <span className="num font-semibold">{money(total)}</span></div>
-          {o.status === "SENT" && <Button variant="primary">Check in delivery</Button>}
+          {o.status === "SENT" && <span className="flex items-center gap-2"><HelpTip id="ordering.po.receive" /><Button variant="primary">Check in delivery</Button></span>}
         </div>
       </form>
 
