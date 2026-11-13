@@ -635,9 +635,10 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
       art: <Art.SquareCredentials />,
       body: (
         <>
-          <p>Press <b>Credentials</b> on the left. Copy the two codes and paste them here. They save by themselves.</p>
-          <SecretField name="SQUARE_APPLICATION_ID" status={s.SQUARE_APPLICATION_ID} label="Application ID" placeholder="sq0idp-…" hint="At the top of the Credentials page (2). Starts with sq0idp-." sensitive={false} />
-          <SecretField name="SQUARE_APPLICATION_SECRET" status={s.SQUARE_APPLICATION_SECRET} label="Application secret" placeholder="sq0csp-…" hint="Press Show next to it first (3). Starts with sq0csp-. Treat it like a password." />
+          <p>Copy the <b>Application ID</b> from <b>Credentials</b>, and the <b>Application secret</b> from <b>OAuth</b> (press <b>Show</b> first). Paste both here — they save by themselves.</p>
+          <More>Ignore the <b>Access token</b> on the Credentials page — the app doesn&apos;t need it. The secret lives on the OAuth page, the same page as the return address from the step before.</More>
+          <SecretField name="SQUARE_APPLICATION_ID" status={s.SQUARE_APPLICATION_ID} label="Application ID" placeholder="sq0idp-…" hint="On the Credentials page. Starts with sq0idp-." sensitive={false} />
+          <SecretField name="SQUARE_APPLICATION_SECRET" status={s.SQUARE_APPLICATION_SECRET} label="Application secret" placeholder="sq0csp-…" hint="On the OAuth page — press Show next to it. Starts with sq0csp-." />
           {part1 && <Note tone="good">Done — this never needs doing again. Next, Max connects.</Note>}
         </>
       ),
@@ -719,7 +720,7 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
     <Stepper
       steps={steps}
       parts={[
-        { id: "p1", title: "Register the app · one time", note: "" },
+        { id: "p1", title: "Register the app · one time, for whoever set up the app", note: "" },
         { id: "p2", title: "Max connects", note: "" },
         { id: "p3", title: "Instant updates", note: "", optional: true },
       ]}

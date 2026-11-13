@@ -277,7 +277,7 @@ export const SquareRedirect = () => (
 );
 
 export const SquareCredentials = () => (
-  <Browser url="developer.squareup.com/apps/…/credentials" label="On the Credentials page: copy the Application ID, then press Show next to Application secret and copy it too.">
+  <Browser url="developer.squareup.com/apps/…/credentials" label="Application ID is on Credentials. Application secret is on the OAuth page — press Show, then copy.">
     <SideNav items={["Credentials", "OAuth", "Webhooks", "Reporting"]} active={0} title="Subversive Ops" />
     <Spot x={5} y={26} w={66} h={15} r={5} />
     <Num x={74} y={26} n={1} />

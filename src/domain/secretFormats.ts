@@ -103,7 +103,7 @@ export function validateSecret(name: SecretName, raw: string): Validation {
       return fail(wrongBox(v, "the Application ID") ?? "That doesn't look like a Square Application ID. It starts with sq0idp- and is at the top of the Credentials page.");
     case "SQUARE_APPLICATION_SECRET":
       if (/^(sandbox-sq0csb|sq0csp)-[\w-]{10,}$/.test(v)) return { ok: true, value: v };
-      return fail(wrongBox(v, "the Application secret") ?? "That doesn't look like a Square Application secret. It starts with sq0csp- — press Show next to it on the Credentials page, then copy.");
+      return fail(wrongBox(v, "the Application secret") ?? "That doesn't look like a Square Application secret. It starts with sq0csp- — it's on the OAuth page in Square — press Show next to it, then copy.");
     case "SQUARE_WEBHOOK_SIGNATURE_KEY":
       if (/^[\w-]{16,100}$/.test(v) && !looksLike(v)) return { ok: true, value: v };
       return fail(wrongBox(v, "the signature key") ?? "That doesn't look like a signature key. It's a string of about 22 letters and numbers, shown after you save the subscription.");
