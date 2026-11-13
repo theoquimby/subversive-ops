@@ -84,6 +84,7 @@ model Supplier {
   products      SupplierProduct[]
   imports       PriceImport[]
   orders        PurchaseOrder[]
+  invoices      Invoice[]
 }
 
 model Ingredient {
@@ -139,6 +140,7 @@ model SupplierProduct {
   active       Boolean     @default(true)
   prices       PriceRecord[]
   orderLines   PurchaseOrderLine[]
+  invoiceLines InvoiceLine[]
 
   @@unique([supplierId, sku])
 }
@@ -267,6 +269,7 @@ model PurchaseOrder {
   receivedAt   DateTime?
   notes        String?
   lines        PurchaseOrderLine[]
+  invoices     Invoice[]
 }
 
 model PurchaseOrderLine {
@@ -279,4 +282,267 @@ model PurchaseOrderLine {
   qty               Decimal         @db.Decimal(10, 2)
   unitPrice         Decimal?        @db.Decimal(10, 2)
   receivedQty       Decimal?        @db.Decimal(10, 2)
+}
+
+// ---------------------------------------------------------------------------
+// Labor & scheduling
+// ---------------------------------------------------------------------------
+
+model Position {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  color      String   @default("#64748b")
+  area       String   @default("FOH") // FOH | BOH | BAR
+  defaultRate Decimal? @db.Decimal(8, 2)
+  tipPoints  Decimal  @default(1) @db.Decimal(5, 2)
+  tipEligible Boolean @default(true)
+  sort       Int      @default(0)
+  // Staffing: one person per $salesPerHour of forecast sales, within min/max.
+  salesPerHour Decimal? @db.Decimal(8, 2)
+  minStaff   Int      @default(0)
+  maxStaff   Int      @default(3)
+  employees  EmployeePosition[]
+  shifts     Shift[]
+  timecards  Timecard[]
+}
+
+model Employee {
+  id                 String   @id @default(cuid())
+  name               String
+  email              String?
+  phone              String?
+  userId             String?  @unique
+  squareTeamMemberId String?  @unique
+  hourlyRate         Decimal? @db.Decimal(8, 2)
+  isMinor            Boolean  @default(false)
+  maxHoursWeek       Int?
+  /// { "0": [["16:00","22:00"]], ... } weekday → available windows; missing day = unavailable
+  availability       Json?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  positions          EmployeePosition[]
+  shifts             Shift[]
+  timecards          Timecard[]
+  timeOff            TimeOffRequest[]
+  swapsRequested     ShiftSwap[] @relation("SwapRequester")
+  swapsTaken         ShiftSwap[] @relation("SwapTaker")
+  tips               TipAllocation[]
+}
+
+model EmployeePosition {
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  positionId String
+  position   Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  rate       Decimal? @db.Decimal(8, 2)
+
+  @@id([employeeId, positionId])
+}
+
+model Shift {
+  id           String    @id @default(cuid())
+  employeeId   String?
+  employee     Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  positionId   String
+  position     Position  @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  start        DateTime
+  end          DateTime
+  breakMinutes Int       @default(0)
+  published    Boolean   @default(false)
+  notes        String?
+  createdAt    DateTime  @default(now())
+  swaps        ShiftSwap[]
+
+  @@index([start])
+}
+
+enum TimecardSource {
+  SQUARE
+  MANUAL
+}
+
+model Timecard {
+  id           String         @id @default(cuid())
+  employeeId   String
+  employee     Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  positionId   String?
+  position     Position?      @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  clockIn      DateTime
+  clockOut     DateTime?
+  breakMinutes Int            @default(0)
+  hourlyRate   Decimal?       @db.Decimal(8, 2)
+  source       TimecardSource @default(MANUAL)
+  squareId     String?        @unique
+
+  @@index([clockIn])
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+
+model TimeOffRequest {
+  id         String        @id @default(cuid())
+  employeeId String
+  employee   Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  startDate  DateTime      @db.Date
+  endDate    DateTime      @db.Date
+  note       String?
+  status     RequestStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+}
+
+model ShiftSwap {
+  id          String        @id @default(cuid())
+  shiftId     String
+  shift       Shift         @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  requesterId String
+  requester   Employee      @relation("SwapRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  takerId     String?
+  taker       Employee?     @relation("SwapTaker", fields: [takerId], references: [id], onDelete: SetNull)
+  status      RequestStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+}
+
+model TipPeriod {
+  id          String   @id @default(cuid())
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  totalTips   Decimal  @db.Decimal(10, 2)
+  method      String   // HOURS | POINTS
+  createdAt   DateTime @default(now())
+  finalized   Boolean  @default(false)
+  allocations TipAllocation[]
+}
+
+model TipAllocation {
+  id         String    @id @default(cuid())
+  periodId   String
+  period     TipPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  hours      Decimal   @db.Decimal(8, 2)
+  points     Decimal   @db.Decimal(10, 2)
+  amount     Decimal   @db.Decimal(10, 2)
+}
+
+// ---------------------------------------------------------------------------
+// Demand signals
+// ---------------------------------------------------------------------------
+
+/// Whole-store sales by hour (business-local hour 0–23), for hourly forecasts and labor.
+model HourlySale {
+  date     DateTime @db.Date
+  hour     Int
+  netSales Decimal  @db.Decimal(12, 2)
+  orders   Int
+
+  @@id([date, hour])
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  title     String
+  kind      String   @default("OTHER") // GAME | FESTIVAL | MUSIC | PRIVATE | CLOSURE | HOLIDAY | OTHER
+  startTime String?  // "19:30"
+  endTime   String?
+  /// Expected demand multiplier for the day (1.3 = +30%). Learned values can overwrite it.
+  impact    Decimal  @default(1) @db.Decimal(5, 3)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}
+
+model WeatherDay {
+  date      DateTime @id @db.Date
+  tempMaxC  Decimal  @db.Decimal(5, 1)
+  tempMinC  Decimal  @db.Decimal(5, 1)
+  precipMm  Decimal  @db.Decimal(6, 1)
+  code      Int
+  forecast  Boolean  @default(true)
+  fetchedAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Invoices
+// ---------------------------------------------------------------------------
+
+enum InvoiceStatus {
+  NEEDS_REVIEW
+  MATCHED
+  PRICE_ISSUE
+  QTY_ISSUE
+  PRICE_AND_QTY
+  APPROVED
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  supplierId    String
+  supplier      Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  orderId       String?
+  order         PurchaseOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  invoiceNumber String?
+  invoiceDate   DateTime      @db.Date
+  total         Decimal?      @db.Decimal(10, 2)
+  status        InvoiceStatus @default(NEEDS_REVIEW)
+  image         Bytes?
+  imageType     String?
+  extractedBy   String?       // "claude" | "manual"
+  approvedBy    String?
+  approvedAt    DateTime?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  lines         InvoiceLine[]
+
+  @@unique([supplierId, invoiceNumber])
+}
+
+model InvoiceLine {
+  id                String           @id @default(cuid())
+  invoiceId         String
+  invoice           Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  supplierProductId String?
+  product           SupplierProduct? @relation(fields: [supplierProductId], references: [id], onDelete: SetNull)
+  sku               String?
+  description       String
+  qty               Decimal          @db.Decimal(10, 2)
+  unitPrice         Decimal          @db.Decimal(10, 2)
+  expectedQty       Decimal?         @db.Decimal(10, 2)
+  expectedPrice     Decimal?         @db.Decimal(10, 2)
+  status            String           @default("OK") // OK | PRICE | QTY | PRICE_QTY | UNMATCHED
+}
+
+// ---------------------------------------------------------------------------
+// Reviews & targets
+// ---------------------------------------------------------------------------
+
+model Review {
+  id         String   @id @default(cuid())
+  source     String   // GOOGLE | YELP | TRIPADVISOR | MANUAL
+  externalId String?
+  author     String?
+  rating     Int
+  text       String
+  postedAt   DateTime
+  themes     String[] @default([])
+  sentiment  String?  // positive | mixed | negative
+  replyDraft String?
+  replied    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@unique([source, externalId])
+  @@index([postedAt])
+}
+
+/// Weekly targets; weekStart is a Monday.
+model Budget {
+  weekStart   DateTime @id @db.Date
+  sales       Decimal? @db.Decimal(12, 2)
+  foodCostPct Decimal? @db.Decimal(5, 4)
+  laborPct    Decimal? @db.Decimal(5, 4)
 }

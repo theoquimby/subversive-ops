@@ -153,17 +153,62 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
   await db.dailySale.createMany({ data: rows });
   void [fries, burger, chicken, pretzel, grilled];
 
-  // A completed count 3 days ago.
+  // Two counts a week apart with a delivery and some waste in between, so the
+  // margin-gap report has a realistic story: beef and cheese run heavy.
   const counted: [string, number][] = [
     ["Ground beef 80/20", 18 * lb], ["Burger bun", 70], ["Fries, 3/8 skin-on", 2.5 * 30 * lb], ["Cheddar, sliced", 6 * lb], ["Mayonnaise", 1.5 * gal],
     ["Chicken thigh, boneless", 22 * lb], ["Fryer oil", 2 * 35 * lb * 1.09], ["Pretzel, soft", 30], ["Lettuce, green leaf", 3000], ["Tomato", 8 * lb],
   ];
+  const gap: Record<string, number> = { "Ground beef 80/20": 0.09, "Cheddar, sliced": 0.14, "Fries, 3/8 skin-on": 0.04, "Burger bun": -0.01, "Lettuce, green leaf": 0.03 };
+  const delivered: [string, number][] = [["Fries, 3/8 skin-on", 2], ["Chicken thigh, boneless", 1]];
+  const wasted: [string, number, string, string, number][] = [
+    ["Lettuce, green leaf", 800, "Spoiled", "Line", -1], ["Tomato", 600, "Spoiled", "Line", -5], ["Fries, 3/8 skin-on", 900, "Dropped", "Max", -6], ["Chicken thigh, boneless", 450, "Overcooked", "Line", -8],
+  ];
+
+  // Theoretical usage for the week between the counts, from the seeded sales.
+  const { explodeUsage } = await import("../domain/costing");
+  const ingRows = await db.ingredient.findMany({ include: { conversions: true } });
+  const recRows = await db.recipe.findMany({ include: { lines: true } });
+  const ctx = {
+    ingredients: new Map(ingRows.map((i) => [i.id, { id: i.id, name: i.name, baseUnit: i.baseUnit as "g" | "ml" | "each", yieldPct: i.yieldPct.toNumber(), conversions: i.conversions.map((c) => ({ unit: c.unit, baseQty: c.baseQty.toNumber() })), costPerBase: null }])),
+    recipes: new Map(recRows.map((r) => [r.id, { id: r.id, name: r.name, yieldQty: r.yieldQty.toNumber(), yieldUnit: r.yieldUnit, yieldBase: r.yieldBase as "g" | "ml" | "each", menuPrice: null, lines: r.lines.map((l) => ({ ingredientId: l.ingredientId, subRecipeId: l.subRecipeId, qty: l.qty.toNumber(), unit: l.unit })) }])),
+  };
+  const recipeBySquare = new Map((await db.squareMapping.findMany({ where: { recipeId: { not: null } } })).map((m) => [m.squareId, m.recipeId!]));
+  const theo = new Map<string, number>();
+  for (const r of rows) {
+    const d = r.date as Date;
+    if (d < day(-10) || d >= day(-3)) continue;
+    const recipeId = recipeBySquare.get(r.squareId);
+    if (recipeId) explodeUsage(ctx, recipeId, Number(r.qty), theo);
+  }
+
   const max = await db.user.findFirst({ where: { role: "MANAGER" } });
-  await db.stockCount.create({
-    data: { takenAt: new Date(day(-3).getTime() + 14 * 3600_000), userId: max?.id, completed: true, area: "All",
-      lines: { create: counted.map(([n, q]) => ({ ingredientId: ing.get(n)!, qtyBase: D(q.toFixed(4)) })) } },
+  const hvf = await db.supplierProduct.findMany({ where: { supplierId: broadline.id } });
+  const po = await db.purchaseOrder.create({
+    data: {
+      supplierId: broadline.id, status: "RECEIVED", deliveryDate: day(-7), coverUntil: day(-4), sentAt: day(-8), receivedAt: new Date(day(-7).getTime() + 15 * 3600_000),
+      lines: { create: delivered.map(([n, q]) => { const p = hvf.find((x) => x.ingredientId === ing.get(n))!; return { supplierProductId: p.id, suggestedQty: D(q), qty: D(q), receivedQty: D(q) }; }) },
+    },
+    include: { lines: { include: { product: true } } },
   });
-  await db.wasteLog.create({ data: { ingredientId: ing.get("Lettuce, green leaf")!, qtyBase: D(800), reason: "Wilted", loggedBy: "Line", loggedAt: day(-1) } });
+  const receivedBase = new Map(po.lines.map((l) => [l.product.ingredientId!, l.qty.toNumber() * (l.product.packQtyBase?.toNumber() ?? 0)]));
+  for (const [n, q, reason, by, offset] of wasted) {
+    await db.wasteLog.create({ data: { ingredientId: ing.get(n)!, qtyBase: D(q), reason, loggedBy: by, loggedAt: new Date(day(offset).getTime() + 20 * 3600_000) } });
+  }
+  const wasteBase = new Map<string, number>();
+  for (const [n, q, , , offset] of wasted) if (offset > -10 && offset <= -3) wasteBase.set(ing.get(n)!, (wasteBase.get(ing.get(n)!) ?? 0) + q);
+
+  const opening = counted.map(([n, closing]) => {
+    const id = ing.get(n)!;
+    const used = (theo.get(id) ?? 0) * (1 + (gap[n] ?? 0.01)) + (wasteBase.get(id) ?? 0);
+    return [n, Math.max(0, closing + used - (receivedBase.get(id) ?? 0))] as [string, number];
+  });
+  for (const [offset, list] of [[-10, opening], [-3, counted]] as const) {
+    await db.stockCount.create({
+      data: { takenAt: new Date(day(offset).getTime() + 14 * 3600_000), userId: max?.id, completed: true, area: "All",
+        lines: { create: list.map(([n, q]) => ({ ingredientId: ing.get(n)!, qtyBase: D(q.toFixed(4)) })) } },
+    });
+  }
   await db.setting.create({ data: { key: "square.lastSync", value: new Date(Date.now() - 3 * 3600_000).toISOString() } });
 
   console.log(`Seeded ${specs.length} ingredients, ${rows.length} sales rows. Users: Max (manager), Line (staff).`);

@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { BookOpen, ChartLine, ClipboardList, Carrot, FileUp, LayoutGrid, LogOut, Receipt, Search, Settings, ShoppingCart, Trash2 } from "lucide-react";
+import { BookOpen, ChartLine, ClipboardList, Carrot, FileUp, LayoutGrid, Scale, LogOut, Receipt, Search, Settings, ShoppingCart, Trash2 } from "lucide-react";
 import { openCommandPalette } from "./command-palette";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -10,6 +10,7 @@ import type { SessionRole } from "@/server/session";
 const MANAGER = [
   { href: "/", label: "Overview", icon: LayoutGrid },
   { href: "/menu", label: "Menu costs", icon: BookOpen },
+  { href: "/variance", label: "Margin gap", icon: Scale },
   { href: "/ingredients", label: "Ingredients", icon: Carrot },
   { href: "/prices", label: "Prices", icon: Receipt },
   { href: "/ordering", label: "Ordering", icon: ShoppingCart },

@@ -6,6 +6,7 @@ import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { buildContext, loadCostingSnapshot } from "@/server/services/costing";
 import { countUnitsFor, loadCountableIngredients } from "@/server/services/inventory";
+import { wasteLeaderboard } from "@/server/services/variance";
 import { businessToday } from "@/server/services/sales";
 import { WasteForm } from "./waste-form";
 
@@ -14,9 +15,10 @@ export const metadata = { title: "Waste" };
 export default async function WastePage() {
   const session = await requireUser();
   const today = businessToday();
-  const [ingredients, recent] = await Promise.all([
+  const [ingredients, recent, board] = await Promise.all([
     loadCountableIngredients(),
     db.wasteLog.findMany({ where: { loggedAt: { gte: new Date(`${addDays(today, -14)}T00:00:00Z`) } }, orderBy: { loggedAt: "desc" }, take: 30, include: { ingredient: { select: { id: true, name: true, baseUnit: true } } } }),
+    wasteLeaderboard(new Date(`${addDays(today, -30)}T00:00:00Z`)),
   ]);
   const isManager = session.role === "MANAGER";
   const ctx = isManager ? buildContext(await loadCostingSnapshot(), today) : null;
@@ -31,6 +33,19 @@ export default async function WastePage() {
     <div className="mx-auto max-w-xl">
       <PageHeader title="Log waste" description="Anything thrown out — so the numbers match what's really used." />
       <WasteForm items={ingredients.map((i) => ({ id: i.id, name: i.name, units: countUnitsFor(i).units }))} />
+      {board.length > 0 && (
+        <Section title="Top loggers" description="Last 30 days. Logging everything keeps food cost honest — thank you!" className="mt-10">
+          <Card className="divide-y divide-border">
+            {board.slice(0, 5).map((b, i) => (
+              <div key={b.name} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                <span className="num w-5 text-muted">{i + 1}</span>
+                <span className="flex-1 font-medium">{b.name}</span>
+                <span className="num text-muted">{b.logs} log{b.logs === 1 ? "" : "s"}</span>
+              </div>
+            ))}
+          </Card>
+        </Section>
+      )}
       <Section title="Last two weeks" description={isManager ? `${money(total)} logged` : undefined} className="mt-10">
         {recent.length === 0 ? <Card className="p-5 text-sm text-muted">Nothing logged yet.</Card> : (
           <Card className="divide-y divide-border">

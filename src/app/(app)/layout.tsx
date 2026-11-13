@@ -18,6 +18,7 @@ async function managerCommands(): Promise<Command[]> {
   return [
     { id: "go-overview", label: "Overview", group: "Go to", href: "/" },
     { id: "go-menu", label: "Menu costs", group: "Go to", href: "/menu" },
+    { id: "go-variance", label: "Margin gap (theoretical vs actual)", group: "Go to", href: "/variance" },
     { id: "go-ingredients", label: "Ingredients", group: "Go to", href: "/ingredients" },
     { id: "go-prices", label: "Prices", group: "Go to", href: "/prices" },
     { id: "go-ordering", label: "Ordering", group: "Go to", href: "/ordering" },
