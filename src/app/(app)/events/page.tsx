@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { Card, cx, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { addDays } from "@/domain/dates";
 import { EVENT_KIND_LABEL, yearOf } from "@/domain/events";
@@ -37,16 +38,17 @@ export default async function EventsPage() {
   return (
     <>
       <PageHeader
+        help="events.page"
         title="Events"
         description="Games, festivals, music, buyouts and closures. They move the sales forecast, and the upcoming list is what the website shows — keep titles and times tidy."
-        actions={<HolidayButtons years={[year, year + 1]} />}
+        actions={<HelpZone id="events.holidays"><HolidayButtons years={[year, year + 1]} /></HelpZone>}
       />
 
-      <Section title="Add events" description="Pick as many dates as you need — every Knicks home game at once — or repeat weekly. Impact is how much busier than a normal day (+30%) or quieter (−20%).">
+      <Section help="events.add" title="Add events" description="Pick as many dates as you need — every Knicks home game at once — or repeat weekly. Impact is how much busier than a normal day (+30%) or quieter (−20%).">
         <QuickAdd today={today} />
       </Section>
 
-      <Section title="Upcoming" description={upcoming.length ? `${upcoming.length} on the calendar` : undefined}>
+      <Section help="events.upcoming" title="Upcoming" description={upcoming.length ? `${upcoming.length} on the calendar` : undefined}>
         {upcoming.length === 0 ? (
           <EmptyState title="Nothing on the calendar">Add games, music nights and holidays above so the forecast and the website know about them.</EmptyState>
         ) : (
@@ -54,7 +56,7 @@ export default async function EventsPage() {
         )}
       </Section>
 
-      <Section title="Learned impact" description="What past events actually did to sales, compared with the same weekday without an event. Apply it to set upcoming events of the same kind.">
+      <Section help="events.learned" title="Learned impact" description="What past events actually did to sales, compared with the same weekday without an event. Apply it to set upcoming events of the same kind.">
         {learned.length === 0 ? (
           <Card className="p-5 text-sm text-muted">Once a few events have happened with sales history around them, their real effect shows up here.</Card>
         ) : (
@@ -102,7 +104,7 @@ export default async function EventsPage() {
         )}
       </Section>
 
-      <Section title="Past events" description={`Last ${PAST_DAYS} days. “vs usual” is sales that day against what the same weekday normally does.`}>
+      <Section help="events.past" title="Past events" description={`Last ${PAST_DAYS} days. “vs usual” is sales that day against what the same weekday normally does.`}>
         {past.length === 0 ? (
           <Card className="p-5 text-sm text-muted">No past events yet.</Card>
         ) : (

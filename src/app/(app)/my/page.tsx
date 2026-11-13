@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { addDays, toISODate } from "@/domain/dates";
 import { shiftPaidHours, weekStartOf } from "@/domain/schedule";
@@ -20,7 +21,7 @@ export default async function MyPage() {
   if (!me) {
     return (
       <div className="mx-auto max-w-xl">
-        <PageHeader title="My shifts" />
+        <PageHeader help="my.page" title="My shifts" />
         <EmptyState title={`Hi ${session.name} — you're not on the schedule yet`}>
           Your login isn&apos;t linked to a team member. Ask a manager to connect it on the Team page, then your shifts, open shifts and time off will show up here.
         </EmptyState>
@@ -56,15 +57,16 @@ export default async function MyPage() {
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader
+        help="my.page"
         title="My shifts"
         description={<>
           Hi {me.name.split(" ")[0]}. Your schedule, open shifts you can pick up, time off and sick leave, and when you can work.
           {session.name !== me.name && <span className="mt-1 block text-xs text-muted">Signed in as {session.name}</span>}
         </>}
       />
-      <div className="mb-10 empty:hidden">
+      <HelpZone id="my.announcements" className="mb-10 empty:hidden">
         <AnnouncementsFeed items={notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() }))} />
-      </div>
+      </HelpZone>
       <MyPeopleTop employeeId={me.id} />
       <MyApp
         today={today}
@@ -79,7 +81,7 @@ export default async function MyPage() {
         team={team.map((t) => ({ id: t.id, name: t.name, positionIds: t.positions.map((p) => p.positionId) }))}
       />
       <MyPolicyAsk />
-      <div className="mt-10"><PushToggle /></div>
+      <HelpZone id="my.notifications" className="mt-10"><PushToggle /></HelpZone>
     </div>
   );
 }

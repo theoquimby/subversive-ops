@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpZone } from "@/components/help";
 import { Badge, Button, Card, cx } from "@/components/ui";
 import { acknowledgeDocument } from "@/server/actions/people";
 import type { MyPeople } from "@/server/services/people";
@@ -16,7 +17,7 @@ const KIND: Record<string, { label: string; tone: "good" | "warn" | "neutral" }>
 export function MyFeedback({ items }: { items: MyPeople["feedback"] }) {
   if (items.length === 0) return null;
   return (
-    <section className="mb-10" data-tour="my.feedback">
+    <HelpZone id="my.feedback" className="mb-10"><section data-tour="my.feedback">
       <h2 className="mb-3 text-[0.95rem] font-semibold">From your managers</h2>
       <Card className="divide-y divide-border">
         {items.map((f) => (
@@ -29,7 +30,7 @@ export function MyFeedback({ items }: { items: MyPeople["feedback"] }) {
           </div>
         ))}
       </Card>
-    </section>
+    </section></HelpZone>
   );
 }
 
@@ -37,7 +38,7 @@ export function MyDocuments({ docs }: { docs: MyPeople["docs"] }) {
   if (docs.length === 0) return null;
   const todo = docs.filter((d) => d.requiresAck && !d.ackedAt).length;
   return (
-    <section className="mb-10" data-tour="my.documents">
+    <HelpZone id="my.documents" className="mb-10"><section data-tour="my.documents">
       <div className="mb-3 flex items-end justify-between gap-3">
         <h2 className="text-[0.95rem] font-semibold">Documents</h2>
         {todo > 0 && <Badge tone="warn">{todo} to sign</Badge>}
@@ -45,7 +46,7 @@ export function MyDocuments({ docs }: { docs: MyPeople["docs"] }) {
       <Card className="divide-y divide-border">
         {docs.map((d) => <DocRow key={d.id} d={d} />)}
       </Card>
-    </section>
+    </section></HelpZone>
   );
 }
 

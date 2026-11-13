@@ -1,6 +1,7 @@
 "use client";
 
 import { useConfirm } from "@/components/dialog";
+import { HelpZone } from "@/components/help";
 import { Badge, Button, Card, cx, DatePicker, Input, LinkButton } from "@/components/ui";
 import { perHour, splitPool, TipMethod } from "@/domain/tips";
 import { money, shortDate } from "@/lib/format";
@@ -46,7 +47,7 @@ export function TipPool({ from, to, shares, excludedHours, synced, saved, period
 
   return (
     <div className="flex flex-col gap-8">
-      <Card className="p-4 sm:p-5">
+      <HelpZone id="tips.period"><Card className="p-4 sm:p-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">From</div>
@@ -85,9 +86,9 @@ export function TipPool({ from, to, shares, excludedHours, synced, saved, period
             <div className="mt-1 text-xs text-muted">{method === "HOURS" ? "Everyone earns the same per hour." : "Hours × each position's tip points."}</div>
           </div>
         </div>
-      </Card>
+      </Card></HelpZone>
 
-      <section>
+      <HelpZone id="tips.shares"><section>
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="flex items-center gap-2 text-[0.95rem] font-semibold">
@@ -176,10 +177,10 @@ export function TipPool({ from, to, shares, excludedHours, synced, saved, period
             </table>
           </Card>
         )}
-      </section>
+      </section></HelpZone>
 
       {periods.length > 0 && (
-        <section>
+        <HelpZone id="tips.saved"><section>
           <h2 className="mb-3 text-[0.95rem] font-semibold">Saved periods</h2>
           <Card className="divide-y divide-border">
             {periods.map((p) => (
@@ -207,7 +208,7 @@ export function TipPool({ from, to, shares, excludedHours, synced, saved, period
               </div>
             ))}
           </Card>
-        </section>
+        </section></HelpZone>
       )}
     </div>
   );

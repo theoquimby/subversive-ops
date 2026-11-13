@@ -1,6 +1,6 @@
 "use client";
 
-import { toggleHelpMode } from "@/components/help";
+import { HelpZone, toggleHelpMode } from "@/components/help";
 import { setTourUser, useTour } from "@/components/tour";
 import { Badge, Button, Card, cx, PageHeader } from "@/components/ui";
 import { AREAS, helpFor, searchHelp, type HelpEntry } from "@/help/content";
@@ -51,9 +51,9 @@ export function HelpCenter({ userId, role, initialQuery, autoTour }: { userId: s
 
   return (
     <div className="mx-auto max-w-5xl">
-      <PageHeader title="Help" description="Plain-English answers about every page, and short tours that show you around." />
+      <PageHeader help="help.center" title="Help" description="Plain-English answers about every page, and short tours that show you around." />
 
-      <div className="relative mb-10">
+      <HelpZone id="help.search" className="relative mb-10">
         <Search className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted" strokeWidth={1.75} />
         <input
           ref={inputRef}
@@ -65,7 +65,7 @@ export function HelpCenter({ userId, role, initialQuery, autoTour }: { userId: s
           aria-label="Search help"
           className="h-13 w-full rounded-xl border border-border-strong bg-surface pr-4 pl-12 text-base text-ink shadow-sm placeholder:text-muted/80 focus:border-ink-2 focus:outline-none"
         />
-      </div>
+      </HelpZone>
 
       {q.trim() ? (
         results.length === 0 ? (
@@ -75,7 +75,7 @@ export function HelpCenter({ userId, role, initialQuery, autoTour }: { userId: s
             <Button className="mt-5" onClick={() => setQ("")}>Clear search</Button>
           </Card>
         ) : (
-          <Card className="divide-y divide-border">
+          <HelpZone id="help.results"><Card className="divide-y divide-border">
             {results.map((e) => (
               <Link key={e.id} href={`/help/${e.id}`} className="block px-5 py-4 transition-colors hover:bg-surface-2/60">
                 <div className="flex items-center gap-2">
@@ -86,11 +86,11 @@ export function HelpCenter({ userId, role, initialQuery, autoTour }: { userId: s
                 <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2">{e.body}</p>
               </Link>
             ))}
-          </Card>
+          </Card></HelpZone>
         )
       ) : (
         <>
-          <section className="mb-12">
+          <HelpZone id="app.tours" className="mb-12"><section>
             <div className="mb-3 flex items-end justify-between gap-4">
               <div>
                 <h2 className="text-[0.95rem] font-semibold">Guided tours</h2>
@@ -115,9 +115,9 @@ export function HelpCenter({ userId, role, initialQuery, autoTour }: { userId: s
                 </Card>
               ))}
             </div>
-          </section>
+          </section></HelpZone>
 
-          <section className="mb-12 grid gap-3 sm:grid-cols-2">
+          <HelpZone id="help.shortcuts" className="mb-12"><section className="grid gap-3 sm:grid-cols-2">
             <button type="button" onClick={toggleHelpMode} className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left transition-colors hover:border-border-strong">
               <MousePointerClick className="mt-0.5 size-5 shrink-0 text-ink-2" strokeWidth={1.75} />
               <span>
@@ -132,9 +132,9 @@ export function HelpCenter({ userId, role, initialQuery, autoTour }: { userId: s
                 <span className="mt-1 block text-sm leading-relaxed text-muted">Search any recipe, ingredient or supplier, or start a task, from any page.</span>
               </span>
             </Link>
-          </section>
+          </section></HelpZone>
 
-          <AreaGrid areas={current} byArea={byArea} expanded={expanded} setExpanded={setExpanded} />
+          <HelpZone id="help.browse"><AreaGrid areas={current} byArea={byArea} expanded={expanded} setExpanded={setExpanded} /></HelpZone>
 
           {upcoming.length > 0 && (
             <section className="mt-14">

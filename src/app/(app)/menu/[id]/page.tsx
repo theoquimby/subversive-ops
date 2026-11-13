@@ -88,11 +88,12 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
 
   return (
     <>
-      <PageHeader title={recipe?.name ?? "New recipe"} back={{ href: `/menu?kind=${initial.kind}`, label: "Menu costs" }} />
+      <PageHeader help="menu.editor" title={recipe?.name ?? "New recipe"} back={{ href: `/menu?kind=${initial.kind}`, label: "Menu costs" }} />
       {/* Remount after a save so the editor starts clean from what was stored (line ids change on save). */}
       <RecipeEditor key={JSON.stringify(initial)} initial={initial} catalog={catalog} />
       {recipe && allergens && (
         <Section
+          help="menu.allergens"
           title={<span className="inline-flex items-center gap-1.5">Allergens <HelpTip id="menu.allergens" /></span>}
           description="Rolled up from the ingredients, including sub-recipes. Tag ingredients on their page."
           actions={recipe.kind !== "PREP" ? <Link href="/menu/allergens" className="text-sm text-muted hover:text-ink">Allergen chart →</Link> : undefined}

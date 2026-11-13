@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { Badge, Button, Card, Input, PageHeader, Section } from "@/components/ui";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
@@ -31,20 +32,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="Settings" />
+      <PageHeader help="settings.page" title="Settings" />
 
       {(welcome || empty) && (
-        <Card className="mb-10 p-5">
+        <HelpZone id="settings.getStarted" className="mb-10"><Card className="p-5">
           <div className="text-base font-semibold">{welcome ? "You're in. " : ""}Let's get your data in</div>
           <p className="mt-1 text-sm text-muted">Import your existing spreadsheet (ingredients, prices and recipes), or load demo data to look around first.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <LinkButton href="/import" variant="primary">Import your sheets</LinkButton>
             {empty && <form action={loadDemoData}><Button>Load demo data</Button></form>}
           </div>
-        </Card>
+        </Card></HelpZone>
       )}
 
-      <Link href="/settings/notifications" className="group mb-3 block">
+      <HelpZone id="settings.notifications" className="mb-3"><Link href="/settings/notifications" className="group block">
         <Card className="flex items-center justify-between gap-3 p-5 transition-colors group-hover:border-border-strong">
           <div className="min-w-0">
             <div className="text-base font-semibold">Notifications</div>
@@ -52,8 +53,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </div>
           <ChevronRight className="size-5 shrink-0 text-muted group-hover:text-ink" />
         </Card>
-      </Link>
-      <Link href="/settings/square" className="group mb-10 block">
+      </Link></HelpZone>
+      <HelpZone id="settings.square" className="mb-10"><Link href="/settings/square" className="group block">
         <Card className="flex items-center justify-between gap-3 p-5 transition-colors group-hover:border-border-strong">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -69,9 +70,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </div>
           <ChevronRight className="size-5 shrink-0 text-muted group-hover:text-ink" />
         </Card>
-      </Link>
+      </Link></HelpZone>
 
-      <Section title="Team" description="Staff sign in with their name and PIN. They see their shifts, counts, waste and help.">
+      <Section help="settings.team" title="Team" description="Staff sign in with their name and PIN. They see their shifts, counts, waste and help.">
         <Card className="divide-y divide-border">
           {users.map((u) => (
             <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -95,7 +96,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </Card>
       </Section>
 
-      <Section title="Suppliers" description="Delivery days and lead time decide when orders are due and how many days each order covers.">
+      <Section help="settings.suppliers" title="Suppliers" description="Delivery days and lead time decide when orders are due and how many days each order covers.">
         <div className="space-y-3">
           {suppliers.map((s) => (
             <Card key={s.id}>
@@ -108,7 +109,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </div>
       </Section>
 
-      <Section title="Food cost target" description="Default for every menu item; individual items can override it.">
+      <Section help="settings.target" title="Food cost target" description="Default for every menu item; individual items can override it.">
         <Card className="p-4">
           <form action={saveTarget} className="flex items-center gap-2">
             <Input name="target" type="number" min={1} max={99} step="0.5" defaultValue={Math.round(target * 1000) / 10} className="num w-24 text-right" aria-label="Target food cost percent" />
@@ -118,14 +119,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </Card>
       </Section>
 
-      <Section title="Labor rules" description="Pre-filled for New York; the app applies whatever is set here. Check them against current law.">
+      <Section help="settings.laborRules" title="Labor rules" description="Pre-filled for New York; the app applies whatever is set here. Check them against current law.">
         <Card>
-          <WageReview {...await wageReview()} table={NY_UPSTATE_WAGES} />
+          <HelpZone id="settings.wageSchedule"><WageReview {...await wageReview()} table={NY_UPSTATE_WAGES} /></HelpZone>
           <LaborRulesForm rules={await getLaborRules()} />
         </Card>
       </Section>
 
-      <Section title="Data" description="Clearing removes every ingredient, price, recipe, sale, count and order — handy after trying the demo. Logins are kept.">
+      <Section help="settings.clear" title="Data" description="Clearing removes every ingredient, price, recipe, sale, count and order — handy after trying the demo. Logins are kept.">
         <Card className="p-4"><ClearDataForm /></Card>
       </Section>
 

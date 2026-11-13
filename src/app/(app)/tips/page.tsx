@@ -20,7 +20,7 @@ export default async function TipsPage({ searchParams }: { searchParams: Promise
   const [shares, synced, saved, periods] = await Promise.all([tipSharesFor(from, to), syncedTips(from, to), findPeriod(from, to), listPeriods()]);
   return (
     <>
-      <PageHeader title="Tips" description="Split the tip pool by hours worked, or by hours × position points. Hours come from timecards. Finalized pools flow into the payroll export." />
+      <PageHeader help="tips.page" title="Tips" description="Split the tip pool by hours worked, or by hours × position points. Hours come from timecards. Finalized pools flow into the payroll export." />
       <TipPool
         key={`${from}|${to}|${saved?.id ?? ""}|${saved?.totalTips.toString() ?? ""}|${saved?.method ?? ""}`}
         from={from}

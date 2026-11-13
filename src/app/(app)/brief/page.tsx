@@ -1,4 +1,5 @@
 import { refreshIfStale } from "@/server/services/square-sync";
+import { HelpZone } from "@/components/help";
 import { Badge, Card, cx, LinkButton } from "@/components/ui";
 import { addDays, weekday } from "@/domain/dates";
 import { dayDate, money, pct, shortDate, signedPct } from "@/lib/format";
@@ -42,7 +43,7 @@ export default async function BriefPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <header className="mb-10">
+      <HelpZone id="brief.page" className="mb-10"><header>
         <div className="text-[0.8rem] font-medium tracking-wide text-muted uppercase">
           Weekly brief · {shortDate(b.week)} – {shortDate(addDays(b.week, 6))}
         </div>
@@ -50,25 +51,25 @@ export default async function BriefPage() {
           {greeting()}, {session.name}.
         </h1>
         <p className="mt-3 max-w-2xl text-[1.05rem] leading-relaxed text-ink-2">{summary.join(" ")}</p>
-      </header>
+      </header></HelpZone>
 
       {b.lastWeek && <LastWeekCard r={b.lastWeek} />}
       <DecisionsCard items={b.decisions} />
       <ForecastCard b={b} />
 
       {todo.length > 0 && (
-        <section className="mt-10">
+        <HelpZone id="brief.actions" className="mt-10"><section>
           <h2 className="mb-3 text-[0.95rem] font-semibold">Needs you</h2>
           <div className="space-y-3">
             {todo.map((i) => (
               <BriefCard key={i.id} item={i} />
             ))}
           </div>
-        </section>
+        </section></HelpZone>
       )}
 
       {clear.length > 0 && (
-        <section className="mt-10">
+        <HelpZone id="brief.inHand" className="mt-10"><section>
           <h2 className="mb-3 text-[0.95rem] font-semibold">In hand</h2>
           <Card className="divide-y divide-border">
             {clear.map((i) => (
@@ -82,7 +83,7 @@ export default async function BriefPage() {
               </div>
             ))}
           </Card>
-        </section>
+        </section></HelpZone>
       )}
 
       <p className="mt-10 text-center text-xs text-muted">Built {dayDate(b.today)} from Square sales, your recipes, counts and the schedule.</p>
@@ -99,7 +100,7 @@ function LastWeekCard({ r }: { r: NonNullable<WeeklyBrief["lastWeek"]> }) {
   const fmt = (key: string, n: number | null) => (n == null ? "—" : key === "sales" ? money(n, { whole: true }) : pct(n));
   const vs = (key: string, d: number | null) => (d == null ? null : key === "sales" ? `${d >= 0 ? "+" : "−"}${money(Math.abs(d), { whole: true })}` : `${d >= 0 ? "+" : "−"}${(Math.abs(d) * 100).toFixed(1)} pts`);
   return (
-    <Card className="mb-6 p-5 sm:p-6">
+    <HelpZone id="brief.lastWeek" className="mb-6"><Card className="p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-[0.8rem] font-medium text-muted">
@@ -128,13 +129,13 @@ function LastWeekCard({ r }: { r: NonNullable<WeeklyBrief["lastWeek"]> }) {
           </div>
         ))}
       </div>
-    </Card>
+    </Card></HelpZone>
   );
 }
 
 function DecisionsCard({ items }: { items: WeeklyBrief["decisions"] }) {
   return (
-    <Card className="mb-6 overflow-hidden">
+    <HelpZone id="brief.decisions" className="mb-6"><Card className="overflow-hidden">
       <div className="flex items-center gap-2 px-5 pt-4 pb-2 text-[0.8rem] font-medium text-muted">
         <Gavel className="size-4" strokeWidth={1.75} />
         Needs a decision
@@ -151,7 +152,7 @@ function DecisionsCard({ items }: { items: WeeklyBrief["decisions"] }) {
           ))}
         </div>
       )}
-    </Card>
+    </Card></HelpZone>
   );
 }
 
@@ -161,7 +162,7 @@ function ForecastCard({ b }: { b: WeeklyBrief }) {
   const vs = target && b.forecast.total ? b.forecast.total / target - 1 : null;
   const busiest = new Set(b.forecast.busiest.map((d) => d.date));
   return (
-    <Card className="p-5 sm:p-6">
+    <HelpZone id="brief.forecast"><Card className="p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-[0.8rem] font-medium text-muted">
@@ -216,7 +217,7 @@ function ForecastCard({ b }: { b: WeeklyBrief }) {
           ))}
         </div>
       )}
-    </Card>
+    </Card></HelpZone>
   );
 }
 

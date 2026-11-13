@@ -31,14 +31,15 @@ export default async function AllergenChartPage({ searchParams }: { searchParams
     <>
       <style>{PRINT_CSS}</style>
       <PageHeader
+        help="menu.allergenChart"
         title="Allergen chart"
         description={`Menu items against the nine major allergens, rolled up from tagged ingredients. ${taggedCount} of ${ingredientCount} ingredients have tags.`}
         back={{ href: "/menu", label: "Menu costs" }}
         actions={
-          <>
+          <HelpZone id="menu.allergenChart.actions" className="flex flex-wrap items-center gap-2">
             <LinkButton href={showAddons ? "/menu/allergens" : "/menu/allergens?addons=1"} variant="ghost" className="print:hidden">{showAddons ? "Hide add-ons" : "Include add-ons"}</LinkButton>
             <PrintButton />
-          </>
+          </HelpZone>
         }
       />
       <p className="mb-4 hidden text-xs print:block">Subversive · printed {dayDate(businessToday())}</p>

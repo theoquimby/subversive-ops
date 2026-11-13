@@ -45,6 +45,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
   return (
     <>
       <PageHeader
+        help="menu.page"
         title="Menu costs"
         description="Plate costs update automatically whenever a supplier price changes."
         actions={
@@ -72,7 +73,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
         archived.length === 0 ? (
           <EmptyState title="Nothing archived">Archived recipes show up here so you can bring them back.</EmptyState>
         ) : (
-          <Table>
+          <HelpZone id="menu.archived"><Table>
             <thead>
               <tr>
                 <Th>Name</Th>
@@ -94,7 +95,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
                 </Tr>
               ))}
             </tbody>
-          </Table>
+          </Table></HelpZone>
         )
       ) : list.length === 0 ? (
         <EmptyState title="Nothing here yet" action={<LinkButton href={`/menu/new?kind=${kind}`}>Add one</LinkButton>}>

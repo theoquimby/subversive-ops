@@ -50,11 +50,11 @@ export default async function WastePage() {
 
   return (
     <div className="mx-auto max-w-xl">
-      <PageHeader title="Log waste" description="Anything thrown out — so the numbers match what's really used." />
-      <WasteForm
+      <PageHeader help="waste.page" title="Log waste" description="Anything thrown out — so the numbers match what's really used." />
+      <HelpZone id="waste.form"><WasteForm
         items={ingredients.map((i) => ({ id: i.id, name: i.name, units: countUnitsFor(i).units }))}
         recipes={recipes.map((r) => ({ id: r.id, name: r.name, kind: r.kind, units: recipeWasteUnits({ yieldUnit: r.yieldUnit, yieldBase: r.yieldBase as BaseUnit, kind: r.kind }) }))}
-      />
+      /></HelpZone>
       {board.length > 0 && (
         <HelpZone id="waste.leaderboard">
         <Section title="Top loggers" description="Last 30 days. Logging everything keeps food cost honest — thank you!" className="mt-10">

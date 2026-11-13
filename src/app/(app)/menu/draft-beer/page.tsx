@@ -27,18 +27,19 @@ export default async function DraftBeerPage() {
   return (
     <>
       <PageHeader
+        help="menu.draftBeer"
         title="Draft beer"
         back={{ href: "/menu", label: "Menu costs" }}
         description="Cost a keg once and every pour gets a cost: 16 oz, 10 oz, flights. Beer then counts toward beverage cost on the P&L instead of looking free."
       />
-      <HelpZone id="menu.draftBeer" tour="menu.draft-beer" className="mb-10">
+      <HelpZone id="menu.draftBeer.form" tour="menu.draft-beer" className="mb-10">
         <DraftBeerFormView
           suppliers={suppliers}
           squareItems={square.map((s) => ({ value: s.squareId, label: s.squareName, hint: s.recipe ? `now: ${s.recipe.name}` : undefined }))}
         />
       </HelpZone>
 
-      <Section title="Kegs on file" description="Re-enter a beer above with a new keg cost to record a price change. Past days keep the cost that applied then.">
+      <Section help="menu.draftBeer.kegs" title="Kegs on file" description="Re-enter a beer above with a new keg cost to record a price change. Past days keep the cost that applied then.">
         {kegs.length === 0 ? (
           <EmptyState title="No kegs yet">Set up your first beer above.</EmptyState>
         ) : (
@@ -71,7 +72,7 @@ export default async function DraftBeerPage() {
       </Section>
 
       {pours.length > 0 && (
-        <Section title="Beer on the menu">
+        <Section help="menu.draftBeer.pours" title="Beer on the menu">
           <Card className="divide-y divide-border">
             {pours.map((r) => (
               <Link key={r.id} href={`/menu/${r.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface-2/60">

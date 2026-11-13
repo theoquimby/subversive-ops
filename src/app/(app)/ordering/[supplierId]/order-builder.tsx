@@ -7,7 +7,7 @@ import { dayDate, money, qty, shortDate } from "@/lib/format";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createOrder } from "../actions";
-import { HelpTip } from "@/components/help";
+import { HelpTip, HelpZone } from "@/components/help";
 
 type Line = OrderSuggestion & { onHandNote: string };
 
@@ -38,7 +38,7 @@ export function OrderBuilder(props: {
 
   return (
     <div className="pb-24">
-      <Card className="mb-6 grid gap-4 p-4 sm:grid-cols-3" data-tour="ordering.window">
+      <HelpZone id="ordering.builder.window" className="mb-6"><Card className="grid gap-4 p-4 sm:grid-cols-3" data-tour="ordering.window">
         <Field label="Delivery">
           <Select value={props.deliveryDate} onChange={(e) => go(e.target.value, e.target.value >= props.coverUntil ? addDays(e.target.value, 7) : props.coverUntil)}>
             {props.deliveryOptions.map((d) => <option key={d} value={d}>{dayDate(d)}</option>)}
@@ -50,25 +50,25 @@ export function OrderBuilder(props: {
           </Select>
         </Field>
         <div className="text-sm text-muted sm:pt-6" data-tour="ordering.formula">Quantities = forecast sales × recipes + buffer − stock you'll have on delivery day. <HelpTip id="ordering.builder.formula" /></div>
-      </Card>
+      </Card></HelpZone>
 
       {props.problems.length > 0 && (
-        <Card className="mb-6 border-warn/30 bg-warn-bg p-4 text-sm text-warn">
+        <HelpZone id="ordering.builder.problems" className="mb-6"><Card className="border-warn/30 bg-warn-bg p-4 text-sm text-warn">
           <div className="flex items-center gap-1.5 font-medium">Some recipe lines couldn't be counted <HelpTip id="ordering.builder.problems" /></div>
           <ul className="mt-1 list-disc pl-5">{props.problems.slice(0, 5).map((p) => <li key={p}>{p}</li>)}</ul>
-        </Card>
+        </Card></HelpZone>
       )}
 
       {runsOut.length > 0 && (
-        <Card className="mb-6 border-bad/30 bg-bad-bg p-4 text-sm text-bad">
+        <HelpZone id="ordering.builder.runsOut" className="mb-6"><Card className="border-bad/30 bg-bad-bg p-4 text-sm text-bad">
           <div className="font-medium">
             {runsOut.length} item{runsOut.length === 1 ? " runs" : "s run"} out before this delivery arrives
           </div>
           <p className="mt-0.5 text-ink-2">{runsOut.slice(0, 4).map((l) => l.ingredientName).join(", ")}{runsOut.length > 4 ? ` and ${runsOut.length - 4} more` : ""}. They&apos;re on this order, but you&apos;ll need to borrow, buy locally or ask for an earlier drop to bridge the gap.</p>
-        </Card>
+        </Card></HelpZone>
       )}
 
-      <Card className="overflow-x-auto">
+      <HelpZone id="ordering.builder.lines"><Card className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-[0.75rem] text-muted">
@@ -127,10 +127,10 @@ export function OrderBuilder(props: {
             Show {hidden} item{hidden === 1 ? "" : "s"} you're covered on
           </button>
         )}
-      </Card>
+      </Card></HelpZone>
 
       <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-8" data-tour="ordering.save">
+        <HelpZone id="ordering.builder.save" tour="ordering.save" className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-8">
           <div className="text-sm">
             <span className="num font-semibold">{money(total)}</span>
             <span className="text-muted"> · {ordering} item{ordering === 1 ? "" : "s"}</span>
@@ -153,7 +153,7 @@ export function OrderBuilder(props: {
           >
             {pending ? "Saving…" : "Save order"}
           </Button>
-        </div>
+        </HelpZone>
       </div>
     </div>
   );

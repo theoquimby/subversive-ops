@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { Badge, Card, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import { addDays, dateRange } from "@/domain/dates";
 import { payPeriodFor, PayrollException, PayrollRow, PayrollSnapshot, periodDays } from "@/domain/payroll";
@@ -74,28 +75,29 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <PageHeader
+        help="labor.page"
         title="Timecards"
         description={`Clock-ins from Square plus anything added by hand. Click a cell to fix a time: type 4p, 16:30 or 10:15pm. ${twoWeeks ? "Two-week" : "Weekly"} pay periods, set in Settings.`}
         actions={
           <>
-            <PeriodPicker start={period.start} prev={payPeriodFor(addDays(period.start, -1), rules).start} next={addDays(period.end, 1)} label={label} />
-            <SquareSyncButton periodStart={period.start} connected={squareConnected} />
-            <LinkButton href={`/labor/payroll?start=${period.start}`} prefetch={false}><Download className="size-3.5" />{approved ? "Payroll CSV" : "Draft CSV"}</LinkButton>
+            <HelpZone id="labor.period"><PeriodPicker start={period.start} prev={payPeriodFor(addDays(period.start, -1), rules).start} next={addDays(period.end, 1)} label={label} /></HelpZone>
+            <HelpZone id="labor.squareSync" className="flex flex-wrap items-center gap-2"><SquareSyncButton periodStart={period.start} connected={squareConnected} /></HelpZone>
+            <HelpZone id="labor.export"><LinkButton href={`/labor/payroll?start=${period.start}`} prefetch={false}><Download className="size-3.5" />{approved ? "Payroll CSV" : "Draft CSV"}</LinkButton></HelpZone>
           </>
         }
       />
 
-      <ApprovalBar start={period.start} label={label} approved={approved} approvedBy={saved?.approvedBy ?? null} approvedAt={saved?.approvedAt?.toISOString() ?? null} blocks={blocks} warns={warns} />
+      <HelpZone id="labor.approve"><ApprovalBar start={period.start} label={label} approved={approved} approvedBy={saved?.approvedBy ?? null} approvedAt={saved?.approvedAt?.toISOString() ?? null} blocks={blocks} warns={warns} /></HelpZone>
 
-      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Hours" value={qty(total.hours, 1)} hint={label} />
-        <Stat label="Overtime" value={`${qty(total.ot, 1)} h`} tone={total.ot > 0 ? "warn" : undefined} hint={total.spread ? `${total.spread} spread-of-hours` : `over ${rules.weeklyOvertimeHours}h/week`} />
-        <Stat label="Gross wages" value={money(total.gross, { whole: true })} hint="incl. OT, leave and adjustments" />
-        <Stat label="Tips" value={money(total.tips, { whole: true })} hint={data.tips.uncovered.length && !approved ? "from finalized tip pools · incomplete" : "from finalized tip pools"} />
+      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4 [&>[data-help-zone]>*]:h-full">
+        <Stat help="labor.hours" label="Hours" value={qty(total.hours, 1)} hint={label} />
+        <Stat help="labor.overtime" label="Overtime" value={`${qty(total.ot, 1)} h`} tone={total.ot > 0 ? "warn" : undefined} hint={total.spread ? `${total.spread} spread-of-hours` : `over ${rules.weeklyOvertimeHours}h/week`} />
+        <Stat help="labor.gross" label="Gross wages" value={money(total.gross, { whole: true })} hint="incl. OT, leave and adjustments" />
+        <Stat help="labor.tips" label="Tips" value={money(total.tips, { whole: true })} hint={data.tips.uncovered.length && !approved ? "from finalized tip pools · incomplete" : "from finalized tip pools"} />
       </div>
 
       {!approved && (
-        <Section title="Before you approve" description={exceptions.length ? "Most urgent first. Fix what you can in the timecards below." : undefined}>
+        <Section help="labor.exceptions" title="Before you approve" description={exceptions.length ? "Most urgent first. Fix what you can in the timecards below." : undefined}>
           {exceptions.length === 0 ? (
             <Card className="px-4 py-5 text-sm text-muted">{cards.length ? "Nothing to check. Every card has a clock-out and a rate." : "No timecards in this period yet."}</Card>
           ) : (
@@ -116,14 +118,14 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
         </Section>
       )}
 
-      <Section title="Timecards" description={`${cards.length} in this period${cards.some((c) => !c.clockOut) ? " · open cards count up to now" : ""}${approved ? " · locked" : " · cards you edit are kept when Square syncs"}`}>
+      <Section help="labor.timecards" title="Timecards" description={`${cards.length} in this period${cards.some((c) => !c.clockOut) ? " · open cards count up to now" : ""}${approved ? " · locked" : " · cards you edit are kept when Square syncs"}`}>
         <Card>
           {cards.length === 0 && <div className="px-4 pt-6 pb-2 text-center text-sm text-muted">No timecards in this period yet.</div>}
           <TimecardGrid cards={cardRows} employees={employees} positions={positions} days={days} defaultDay={inPeriod ? today : period.start} locked={approved} />
         </Card>
       </Section>
 
-      <Section title="Adjustments" description="Bonuses, corrections, deductions and reimbursements. They go in the payroll file as their own columns.">
+      <Section help="labor.adjustments" title="Adjustments" description="Bonuses, corrections, deductions and reimbursements. They go in the payroll file as their own columns.">
         <Card>
           <AdjustmentsGrid
             rows={data.adjustments.map((a) => ({ id: a.id, employeeId: a.employeeId, date: a.date.toISOString().slice(0, 10), kind: a.kind, amount: a.amount.toNumber(), note: a.note }))}
@@ -135,7 +137,7 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
         </Card>
       </Section>
 
-      <Section title="Payroll" description={approved ? "As approved. This is what the CSV contains." : "What goes to payroll. Tips come from finalized tip pools; sick and PTO hours from approved requests."}>
+      <Section help="labor.payroll" title="Payroll" description={approved ? "As approved. This is what the CSV contains." : "What goes to payroll. Tips come from finalized tip pools; sick and PTO hours from approved requests."}>
         {rows.length === 0 ? (
           <EmptyState title="Nothing to pay yet">Totals appear once there are timecards in this period.</EmptyState>
         ) : (
@@ -186,7 +188,7 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
       </Section>
 
       {history.length > 0 && (
-        <Section title="Approved pay periods">
+        <Section help="labor.history" title="Approved pay periods">
           <Card className="divide-y divide-border">
             {history.map((h) => (
               <Link key={h.start} href={`/labor?start=${h.start}`} className="flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-surface-2/60">

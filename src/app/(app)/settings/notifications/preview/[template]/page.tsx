@@ -21,7 +21,7 @@ export default async function EmailPreviewPage({ params, searchParams }: { param
 
   return (
     <>
-      <PageHeader title={sample.label} description={<>Subject: <span className="text-ink">{r.subject}</span></>} back={{ href: "/settings/notifications", label: "Notifications" }} />
+      <PageHeader help="settings.notify.previews" title={sample.label} description={<>Subject: <span className="text-ink">{r.subject}</span></>} back={{ href: "/settings/notifications", label: "Notifications" }} />
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1">{tab("html", "Email")}{tab("text", "Plain text")}</div>
         <div className="flex flex-wrap gap-1 text-sm">

@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { Card, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import { buildBill } from "@/domain/accountingExport";
 import { money, shortDate } from "@/lib/format";
@@ -37,20 +38,22 @@ export default async function ExportsPage({ searchParams }: { searchParams: Prom
   return (
     <>
       <PageHeader
+        help="invoices.exports"
         title="Accounting exports"
         description="Approved invoices as bills, and a daily sales journal, ready to import into QuickBooks Online or Xero. Nothing is paid or posted from here."
         back={{ href: "/invoices", label: "Invoices" }}
-        actions={<RangePicker from={from} to={to} />}
+        actions={<HelpZone id="invoices.exports.range"><RangePicker from={from} to={to} /></HelpZone>}
       />
 
-      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <HelpZone id="invoices.exports.summary" className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Approved bills" value={bills.length} hint={`${shortDate(from)} – ${shortDate(to)}`} />
         <Stat label="Bills total" value={money(billTotal)} />
         <Stat label="Net sales" value={money(totals.net, { whole: true })} hint={`${days.length} trading day${days.length === 1 ? "" : "s"}`} />
         <Stat label="Tips owed" value={money(totals.tips, { whole: true })} hint={noTax ? "no sales tax recorded" : `tax ${money(totals.tax, { whole: true })}${sales.taxEstimated ? " (estimated)" : ""}`} />
-      </div>
+      </HelpZone>
 
       <Section
+        help="invoices.exports.bills"
         title="Bills"
         description={detail ? "One line per invoice line." : "One line per expense account on each bill, so your ledger stays tidy."}
         actions={
@@ -97,6 +100,7 @@ export default async function ExportsPage({ searchParams }: { searchParams: Prom
       </Section>
 
       <Section
+        help="invoices.exports.sales"
         title="Daily sales journal"
         description="One balanced journal per day: net sales by category, sales tax and tips, against your undeposited funds account. Gift cards and other items marked ignored are left out."
         actions={
@@ -137,7 +141,7 @@ export default async function ExportsPage({ searchParams }: { searchParams: Prom
         {noTax && <p className="mt-2 text-xs text-muted">Square&apos;s sales tax isn&apos;t stored yet. Set your sales tax rate below to include an estimate, or leave it out and post tax from Square&apos;s own report.</p>}
       </Section>
 
-      <Section title="Accounts" description="Names must match accounts in your chart of accounts exactly. Leave a category blank to use the default.">
+      <Section help="invoices.exports.accounts" title="Accounts" description="Names must match accounts in your chart of accounts exactly. Leave a category blank to use the default.">
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="divide-y divide-border">
             <div className="px-4 py-2.5 text-[0.8rem] font-medium text-muted">Bills · expense account by ingredient category</div>

@@ -1,4 +1,4 @@
-import { HelpTip } from "@/components/help";
+import { HelpTip, HelpZone } from "@/components/help";
 import { db } from "@/server/db";
 import { documentScope } from "@/server/services/documents";
 import { myPeopleData } from "@/server/services/people";
@@ -23,10 +23,10 @@ export async function MyPolicyAsk() {
   const hasDocs = (await db.document.count({ where: documentScope("STAFF") })) > 0;
   if (!hasDocs) return null;
   return (
-    <section className="mt-10" data-tour="my.policy-ask">
+    <HelpZone id="my.policyAsk" className="mt-10"><section data-tour="my.policy-ask">
       <h2 className="mb-1 flex items-center gap-1.5 text-[0.95rem] font-semibold">Ask about policies <HelpTip id="my.policyAsk" /></h2>
       <p className="mb-3 text-sm text-muted">Answers come straight from the handbook and policies your managers uploaded.</p>
       <PolicyAsk hasDocs examples={POLICY_EXAMPLES} />
-    </section>
+    </section></HelpZone>
   );
 }

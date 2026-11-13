@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { GridCell, GridSelect } from "@/components/grid";
 import { Card, PageHeader, Section, Th, Tr } from "@/components/ui";
 import { relativeTime } from "@/lib/format";
@@ -42,16 +43,17 @@ export default async function TeamPage() {
   return (
     <>
       <PageHeader
+        help="team.page"
         title="Team"
         description={
           connected
             ? `Positions, pay and availability. Square team sync ${relativeTime(lastSync)}.`
             : "Positions, pay and availability. Connect Square to pull in team members, wages and timecards."
         }
-        actions={<SyncTeamButton configured={connected} />}
+        actions={<HelpZone id="team.squareSync" className="flex flex-wrap items-center gap-2"><SyncTeamButton configured={connected} /></HelpZone>}
       />
 
-      <Section title="Positions" description="Sales per labor hour sets how many people the schedule asks for: one person per that much forecast sales in an hour, within min and max.">
+      <Section help="team.positions" title="Positions" description="Sales per labor hour sets how many people the schedule asks for: one person per that much forecast sales in an hour, within min and max.">
         <Card className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
           <thead>
@@ -108,7 +110,7 @@ export default async function TeamPage() {
         </Card>
       </Section>
 
-      <Section title="People" description="Rates here are the default; a timecard or a person's rate for a specific position wins. The calendar icon opens availability and login. Sick is NY paid sick leave available this year.">
+      <Section help="team.employees" title="People" description="Rates here are the default; a timecard or a person's rate for a specific position wins. The calendar icon opens availability and login. Sick is NY paid sick leave available this year.">
         {differing.length > 0 && (
           <Card className="mb-3 border-warn/40 bg-warn-bg/40 p-4 text-sm">
             <div className="font-medium text-warn">Square has different details for {differing.length} {differing.length === 1 ? "person" : "people"}</div>
@@ -149,7 +151,7 @@ export default async function TeamPage() {
 
       <PeopleNotesSection />
 
-      <Section title="Announcements" description="Short notes for the team. They show at the top of everyone's My shifts.">
+      <Section help="team.announcements" title="Announcements" description="Short notes for the team. They show at the top of everyone's My shifts.">
         <AnnouncementsManager items={notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() }))} />
       </Section>
     </>

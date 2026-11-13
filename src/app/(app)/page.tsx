@@ -66,11 +66,12 @@ export default async function OverviewPage() {
   return (
     <>
       <PageHeader
+        help="overview.page"
         title="Overview"
         description={<>{dayDate(today)} · <Link href="/settings/square" className="underline-offset-2 hover:text-ink hover:underline">{square.text}</Link></>}
       />
       {!ob.complete && !ob.dismissed && (
-        <Card className="mb-8 flex flex-wrap items-center justify-between gap-3 p-4">
+        <HelpZone id="overview.setup" className="mb-8"><Card className="flex flex-wrap items-center justify-between gap-3 p-4">
           <div>
             <div className="text-sm font-medium">Finish setting up <span className="num font-normal text-muted">· {ob.done} of {ob.total} done</span></div>
             <div className="mt-1.5 h-1.5 w-48 overflow-hidden rounded-full bg-surface-2"><div className="h-full rounded-full bg-primary" style={{ width: `${(ob.done / ob.total) * 100}%` }} /></div>
@@ -79,7 +80,7 @@ export default async function OverviewPage() {
             <LinkButton href={ob.href} size="sm" variant="primary">Continue setup</LinkButton>
             <DismissSetupButton />
           </div>
-        </Card>
+        </Card></HelpZone>
       )}
 
       <HelpZone id="overview.today" tour="overview.today" className="mb-8">
@@ -113,17 +114,18 @@ export default async function OverviewPage() {
         <h2 className="text-sm font-medium text-ink-2">Last 7 days</h2>
         <LinkButton href={pnlWeek} variant="ghost" size="sm">P&amp;L →</LinkButton>
       </div>
-      <HelpZone id="overview.page" tour="overview.stats" className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <HelpZone id="overview.week" tour="overview.stats" className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={<span className="inline-flex items-center gap-1.5">Sales <HelpTip id="overview.sales" /></span>} value={money(t.sales, { whole: true })} hint={`food ${pct(split.food.mix, 0)} · drinks ${pct(split.beverage.mix, 0)}`} />
         <Stat label={<span className="inline-flex items-center gap-1.5">Food cost <HelpTip id="overview.foodCost" /></span>} value={pct(split.food.pct)} hint={`Target ${pct(targets.food, 0)} · theoretical`} tone={split.food.pct == null ? undefined : costTone(split.food.pct, targets.food)} />
         <Stat label={<span className="inline-flex items-center gap-1.5">Beverage cost <HelpTip id="overview.bevCost" /></span>} value={pct(split.beverage.pct)} hint={split.beverage.sales > 0 && split.beverage.cogs === 0 ? "drinks not costed yet" : `Target ${pct(targets.beverage, 0)} · theoretical`} tone={split.beverage.pct == null || split.beverage.cogs === 0 ? undefined : costTone(split.beverage.pct, targets.beverage)} />
         <Stat label="Labor" value={pct(t.laborPct)} hint={`prime cost ${pct(t.primePct, 0)}${budget?.laborPct != null ? ` · target ${pct(budget.laborPct, 0)}` : ""}`} tone={budget?.laborPct != null ? costTone(t.laborPct, budget.laborPct) : undefined} />
       </HelpZone>
-      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <Stat label={<span className="inline-flex items-center gap-1.5">Items over target <HelpTip id="overview.overTarget" /></span>} value={over.length} hint={`of ${menuItems.length} menu items`} tone={over.length ? "warn" : "good"} />
-        <Stat label="Price increases" value={ups.length} hint="Last 30 days" tone={ups.length ? "warn" : undefined} />
+      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6 [&>[data-help-zone]>*]:h-full">
+        <Stat help="overview.overTarget" label={<span className="inline-flex items-center gap-1.5">Items over target <HelpTip id="overview.overTarget" /></span>} value={over.length} hint={`of ${menuItems.length} menu items`} tone={over.length ? "warn" : "good"} />
+        <Stat help="overview.priceIncreases" label="Price increases" value={ups.length} hint="Last 30 days" tone={ups.length ? "warn" : undefined} />
         <Link href="/reviews" className="block h-full rounded-xl [&>*]:h-full">
           <Stat
+            help="overview.rating"
             label="Rating, 30 days"
             value={rating.avg != null ? `${rating.avg.toFixed(1)}★` : "—"}
             hint={rating.avg == null ? "no reviews in 30 days" : `${rating.count} review${rating.count === 1 ? "" : "s"}${rating.delta != null && Math.abs(rating.delta) >= 0.05 ? ` · ${rating.delta > 0 ? "▲" : "▼"} ${Math.abs(rating.delta).toFixed(1)} vs prior` : rating.delta != null ? " · steady" : ""}`}
@@ -131,13 +133,13 @@ export default async function OverviewPage() {
           />
         </Link>
         <Link href="/waste" className="block h-full rounded-xl [&>*]:h-full">
-          <Stat label="Waste, 7 days" value={money(wasteCost, { whole: true })} hint={wasteLogs ? `${wasteLogs} log${wasteLogs === 1 ? "" : "s"}` : "nothing logged"} tone={wasteLogs ? undefined : "warn"} />
+          <Stat help="overview.waste" label="Waste, 7 days" value={money(wasteCost, { whole: true })} hint={wasteLogs ? `${wasteLogs} log${wasteLogs === 1 ? "" : "s"}` : "nothing logged"} tone={wasteLogs ? undefined : "warn"} />
         </Link>
         <div className="hidden lg:block">
-          <Stat label="Profit before overhead" value={money(t.profit, { whole: true })} hint="last 7 days" tone={t.profit < 0 ? "bad" : undefined} />
+          <Stat help="overview.profit" label="Profit before overhead" value={money(t.profit, { whole: true })} hint="last 7 days" tone={t.profit < 0 ? "bad" : undefined} />
         </div>
         <div className="hidden lg:block">
-          <Stat label="Sales per labor hour" value={money(t.salesPerLaborHour, { whole: true })} hint={t.ordersPerLaborHour != null ? `${qty(t.ordersPerLaborHour, 1)} orders per labor hour` : "last 7 days"} />
+          <Stat help="pnl.splh" label="Sales per labor hour" value={money(t.salesPerLaborHour, { whole: true })} hint={t.ordersPerLaborHour != null ? `${qty(t.ordersPerLaborHour, 1)} orders per labor hour` : "last 7 days"} />
         </div>
       </div>
 

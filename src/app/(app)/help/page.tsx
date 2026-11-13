@@ -1,4 +1,4 @@
-import { HelpTip } from "@/components/help";
+import { HelpTip, HelpZone } from "@/components/help";
 import { LinkButton } from "@/components/ui";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
@@ -17,7 +17,7 @@ export default async function HelpPage({ searchParams }: { searchParams: Promise
     <>
       <HelpCenter userId={me.userId} role={me.role} initialQuery={q} autoTour={tour} />
       {(manager || docs > 0) && (
-        <section className="mx-auto mt-12 max-w-5xl" data-tour="help.policy-ask">
+        <HelpZone id="team.policyAssistant" className="mx-auto mt-12 max-w-5xl"><section data-tour="help.policy-ask">
           <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="flex items-center gap-1.5 text-[0.95rem] font-semibold">Ask about policies <HelpTip id="team.policyAssistant" /></h2>
@@ -26,7 +26,7 @@ export default async function HelpPage({ searchParams }: { searchParams: Promise
             {manager && <LinkButton href="/team/documents" size="sm">Documents</LinkButton>}
           </div>
           <PolicyAsk hasDocs={docs > 0} examples={["How long is a meal break?", "What's the call-out policy?", "Can staff drink after a shift?"]} />
-        </section>
+        </section></HelpZone>
       )}
     </>
   );

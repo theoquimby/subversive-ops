@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { GridCell } from "@/components/grid";
 import { LineChart } from "@/components/line-chart";
 import { Badge, Card, cx, EmptyState, PageHeader, Section, Stat } from "@/components/ui";
@@ -57,25 +58,27 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
   return (
     <>
       <PageHeader
+        help="reviews.page"
         title="Reviews"
         description={`What guests are saying, lined up against what happened on the floor and in the kitchen that day.${settings.googleConfigured && settings.placeId ? ` Google checked ${relativeTime(lastSync)}, and every morning.` : ""}`}
-        actions={<ImportActions googleReady={settings.googleConfigured && Boolean(settings.placeId)} googleHint={!settings.googleConfigured ? "Google import needs a Google Maps API key set up on the server — ask whoever manages your hosting" : "Add your Google Place ID at the bottom of this page"} />}
+        actions={<HelpZone id="reviews.import" className="flex flex-wrap items-center gap-2"><ImportActions googleReady={settings.googleConfigured && Boolean(settings.placeId)} googleHint={!settings.googleConfigured ? "Google import needs a Google Maps API key set up on the server — ask whoever manages your hosting" : "Add your Google Place ID at the bottom of this page"} /></HelpZone>}
       />
 
       {reviews.length === 0 ? (
         <EmptyState title="No reviews yet">Paste a few reviews from Google, Yelp or TripAdvisor to see themes, reply drafts, and what was going on in operations that day.</EmptyState>
       ) : (
         <>
-          <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat label="Average rating, 90 days" value={<Stars value={avg(recent)} />} hint={`${recent.length} review${recent.length === 1 ? "" : "s"}`} />
+          <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4 [&>[data-help-zone]>*]:h-full">
+            <Stat help="reviews.average" label="Average rating, 90 days" value={<Stars value={avg(recent)} />} hint={`${recent.length} review${recent.length === 1 ? "" : "s"}`} />
             <Stat
+              help="reviews.last30"
               label="Last 30 days"
               value={avg30 == null ? "—" : avg30.toFixed(1)}
               hint={avg30 != null && avgPrev30 != null ? `${avg30 >= avgPrev30 ? "Up" : "Down"} from ${avgPrev30.toFixed(1)} the 30 days before` : "Not enough reviews to compare"}
               tone={avg30 != null && avgPrev30 != null ? (avg30 >= avgPrev30 ? "good" : "warn") : undefined}
             />
-            <Stat label="Need a reply" value={open.length} hint="Critical or mixed, not answered" tone={open.length ? "warn" : "good"} />
-            <Stat label="Most complained about" value={<span className="text-[1.25rem] sm:text-[1.5rem]">{worst && worst.negative + worst.mixed > 0 ? themeLabel(worst.theme) : "Nothing"}</span>} hint={worst && worst.negative + worst.mixed > 0 ? `${worst.negative + worst.mixed} critical or mixed mention${worst.negative + worst.mixed === 1 ? "" : "s"}` : "No recurring complaints"} />
+            <Stat help="reviews.needReply" label="Need a reply" value={open.length} hint="Critical or mixed, not answered" tone={open.length ? "warn" : "good"} />
+            <Stat help="reviews.worst" label="Most complained about" value={<span className="text-[1.25rem] sm:text-[1.5rem]">{worst && worst.negative + worst.mixed > 0 ? themeLabel(worst.theme) : "Nothing"}</span>} hint={worst && worst.negative + worst.mixed > 0 ? `${worst.negative + worst.mixed} critical or mixed mention${worst.negative + worst.mixed === 1 ? "" : "s"}` : "No recurring complaints"} />
           </div>
 
           {alerts.map((a) => (
@@ -86,6 +89,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
 
           {fix && (
             <Section
+              help="reviews.fix"
               title="What to fix this month"
               description={`${fix.by === "claude" ? "Written by Claude" : "From the most-mentioned complaints"} from ${fix.reviewCount} review${fix.reviewCount === 1 ? "" : "s"} in the last 90 days and what operations looked like on those days.`}
               actions={<RefreshFix claude={settings.claude} />}
@@ -111,12 +115,12 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
           )}
 
           <div className="grid grid-cols-1 gap-x-8 lg:grid-cols-5">
-            <Section className="min-w-0 lg:col-span-3" title="Rating trend" description="Rolling average of the last 5 reviews">
+            <Section help="reviews.trend" className="min-w-0 lg:col-span-3" title="Rating trend" description="Rolling average of the last 5 reviews">
               <Card className="p-4">
                 {trend.length >= 2 ? <LineChart points={trend} valueFormat="number" ariaLabel="Average rating over time" height={200} domain={RATING_AXIS} /> : <div className="py-10 text-center text-sm text-muted">Add a few more reviews to see a trend.</div>}
               </Card>
             </Section>
-            <Section className="min-w-0 lg:col-span-2" title="Themes" description="Last 90 days · what guests mention most">
+            <Section help="reviews.themes" className="min-w-0 lg:col-span-2" title="Themes" description="Last 90 days · what guests mention most">
               <Card className="divide-y divide-border">
                 {themes.length === 0 && <div className="p-4 text-sm text-muted">No themes yet.</div>}
                 {themes.slice(0, 8).map((t) => (
@@ -142,16 +146,16 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
           <Section
             title="Reviews"
             description={settings.claude ? "Themes and reply drafts by Claude, in your voice. Edit before posting." : "Themes from keywords and simple reply drafts. Add the Claude API key for written-for-you replies."}
-            actions={<FilterTabs show={show} openCount={open.length} className="hidden sm:flex" />}
+            actions={<HelpZone id="reviews.list" className="hidden sm:block"><FilterTabs show={show} openCount={open.length} className="flex" /></HelpZone>}
           >
             {/* On a phone the tabs get their own full-width row instead of squeezing beside the title. */}
-            <FilterTabs show={show} openCount={open.length} className="mb-3 flex flex-wrap sm:hidden" />
+            <HelpZone id="reviews.list" className="mb-3 sm:hidden"><FilterTabs show={show} openCount={open.length} className="flex flex-wrap" /></HelpZone>
             {listed.length === 0 ? (
               <EmptyState title={show === "open" ? "All caught up" : "Nothing here"}>{show === "open" ? "Every critical review has a reply." : "No reviews match this filter."}</EmptyState>
             ) : (
               <div className="space-y-3">
                 {listed.map((r) => (
-                  <ReviewCard key={r.id} r={r} ops={ops.get(r.date)} hint={hints.get(r.id) ?? operationalHint(r.themes, ops.get(r.date))} />
+                  <HelpZone key={r.id} id="reviews.card"><ReviewCard r={r} ops={ops.get(r.date)} hint={hints.get(r.id) ?? operationalHint(r.themes, ops.get(r.date))} /></HelpZone>
                 ))}
               </div>
             )}
@@ -159,7 +163,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
         </>
       )}
 
-      <Section title="Review settings">
+      <Section help="reviews.settings" title="Review settings">
         <Card className="divide-y divide-border">
           <div className="grid gap-1 px-4 py-3 sm:grid-cols-[14rem_1fr] sm:items-center sm:gap-4">
             <div>

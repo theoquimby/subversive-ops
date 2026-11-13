@@ -23,6 +23,7 @@ export default async function BuildOrderPage({ params, searchParams }: { params:
   return (
     <>
       <PageHeader
+        help="ordering.builder"
         title={plan.supplier.name}
         description={`Delivery ${dayDate(plan.deliveryDate)}, covering sales through ${dayDate(addDays(plan.coverUntil, -1))}.`}
         back={{ href: "/ordering", label: "Ordering" }}

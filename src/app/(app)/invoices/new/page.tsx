@@ -17,7 +17,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
   ]);
   return (
     <>
-      <PageHeader title="Add invoice" description="Take a photo or upload the PDF, check the lines, and save. It's matched against the order straight away." back={{ href: "/invoices", label: "Invoices" }} />
+      <PageHeader help="invoices.page" title="Add invoice" description="Take a photo or upload the PDF, check the lines, and save. It's matched against the order straight away." back={{ href: "/invoices", label: "Invoices" }} />
       <NewInvoice suppliers={suppliers} orders={orders} today={businessToday()} canRead={claudeConfigured()} initialSupplierId={sp.supplier ?? null} initialOrderId={sp.order ?? null} />
     </>
   );

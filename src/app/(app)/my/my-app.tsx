@@ -1,6 +1,7 @@
 "use client";
 
 import { GridCell } from "@/components/grid";
+import { HelpZone } from "@/components/help";
 import { Badge, Button, Card, cx, DatePicker, Input, Select } from "@/components/ui";
 import { shiftLabel } from "@/domain/schedule";
 import type { SickBalance } from "@/domain/sickLeave";
@@ -65,7 +66,7 @@ export function MyApp({ today, weekHours, mine, open, board, timeOff, team, sick
         <div role="status" className={cx("-mb-4 rounded-xl px-4 py-3 text-sm", msg.bad ? "bg-bad-bg text-bad" : "bg-good-bg text-good")}>{msg.text}</div>
       )}
 
-      <section>
+      <HelpZone id="my.shifts"><section>
         <div className="mb-3 flex items-end justify-between">
           <h2 className="text-[0.95rem] font-semibold">Coming up</h2>
           <span className="num text-sm text-muted">{fmtH(weekHours)} this week</span>
@@ -110,9 +111,9 @@ export function MyApp({ today, weekHours, mine, open, board, timeOff, team, sick
             ))}
           </Card>
         )}
-      </section>
+      </section></HelpZone>
 
-      <section>
+      <HelpZone id="my.openShifts"><section>
         <h2 className="mb-1 text-[0.95rem] font-semibold">Open shifts</h2>
         <p className="mb-3 text-sm text-muted">Shifts that need someone, for positions you work. First to tap gets it.</p>
         {open.length === 0 && board.length === 0 ? (
@@ -139,9 +140,9 @@ export function MyApp({ today, weekHours, mine, open, board, timeOff, team, sick
             ))}
           </Card>
         )}
-      </section>
+      </section></HelpZone>
 
-      <section>
+      <HelpZone id="my.timeOff"><section>
         <h2 className="mb-1 text-[0.95rem] font-semibold">Time off</h2>
         <p className="mb-3 text-sm text-muted">Ask early so your manager can approve it before the schedule is built. Out sick? Log it here, even for today.</p>
         {sick && (
@@ -201,7 +202,7 @@ export function MyApp({ today, weekHours, mine, open, board, timeOff, team, sick
             ))}
           </Card>
         )}
-      </section>
+      </section></HelpZone>
 
       <MyAvailability availability={availability} openingHours={openingHours} />
     </div>
@@ -217,7 +218,7 @@ function MyAvailability({ availability, openingHours }: { availability: Record<s
   const notSet = availability == null;
   const pct = (m: number) => `${(m / 1440) * 100}%`;
   return (
-    <section>
+    <HelpZone id="my.availability"><section>
       <h2 className="mb-1 flex items-center gap-2 text-[0.95rem] font-semibold"><CalendarClock className="size-4" strokeWidth={1.75} /> When you can work</h2>
       <p className="mb-3 text-sm text-muted">
         {notSet ? "Not set, so you can be scheduled any time the taproom is open." : "Type ranges like 4p-10p or 11-2, or “all day”. Leave a day blank if you can't work it. Saves as you go."}
@@ -246,7 +247,7 @@ function MyAvailability({ availability, openingHours }: { availability: Record<s
           </div>
         </Card>
       )}
-    </section>
+    </section></HelpZone>
   );
 }
 

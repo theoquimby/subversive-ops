@@ -20,7 +20,7 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
 
   return (
     <div className="mx-auto max-w-xl">
-      <PageHeader title="Inventory count" description="Pick an area and count what's on the shelf. Everything saves as you go." />
+      <PageHeader help="count.home" title="Inventory count" description="Pick an area and count what's on the shelf. Everything saves as you go." />
       {done && <Card className="mb-6 border-good/30 bg-good-bg p-4 text-sm font-medium text-good">Count saved. Thank you!</Card>}
 
       {open.length > 0 && (

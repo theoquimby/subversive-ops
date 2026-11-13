@@ -12,6 +12,7 @@ export default async function ImportPage() {
   return (
     <>
       <PageHeader
+        help="prices.import"
         title="Import price sheet"
         description="Upload the distributor's download as-is. You'll see every price change before anything is saved."
         back={{ href: "/prices", label: "Prices" }}

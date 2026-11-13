@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { toISODate } from "@/domain/dates";
 import { creditItems, creditRequestText, findDuplicate } from "@/domain/invoiceMatch";
@@ -84,6 +85,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   return (
     <>
       <PageHeader
+        help="invoices.detail"
         title={<>{inv.supplier.name}{inv.invoiceNumber && <span className="font-normal text-muted"> · #{inv.invoiceNumber}</span>}</>}
         description={
           <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -95,7 +97,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         }
         back={{ href: "/invoices", label: "Invoices" }}
         actions={
-          <InvoiceActions
+          <HelpZone id="invoices.approve" className="flex flex-wrap items-center gap-2"><InvoiceActions
             id={inv.id}
             status={inv.status}
             statusLabel={meta.label}
@@ -103,7 +105,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             priceChanges={priceChanges}
             invoiceDate={date}
             credit={credit && { ...credit, count: credits.length, email: inv.supplier.email, canSend: emailConfigured(), lastSent: lastCredit }}
-          />
+          /></HelpZone>
         }
       />
 
@@ -131,29 +133,29 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <div className={hasImage ? "h-[24rem] sm:h-[32rem] xl:sticky xl:top-6 xl:h-[calc(100dvh-8rem)]" : "xl:sticky xl:top-6 xl:h-[calc(100dvh-8rem)]"}>
           {/* Without a photo: a slim "Add photo" row below xl so the lines stay above the fold; the full drop area beside them on wide screens. */}
-          <InvoiceViewer src={hasImage ? `/invoices/${inv.id}/image` : null} type={inv.imageType} invoiceId={inv.id} locked={locked} />
+          <HelpZone id="invoices.viewer" className="h-full"><InvoiceViewer src={hasImage ? `/invoices/${inv.id}/image` : null} type={inv.imageType} invoiceId={inv.id} locked={locked} /></HelpZone>
         </div>
 
         <div className="min-w-0 space-y-6">
-          <HeaderFields id={inv.id} locked={locked} invoiceNumber={inv.invoiceNumber} invoiceDate={date} total={total} orderId={inv.orderId ?? ""} orderOptions={orderOptions} />
+          <HelpZone id="invoices.fields"><HeaderFields id={inv.id} locked={locked} invoiceNumber={inv.invoiceNumber} invoiceDate={date} total={total} orderId={inv.orderId ?? ""} orderOptions={orderOptions} /></HelpZone>
 
-          <LinesGrid
+          <HelpZone id="invoices.match"><LinesGrid
             invoiceId={inv.id}
             locked={locked}
             lines={lines}
             hasOrder={Boolean(inv.order)}
             products={products.map((p) => ({ value: p.id, label: p.ingredient?.name ?? p.description, hint: `#${p.sku}${p.ingredient?.name ? ` · ${p.description}` : ""}${p.active ? "" : " · inactive"}` }))}
-          />
+          /></HelpZone>
 
-          <Card className="divide-y divide-border text-sm">
+          <HelpZone id="invoices.totals"><Card className="divide-y divide-border text-sm">
             <Row label="Lines total" value={money(linesTotal)} />
             <Row label="Invoice total" value={money(total)} />
             {gap != null && Math.abs(gap) > 0.05 && <Row label={gap > 0 ? "Not covered by lines" : "Lines exceed total"} value={money(Math.abs(gap))} tone="warn" />}
             {credit && <Row label="Credit to request" value={money(credit.total)} tone="bad" />}
-          </Card>
+          </Card></HelpZone>
 
           {notBilled.length > 0 && (
-            <div>
+            <HelpZone id="invoices.notBilled">
               <h2 className="mb-2 text-[0.95rem] font-semibold">On the order but not billed</h2>
               <Card className="divide-y divide-border text-sm">
                 {notBilled.map((l) => (
@@ -164,10 +166,10 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                 ))}
               </Card>
               <p className="mt-2 text-xs text-muted">Fine if it comes on a separate invoice — otherwise check whether a line was read wrong.</p>
-            </div>
+            </HelpZone>
           )}
 
-          <InvoiceHistory events={events} />
+          {events.length > 0 && <HelpZone id="invoices.history"><InvoiceHistory events={events} /></HelpZone>}
 
           {!locked && <div className="pt-4"><DeleteInvoice id={inv.id} /></div>}
         </div>

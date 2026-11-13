@@ -6,7 +6,7 @@ import { Check } from "lucide-react";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useConfirm } from "@/components/dialog";
 import { discardCount, finishCount, saveCountLine } from "../actions";
-import { HelpTip } from "@/components/help";
+import { HelpTip, HelpZone } from "@/components/help";
 
 interface Item { id: string; name: string; area: string; category: string; base: BaseUnit; units: string[]; conversions: CustomConversion[]; savedBase: number | null }
 
@@ -56,10 +56,10 @@ export function CountSheet({ countId, items }: { countId: string; items: Item[] 
   return (
     <div className="pb-28">
       <div className="sticky top-[calc(3.25rem+env(safe-area-inset-top))] z-10 -mx-4 bg-bg/95 px-4 pb-3 backdrop-blur lg:top-0 lg:pt-2">
-        <Input type="search" placeholder="Find an item" value={filter} onChange={(e) => setFilter(e.target.value)} className="h-11 text-base" />
+        <HelpZone id="count.find"><Input type="search" placeholder="Find an item" value={filter} onChange={(e) => setFilter(e.target.value)} className="h-11 text-base" /></HelpZone>
       </div>
       {[...groups].map(([area, list]) => (
-        <section key={area} className="mb-6">
+        <HelpZone key={area} id="count.area" className="mb-6"><section>
           <h2 className="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">{area}</h2>
           <Card className="divide-y divide-border">
             {list.map((item) => (
@@ -98,14 +98,14 @@ export function CountSheet({ countId, items }: { countId: string; items: Item[] 
               </div>
             ))}
           </Card>
-        </section>
+        </section></HelpZone>
       ))}
       <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
         <div className="mx-auto flex max-w-xl items-center justify-between gap-3 px-4 py-3">
-          <span className="num flex items-center gap-1.5 text-sm text-muted">{done} of {items.length} counted <HelpTip id="count.autosave" placement="top-start" /></span>
+          <HelpZone id="count.autosave" className="num flex items-center gap-1.5 text-sm text-muted">{done} of {items.length} counted <HelpTip id="count.autosave" placement="top-start" /></HelpZone>
           <div className="flex gap-2">
-            <Button variant="ghost" disabled={finishing} onClick={async () => { if (await confirm({ title: "Discard this count?", body: "Everything counted so far will be thrown away.", confirmLabel: "Discard", danger: true })) start(() => discardCount(countId)); }}>Discard</Button>
-            <Button variant="primary" size="lg" disabled={finishing || done === 0} onClick={() => start(async () => { await Promise.all(inFlight.current); await finishCount(countId); })}>{finishing ? "Saving…" : "Finish count"}</Button>
+            <HelpZone id="count.discard"><Button variant="ghost" disabled={finishing} onClick={async () => { if (await confirm({ title: "Discard this count?", body: "Everything counted so far will be thrown away.", confirmLabel: "Discard", danger: true })) start(() => discardCount(countId)); }}>Discard</Button></HelpZone>
+            <HelpZone id="count.finish"><Button variant="primary" size="lg" disabled={finishing || done === 0} onClick={() => start(async () => { await Promise.all(inFlight.current); await finishCount(countId); })}>{finishing ? "Saving…" : "Finish count"}</Button></HelpZone>
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpZone } from "@/components/help";
 import { Button, Card, cx, DatePicker, EmptyState, Input } from "@/components/ui";
 import { money, shortDate, signedPct } from "@/lib/format";
 import { useRouter } from "next/navigation";
@@ -23,7 +24,7 @@ export function ManualPrices({ rows, today }: { rows: Row[]; today: string }) {
 
   return (
     <div className="pb-20">
-      <Card className="divide-y divide-border">
+      <HelpZone id="prices.manual.list"><Card className="divide-y divide-border">
         {rows.map((r) => {
           const v = values[r.id];
           const n = Number(v);
@@ -42,9 +43,9 @@ export function ManualPrices({ rows, today }: { rows: Row[]; today: string }) {
             </label>
           );
         })}
-      </Card>
+      </Card></HelpZone>
       <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-3 px-4 py-3 sm:px-8">
+        <HelpZone id="prices.manual.save" className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-3 px-4 py-3 sm:px-8">
           {msg && <span className="mr-auto text-sm text-good">{msg}</span>}
           <label className="flex items-center gap-2 text-sm text-muted">Effective <DatePicker value={date} onChange={(e) => setDate(e.target.value)} className="w-48" aria-label="Effective date" /></label>
           <Button
@@ -59,7 +60,7 @@ export function ManualPrices({ rows, today }: { rows: Row[]; today: string }) {
           >
             {pending ? "Saving…" : changed.length ? `Save ${changed.length} change${changed.length === 1 ? "" : "s"}` : "No changes"}
           </Button>
-        </div>
+        </HelpZone>
       </div>
     </div>
   );

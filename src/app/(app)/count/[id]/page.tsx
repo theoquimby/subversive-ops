@@ -24,7 +24,7 @@ export default async function CountPage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="mx-auto max-w-xl">
-      <PageHeader title={count.area === "All" || !count.area ? "Counting everything" : `Counting ${count.area}`} back={{ href: "/count", label: "Counts" }} />
+      <PageHeader help="count.sheet" title={count.area === "All" || !count.area ? "Counting everything" : `Counting ${count.area}`} back={{ href: "/count", label: "Counts" }} />
       <CountSheet countId={count.id} items={items} />
     </div>
   );

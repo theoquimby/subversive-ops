@@ -1,6 +1,7 @@
 "use client";
 
 import { useConfirm } from "@/components/dialog";
+import { HelpZone } from "@/components/help";
 import { Badge, Button, Card, cx, LinkButton } from "@/components/ui";
 import { weekday } from "@/domain/dates";
 import { availabilityLabel, shiftLabel, shiftPaidHours } from "@/domain/schedule";
@@ -267,7 +268,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
   return (
     <>
       {/* Toolbar */}
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <HelpZone id="schedule.toolbar" className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
           <LinkButton href={`/schedule?week=${prevWeek}`} variant="ghost" size="sm" aria-label="Previous week" className="max-sm:size-10"><ChevronLeft className="size-4" /></LinkButton>
           <div className="num min-w-[9.5rem] text-center text-[0.95rem] font-semibold">{shortDate(dates[0])} – {shortDate(dates[6])}</div>
@@ -303,10 +304,10 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
             </>
           )}
         </div>
-      </div>
+      </HelpZone>
 
       {/* KPI strip */}
-      <div className="mb-6 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+      <HelpZone id="schedule.kpis" className="mb-6 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <Kpi label="Forecast sales" value={money(summary.sales, { whole: true })} hint="this week" />
         <Kpi label="Scheduled labor" value={money(summary.cost, { whole: true })} hint={summary.overtimeHours > 0 ? `incl. ${fmtH(summary.overtimeHours)} overtime` : summary.callInHours > 0 ? `incl. ${fmtH(summary.callInHours)} call-in pay` : "wages + employer taxes"} />
         <Kpi
@@ -316,14 +317,15 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
           hint={data.laborTarget != null ? `budget ${pct(data.laborTarget)}` : "of forecast sales"}
         />
         <Kpi label="Hours" value={<>{fmtH(summary.hours)}<span className="text-base font-normal text-muted"> / {fmtH(summary.requiredHours)}</span></>} hint={upcomingOpen ? `${upcomingOpen} open shift${upcomingOpen === 1 ? "" : "s"} to fill` : "scheduled / needed"} />
-      </div>
+      </HelpZone>
 
       {positions.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">Add positions and people on the Team page, then come back to build the schedule.</Card>
       ) : (
         <>
           {/* Desktop week grid */}
-          <Card className="hidden overflow-x-auto md:block">
+          <HelpZone id="schedule.grid" className="hidden md:block">
+          <Card className="overflow-x-auto">
             <div className="grid min-w-[860px] select-none" style={{ gridTemplateColumns: "164px repeat(7, minmax(0, 1fr))" }}>
               <div className="flex items-end border-b border-border px-3 py-2 text-[11px] text-muted">
                 <div>
@@ -363,9 +365,10 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
             <span className="ml-auto flex items-center gap-1.5"><span className="inline-block h-3 w-5 rounded-sm outline-1 -outline-offset-1 outline-border-strong outline-dashed" /> Draft</span>
             <span>Drag a shift to move it</span>
           </div>
+          </HelpZone>
 
           {/* Phone: one day at a time */}
-          <div className="md:hidden">
+          <HelpZone id="schedule.grid" className="md:hidden">
             <div className="grid grid-cols-7 gap-1" role="tablist" aria-label="Day">
               {dates.map((d, i) => {
                 const n = issues.filter((x) => shifts.find((s) => s.id === x.shiftId)?.date === d).length;
@@ -443,11 +446,11 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
                 )}
               </div>
             </div>
-          </div>
+          </HelpZone>
 
           {/* Staff vs demand */}
           <section className="mt-8">
-            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <HelpZone id="schedule.demand" className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="text-[0.95rem] font-semibold">Staff vs demand</h2>
                 <p className="mt-0.5 text-sm text-muted">People on shift each hour against what the forecast needs at the standard staffing level.</p>
@@ -459,16 +462,16 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
                   </button>
                 ))}
               </div>
-            </div>
-            {opening[weekday(day)] && <ForecastNudge key={day} date={day} sales={summary.days[dayIdx]?.sales ?? 0} nudge={nudges[day]} past={day < today} onRegenerate={() => setGenerating(true)} />}
-            <Card>
+            </HelpZone>
+            {opening[weekday(day)] && <HelpZone id="schedule.nudge"><ForecastNudge key={day} date={day} sales={summary.days[dayIdx]?.sales ?? 0} nudge={nudges[day]} past={day < today} onRegenerate={() => setGenerating(true)} /></HelpZone>}
+            <HelpZone id="schedule.demand"><Card>
               <div className="px-4 pt-3 text-sm font-medium md:hidden">{dayDate(day)}</div>
               <DemandChart rows={data.demand[day] ?? []} />
-            </Card>
+            </Card></HelpZone>
           </section>
 
           {/* Compliance */}
-          <section className="mt-8">
+          <HelpZone id="schedule.compliance" className="mt-8"><section>
             <div className="mb-3 flex items-end justify-between gap-4">
               <div>
                 <h2 className="text-[0.95rem] font-semibold">Compliance</h2>
@@ -509,9 +512,9 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
                 })}
               </Card>
             )}
-          </section>
+          </section></HelpZone>
 
-          <section className="mt-8">
+          <HelpZone id="schedule.availability" className="mt-8"><section>
             <h2 className="mb-3 text-[0.95rem] font-semibold">Availability this week</h2>
             <Card className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -537,7 +540,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
                 </tbody>
               </table>
             </Card>
-          </section>
+          </section></HelpZone>
         </>
       )}
 

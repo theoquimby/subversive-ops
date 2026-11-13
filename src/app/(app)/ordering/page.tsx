@@ -49,7 +49,7 @@ export default async function OrderingPage() {
 
   return (
     <>
-      <PageHeader title="Ordering" description="Pick a supplier to get a suggested order for its next delivery." />
+      <PageHeader help="ordering.page" title="Ordering" description="Pick a supplier to get a suggested order for its next delivery." />
       <HelpZone id="ordering.suppliers" tour="ordering.suppliers">
       <Section title="Suppliers">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -84,6 +84,7 @@ export default async function OrderingPage() {
       </Section>
       </HelpZone>
       <Section
+        help="ordering.cutoffs"
         title={<span className="inline-flex items-center gap-1.5">Order cutoffs <HelpTip id="ordering.cutoffs" /></span>}
         description="When each supplier needs the order. With auto-draft on, the suggested order is saved as a draft the day before the cutoff, ready for you to review and send."
       >

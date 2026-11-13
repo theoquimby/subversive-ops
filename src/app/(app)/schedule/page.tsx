@@ -22,9 +22,9 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
   const nudges = Object.fromEntries(data.dates.map((d) => [d, { multiplier: adjustments.get(d) ?? null, reason: reasons[d] ?? null }]));
   return (
     <>
-      <PageHeader title="Schedule" description="Build the week from the sales forecast, check it against labor rules, then publish it to the team." />
+      <PageHeader help="schedule.page" title="Schedule" description="Build the week from the sales forecast, check it against labor rules, then publish it to the team." />
       <ScheduleBoard data={data} today={today} thisWeek={thisWeek} prevWeek={addDays(monday, -7)} nextWeek={addDays(monday, 7)} nudges={nudges} />
-      <Section title="Announcements" description="Short notes for the team. They show at the top of everyone's My shifts." className="mt-10">
+      <Section help="team.announcements" title="Announcements" description="Short notes for the team. They show at the top of everyone's My shifts." className="mt-10">
         <AnnouncementsManager items={notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() }))} />
       </Section>
     </>

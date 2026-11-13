@@ -27,6 +27,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
   return (
     <>
       <PageHeader
+        help="settings.square"
         back={{ href: "/settings", label: "Settings" }}
         title="Square"
         description="Sales, the menu and timecards come from Square. Once connected it keeps itself up to date — through the day and every night."
@@ -38,7 +39,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
         </Card>
       )}
 
-      <Section title="Connection">
+      <Section help="sales.connect" title="Connection">
         <Card className="divide-y divide-border">
           <div className="flex flex-wrap items-start justify-between gap-3 p-5">
             <div className="min-w-0">
@@ -74,6 +75,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
 
       {status.locations.length > 0 && (
         <Section
+          help="settings.square.locations"
           title="Locations"
           description={
             status.source === "env"
@@ -85,13 +87,13 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
         </Section>
       )}
 
-      <Section title="First import" description="Bring in past sales and timecards so the forecast, costing and P&L have history to work with. Recent weeks come first.">
+      <Section help="sales.backfill" title="First import" description="Bring in past sales and timecards so the forecast, costing and P&L have history to work with. Recent weeks come first.">
         <div id="import" className="scroll-mt-20">
           <BackfillPanel initial={backfill} connected={status.connected} />
         </div>
       </Section>
 
-      <Section title="Data we have">
+      <Section help="settings.square.coverage" title="Data we have">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat label="Sales history" value={coverage.salesDays ? `${coverage.salesDays} days` : "None yet"} hint={coverage.firstSale && coverage.lastSale ? `${shortDate(coverage.firstSale)} – ${shortDate(coverage.lastSale)}` : "import to get started"} />
           <Stat label="Orders" value={qty(coverage.orders, 0)} hint="completed in Square" />
@@ -100,7 +102,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
         </div>
       </Section>
 
-      <Section title="Sync" description={webhooksOn ? "Square tells us about new orders and clock-ins as they happen (webhooks are on). Pages also top up today's numbers if they're more than 15 minutes old." : "Pages top up today's numbers when they're more than 15 minutes old, and everything re-syncs nightly. Turn on webhooks for instant updates (see Help)."}>
+      <Section help="settings.square.sync" title="Sync" description={webhooksOn ? "Square tells us about new orders and clock-ins as they happen (webhooks are on). Pages also top up today's numbers if they're more than 15 minutes old." : "Pages top up today's numbers when they're more than 15 minutes old, and everything re-syncs nightly. Turn on webhooks for instant updates (see Help)."}>
         <Table>
           <thead>
             <tr><Th>What</Th><Th>Last run</Th><Th align="right">Count</Th><Th className="hidden sm:table-cell">Range</Th></tr>
@@ -124,7 +126,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
         </p>
       </Section>
 
-      <Section title="Recent problems" description="The last 20 things that went wrong talking to Square, newest first." actions={log.length ? <ClearLogButton /> : undefined}>
+      <Section help="settings.square.problems" title="Recent problems" description="The last 20 things that went wrong talking to Square, newest first." actions={log.length ? <ClearLogButton /> : undefined}>
         {log.length === 0 ? (
           <Card className="p-5 text-sm text-muted">Nothing has gone wrong.</Card>
         ) : (

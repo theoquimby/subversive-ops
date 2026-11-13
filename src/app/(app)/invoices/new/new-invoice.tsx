@@ -1,6 +1,7 @@
 "use client";
 
 import { FileDrop } from "@/components/file-drop";
+import { HelpZone } from "@/components/help";
 import { GridCell } from "@/components/grid";
 import { Button, Card, cx, DatePicker, Field, Input, Select } from "@/components/ui";
 import { parsePastedLines, pickOrder } from "@/domain/invoiceMatch";
@@ -137,7 +138,7 @@ export function NewInvoice({ suppliers, orders, today, canRead, initialSupplierI
     <div className="pb-24">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         {/* Photo / file */}
-        <div className="space-y-3">
+        <HelpZone id="invoices.snap" className="space-y-3">
           <div className="sm:hidden">
             <FileDrop accept="image/*" capture hint="Take a photo with the camera" onFile={onFile} />
           </div>
@@ -159,10 +160,10 @@ export function NewInvoice({ suppliers, orders, today, canRead, initialSupplierI
           ) : readNote ? (
             <Card className="flex gap-3 p-4 text-sm text-ink-2"><Sparkles className="mt-0.5 size-4 shrink-0 text-muted" />{readNote}</Card>
           ) : null}
-        </div>
+        </HelpZone>
 
         {/* Header */}
-        <Card className="h-fit p-4 sm:p-5">
+        <HelpZone id="invoices.new.details" className="h-fit"><Card className="p-4 sm:p-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Supplier">
               <Select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setOrderTouched(false); }} options={suppliers.map((s) => ({ value: s.id, label: s.name }))} placeholder="Choose supplier…" aria-label="Supplier" />
@@ -189,11 +190,12 @@ export function NewInvoice({ suppliers, orders, today, canRead, initialSupplierI
               </div>
             </Field>
           </div>
-        </Card>
+        </Card></HelpZone>
       </div>
 
       {/* Lines */}
-      <div className="mt-8 mb-3 flex items-end justify-between gap-4">
+      <HelpZone id="invoices.new.lines" className="mt-8">
+      <div className="mb-3 flex items-end justify-between gap-4">
         <div>
           <h2 className="text-[0.95rem] font-semibold">Lines</h2>
           <p className="mt-0.5 text-sm text-muted">Type, or paste rows from a spreadsheet (item #, description, qty, unit price).</p>
@@ -236,9 +238,10 @@ export function NewInvoice({ suppliers, orders, today, canRead, initialSupplierI
         <Button type="button" variant="ghost" size="sm" onClick={() => setRows((rs) => [...rs, ...blanks(5)])}><Plus className="size-4" />More rows</Button>
         <div className="text-sm text-muted">{filled.length} line{filled.length === 1 ? "" : "s"} · <span className="num font-medium text-ink">{money(linesTotal)}</span></div>
       </div>
+      </HelpZone>
 
       <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-3 px-4 py-3 sm:px-8">
+        <HelpZone id="invoices.new.save" className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-3 px-4 py-3 sm:px-8">
           {error && (
             <span className="mr-auto text-sm text-bad">
               {error.text} {error.duplicateId && <Link href={`/invoices/${error.duplicateId}`} className="underline">Open it</Link>}
@@ -247,7 +250,7 @@ export function NewInvoice({ suppliers, orders, today, canRead, initialSupplierI
           <Button variant="primary" size="lg" disabled={saving || reading} onClick={save} className={cx("min-w-40", saving && "opacity-70")}>
             {saving ? "Saving…" : reading ? "Reading…" : "Save and check"}
           </Button>
-        </div>
+        </HelpZone>
       </div>
     </div>
   );

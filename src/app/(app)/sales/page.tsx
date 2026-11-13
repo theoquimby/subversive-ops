@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { Card, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import { addDays, dateRange, weekday } from "@/domain/dates";
 import { dayDate, money, qty, relativeTime, shortDate, signedPct } from "@/lib/format";
@@ -117,35 +118,38 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <PageHeader
+        help="sales.page"
         title="Sales & forecast"
         description={connected
           ? <><Link href="/settings/square" className="underline-offset-2 hover:text-ink hover:underline">{lastSync ? `Square synced ${relativeTime(lastSync)}` : "Square connected · first sync pending"}</Link> · keeps itself up to date through the day</>
           : <>Square not connected. <Link href="/settings/square" className="font-medium text-ink underline-offset-2 hover:underline">Connect it</Link> to bring in sales.</>}
-        actions={<SyncButtons configured={connected} />}
+        actions={<HelpZone id="sales.sync"><SyncButtons configured={connected} /></HelpZone>}
       />
 
-      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Next 7 days" value={money(next7, { whole: true })} hint="forecast sales" />
-        <Stat label="Next 4 weeks" value={money(next28, { whole: true })} hint="forecast sales" />
+      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4 [&>[data-help-zone]>*]:h-full">
+        <Stat help="sales.next7" label="Next 7 days" value={money(next7, { whole: true })} hint="forecast sales" />
+        <Stat help="sales.next28" label="Next 4 weeks" value={money(next28, { whole: true })} hint="forecast sales" />
         <Stat
+          help="sales.accuracy"
           label="Forecast accuracy"
           value={accuracy.mape == null ? "—" : `${Math.max(0, Math.round((1 - accuracy.mape) * 100))}%`}
           hint={accuracy.mape == null ? "needs a few weeks of sales" : `average daily miss ${Math.round(accuracy.mape * 100)}%, last 4 weeks`}
           tone={accuracy.mape == null ? undefined : accuracy.mape <= 0.15 ? "good" : accuracy.mape <= 0.3 ? "warn" : "bad"}
         />
-        <Stat label="Bias" value={accuracy.bias == null ? "—" : signedPct(accuracy.bias, 0)} hint={accuracy.bias == null ? "" : accuracy.bias > 0.02 ? "we forecast a little high" : accuracy.bias < -0.02 ? "we forecast a little low" : "no lean either way"} />
+        <Stat help="sales.bias" label="Bias" value={accuracy.bias == null ? "—" : signedPct(accuracy.bias, 0)} hint={accuracy.bias == null ? "" : accuracy.bias > 0.02 ? "we forecast a little high" : accuracy.bias < -0.02 ? "we forecast a little low" : "no lean either way"} />
       </div>
 
       <Section
+        help="sales.forecast5w"
         title="Forecast"
         description={forecast.hasHistory ? "Sales per day for the next five weeks. Tap a day to see the hourly shape, why it says what it says, and to adjust it." : "No sales history yet — sync Square to start forecasting."}
         actions={<a href="/events" className="text-sm whitespace-nowrap text-ink-2 hover:text-ink">Events →</a>}
       >
         <ForecastCalendar days={days} weatherNote={weatherNote} />
-        <div className="mt-6"><DemandOutlook /></div>
+        <HelpZone id="sales.outlook" className="mt-6"><DemandOutlook /></HelpZone>
       </Section>
 
-      <Section title="How the forecast did" description="Each of the last four weeks, forecast as it would have been made the day before, against what we actually sold.">
+      <Section help="sales.accuracyWeeks" title="How the forecast did" description="Each of the last four weeks, forecast as it would have been made the day before, against what we actually sold.">
         {weeks.length === 0 || accuracy.mape == null ? (
           <Card className="p-5 text-sm text-muted">Accuracy shows up once there are a few weeks of sales history.</Card>
         ) : (
@@ -189,7 +193,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
       </Section>
 
       {forecast.items.length > 0 && (
-        <Section title="Forecast by item" description="Next 7 days, in portions — events, weather and your adjustments included.">
+        <Section help="sales.forecastByItem" title="Forecast by item" description="Next 7 days, in portions — events, weather and your adjustments included.">
           <Table>
             <thead><tr><Th>Item</Th>{dates.map((d) => <Th key={d} align="right" className="hidden md:table-cell">{dayDate(d).split(",")[0]}</Th>)}<Th align="right">Week</Th></tr></thead>
             <tbody>
@@ -206,6 +210,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
       )}
 
       <Section
+        help="sales.mapping"
         title="Square items"
         description="Link each Square item and modifier to a recipe so its sales drive costing and ordering."
         actions={

@@ -13,6 +13,7 @@ export default async function DocumentsPage() {
   return (
     <>
       <PageHeader
+        help="team.documents"
         title="Documents"
         description="Handbook, policies and new-hire forms. Staff read and sign them on My shifts, and the policy assistant answers questions from them."
         back={{ href: "/team", label: "Team" }}
@@ -22,7 +23,7 @@ export default async function DocumentsPage() {
           <UploadDocument />
         </Section>
       </HelpZone>
-      <Section title="Library" description="Edit any cell to change it. ••• shows the text the assistant reads.">
+      <Section help="team.documents.library" title="Library" description="Edit any cell to change it. ••• shows the text the assistant reads.">
         {docs.length === 0 ? <EmptyState title="No documents yet">Upload the staff handbook first — it answers most questions.</EmptyState> : <DocumentGrid docs={docs} staff={staff} />}
       </Section>
       <HelpZone id="team.documents.signoff">

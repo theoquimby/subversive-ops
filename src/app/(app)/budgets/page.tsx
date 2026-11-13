@@ -25,29 +25,32 @@ export default async function BudgetsPage() {
   return (
     <>
       <PageHeader
+        help="budgets.page"
         title="Budgets"
         description="Weekly targets for sales, food cost and labor. Type to change a target — it saves as you go. Weeks start on Monday."
         actions={<BudgetActions />}
       />
 
-      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4 [&>[data-help-zone]>*]:h-full">
         <Stat
+          help="budgets.week.sales"
           label="This week, sales"
           value={money(current.sales_actual, { whole: true })}
           hint={current.sales ? `to yesterday · of ${money(current.sales, { whole: true })} target · on pace for ${money(current.sales_forecast, { whole: true })}` : "To yesterday · no target set"}
           tone={current.status.sales === "none" ? undefined : tone(current.status.sales)}
         />
-        <Stat label={`${KPI_LABELS.food}, this week`} value={pct(current.foodCostPct_actual)} hint={`${KPI_LABELS.foodHint}${current.foodCostPct ? ` · target ${pct(current.foodCostPct, 0)}` : " · no target set"}`} tone={current.status.foodCostPct === "none" ? undefined : tone(current.status.foodCostPct)} />
+        <Stat help="budgets.week.food" label={`${KPI_LABELS.food}, this week`} value={pct(current.foodCostPct_actual)} hint={`${KPI_LABELS.foodHint}${current.foodCostPct ? ` · target ${pct(current.foodCostPct, 0)}` : " · no target set"}`} tone={current.status.foodCostPct === "none" ? undefined : tone(current.status.foodCostPct)} />
         <Stat
+          help="budgets.week.labor"
           label={`${KPI_LABELS.labor}, this week`}
           value={pct(current.laborPct_actual ?? current.laborPct_scheduled)}
           hint={`% of net sales · ${current.laborPct_actual != null ? "timecards to yesterday" : current.laborPct_scheduled != null ? "scheduled" : "no timecards yet"}${current.laborPct ? ` · target ${pct(current.laborPct, 0)}` : " · no target set"}`}
           tone={current.status.laborPct === "none" ? undefined : tone(current.status.laborPct)}
         />
-        <Stat label="Sales target hit" value={past.length ? `${hit} of ${past.length}` : "—"} hint="Last 6 finished weeks" tone={past.length ? (hit >= past.length / 2 ? "good" : "warn") : undefined} />
+        <Stat help="budgets.hit" label="Sales target hit" value={past.length ? `${hit} of ${past.length}` : "—"} hint="Last 6 finished weeks" tone={past.length ? (hit >= past.length / 2 ? "good" : "warn") : undefined} />
       </div>
 
-      <Section title="Weekly targets" description="Under each target: actual so far, or the forecast for weeks ahead.">
+      <Section help="budgets.targets" title="Weekly targets" description="Under each target: actual so far, or the forecast for weeks ahead.">
         <Table>
           <thead>
             <tr>

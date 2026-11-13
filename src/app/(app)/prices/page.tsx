@@ -65,6 +65,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <PageHeader
+        help="prices.page"
         title="Prices"
         description={imports[0] ? `Last import: ${imports[0].supplier.name}, ${relativeTime(imports[0].createdAt)}` : "Every price change is kept, so plate costs can be compared over time."}
         actions={
@@ -142,11 +143,11 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
         </HelpZone>
       )}
 
-      <div className="mt-6 flex flex-wrap items-center gap-2 text-sm text-muted">
+      <HelpZone id="prices.alert" className="mt-6 flex flex-wrap items-center gap-2 text-sm text-muted">
         <span>Alert managers when a price goes up by</span>
         <GridCell grid="price-alert" col="threshold" type="number" suffix="%" value={Math.round(threshold * 1000) / 10} onSave={savePriceAlertThreshold} ariaLabel="Price alert threshold, percent" className="w-20" />
         <span>or more. <Link href="/settings/notifications" className="underline decoration-border-strong underline-offset-2 hover:text-ink">Choose how you hear about it</Link>.</span>
-      </div>
+      </HelpZone>
     </>
   );
 }

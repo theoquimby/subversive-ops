@@ -209,7 +209,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Ingredients */}
-        <Card className="lg:col-span-2" data-tour="menu.lines">
+        <HelpZone id="menu.editor.lines" className="lg:col-span-2"><Card className="h-full" data-tour="menu.lines">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold">{isPrep ? "Ingredients per batch" : "Ingredients per serving"} <HelpTip id="menu.editor.lines" /></h2>
             <span className="text-xs text-muted">{r.lines.length} line{r.lines.length === 1 ? "" : "s"}</span>
@@ -244,7 +244,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
               );
             })}
           </div>
-          <div className="border-t border-border px-4 py-3" data-tour="menu.quick-add">
+          <HelpZone id="menu.editor.quickAdd" tour="menu.quick-add" className="border-t border-border px-4 py-3">
             <div className="relative">
               <Plus className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
               <textarea
@@ -266,11 +266,11 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
             ) : quickMsg ? (
               <div className="mt-1.5 pl-1 text-xs text-muted">{quickMsg}</div>
             ) : null}
-          </div>
-        </Card>
+          </HelpZone>
+        </Card></HelpZone>
 
         {/* Details */}
-        <Card className="space-y-4 self-start p-4" data-tour="menu.details">
+        <HelpZone id="menu.editor.details" className="self-start"><Card className="space-y-4 p-4" data-tour="menu.details">
           <h2 className="text-sm font-semibold">Details</h2>
           <Field label="Name"><Input value={r.name} onChange={(e) => update({ name: e.target.value })} placeholder="e.g. Subversive burger" /></Field>
           <div className="grid grid-cols-2 gap-3">
@@ -308,19 +308,19 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
               Archive recipe
             </button>
           )}
-        </Card>
+        </Card></HelpZone>
       </div>
 
       {/* Save bar */}
       {(dirty || error) && (
         <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-8">
+          <HelpZone id="menu.editor.save" className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-8">
             <span className={cx("text-sm", error ? "text-bad" : "text-muted")}>{error ?? "Unsaved changes"}</span>
             <div className="flex gap-2">
               <Button type="button" variant="ghost" onClick={() => { setR(initial); setError(null); }} disabled={pending}>Discard</Button>
               <Button type="button" variant="primary" onClick={save} disabled={pending || !r.name.trim()}>{pending ? "Saving…" : "Save"}</Button>
             </div>
-          </div>
+          </HelpZone>
         </div>
       )}
     </div>

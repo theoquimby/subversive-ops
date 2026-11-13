@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpZone } from "@/components/help";
 import { Button, Card, cx, Input, LinkButton } from "@/components/ui";
 import type { AskResponse, ToolResult } from "@/server/services/ask";
 import { ArrowRight, Send } from "lucide-react";
@@ -39,22 +40,22 @@ export function AskChat({ suggestions, claude }: { suggestions: string[]; claude
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-6 flex flex-wrap gap-2" data-tour="ask.suggestions">
+      <HelpZone id="ask.suggestions" tour="ask.suggestions" className="mb-6 flex flex-wrap gap-2">
         {suggestions.map((s, i) => (
           <button key={s} type="button" disabled={pending} onClick={() => run(s, () => runSuggested(i))} className="min-h-10 rounded-full border border-border-strong bg-surface px-3.5 py-1.5 text-left text-sm text-ink-2 hover:bg-surface-2 disabled:opacity-50 sm:min-h-9">
             {s}
           </button>
         ))}
-      </div>
+      </HelpZone>
 
       <div className="space-y-6">
         {turns.map((t) => (
-          <div key={t.id}>
+          <HelpZone key={t.id} id="ask.answer">
             <div className="mb-2 flex justify-end">
               <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2 text-sm text-primary-ink">{t.question}</div>
             </div>
             {t.res ? <Answer res={t.res} /> : <p className="text-sm text-muted">Looking it up…</p>}
-          </div>
+          </HelpZone>
         ))}
         <div ref={end} />
       </div>
@@ -64,8 +65,10 @@ export function AskChat({ suggestions, claude }: { suggestions: string[]; claude
         className={cx("sticky bottom-[calc(var(--tabbar,0px)+0.75rem)] mt-6 flex gap-2 rounded-xl border border-border bg-surface/95 p-2 shadow-sm backdrop-blur lg:bottom-4")}
         data-tour="ask.input"
       >
+        <HelpZone id="ask.input" className="flex min-w-0 flex-1 gap-2">
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={claude ? "Ask about sales, costs, labor, orders…" : "Ask, or tap a suggestion above"} aria-label="Your question" maxLength={500} enterKeyHint="send" className="border-0 focus:border-0" />
         <Button variant="primary" disabled={pending || q.trim().length < 3} aria-label="Ask"><Send className="size-4" /></Button>
+        </HelpZone>
       </form>
     </div>
   );

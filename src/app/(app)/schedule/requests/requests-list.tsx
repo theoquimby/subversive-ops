@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpZone } from "@/components/help";
 import { Badge, Button, Card, cx, Input, Select } from "@/components/ui";
 import { coverageShort, DayCoverage } from "@/domain/schedule";
 import { dayDate, shortDate } from "@/lib/format";
@@ -65,7 +66,7 @@ export function RequestsList({ timeOff, swaps, recentOff, recentSwaps }: { timeO
     <div className="flex flex-col gap-10">
       {msg && <div role="status" className={cx("-mb-4 rounded-xl px-4 py-3 text-sm", msg.bad ? "bg-bad-bg text-bad" : "bg-good-bg text-good")}>{msg.text}</div>}
 
-      <section>
+      <HelpZone id="schedule.requests.timeOff"><section>
         <h2 className="mb-3 text-[0.95rem] font-semibold">Time off <span className="num font-normal text-muted">{timeOff.length || ""}</span></h2>
         {timeOff.length === 0 ? <Card className="px-4 py-5 text-sm text-muted">No time-off requests waiting.</Card> : (
           <Card className="divide-y divide-border">
@@ -147,9 +148,9 @@ export function RequestsList({ timeOff, swaps, recentOff, recentSwaps }: { timeO
             })}
           </Card>
         )}
-      </section>
+      </section></HelpZone>
 
-      <section>
+      <HelpZone id="schedule.requests.swaps"><section>
         <h2 className="mb-3 text-[0.95rem] font-semibold">Shift swaps <span className="num font-normal text-muted">{swaps.length || ""}</span></h2>
         {swaps.length === 0 ? <Card className="px-4 py-5 text-sm text-muted">No swap requests waiting.</Card> : (
           <Card className="divide-y divide-border">
@@ -176,10 +177,10 @@ export function RequestsList({ timeOff, swaps, recentOff, recentSwaps }: { timeO
             })}
           </Card>
         )}
-      </section>
+      </section></HelpZone>
 
       {(recentOff.length > 0 || recentSwaps.length > 0) && (
-        <section>
+        <HelpZone id="schedule.requests.recent"><section>
           <h2 className="mb-3 text-[0.95rem] font-semibold">Recently handled</h2>
           <Card className="divide-y divide-border">
             {recentOff.map((r) => (
@@ -195,7 +196,7 @@ export function RequestsList({ timeOff, swaps, recentOff, recentSwaps }: { timeO
               </div>
             ))}
           </Card>
-        </section>
+        </section></HelpZone>
       )}
     </div>
   );

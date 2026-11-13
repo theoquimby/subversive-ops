@@ -13,7 +13,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { addConversion, removeConversion, setPackSize, setPreferredProduct, unlinkProduct } from "../actions";
 import { IngredientForm } from "./ingredient-form";
-import { HelpTip } from "@/components/help";
+import { HelpTip, HelpZone } from "@/components/help";
 import { AllergenChips } from "./allergen-chips";
 
 export default async function IngredientPage({ params }: { params: Promise<{ id: string }> }) {
@@ -91,10 +91,10 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
 
   return (
     <>
-      <PageHeader title={ing.name} description={`${ing.category} · ${ing.storageArea}`} back={{ href: "/ingredients", label: "Ingredients" }} />
+      <PageHeader help="ingredients.detail" title={ing.name} description={`${ing.category} · ${ing.storageArea}`} back={{ href: "/ingredients", label: "Ingredients" }} />
       <div className="grid gap-6 lg:grid-cols-5">
         <div className="min-w-0 space-y-6 lg:col-span-3">
-          <Section title={<span className="inline-flex items-center gap-1.5">Bought as <HelpTip id="ingredients.boughtAs" /></span>} description="Supplier products linked to this ingredient. The starred one sets the cost." className="mb-0">
+          <Section help="ingredients.boughtAs" title={<span className="inline-flex items-center gap-1.5">Bought as <HelpTip id="ingredients.boughtAs" /></span>} description="Supplier products linked to this ingredient. The starred one sets the cost." className="mb-0">
             {ing.products.length === 0 ? (
               <Card className="p-5 text-sm text-muted">Not linked to any supplier product yet. Link one from <Link href="/prices?filter=unlinked" className="text-ink underline">Prices</Link>.</Card>
             ) : (
@@ -142,11 +142,11 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
             )}
           </Section>
 
-          <Section title={`Cost per ${disp.unit}`} description="Last six months" className="mb-0">
+          <Section help="ingredients.history" title={`Cost per ${disp.unit}`} description="Last six months" className="mb-0">
             <Card className="p-4"><LineChart points={history} ariaLabel={`${ing.name} cost per ${disp.unit}`} /></Card>
           </Section>
 
-          <Section title={<span className="inline-flex items-center gap-1.5">Recent invoices and orders <HelpTip id="ingredients.drilldown" /></span>} description="What was actually billed and ordered — tap one to open it." className="mb-0">
+          <Section help="ingredients.drilldown" title={<span className="inline-flex items-center gap-1.5">Recent invoices and orders <HelpTip id="ingredients.drilldown" /></span>} description="What was actually billed and ordered — tap one to open it." className="mb-0">
             <div className="grid gap-4 xl:grid-cols-2">
               <Card className="divide-y divide-border" data-tour="ingredients.invoiceLines">
                 <div className="px-4 py-2.5 text-[0.75rem] font-medium text-muted">Invoice lines</div>
@@ -181,7 +181,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
             </div>
           </Section>
 
-          <Section title={<span className="inline-flex items-center gap-1.5">Custom units <HelpTip id="ingredients.customUnits" /></span>} description={`For recipes and counts — e.g. 1 slice = 21 g. Base unit is ${base}.`} className="mb-0">
+          <Section help="ingredients.customUnits" title={<span className="inline-flex items-center gap-1.5">Custom units <HelpTip id="ingredients.customUnits" /></span>} description={`For recipes and counts — e.g. 1 slice = 21 g. Base unit is ${base}.`} className="mb-0">
             <Card className="divide-y divide-border">
               {ing.conversions.map((c) => (
                 <form key={c.id} action={removeConversion.bind(null, ing.id, c.id)} className="flex items-center justify-between px-4 py-2.5 text-sm">
@@ -206,17 +206,17 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
         </div>
 
         <div className="min-w-0 space-y-6 lg:col-span-2">
-          <Card className="p-5"><IngredientForm v={form} units={units} categories={categories.map((c) => c.category)} areas={areas.map((a) => a.storageArea)} /></Card>
-          <Card className="p-5" data-tour="ingredients.allergens">
+          <HelpZone id="ingredients.settings"><Card className="p-5"><IngredientForm v={form} units={units} categories={categories.map((c) => c.category)} areas={areas.map((a) => a.storageArea)} /></Card></HelpZone>
+          <HelpZone id="ingredients.allergens"><Card className="p-5" data-tour="ingredients.allergens">
             <h2 className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold">Allergens <HelpTip id="ingredients.allergens" /></h2>
             <AllergenChips ingredientId={ing.id} initial={ing.allergens} />
-          </Card>
-          <Card className="p-5">
+          </Card></HelpZone>
+          <HelpZone id="ingredients.usedIn"><Card className="p-5">
             <h2 className="text-sm font-semibold">Used in</h2>
             {recipes.length === 0 ? <p className="mt-2 text-sm text-muted">No recipes yet.</p> : (
               <ul className="mt-2 space-y-1.5 text-sm">{recipes.map((r) => <li key={r.id}><Link href={`/menu/${r.id}`} className="hover:underline">{r.name}</Link></li>)}</ul>
             )}
-          </Card>
+          </Card></HelpZone>
         </div>
       </div>
     </>

@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { Badge, Card, LinkButton } from "@/components/ui";
 import { canFollowHelpLink, canSee, getArea, getHelp, helpFor, relatedOf } from "@/help/content";
 import { HelpMarkdown } from "@/help/markdown";
@@ -35,7 +36,7 @@ export default async function HelpArticlePage({ params }: { params: Promise<{ id
           <Link href={`/help#area-${entry.area}`} className="hover:text-ink">{area?.title}</Link>
         </nav>
 
-        <header className="mb-8">
+        <HelpZone id="help.article" className="mb-8"><header>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-[1.9rem] leading-tight font-semibold tracking-tight text-balance text-ink">{entry.title}</h1>
             {entry.draft && <Badge>Coming soon</Badge>}
@@ -47,12 +48,12 @@ export default async function HelpArticlePage({ params }: { params: Promise<{ id
               {openable && <LinkButton href={entry.route!}>Open this page</LinkButton>}
             </div>
           )}
-        </header>
+        </header></HelpZone>
 
         {entry.article && (
-          <div className="max-w-[38rem] border-t border-border pt-8">
+          <HelpZone id="help.article.more" className="max-w-[38rem] border-t border-border pt-8">
             <HelpMarkdown source={entry.article} canLink={(href) => canFollowHelpLink(href, me.role)} />
-          </div>
+          </HelpZone>
         )}
 
         {entry.draft && (
@@ -60,7 +61,7 @@ export default async function HelpArticlePage({ params }: { params: Promise<{ id
         )}
 
         {related.length > 0 && (
-          <section className="mt-12 max-w-[38rem]">
+          <HelpZone id="help.related" className="mt-12 max-w-[38rem]"><section>
             <h2 className="mb-3 text-sm font-semibold text-ink">Related</h2>
             <div className="grid gap-2 sm:grid-cols-2">
               {related.map((r) => (
@@ -72,11 +73,11 @@ export default async function HelpArticlePage({ params }: { params: Promise<{ id
                 </Link>
               ))}
             </div>
-          </section>
+          </section></HelpZone>
         )}
       </article>
 
-      <aside className="hidden lg:block">
+      <HelpZone id="help.areaNav" className="hidden lg:block"><aside className="h-full">
         <div className="sticky top-12">
           <div className="mb-2 text-xs font-medium text-muted">{area?.title}</div>
           <ul className="space-y-0.5 border-l border-border">
@@ -93,7 +94,7 @@ export default async function HelpArticlePage({ params }: { params: Promise<{ id
             ))}
           </ul>
         </div>
-      </aside>
+      </aside></HelpZone>
     </div>
   );
 }

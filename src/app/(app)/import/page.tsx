@@ -9,6 +9,7 @@ export default async function ImportPage() {
   return (
     <>
       <PageHeader
+        help="import.page"
         title="Import your sheets"
         description="Bring in your existing ingredient list, prices and recipes in one go. Nothing is saved until you've reviewed it, and re-importing the same sheet just updates what changed."
       />

@@ -52,10 +52,10 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
   if (points.length < 2) {
     return (
       <>
-        <PageHeader title="Margin gap" description="What your recipes say you used vs what actually left the shelves." />
-        <EmptyState title="Needs two counts" action={<LinkButton href="/count" variant="primary">Start a count</LinkButton>}>
+        <PageHeader help="variance.page" title="Margin gap" description="What your recipes say you used vs what actually left the shelves." />
+        <HelpZone id="variance.empty"><EmptyState title="Needs two counts" action={<LinkButton href="/count" variant="primary">Start a count</LinkButton>}>
           Count once now and again in a week. The gap between the two — after sales and logged waste — shows where food cost is leaking.
-        </EmptyState>
+        </EmptyState></HelpZone>
       </>
     );
   }
@@ -85,21 +85,22 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader
+        help="variance.page"
         title="Margin gap"
         description={`${dayDate(r.from)} → ${dayDate(r.to)} · ${r.days} days between counts`}
       />
-      <div className="-mt-4 mb-8" data-tour="variance.period">
+      <HelpZone id="variance.period" tour="variance.period" className="-mt-4 mb-8">
         <PeriodPicker points={points.map((p) => ({ id: p.id, label: `${shortDate(p.date)} · ${p.area}`, hint: `${dayDate(p.date)} · ${p.lines} items` }))} start={start.id} end={end.id} group={group} />
-      </div>
+      </HelpZone>
 
-      <HelpZone id="variance.page" tour="variance.stats" className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <HelpZone id="variance.stats" tour="variance.stats" className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={<span className="inline-flex items-center gap-1.5">Cost if recipes were followed <HelpTip id="variance.theoretical" /></span>} value={pct(theoPct)} hint={`${money(t.theoreticalCost, { whole: true })} on ${money(t.sales, { whole: true })} ${salesWord}`} />
         <Stat label={<span className="inline-flex items-center gap-1.5">Actual cost <HelpTip id="variance.actual" /></span>} value={pct(actPct)} hint={`${money(t.actualCost, { whole: true })} used`} tone={gapTone(actPct, theoPct) === "neutral" ? undefined : gapTone(actPct, theoPct)} />
         <Stat label="Logged waste" value={money(t.wasteCost, { whole: true })} hint="Accounted for" />
         <Stat label={<span className="inline-flex items-center gap-1.5">Unexplained <HelpTip id="variance.unexplained" /></span>} value={money(t.unexplainedCost, { whole: true })} hint={t.sales > 0 ? `${pct(t.unexplainedCost / t.sales)} of ${salesWord}` : undefined} tone={t.unexplainedCost > 0 ? "bad" : "good"} />
       </HelpZone>
       {group === "all" && (
-        <div className="-mt-6 mb-10 flex flex-wrap gap-x-6 gap-y-1 text-sm text-ink-2">
+        <HelpZone id="variance.split" className="-mt-6 mb-10 flex flex-wrap gap-x-6 gap-y-1 text-sm text-ink-2">
           {(["food", "beverage"] as const).map((k) => {
             const x = r.groups[k];
             return (
@@ -110,7 +111,7 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
               </Link>
             );
           })}
-        </div>
+        </HelpZone>
       )}
 
       <HelpZone id="variance.byIngredient" tour="variance.by-ingredient">
@@ -158,7 +159,7 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
           </tbody>
         </Table>
         {skipped.length > 0 && (
-          <details className="mt-3 text-sm">
+          <HelpZone id="variance.skipped" className="mt-3"><details className="text-sm">
             <summary className="cursor-pointer text-muted hover:text-ink">{skipped.length} ingredient{skipped.length === 1 ? "" : "s"} not in the totals — count them at both ends to include them</summary>
             <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
               {skipped.map((row) => (
@@ -168,12 +169,12 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
                 </li>
               ))}
             </ul>
-          </details>
+          </details></HelpZone>
         )}
       </Section>
       </HelpZone>
 
-      <Card className="p-5 text-sm text-ink-2">
+      <HelpZone id="variance.reading"><Card className="p-5 text-sm text-ink-2">
         <div className="font-medium text-ink">Reading this</div>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           <li><b>Over</b> usually means heavy portions (or pours), waste nobody logged, or a Square item not linked to its recipe.</li>
@@ -181,7 +182,7 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
           <li>The &ldquo;about … per item&rdquo; figure spreads the gap over everything that uses the ingredient, in proportion to its recipe.</li>
           <li>Each ingredient sits under Food or Beverage by which sales use most of it. Both columns use prices as of the closing count, so price changes don&apos;t show up as gaps.</li>
         </ul>
-      </Card>
+      </Card></HelpZone>
     </>
   );
 }

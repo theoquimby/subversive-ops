@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { Badge, Card, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import { toISODate } from "@/domain/dates";
 import { creditItems } from "@/domain/invoiceMatch";
@@ -37,6 +38,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader
+        help="invoices.page"
         title="Invoices"
         description="Snap a supplier invoice. It's checked against what you ordered and received, and price changes flow into costing."
         actions={
@@ -48,19 +50,20 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
       />
 
       {all.length > 0 && (
-        <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat label="To approve" value={open.length} hint={`${all.length - open.length} approved`} />
-          <Stat label="With issues" value={issues.length} tone={issues.length ? "warn" : undefined} hint="price, quantity or unread lines" />
-          <Stat label="Credit to ask for" value={money(owed)} tone={owed > 0 ? "bad" : undefined} hint="short and overcharged lines" />
-          <Card className="p-5">
+        <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4 [&>[data-help-zone]>*]:h-full">
+          <Stat help="invoices.toApprove" label="To approve" value={open.length} hint={`${all.length - open.length} approved`} />
+          <Stat help="invoices.issues" label="With issues" value={issues.length} tone={issues.length ? "warn" : undefined} hint="price, quantity or unread lines" />
+          <Stat help="invoices.owed" label="Credit to ask for" value={money(owed)} tone={owed > 0 ? "bad" : undefined} hint="short and overcharged lines" />
+          <HelpZone id="invoices.tolerance"><Card className="p-5">
             <div className="text-[0.8rem] font-medium text-muted">Flag differences over</div>
             <ToleranceCells price={tolerance.price} qty={tolerance.qty} />
             <AutoApproveCell on={autoApprove} />
-          </Card>
+          </Card></HelpZone>
         </div>
       )}
 
       <Section
+        help="invoices.list"
         title={filtered ? "Matching invoices" : "All invoices"}
         actions={all.length > 0 ? <InvoiceFilters status={status ?? ""} supplier={sp.supplier ?? ""} suppliers={suppliers} statuses={[{ value: "OPEN", label: "Not approved" }, ...STATUSES.map((s) => ({ value: s, label: STATUS_META[s].label }))]} /> : undefined}
       >

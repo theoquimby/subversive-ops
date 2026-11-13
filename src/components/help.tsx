@@ -135,7 +135,7 @@ function HelpRuntime() {
     <>
       <TourHost />
       {on && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--tabbar)+0.75rem)] z-[65] flex flex-col items-center gap-2 px-3 lg:bottom-4">
+        <div className="pointer-events-none fixed inset-x-0 top-[calc(3.25rem+env(safe-area-inset-top)+0.5rem)] z-[65] flex flex-col-reverse items-center gap-2 px-3 lg:top-4">
           {aboutOpen && pageHelp.length > 0 && (
             <div className="pointer-events-auto max-h-[50dvh] w-full max-w-md origin-bottom animate-scale-in overflow-y-auto rounded-xl border border-border bg-surface p-3.5 shadow-xl">
               {pageHelp.slice(0, 4).map((e, i) => (
@@ -329,6 +329,8 @@ export function HelpZone({ id, tour, className, children }: { id: string; tour?:
       onFocus={helpable ? (e) => { if (e.target === e.currentTarget) setMode({ zone: key }); } : undefined}
       onClickCapture={helpable ? (e) => {
         if (refs.floating.current?.contains(e.target as Node)) return; // "Learn more" inside the popover
+        // A tap inside a nested zone belongs to that inner zone (its own capture handler runs next).
+        if ((e.target as Element).closest?.("[data-help-zone]") !== e.currentTarget) return;
         e.preventDefault();
         e.stopPropagation();
         setMode({ zone: key });

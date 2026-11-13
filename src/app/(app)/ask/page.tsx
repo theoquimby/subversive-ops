@@ -1,4 +1,4 @@
-import { HelpTip, HelpZone } from "@/components/help";
+import { HelpTip } from "@/components/help";
 import { PageHeader } from "@/components/ui";
 import { SUGGESTED_QUESTIONS } from "@/domain/ask";
 import { requireUser } from "@/server/auth";
@@ -13,6 +13,7 @@ export default async function AskPage() {
   return (
     <>
       <PageHeader
+        help="ask.page"
         title={<span className="inline-flex items-center gap-2">Ask <HelpTip id="ask.page" /></span>}
         description={
           claude
@@ -20,9 +21,9 @@ export default async function AskPage() {
             : "Tap a question to get the answer from your live numbers. Free-form questions work best once the Claude API key is added; until then, simple ones are matched to the closest report."
         }
       />
-      <HelpZone id="ask.page" tour="ask">
+      <div data-tour="ask">
         <AskChat suggestions={SUGGESTED_QUESTIONS.map((s) => s.label)} claude={claude} />
-      </HelpZone>
+      </div>
     </>
   );
 }

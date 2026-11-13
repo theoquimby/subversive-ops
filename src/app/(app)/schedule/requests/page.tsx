@@ -116,7 +116,7 @@ export default async function RequestsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader title="Requests" description="Time off and shift swaps from the team, with who else is off and how each day is covered." back={{ href: "/schedule", label: "Schedule" }} />
+      <PageHeader help="schedule.requests" title="Requests" description="Time off and shift swaps from the team, with who else is off and how each day is covered." back={{ href: "/schedule", label: "Schedule" }} />
       <RequestsList
         timeOff={timeOff}
         swaps={await Promise.all(swaps.map((w) => swapRow(w, true)))}

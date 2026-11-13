@@ -63,19 +63,20 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
   return (
     <>
       <PageHeader
+        help="pnl.page"
         title="P&L"
         description="Live prime cost: Square sales against theoretical cost of goods (items sold × each day's recipe cost) and labor from timecards, including people still on the clock. Before rent and other overheads."
       />
-      <div className="mb-6">
+      <HelpZone id="pnl.period" className="mb-6">
         <PeriodSwitch period={period} from={from} to={addDays(toExclusive, -1)} />
-      </div>
+      </HelpZone>
 
       {kpis.todayExcluded && (
         <p className="-mt-3 mb-4 text-sm text-muted">
           Totals cover finished days{nothingCounted ? " — none yet this period" : ` (${shortDate(kpis.counted[0])} – ${shortDate(kpis.counted[kpis.counted.length - 1])})`}. Today is still in progress. <Link href="/pnl?period=today" className="underline">See today so far</Link>
         </p>
       )}
-      <HelpZone id="pnl.page" tour="pnl.stats" className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <HelpZone id="pnl.kpis" tour="pnl.stats" className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           label={KPI_LABELS.sales}
           value={salesPending ? muted("Sales sync pending") : nothingCounted ? "—" : money(t.sales, { whole: true })}
@@ -130,7 +131,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
           }
         />
       </HelpZone>
-      <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <HelpZone id="pnl.productivity" className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           label="Profit before overhead"
           value={salesPending ? "—" : money(t.profit, { whole: true })}
@@ -140,7 +141,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
         <Stat label="Labor hours" value={qty(t.laborHours, 1)} hint={report.openCards ? `${report.openCards} on the clock now` : `incl. ${Math.round(report.burdenPct * 100)}% burden in cost`} />
         <Stat label={<span className="inline-flex items-center gap-1.5">Sales per labor hour <HelpTip id="pnl.splh" /></span>} value={salesPending ? "—" : money(t.salesPerLaborHour, { whole: true })} />
         <Stat label="Orders per labor hour" value={salesPending || t.ordersPerLaborHour == null ? "—" : qty(t.ordersPerLaborHour, 1)} hint={report.hasHourly ? `${qty(t.orders ?? 0, 0)} orders` : "needs Square order sync"} />
-      </div>
+      </HelpZone>
       <div className="mb-10 space-y-1 text-sm text-muted">
         {!budget && <p>No budget set for {multiDay ? "these weeks" : "this week"}. Targets show here once one is. <Link href="/budgets" className="underline">Budgets</Link></p>}
         {report.uncosted.length > 0 && <p className="text-warn">Cost of goods is a floor: {report.uncosted.slice(0, 4).join(", ")}{report.uncosted.length > 4 ? ` and ${report.uncosted.length - 4} more` : ""} {report.uncosted.length === 1 ? "is" : "are"} missing prices.</p>}

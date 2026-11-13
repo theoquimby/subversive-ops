@@ -7,7 +7,7 @@ import { FileSpreadsheet, Link2, ClipboardPaste } from "lucide-react";
 import { useRef, useState, useTransition } from "react";
 import { FileDrop, type FileDropHandle } from "@/components/file-drop";
 import { previewPlan, readSource, runImport, type DetectedTable } from "./actions";
-import { HelpTip } from "@/components/help";
+import { HelpTip, HelpZone } from "@/components/help";
 
 type Source = "file" | "paste" | "link";
 
@@ -47,7 +47,7 @@ export function ImportFlow() {
 
   if (result) {
     return (
-      <Card className="max-w-2xl p-6">
+      <HelpZone id="import.done" className="max-w-2xl"><Card className="p-6">
         <div className="text-base font-semibold">Imported</div>
         <ul className="num mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-3">
           <li><b>{result.ingredientsCreated}</b> new ingredients</li>
@@ -62,14 +62,14 @@ export function ImportFlow() {
           <LinkButton href="/ingredients">Review ingredients</LinkButton>
           <Button onClick={() => { setResult(null); setTables([]); setPlan(null); }}>Import more</Button>
         </div>
-      </Card>
+      </Card></HelpZone>
     );
   }
 
   return (
     <div className="space-y-6 pb-24">
       {/* 1. Source */}
-      <Card data-tour="import.sources">
+      <HelpZone id="import.sources"><Card data-tour="import.sources">
         <div className="flex border-b border-border">
           {([
             ["file", "Upload a file", FileSpreadsheet],
@@ -106,14 +106,14 @@ export function ImportFlow() {
             {error && <span className="text-sm text-bad">{error}</span>}
           </div>
         </div>
-      </Card>
+      </Card></HelpZone>
 
       {/* 2. Tables */}
       {tables.map((t, i) => {
         const fields = fieldsFor(t.kind);
         const missing = REQUIRED[t.kind].filter((f) => !t.mapping[f as keyof Mapping]);
         return (
-          <Card key={`${t.table.name}-${i}`} className={cx(t.kind === "skip" && "opacity-60")}>
+          <HelpZone key={`${t.table.name}-${i}`} id="import.tabs"><Card className={cx(t.kind === "skip" && "opacity-60")}>
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
               <div>
                 <div className="font-medium">{t.table.name}</div>
@@ -148,13 +148,13 @@ export function ImportFlow() {
                 </div>
               </div>
             )}
-          </Card>
+          </Card></HelpZone>
         );
       })}
 
       {/* 3. Review */}
       {plan && (
-        <Card className="p-5">
+        <HelpZone id="import.review"><Card className="p-5">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold">What will happen <HelpTip id="import.review" /></h2>
           <div className="num mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Mini label="Ingredients" value={plan.ingredients.length} hint={`${plan.ingredients.filter((i) => !i.existingId).length} new`} />
@@ -173,19 +173,19 @@ export function ImportFlow() {
               <p className="mt-2 text-xs text-muted">None of these block the import — they can all be fixed afterwards in the grid.</p>
             </div>
           )}
-        </Card>
+        </Card></HelpZone>
       )}
 
       {tables.length > 0 && (
         <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
-          <div className="mx-auto flex max-w-6xl items-center justify-end gap-2 px-4 py-3 sm:px-8">
+          <HelpZone id="import.actions" className="mx-auto flex max-w-6xl items-center justify-end gap-2 px-4 py-3 sm:px-8">
             <Button variant="ghost" onClick={() => { setTables([]); setPlan(null); }}>Start over</Button>
             {!plan ? (
               <Button variant="primary" disabled={!ready || pending} onClick={() => start(async () => setPlan(await previewPlan(specs())))}>{pending ? "Checking…" : "Review import"}</Button>
             ) : (
               <Button variant="primary" disabled={pending} onClick={() => start(async () => setResult(await runImport(specs())))}>{pending ? "Importing…" : "Import everything"}</Button>
             )}
-          </div>
+          </HelpZone>
         </div>
       )}
     </div>

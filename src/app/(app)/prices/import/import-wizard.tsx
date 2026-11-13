@@ -7,7 +7,7 @@ import { money, signedPct } from "@/lib/format";
 import type { ImportPreview } from "@/server/services/priceImport";
 import { useRef, useState, useTransition } from "react";
 import { commitPriceSheet, previewPriceSheet } from "../actions";
-import { HelpTip } from "@/components/help";
+import { HelpTip, HelpZone } from "@/components/help";
 
 const FIELDS: { key: keyof ColumnMapping; label: string; required: boolean }[] = [
   { key: "sku", label: "Item number", required: true },
@@ -51,7 +51,7 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
 
   if (done) {
     return (
-      <Card className="max-w-xl p-6">
+      <HelpZone id="prices.import.done" className="max-w-xl"><Card className="p-6">
         <div className="text-base font-semibold">Prices updated</div>
         <p className="mt-1 text-sm text-muted">
           {done.priceChanges} price change{done.priceChanges === 1 ? "" : "s"} and {done.newProducts} new product{done.newProducts === 1 ? "" : "s"}. Plate costs are already recalculated.
@@ -60,7 +60,7 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
           <LinkButton href="/menu" variant="primary">See menu costs</LinkButton>
           {done.newProducts > 0 && <LinkButton href="/prices?filter=unlinked">Link new products</LinkButton>}
         </div>
-      </Card>
+      </Card></HelpZone>
     );
   }
 
@@ -69,30 +69,30 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
     <div className="space-y-6">
       <Card className="p-5">
         <div className="grid gap-4 sm:grid-cols-[1fr_1.4fr_12rem_auto] sm:items-end">
-          <div data-tour="prices.import.supplier">
+          <HelpZone id="prices.import.supplier" tour="prices.import.supplier">
           <Field label="Supplier">
             <Select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setPreview(null); }}>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
           </Field>
-          </div>
-          <div data-tour="prices.import.file">
+          </HelpZone>
+          <HelpZone id="prices.import.file" tour="prices.import.file">
           <Field label="File (.xlsx or .csv)">
             <FileDrop ref={fileRef} accept=".csv,.xlsx,.xls" hint="Excel or CSV, as downloaded" onFile={() => setPreview(null)} />
           </Field>
-          </div>
-          <div data-tour="prices.import.effective">
+          </HelpZone>
+          <HelpZone id="prices.import.effective" tour="prices.import.effective">
           <Field label={<span className="inline-flex items-center gap-1.5">Prices effective <HelpTip id="prices.import.effective" /></span>}>
             <DatePicker value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} aria-label="Prices effective" />
           </Field>
-          </div>
+          </HelpZone>
           <Button variant="primary" onClick={() => runPreview()} disabled={pending} data-tour="prices.import.preview">{pending && !preview ? "Reading…" : "Preview"}</Button>
         </div>
         {error && <p className="mt-3 text-sm text-bad">{error}</p>}
       </Card>
 
       {preview && (
-        <Card className="p-5" data-tour="prices.import.columns">
+        <HelpZone id="prices.import.columns"><Card className="p-5" data-tour="prices.import.columns">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold">Columns <HelpTip id="prices.import.columns" /></h2>
             <span className="text-xs text-muted">Remembered for this supplier next time</span>
@@ -107,20 +107,20 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
               </Field>
             ))}
           </div>
-        </Card>
+        </Card></HelpZone>
       )}
 
       {d && (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-tour="prices.import.diff">
+          <HelpZone id="prices.import.diff" tour="prices.import.diff" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Count label="Price changes" n={d.changed.length} tone={d.changed.length ? "warn" : undefined} />
             <Count label="New products" n={d.newProducts.length} />
             <Count label="Unchanged" n={d.unchanged.length} />
             <Count label="Rows skipped" n={preview!.errors.length} tone={preview!.errors.length ? "bad" : undefined} />
-          </div>
+          </HelpZone>
 
           {d.changed.length > 0 && (
-            <div>
+            <HelpZone id="prices.import.changes">
               <h2 className="mb-2 text-sm font-semibold">Price changes</h2>
               <Table>
                 <thead><tr><Th>Item</Th><Th align="right">Was</Th><Th align="right">Now</Th><Th align="right">Change</Th></tr></thead>
@@ -135,7 +135,7 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
                   ))}
                 </tbody>
               </Table>
-            </div>
+            </HelpZone>
           )}
 
           {d.newProducts.length > 0 && (
@@ -157,8 +157,10 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
           )}
 
           <div className={cx("sticky bottom-0 -mx-4 flex items-center justify-end gap-3 border-t border-border bg-bg/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8")}>
+            <HelpZone id="prices.import.save" className="flex flex-1 items-center justify-end gap-3">
             <span className="text-sm text-muted">{preview!.rows.length} rows ready</span>
             <Button variant="primary" onClick={commit} disabled={pending || preview!.rows.length === 0}>{pending ? "Saving…" : "Save prices"}</Button>
+            </HelpZone>
           </div>
         </>
       )}

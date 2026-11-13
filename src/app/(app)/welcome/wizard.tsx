@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpZone } from "@/components/help";
 import { Badge, Button, Card, cx, Field, Input, LinkButton, Select } from "@/components/ui";
 import { useTour } from "@/components/tour";
 import { Check, ClipboardList, FileSpreadsheet, Plug, Receipt, Scale, ShoppingCart, Smartphone } from "lucide-react";
@@ -102,7 +103,7 @@ export function Wizard(props: Props) {
       <style>{`@keyframes wz-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}`}</style>
 
       {/* Progress */}
-      <div className="mb-8">
+      <HelpZone id="welcome.progress" className="mb-8">
         <div className="mb-3 flex items-baseline justify-between gap-4">
           <div className="text-sm text-muted">
             <span className="font-medium text-ink">Setup</span> · Step <span className="num">{index + 1}</span> of <span className="num">{STEPS.length}</span>
@@ -129,9 +130,9 @@ export function Wizard(props: Props) {
             </li>
           ))}
         </ol>
-      </div>
+      </HelpZone>
 
-      <div key={step} className="motion-safe:animate-[wz-in_260ms_cubic-bezier(.2,.8,.2,1)]">
+      <HelpZone key={step} id={`welcome.${step}`} className="motion-safe:animate-[wz-in_260ms_cubic-bezier(.2,.8,.2,1)]">
         {step === "welcome" && <WelcomeStep me={props.me} />}
         {step === "basics" && <BasicsStep profile={props.profile} hours={props.hours} targetPct={props.targetPct} onChange={(v) => (basicsRef.current = v)} />}
         {step === "suppliers" && <SuppliersStep suppliers={props.suppliers} run={run} pending={pending} />}
@@ -140,12 +141,12 @@ export function Wizard(props: Props) {
         {step === "team" && <TeamStep users={props.users} run={run} pending={pending} />}
         {step === "phone" && <PhoneStep counts={props.counts} />}
         {step === "done" && <DoneStep status={status} onVisit={(id) => go(id, "visit")} />}
-      </div>
+      </HelpZone>
 
       {error && <p className="mt-4 text-sm text-bad" role="alert">{error}</p>}
 
       {/* Footer */}
-      <div className="mt-8 flex flex-wrap-reverse items-center justify-between gap-3">
+      <HelpZone id="welcome.footer" className="mt-8 flex flex-wrap-reverse items-center justify-between gap-3">
         <div>{prev && <Button variant="ghost" onClick={() => go(prev, "visit")} disabled={pending}>Back</Button>}</div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {step === "done" ? (
@@ -162,7 +163,7 @@ export function Wizard(props: Props) {
             </>
           )}
         </div>
-      </div>
+      </HelpZone>
     </div>
   );
 }

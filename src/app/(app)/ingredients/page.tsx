@@ -42,11 +42,12 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
   return (
     <>
       <PageHeader
+        help="ingredients.page"
         title="Ingredients"
         description="Click any cell to edit. Enter moves down, Tab moves across, and you can paste a column from a spreadsheet."
         actions={<LinkButton href="/ingredients/new" variant="primary">New ingredient</LinkButton>}
       />
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <HelpZone id="ingredients.search" className="mb-4 flex flex-wrap items-center gap-3">
         <form className="w-full max-w-xs" data-tour="ingredients.search">
           {showArchived && <input type="hidden" name="show" value="archived" />}
           <Input name="q" defaultValue={q} placeholder={showArchived ? "Search archived" : "Search ingredients"} type="search" />
@@ -59,12 +60,12 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
             Archived <span className="num ml-1">{archived.length}</span>
           </Link>
         )}
-      </div>
+      </HelpZone>
       {showArchived ? (
         archivedList.length === 0 ? (
           <EmptyState title="Nothing archived">Archived ingredients show up here so you can bring them back.</EmptyState>
         ) : (
-          <Table>
+          <HelpZone id="ingredients.archived"><Table>
             <thead>
               <tr>
                 <Th>Ingredient</Th>
@@ -86,7 +87,7 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
                 </Tr>
               ))}
             </tbody>
-          </Table>
+          </Table></HelpZone>
         )
       ) : list.length === 0 ? (
         <EmptyState title="No ingredients found" />

@@ -1,3 +1,4 @@
+import { HelpZone } from "@/components/help";
 import { cx, PageHeader } from "@/components/ui";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
@@ -24,14 +25,14 @@ export default async function UpdatePricesPage({ searchParams }: { searchParams:
 
   return (
     <>
-      <PageHeader title="Update prices by hand" description="For local suppliers and anything not on a price sheet. Only changed prices are saved." back={{ href: "/prices", label: "Prices" }} />
-      <div className="mb-5 flex flex-wrap gap-2">
+      <PageHeader help="prices.manual" title="Update prices by hand" description="For local suppliers and anything not on a price sheet. Only changed prices are saved." back={{ href: "/prices", label: "Prices" }} />
+      <HelpZone id="prices.manual.suppliers" className="mb-5 flex flex-wrap gap-2">
         {suppliers.map((s) => (
           <Link key={s.id} href={`/prices/update?supplier=${s.id}`} className={cx("rounded-full px-3 py-1 text-sm", s.id === supplier ? "bg-primary text-primary-ink" : "text-ink-2 hover:bg-surface-2")}>
             {s.name}
           </Link>
         ))}
-      </div>
+      </HelpZone>
       <ManualPrices key={supplier} rows={rows} today={today} />
     </>
   );

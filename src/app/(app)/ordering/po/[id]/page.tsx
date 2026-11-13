@@ -7,7 +7,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteDraft, receiveOrder } from "../../actions";
 import { CopyButton } from "./copy-button";
-import { HelpTip } from "@/components/help";
+import { HelpTip, HelpZone } from "@/components/help";
 import { markOrderSent } from "./actions";
 import { SendToSupplier } from "./send-panel";
 import { poDelivery } from "@/server/email/outbound";
@@ -57,6 +57,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   return (
     <>
       <PageHeader
+        help="ordering.po"
         title={`${o.supplier.name}`}
         description={<>Delivery {dayDate(toISODate(o.deliveryDate))} · <Badge tone={o.status === "RECEIVED" ? "good" : o.status === "SENT" ? "warn" : "neutral"}>{o.status === "DRAFT" ? "Draft" : o.status === "SENT" ? "Sent" : "Received"}</Badge></>}
         back={{ href: "/ordering", label: "Ordering" }}
@@ -85,7 +86,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
       />
 
       {o.status !== "DRAFT" && (sent || o.sentAt) && (
-        <Card className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
+        <HelpZone id="ordering.po.sent" className="mb-4"><Card className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
           {sent?.emailId ? (
             <>
               <span>Emailed to <span className="font-medium">{sent.to}</span>{sent.cc.length > 0 && <span className="text-muted"> · cc {sent.cc.join(", ")}</span>}</span>
@@ -96,11 +97,11 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           ) : (
             <span className="text-muted">Marked as sent{sent ? ` by ${sent.byName}` : ""} · {relativeTime(sent ? new Date(sent.at) : o.sentAt)}</span>
           )}
-        </Card>
+        </Card></HelpZone>
       )}
 
       <form action={receiveOrder.bind(null, o.id)}>
-        <Table>
+        <HelpZone id="ordering.po.lines"><Table>
           <thead>
             <tr><Th className="pr-2 sm:pr-4">Item</Th><Th align="right" className="px-2 sm:px-4">Ordered</Th>{o.status !== "DRAFT" && <Th align="right" className="px-2 sm:px-4">Received</Th>}<Th align="right" className="hidden sm:table-cell">Unit price</Th><Th align="right" className="pl-2 sm:pl-4">Total</Th></tr>
           </thead>
@@ -128,8 +129,8 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
               );
             })}
           </tbody>
-        </Table>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        </Table></HelpZone>
+        <HelpZone id={o.status === "SENT" ? "ordering.po.receive" : "ordering.po.total"} className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm">
             {invoiced.invoiced ? (
               <>
@@ -149,7 +150,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
             )}
           </div>
           {o.status === "SENT" && <span className="flex items-center gap-2"><HelpTip id="ordering.po.receive" /><Button variant="primary">Check in delivery</Button></span>}
-        </div>
+        </HelpZone>
       </form>
 
       {o.status === "DRAFT" && (
