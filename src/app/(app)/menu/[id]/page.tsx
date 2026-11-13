@@ -10,7 +10,10 @@ import { businessToday } from "@/server/services/sales";
 import { notFound } from "next/navigation";
 import { RecipeEditor, type EditorCatalog, type EditorRecipe } from "./recipe-editor";
 import { recipeYieldInBase } from "@/domain/costing";
-import { HelpZone } from "@/components/help";
+import { HelpTip, HelpZone } from "@/components/help";
+import { allergensForRecipe } from "@/server/services/allergens";
+import { allergenLabel } from "@/domain/allergens";
+import Link from "next/link";
 
 export default async function RecipePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ kind?: string }> }) {
   await requireUser("MANAGER");
@@ -81,12 +84,35 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
       };
 
   const history = recipe ? costHistory(snap, recipe.id, today, 26) : [];
+  const allergens = recipe ? await allergensForRecipe(recipe.id) : null;
 
   return (
     <>
       <PageHeader title={recipe?.name ?? "New recipe"} back={{ href: `/menu?kind=${initial.kind}`, label: "Menu costs" }} />
       {/* Remount after a save so the editor starts clean from what was stored (line ids change on save). */}
       <RecipeEditor key={JSON.stringify(initial)} initial={initial} catalog={catalog} />
+      {recipe && allergens && (
+        <Section
+          title={<span className="inline-flex items-center gap-1.5">Allergens <HelpTip id="menu.allergens" /></span>}
+          description="Rolled up from the ingredients, including sub-recipes. Tag ingredients on their page."
+          actions={recipe.kind !== "PREP" ? <Link href="/menu/allergens" className="text-sm text-muted hover:text-ink">Allergen chart →</Link> : undefined}
+        >
+          <Card className="p-4" data-tour="menu.allergens">
+            {allergens.allergens.length === 0 ? (
+              <p className="text-sm text-muted">No allergens tagged on any ingredient in this recipe. That only means nothing is tagged — check each ingredient before telling a guest it&apos;s free of anything.</p>
+            ) : (
+              <ul className="flex flex-wrap gap-2">
+                {allergens.allergens.map((a) => (
+                  <li key={a} className="rounded-lg bg-surface-2 px-3 py-1.5 text-sm">
+                    <span className="font-medium">{allergenLabel(a)}</span>
+                    <span className="text-muted"> · {(allergens.sources[a] ?? []).join(", ")}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </Section>
+      )}
       {recipe && (
         <HelpZone id="menu.editor.history" tour="menu.history">
         <Section title="Plate cost over time" description="Weekly, last six months — recalculated from price history">

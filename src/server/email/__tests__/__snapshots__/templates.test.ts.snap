@@ -1,5 +1,22 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`email templates > bad-review > matches the snapshot 1`] = `
+{
+  "subject": "New 2★ review on Google",
+  "text": "Hi Max,
+
+New 2★ review on Google:
+
+- 2★ Dana R. (Google, 2026-11-12): Beer was great but we waited 40 minutes for burgers and nobody checked on us.
+
+Reply: https://ops.example.com/reviews
+
+—
+Subversive reviews
+Subversive · Catskill, NY",
+}
+`;
+
 exports[`email templates > credit-request > matches the snapshot 1`] = `
 {
   "subject": "Credit request — invoice 88123401",
@@ -123,6 +140,22 @@ Subversive · Catskill, NY",
 }
 `;
 
+exports[`email templates > staff-request > matches the snapshot 1`] = `
+{
+  "subject": "Line Hansen asked for time off",
+  "text": "Hi Max,
+
+Line Hansen asked for time off: Sat, Nov 21 – Sun, Nov 22 · 12 h · on 1 shift.
+Note: Sister's wedding
+
+Review: https://ops.example.com/schedule/requests
+
+—
+Subversive requests
+Subversive · Catskill, NY",
+}
+`;
+
 exports[`email templates > swap-approved > matches the snapshot 1`] = `
 {
   "subject": "Swap approved: Fri, Nov 20",
@@ -163,6 +196,13 @@ exports[`email templates > weekly-brief > matches the snapshot 1`] = `
   "text": "Hi Max,
 
 Week of Nov 16 – Nov 22. We're forecasting $24,850 in sales (above the $24,000 target), busiest on Friday and Saturday. Labor is scheduled at 27% of forecast vs 28% target. On the calendar: Holiday market (Sat, Nov 21).
+
+LAST WEEK (Nov 2 – Nov 8)
+- Sales: $24,180 (target $25,000)
+- Food cost: 29.4% (target 30.0%)
+- Beverage cost: 23.1% (target 22.0%)
+- Labor: 31.8% (target 29.0%)
+- Prime cost: 58.6% (target 59.0%)
 
 NEEDS YOU
 - Order from Sysco Albany: 14 items · $1,284.50 · delivers Tue, Nov 17 (https://ops.example.com/ordering)

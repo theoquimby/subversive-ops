@@ -5,6 +5,7 @@ import { businessDateTime, money, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { db, num } from "@/server/db";
 import { env } from "@/server/env";
+import { emailConfigured } from "@/server/integrations/email";
 import { currentApproval } from "@/domain/invoiceHistory";
 import { candidateOrders, loadHistory, loadInvoice, loadTolerance, pendingPriceChanges, STATUS_META } from "@/server/services/invoices";
 import { InvoiceStatus } from "@prisma/client";
@@ -23,7 +24,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const inv = await loadInvoice(id);
   if (!inv) notFound();
 
-  const [tolerance, hasImage, products, orders, siblings, priceChanges, history] = await Promise.all([
+  const [tolerance, hasImage, products, orders, siblings, priceChanges, history, creditSent] = await Promise.all([
     loadTolerance(),
     db.invoice.count({ where: { id, image: { not: null } } }),
     db.supplierProduct.findMany({ where: { supplierId: inv.supplierId }, select: { id: true, sku: true, description: true, active: true, ingredient: { select: { name: true } } }, orderBy: { description: "asc" } }),
@@ -31,7 +32,16 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
     db.invoice.findMany({ where: { supplierId: inv.supplierId, invoiceNumber: { not: null } }, select: { id: true, invoiceNumber: true, invoiceDate: true } }),
     pendingPriceChanges(inv),
     loadHistory(id),
+    db.setting.findUnique({ where: { key: `invoice.credit.${id}` } }),
   ]);
+  const lastCredit = (() => {
+    try {
+      const v = creditSent ? (JSON.parse(creditSent.value) as { at?: string; to?: string; byName?: string }) : null;
+      return v?.at && v.to ? `Last sent to ${v.to}${v.byName ? ` by ${v.byName}` : ""} · ${businessDateTime(v.at, env.BUSINESS_TIMEZONE)}` : null;
+    } catch {
+      return null;
+    }
+  })();
   const when = (instant: string | Date) => businessDateTime(instant, env.BUSINESS_TIMEZONE);
   const standing = currentApproval(history);
   const events = history.map((e) => ({ ...e, when: when(e.at), statusLabel: e.status && e.status in STATUS_META ? STATUS_META[e.status as InvoiceStatus].label : undefined }));
@@ -92,7 +102,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             flagged={flagged}
             priceChanges={priceChanges}
             invoiceDate={date}
-            credit={credit && { ...credit, count: credits.length, email: inv.supplier.email }}
+            credit={credit && { ...credit, count: credits.length, email: inv.supplier.email, canSend: emailConfigured(), lastSent: lastCredit }}
           />
         }
       />

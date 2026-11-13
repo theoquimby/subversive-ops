@@ -61,6 +61,7 @@ model User {
   lockedUntil       DateTime?
   createdAt DateTime @default(now())
   counts    StockCount[]
+  feedbackGiven EmployeeFeedback[]
 }
 
 model Setting {
@@ -109,6 +110,8 @@ model Ingredient {
   recipeLines RecipeLine[]
   countLines  StockCountLine[]
   wasteLogs   WasteLog[]
+  /// Major US allergens this ingredient contains (see src/domain/allergens.ts ALLERGENS).
+  allergens   String[]     @default([])
 }
 
 // Ingredient-specific units: "1 slice = 21 g", "1 cup = 120 g" (flour), "1 bun = 1 each"
@@ -189,6 +192,7 @@ model Recipe {
   lines      RecipeLine[] @relation("RecipeLines")
   usedIn     RecipeLine[] @relation("SubRecipe")
   squareMaps SquareMapping[]
+  wasteLogs  WasteLog[]
 }
 
 model RecipeLine {
@@ -255,6 +259,16 @@ model WasteLog {
   reason       String
   loggedBy     String?
   loggedAt     DateTime   @default(now())
+  /// Set when the waste was a prepped or menu item, exploded into one row per ingredient.
+  sourceRecipeId String?
+  sourceRecipe   Recipe?  @relation(fields: [sourceRecipeId], references: [id], onDelete: SetNull)
+  sourceQty      Decimal? @db.Decimal(12, 3)
+  sourceUnit     String?
+  /// Rows exploded from one entry share a batch id (undo removes them together).
+  batchId        String?
+
+  @@index([batchId])
+  @@index([loggedAt])
 }
 
 model PurchaseOrder {
@@ -328,6 +342,8 @@ model Employee {
   swapsTaken         ShiftSwap[] @relation("SwapTaker")
   tips               TipAllocation[]
   payAdjustments     PayAdjustment[]
+  feedback           EmployeeFeedback[]
+  documentAcks       DocumentAck[]
 }
 
 model EmployeePosition {
@@ -608,4 +624,64 @@ model Budget {
   sales       Decimal? @db.Decimal(12, 2)
   foodCostPct Decimal? @db.Decimal(5, 4)
   laborPct    Decimal? @db.Decimal(5, 4)
+}
+
+// ---------------------------------------------------------------------------
+// People: feedback and onboarding documents
+// ---------------------------------------------------------------------------
+
+enum FeedbackKind {
+  PRAISE
+  COACHING
+  NOTE
+}
+
+/// A manager's note on an employee. Private to managers unless visibleToEmployee.
+model EmployeeFeedback {
+  id                String       @id @default(cuid())
+  employeeId        String
+  employee          Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  authorId          String?
+  author            User?        @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  kind              FeedbackKind @default(NOTE)
+  body              String
+  visibleToEmployee Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+
+  @@index([employeeId, createdAt])
+}
+
+enum DocumentAudience {
+  STAFF
+  MANAGER
+}
+
+/// Handbook, tax forms, policies. Bytes live in Postgres (max 8 MB each).
+model Document {
+  id          String           @id @default(cuid())
+  title       String
+  kind        String           @default("POLICY") // HANDBOOK | POLICY | TAX_FORM | OTHER
+  bytes       Bytes
+  mime        String
+  size        Int
+  filename    String?
+  /// Plain text used to answer policy questions (extracted on upload; editable).
+  text        String?
+  requiresAck Boolean          @default(false)
+  audience    DocumentAudience @default(STAFF)
+  uploadedBy  String?
+  active      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  acks        DocumentAck[]
+}
+
+model DocumentAck {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  ackedAt    DateTime @default(now())
+
+  @@unique([documentId, employeeId])
 }

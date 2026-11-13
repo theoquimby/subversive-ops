@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPlan, detectTable, googleSheetCsvUrl, parsePastedTable } from "../bulkImport";
+import { buildPlan, detectTable, parsePastedTable } from "../bulkImport";
 
 const ingredientsTab = parsePastedTable(
   [
@@ -70,9 +70,3 @@ describe("buildPlan", () => {
   });
 });
 
-describe("googleSheetCsvUrl", () => {
-  it("builds an export URL for the open tab", () => {
-    expect(googleSheetCsvUrl("https://docs.google.com/spreadsheets/d/abc_123/edit#gid=456")).toBe("https://docs.google.com/spreadsheets/d/abc_123/export?format=csv&gid=456");
-    expect(googleSheetCsvUrl("https://example.com")).toBeNull();
-  });
-});

@@ -25,9 +25,9 @@ Content is plain data in `src/help/areas/*.ts`, collected by `content.ts`.
 }
 ```
 
-Entries for pages still being built are in `areas/upcoming.ts` with
-`draft: true` ("Coming soon" in the help center). When your page ships,
-correct the wording against the real UI and drop the flag.
+Entries for a page still being built get `draft: true` ("Coming soon" in the
+help center), and its area `upcoming: true` in `content.ts`. When the page
+ships, correct the wording against the real UI and drop both flags.
 
 Run `npx vitest run src/help` — it checks ids are unique, links resolve and
 popover text stays short.

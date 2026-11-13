@@ -8,7 +8,8 @@ import { businessToday } from "@/server/services/sales";
 import Link from "next/link";
 import { GridCell, GridSelect } from "@/components/grid";
 import { linkProductToIngredient, setProductPrice } from "@/server/actions/inline";
-import { linkProduct } from "./actions";
+import { linkProduct, savePriceAlertThreshold } from "./actions";
+import { spikeThreshold } from "@/server/services/notify";
 import { HelpTip, HelpZone } from "@/components/help";
 
 export const metadata = { title: "Prices" };
@@ -17,7 +18,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
   await requireUser("MANAGER");
   const { supplier: supplierId, filter, q = "" } = await searchParams;
   const today = businessToday();
-  const [suppliers, products, ingredients, imports, snap] = await Promise.all([
+  const [suppliers, products, ingredients, imports, snap, threshold] = await Promise.all([
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     db.supplierProduct.findMany({
       where: {
@@ -33,6 +34,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
     db.ingredient.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     db.priceImport.findMany({ orderBy: { createdAt: "desc" }, take: 1, include: { supplier: { select: { name: true } } } }),
     loadCostingSnapshot(),
+    spikeThreshold(),
   ]);
   const unlinkedCount = await db.supplierProduct.count({ where: { active: true, ingredientId: null } });
   const qs = (patch: Record<string, string | undefined>) => {
@@ -139,6 +141,12 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
         </Table>
         </HelpZone>
       )}
+
+      <div className="mt-6 flex flex-wrap items-center gap-2 text-sm text-muted">
+        <span>Alert managers when a price goes up by</span>
+        <GridCell grid="price-alert" col="threshold" type="number" suffix="%" value={Math.round(threshold * 1000) / 10} onSave={savePriceAlertThreshold} ariaLabel="Price alert threshold, percent" className="w-20" />
+        <span>or more. <Link href="/settings/notifications" className="underline decoration-border-strong underline-offset-2 hover:text-ink">Choose how you hear about it</Link>.</span>
+      </div>
     </>
   );
 }

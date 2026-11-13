@@ -2,11 +2,9 @@
 
 import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
-import { Badge, Button, cx, DatePicker, Input, Select } from "@/components/ui";
-import { addDays } from "@/domain/dates";
+import { Badge, Button, cx, Input, Select } from "@/components/ui";
 import { money } from "@/lib/format";
-import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { addTimecard, deleteTimecard, setTimecardField } from "./actions";
 
@@ -32,24 +30,6 @@ type Opt = { value: string; label: string };
 
 const td = "border-b border-border px-0.5 py-1 sm:px-1.5 align-middle [tbody:last-of-type_tr:last-child_&]:border-b-0";
 const th = "border-b border-border px-3 py-2.5 text-[0.75rem] font-medium whitespace-nowrap text-muted";
-
-export function WeekPicker({ week, label }: { week: string; label: string }) {
-  const router = useRouter();
-  const go = (w: string) => router.push(`/labor?week=${w}`);
-  const monday = (d: string) => {
-    const wd = new Date(`${d}T00:00:00Z`).getUTCDay();
-    return addDays(d, -((wd + 6) % 7));
-  };
-  return (
-    <div className="flex items-center gap-1">
-      <Button variant="secondary" className="size-11 shrink-0 px-0 sm:size-10" aria-label="Previous week" onClick={() => go(addDays(week, -7))}><ChevronLeft className="size-5" /></Button>
-      <div className="w-56">
-        <DatePicker value={week} onChange={(e) => go(monday(e.target.value))} aria-label={`Week of ${label}`} />
-      </div>
-      <Button variant="secondary" className="size-11 shrink-0 px-0 sm:size-10" aria-label="Next week" onClick={() => go(addDays(week, 7))}><ChevronRight className="size-5" /></Button>
-    </div>
-  );
-}
 
 export function TimecardGrid({ cards, employees, positions, days, defaultDay, locked = false }: { cards: CardRow[]; employees: Opt[]; positions: Opt[]; days: Opt[]; defaultDay: string; locked?: boolean }) {
   const confirm = useConfirm();

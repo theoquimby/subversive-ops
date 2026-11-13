@@ -201,6 +201,14 @@ export async function analyzeReviews(ids: string[]) {
 
 // ---- Import --------------------------------------------------------------------------
 
+/** Tell managers about new 1–2★ reviews (after the response when in a request). */
+async function alertBadReviews(ids: string[]) {
+  if (ids.length === 0) return;
+  // Imported lazily: notify → brief → reviews would otherwise be a cycle.
+  const { inBackground, notifyBadReviews } = await import("./notify");
+  inBackground(() => notifyBadReviews(ids));
+}
+
 export async function importPastedReviews(text: string, defaultSource: ReviewSource) {
   const today = businessToday();
   const parsed = parsePastedReviews(text, today, defaultSource);
@@ -229,6 +237,7 @@ export async function importPastedReviews(text: string, defaultSource: ReviewSou
     created.push(r.id);
   }
   await analyzeReviews(created);
+  await alertBadReviews(created);
   return { added: created.length, skipped, parsed: parsed.length };
 }
 
@@ -246,6 +255,7 @@ export async function importGoogleReviews() {
       created.push(r.id);
     }
     await analyzeReviews(created);
+    await alertBadReviews(created);
     await db.setting.upsert({ where: { key: "reviews.lastGoogleSync" }, create: { key: "reviews.lastGoogleSync", value: new Date().toISOString() }, update: { value: new Date().toISOString() } });
     return { added: created.length, fetched: rows.length };
   } catch (e) {

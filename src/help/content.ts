@@ -9,6 +9,7 @@ import { basics } from "./areas/basics";
 import { menu, ingredients, overview, prices } from "./areas/costing";
 import { counts, importing, ordering, sales, settings, variance, waste } from "./areas/operations";
 import { upcoming } from "./areas/upcoming";
+import { finalParity } from "./areas/final";
 import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
 
@@ -33,7 +34,7 @@ export const AREAS: HelpArea[] = [
   { id: "labor", title: "Labor & payroll", description: "Timecards, approval, sick leave, adjustments and the payroll export." },
   { id: "tips", title: "Tips", description: "Tip pooling by hours or points." },
   { id: "pnl", title: "Live P&L", description: "Sales − cost of goods − labor, split food and beverage." },
-  { id: "budgets", title: "Budgets", description: "Weekly targets.", upcoming: true },
+  { id: "budgets", title: "Budgets", description: "Weekly sales, food cost and labor targets." },
   { id: "events", title: "Events", description: "The events calendar and its effect on sales." },
   { id: "invoices", title: "Invoices", description: "Snap, match, approve, request credits, export to QuickBooks or Xero." },
   { id: "reviews", title: "Reviews", description: "Themes, reply drafts, what to fix this month." },
@@ -54,6 +55,7 @@ export const HELP: HelpEntry[] = [
   ...importing,
   ...settings,
   ...upcoming,
+  ...finalParity,
 ];
 
 const BY_ID = new Map(HELP.map((e) => [e.id, e]));
@@ -119,6 +121,3 @@ export function searchHelp(query: string, entries: HelpEntry[] = HELP, limit = 3
   const inBody = [...inPhrase, ...inWords];
   return [...byTitle, ...inBody].slice(0, limit);
 }
-
-/** First paragraph-ish summary for list rows. */
-export const summaryOf = (e: HelpEntry) => e.body;

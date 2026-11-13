@@ -10,6 +10,9 @@ import { buildContext, loadCostingSnapshot } from "@/server/services/costing";
 import { countUnitsFor, loadCountableIngredients } from "@/server/services/inventory";
 import { estimatedOnHandAll, loadPars } from "@/server/services/planning";
 import { MinOnHandCell } from "./min-on-hand-cell";
+import { ArchiveIngredientButton, RestoreIngredientButton } from "./archive-buttons";
+import { archivedLabel, baseName } from "@/domain/archiveName";
+import { db } from "@/server/db";
 import { businessToday } from "@/server/services/sales";
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
@@ -17,16 +20,24 @@ import { HelpTip, HelpZone } from "@/components/help";
 
 export const metadata = { title: "Ingredients" };
 
-export default async function IngredientsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function IngredientsPage({ searchParams }: { searchParams: Promise<{ q?: string; show?: string }> }) {
   await requireUser("MANAGER");
-  const { q = "" } = await searchParams;
-  const [snap, ingredients, stock, pars] = await Promise.all([loadCostingSnapshot(), loadCountableIngredients(), estimatedOnHandAll(), loadPars()]);
+  const { q = "", show } = await searchParams;
+  const showArchived = show === "archived";
+  const [snap, ingredients, stock, pars, archived] = await Promise.all([
+    loadCostingSnapshot(),
+    loadCountableIngredients(),
+    estimatedOnHandAll(),
+    loadPars(),
+    db.ingredient.findMany({ where: { active: false }, select: { id: true, name: true, category: true }, orderBy: { name: "asc" } }),
+  ]);
   const ctx = buildContext(snap, businessToday());
   const usedIn = new Map<string, number>();
   for (const r of snap.recipes) for (const l of r.lines) if (l.ingredientId) usedIn.set(l.ingredientId, (usedIn.get(l.ingredientId) ?? 0) + 1);
   const list = ingredients
     .filter((i) => !q || i.name.toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+  const archivedList = archived.filter((i) => !q || baseName(i.name).toLowerCase().includes(q.toLowerCase()));
 
   return (
     <>
@@ -35,10 +46,49 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
         description="Click any cell to edit. Enter moves down, Tab moves across, and you can paste a column from a spreadsheet."
         actions={<LinkButton href="/ingredients/new" variant="primary">New ingredient</LinkButton>}
       />
-      <form className="mb-4 max-w-xs" data-tour="ingredients.search">
-        <Input name="q" defaultValue={q} placeholder="Search ingredients" type="search" />
-      </form>
-      {list.length === 0 ? (
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <form className="w-full max-w-xs" data-tour="ingredients.search">
+          {showArchived && <input type="hidden" name="show" value="archived" />}
+          <Input name="q" defaultValue={q} placeholder={showArchived ? "Search archived" : "Search ingredients"} type="search" />
+        </form>
+        {(archived.length > 0 || showArchived) && (
+          <Link
+            href={showArchived ? "/ingredients" : "/ingredients?show=archived"}
+            className={cx("relative ml-auto rounded-full px-3 py-1 text-sm after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']", showArchived ? "bg-primary text-primary-ink" : "text-ink-2 hover:bg-surface-2")}
+          >
+            Archived <span className="num ml-1">{archived.length}</span>
+          </Link>
+        )}
+      </div>
+      {showArchived ? (
+        archivedList.length === 0 ? (
+          <EmptyState title="Nothing archived">Archived ingredients show up here so you can bring them back.</EmptyState>
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <Th>Ingredient</Th>
+                <Th className="hidden sm:table-cell">Category</Th>
+                <Th className="hidden sm:table-cell">Archived</Th>
+                <Th align="right"><span className="sr-only">Restore</span></Th>
+              </tr>
+            </thead>
+            <tbody>
+              {archivedList.map((i) => (
+                <Tr key={i.id}>
+                  <Td>
+                    <div className="font-medium">{baseName(i.name)}</div>
+                    <div className="text-xs text-muted sm:hidden">{i.category}{archivedLabel(i.name) ? ` · archived ${archivedLabel(i.name)}` : ""}</div>
+                  </Td>
+                  <Td className="hidden text-muted sm:table-cell">{i.category}</Td>
+                  <Td className="hidden text-muted sm:table-cell">{archivedLabel(i.name) ?? "—"}</Td>
+                  <Td align="right" className="py-2"><RestoreIngredientButton id={i.id} name={baseName(i.name)} /></Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+        )
+      ) : list.length === 0 ? (
         <EmptyState title="No ingredients found" />
       ) : (
         <HelpZone id="ingredients.grid" tour="ingredients.grid">
@@ -70,12 +120,13 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
               return (
                 <Tr key={i.id}>
                   <td className="border-b border-border py-1 pr-2 pl-2 [tr:last-child_&]:border-b-0">
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1">
                       <GridCell grid="ing" col="name" value={i.name} onSave={setIngredientField.bind(null, i.id, "name")} ariaLabel="Name" className="flex-1 font-medium" />
                       {!i.preferredProduct && <Badge tone="warn" className="hidden sm:inline-flex">No supplier</Badge>}
                       <Link href={`/ingredients/${i.id}`} className="relative rounded-md p-1.5 text-muted after:absolute after:-inset-1.5 after:content-[''] hover:bg-surface-2 hover:text-ink" aria-label={`Open ${i.name}`}>
                         <ArrowUpRight className="size-4" />
                       </Link>
+                      <ArchiveIngredientButton id={i.id} name={i.name} usedIn={usedIn.get(i.id) ?? 0} />
                     </div>
                     <div className="pl-2 text-xs text-muted md:hidden">{i.category}{usedIn.get(i.id) ? ` · in ${usedIn.get(i.id)} recipes` : ""}</div>
                   </td>

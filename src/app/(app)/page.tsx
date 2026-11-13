@@ -1,5 +1,5 @@
 import { refreshIfStale } from "@/server/services/square-sync";
-import { addDays } from "@/domain/dates";
+import { addDays, businessDate, zonedMidnightUTC } from "@/domain/dates";
 import { dayDate, money, pct, qty, shortDate, signedPct } from "@/lib/format";
 import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import type { Tone } from "@/components/ui";
@@ -15,6 +15,10 @@ import { squareSummary } from "@/server/services/square";
 import Link from "next/link";
 import { HelpTip, HelpZone } from "@/components/help";
 import { onboardingState } from "@/server/services/onboarding";
+import { ratingTrend } from "@/domain/alerts";
+import { env } from "@/server/env";
+import { buildContext } from "@/server/services/costing";
+import { DismissSetupButton } from "./welcome/dismiss-setup";
 
 export const metadata = { title: "Overview" };
 
@@ -34,7 +38,7 @@ export default async function OverviewPage() {
   const today = businessToday();
   const snap = await loadCostingSnapshot();
   const now = new Date();
-  const [{ rows }, moves, week, live, suppliers, square, ob] = await Promise.all([
+  const [{ rows }, moves, week, live, suppliers, square, ob, recentReviews, waste] = await Promise.all([
     menuCosts(snap),
     recentPriceMoves(30, snap),
     pnlReport(addDays(today, -7), today, now),
@@ -42,7 +46,13 @@ export default async function OverviewPage() {
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     squareSummary(),
     onboardingState(),
+    db.review.findMany({ where: { postedAt: { gte: zonedMidnightUTC(addDays(today, -60), env.BUSINESS_TIMEZONE) } }, select: { rating: true, postedAt: true } }),
+    db.wasteLog.findMany({ where: { loggedAt: { gte: zonedMidnightUTC(addDays(today, -7), env.BUSINESS_TIMEZONE), lt: zonedMidnightUTC(today, env.BUSINESS_TIMEZONE) } }, select: { id: true, batchId: true, ingredientId: true, qtyBase: true } }),
   ]);
+  const rating = ratingTrend(recentReviews.map((r) => ({ rating: r.rating, date: businessDate(r.postedAt, env.BUSINESS_TIMEZONE) })), today, 30);
+  const ctx = buildContext(snap, today);
+  const wasteCost = waste.reduce((s, w) => s + w.qtyBase.toNumber() * (ctx.ingredients.get(w.ingredientId)?.costPerBase ?? 0), 0);
+  const wasteLogs = new Set(waste.map((w) => w.batchId ?? w.id)).size;
 
   const sold = rows.filter((r) => r.kind !== "PREP");
   // "Items over target" is about what guests order, so add-ons (modifiers) don't count.
@@ -65,7 +75,10 @@ export default async function OverviewPage() {
             <div className="text-sm font-medium">Finish setting up <span className="num font-normal text-muted">· {ob.done} of {ob.total} done</span></div>
             <div className="mt-1.5 h-1.5 w-48 overflow-hidden rounded-full bg-surface-2"><div className="h-full rounded-full bg-primary" style={{ width: `${(ob.done / ob.total) * 100}%` }} /></div>
           </div>
-          <LinkButton href={ob.href} size="sm" variant="primary">Continue setup</LinkButton>
+          <div className="flex items-center gap-1">
+            <LinkButton href={ob.href} size="sm" variant="primary">Continue setup</LinkButton>
+            <DismissSetupButton />
+          </div>
         </Card>
       )}
 
@@ -106,9 +119,20 @@ export default async function OverviewPage() {
         <Stat label={<span className="inline-flex items-center gap-1.5">Beverage cost <HelpTip id="overview.bevCost" /></span>} value={pct(split.beverage.pct)} hint={split.beverage.sales > 0 && split.beverage.cogs === 0 ? "drinks not costed yet" : `Target ${pct(targets.beverage, 0)} · theoretical`} tone={split.beverage.pct == null || split.beverage.cogs === 0 ? undefined : costTone(split.beverage.pct, targets.beverage)} />
         <Stat label="Labor" value={pct(t.laborPct)} hint={`prime cost ${pct(t.primePct, 0)}${budget?.laborPct != null ? ` · target ${pct(budget.laborPct, 0)}` : ""}`} tone={budget?.laborPct != null ? costTone(t.laborPct, budget.laborPct) : undefined} />
       </HelpZone>
-      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <Stat label={<span className="inline-flex items-center gap-1.5">Items over target <HelpTip id="overview.overTarget" /></span>} value={over.length} hint={`of ${menuItems.length} menu items`} tone={over.length ? "warn" : "good"} />
         <Stat label="Price increases" value={ups.length} hint="Last 30 days" tone={ups.length ? "warn" : undefined} />
+        <Link href="/reviews" className="block h-full rounded-xl [&>*]:h-full">
+          <Stat
+            label="Rating, 30 days"
+            value={rating.avg != null ? `${rating.avg.toFixed(1)}★` : "—"}
+            hint={rating.avg == null ? "no reviews in 30 days" : `${rating.count} review${rating.count === 1 ? "" : "s"}${rating.delta != null && Math.abs(rating.delta) >= 0.05 ? ` · ${rating.delta > 0 ? "▲" : "▼"} ${Math.abs(rating.delta).toFixed(1)} vs prior` : rating.delta != null ? " · steady" : ""}`}
+            tone={rating.delta != null && rating.delta <= -0.3 ? "warn" : undefined}
+          />
+        </Link>
+        <Link href="/waste" className="block h-full rounded-xl [&>*]:h-full">
+          <Stat label="Waste, 7 days" value={money(wasteCost, { whole: true })} hint={wasteLogs ? `${wasteLogs} log${wasteLogs === 1 ? "" : "s"}` : "nothing logged"} tone={wasteLogs ? undefined : "warn"} />
+        </Link>
         <div className="hidden lg:block">
           <Stat label="Profit before overhead" value={money(t.profit, { whole: true })} hint="last 7 days" tone={t.profit < 0 ? "bad" : undefined} />
         </div>

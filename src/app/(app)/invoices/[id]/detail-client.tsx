@@ -2,12 +2,12 @@
 
 import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
-import { Badge, Button, Card, cx, DatePicker, LinkButton, Textarea, type Tone } from "@/components/ui";
+import { Badge, Button, Card, cx, DatePicker, Input, LinkButton, Textarea, type Tone } from "@/components/ui";
 import { money, qty as fmtQty, shortDate } from "@/lib/format";
-import { Check, Copy, Mail, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { Check, Copy, Mail, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { addLines, approveInvoice, deleteInvoice, deleteLine, reopenInvoice, updateHeader, updateLine, updatePrices } from "../actions";
+import { addLines, approveInvoice, deleteInvoice, deleteLine, reopenInvoice, sendCredit, updateHeader, updateLine, updatePrices } from "../actions";
 
 type Opt = { value: string; label: string; hint?: string };
 
@@ -177,7 +177,7 @@ export function LinesGrid({ invoiceId, locked, lines, products, hasOrder }: { in
 
 // ---- Actions -------------------------------------------------------------------
 
-interface Credit { subject: string; body: string; total: number; count: number; email: string | null }
+interface Credit { subject: string; body: string; total: number; count: number; email: string | null; /** Email (Resend) is set up, so we can send it from here. */ canSend: boolean; lastSent: string | null }
 
 export function InvoiceActions({ id, status, statusLabel, flagged, priceChanges, invoiceDate, credit }: { id: string; status: string; statusLabel: string; flagged: number; priceChanges: number; invoiceDate: string; credit: Credit | null }) {
   const confirm = useConfirm();
@@ -223,7 +223,7 @@ export function InvoiceActions({ id, status, statusLabel, flagged, priceChanges,
       ) : (
         <Button variant="primary" disabled={pending} onClick={approve}><Check className="size-4" />Approve</Button>
       )}
-      {showCredit && credit && <CreditSheet credit={credit} onClose={() => setShowCredit(false)} />}
+      {showCredit && credit && <CreditSheet id={id} credit={credit} onClose={() => setShowCredit(false)} />}
       {approving && <ApproveSheet id={id} statusLabel={statusLabel} flagged={flagged} credit={credit} onClose={() => setApproving(false)} />}
     </>
   );
@@ -277,7 +277,7 @@ function ApproveSheet({ id, statusLabel, flagged, credit, onClose }: { id: strin
   );
 }
 
-const ACTION_LABEL: Record<string, string> = { approved: "Approved", "auto-approved": "Auto-approved", reopened: "Reopened", "prices-updated": "Prices updated" };
+const ACTION_LABEL: Record<string, string> = { approved: "Approved", "auto-approved": "Auto-approved", reopened: "Reopened", "prices-updated": "Prices updated", "credit-requested": "Credit requested" };
 
 /** The approval history, oldest first. Nothing in it is ever removed. */
 export function InvoiceHistory({ events }: { events: { at: string; when: string; by: string; action: string; status?: string; statusLabel?: string; note?: string }[] }) {
@@ -299,33 +299,57 @@ export function InvoiceHistory({ events }: { events: { at: string; when: string;
   );
 }
 
-function CreditSheet({ credit, onClose }: { credit: Credit; onClose: () => void }) {
+function CreditSheet({ id, credit, onClose }: { id: string; credit: Credit; onClose: () => void }) {
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
+  const [to, setTo] = useState(credit.email ?? "");
+  const [result, setResult] = useState<{ error?: string; ok?: string } | null>(null);
+  const [sending, start] = useTransition();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  const mailto = credit.email ? `mailto:${credit.email}?subject=${encodeURIComponent(credit.subject)}&body=${encodeURIComponent(credit.body)}` : null;
+  const mailto = `mailto:${to.trim()}?subject=${encodeURIComponent(credit.subject)}&body=${encodeURIComponent(credit.body)}`;
+  const send = () =>
+    start(async () => {
+      const r = await sendCredit(id, to, false);
+      setResult(r);
+      if (r.ok) router.refresh();
+    });
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/30 p-3 backdrop-blur-[2px] sm:items-center" onMouseDown={onClose}>
       <div role="dialog" aria-modal="true" aria-label="Credit request" onMouseDown={(e) => e.stopPropagation()} className="flex max-h-[90dvh] w-full max-w-xl flex-col rounded-2xl border border-border bg-surface shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div>
             <div className="text-base font-semibold">Credit request</div>
-            <div className="mt-0.5 text-sm text-muted">{credit.count} line{credit.count === 1 ? "" : "s"} · <span className="num font-medium text-ink">{money(credit.total)}</span>{credit.email ? <> · to {credit.email}</> : <> · no email on file for this supplier</>}</div>
+            <div className="mt-0.5 text-sm text-muted">{credit.count} line{credit.count === 1 ? "" : "s"} · <span className="num font-medium text-ink">{money(credit.total)}</span>{credit.lastSent && <> · {credit.lastSent}</>}</div>
           </div>
           <button type="button" aria-label="Close" onClick={onClose} className="grid size-9 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-ink"><X className="size-4" /></button>
+        </div>
+        <div className="border-b border-border px-5 py-3">
+          <label className="flex items-center gap-3 text-sm">
+            <span className="shrink-0 text-muted">To</span>
+            <Input type="email" value={to} onChange={(e) => { setTo(e.target.value); setResult(null); }} placeholder="supplier@example.com" aria-label="Supplier email" className="min-w-0 flex-1" />
+          </label>
+          {!credit.email && <p className="mt-1.5 text-xs text-muted">No email on file for this supplier. Whatever you send to is saved for next time.</p>}
         </div>
         <div className="min-h-0 overflow-y-auto px-5 py-4">
           <div className="mb-2 text-xs text-muted">Subject: <span className="text-ink-2">{credit.subject}</span></div>
           <pre className="font-sans text-sm leading-relaxed whitespace-pre-wrap text-ink">{credit.body}</pre>
         </div>
-        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3">
+          {result && <span className={cx("mr-auto text-sm", result.error ? "text-bad" : "text-good")}>{result.error ?? result.ok}</span>}
+          {!result && !credit.canSend && <span className="mr-auto text-xs text-muted">Sending from here turns on once email is set up.</span>}
           <Button onClick={async () => { await navigator.clipboard.writeText(`Subject: ${credit.subject}\n\n${credit.body}`); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
             {copied ? <Check className="size-4" /> : <Copy className="size-4" />}{copied ? "Copied" : "Copy"}
           </Button>
-          {mailto && <LinkButton href={mailto} variant="primary"><Mail className="size-4" />Open in email</LinkButton>}
+          {to.trim() && <LinkButton href={mailto} variant={credit.canSend ? "secondary" : "primary"}><Mail className="size-4" />Open in email</LinkButton>}
+          {credit.canSend && (
+            <Button variant="primary" disabled={sending || !to.trim() || Boolean(result?.ok)} onClick={send}>
+              {result?.ok ? <Check className="size-4" /> : <Send className="size-4" />}{sending ? "Sending…" : result?.ok ? "Sent" : "Send"}
+            </Button>
+          )}
         </div>
       </div>
     </div>

@@ -325,14 +325,6 @@ function splitCsv(line: string): string[] {
   return out;
 }
 
-/** "https://docs.google.com/spreadsheets/d/<id>/edit#gid=123" → CSV export URL for that tab. */
-export function googleSheetCsvUrl(url: string): string | null {
-  const m = url.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-  if (!m) return null;
-  const gid = url.match(/[#&?]gid=(\d+)/)?.[1] ?? "0";
-  return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv&gid=${gid}`;
-}
-
 /** Whole workbook as .xlsx (all tabs). */
 export function googleSheetXlsxUrl(url: string): string | null {
   const m = url.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);

@@ -12,13 +12,14 @@ import { clearDraftShifts, copyPreviousWeek, moveShift, publishSchedule } from "
 import { DemandChart } from "./demand-chart";
 import { GeneratePanel } from "./generate-panel";
 import { ShiftEditor } from "./shift-editor";
+import { ForecastNudge, type Nudge } from "./forecast-nudge";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const fmtH = (h: number) => `${Number(h.toFixed(1))}h`;
 const OPEN = "open";
 const NEW_ID = "new";
 
-export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { data: WeekData; today: string; prevWeek: string; nextWeek: string; thisWeek: string }) {
+export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudges = {} }: { data: WeekData; today: string; prevWeek: string; nextWeek: string; thisWeek: string; nudges?: Record<string, Nudge> }) {
   const { dates, positions, employees, issues, summary, timeOff, pendingTimeOff, opening } = data;
   const confirm = useConfirm();
   const [busy, start] = useTransition();
@@ -459,6 +460,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { d
                 ))}
               </div>
             </div>
+            {opening[weekday(day)] && <ForecastNudge key={day} date={day} sales={summary.days[dayIdx]?.sales ?? 0} nudge={nudges[day]} past={day < today} onRegenerate={() => setGenerating(true)} />}
             <Card>
               <div className="px-4 pt-3 text-sm font-medium md:hidden">{dayDate(day)}</div>
               <DemandChart rows={data.demand[day] ?? []} />

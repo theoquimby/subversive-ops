@@ -21,6 +21,8 @@ export interface BriefDigest {
   laborTarget: number | null;
   todo: BriefDigestItem[];
   clear: BriefDigestItem[];
+  /** Last week's actuals vs budget, one line each ("Food cost", "31.2%", "target 30.0%"). */
+  lastWeek?: { from: ISODate; to: ISODate; rows: { label: string; actual: string; target: string | null; tone: "good" | "warn" | "bad" | "neutral" }[] } | null;
 }
 
 export interface WeeklyBriefEmail {
@@ -52,6 +54,10 @@ export function weeklyBriefEmail(e: WeeklyBriefEmail): RenderedEmail {
     body: [
       h1(`Week of ${range}`),
       p(`Hi ${esc(first(e.name))}. ${esc(forecast.join(" "))} ${n === 0 ? "Everything else is in hand." : `${n} thing${n === 1 ? " needs" : "s need"} you before the week starts.`}`),
+      d.lastWeek && d.lastWeek.rows.length
+        ? h2(`Last week (${shortDate(d.lastWeek.from)} – ${shortDate(d.lastWeek.to)})`) +
+          list(d.lastWeek.rows.map((r) => ({ title: r.label, detail: r.target ? `Target ${r.target}` : "No target", value: `<span style="color:${r.tone === "bad" ? "#b42318" : r.tone === "warn" ? "#b54708" : r.tone === "good" ? "#067647" : "inherit"};">${esc(r.actual)}</span>` })))
+        : "",
       n ? h2("Needs you") + list(d.todo.map((i) => ({ title: i.title, detail: i.status, href: i.path ? link(e.baseUrl, i.path) : undefined }))) : "",
       d.clear.length ? h2("In hand") + list(d.clear.map((i) => ({ title: i.title, detail: i.status }))) : "",
       button(briefUrl, "Open the brief"),
@@ -64,6 +70,9 @@ export function weeklyBriefEmail(e: WeeklyBriefEmail): RenderedEmail {
     "",
     `Week of ${range}. ${forecast.join(" ")}`,
     "",
+    d.lastWeek ? `LAST WEEK (${shortDate(d.lastWeek.from)} – ${shortDate(d.lastWeek.to)})` : null,
+    ...(d.lastWeek?.rows ?? []).map((r) => `- ${r.label}: ${r.actual}${r.target ? ` (target ${r.target})` : ""}`),
+    d.lastWeek ? "" : null,
     n ? "NEEDS YOU" : null,
     ...d.todo.map((i) => `- ${i.title}: ${i.status}${i.path ? ` (${link(e.baseUrl, i.path)})` : ""}`),
     n ? "" : null,

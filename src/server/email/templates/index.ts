@@ -1,14 +1,16 @@
 import type { RenderedEmail } from "../layout";
 import { creditRequestEmail } from "./credit-request";
 import { invoiceIssueEmail, priceSpikesEmail } from "./manager-alerts";
+import { badReviewEmail, staffRequestEmail } from "./manager-requests";
 import { purchaseOrderEmail } from "./purchase-order";
 import { schedulePublishedEmail } from "./schedule-published";
 import { shiftUpdateEmail } from "./shift-update";
 import { weeklyBriefEmail } from "./weekly-brief";
 
-export { creditRequestEmail, invoiceIssueEmail, priceSpikesEmail, purchaseOrderEmail, schedulePublishedEmail, shiftUpdateEmail, weeklyBriefEmail };
+export { badReviewEmail, creditRequestEmail, invoiceIssueEmail, priceSpikesEmail, staffRequestEmail, purchaseOrderEmail, schedulePublishedEmail, shiftUpdateEmail, weeklyBriefEmail };
 export type { CreditRequestEmail } from "./credit-request";
 export type { InvoiceIssueEmail, PriceSpike, PriceSpikesEmail } from "./manager-alerts";
+export type { BadReviewEmail, StaffRequest, StaffRequestEmail } from "./manager-requests";
 export type { PurchaseOrderEmail } from "./purchase-order";
 export type { ScheduleShift, SchedulePublishedEmail } from "./schedule-published";
 export type { ShiftUpdate, ShiftUpdateEmail } from "./shift-update";
@@ -96,6 +98,17 @@ export const SAMPLES = {
             { title: "Staff requests", status: "Nothing waiting" },
             { title: "Counts", status: "Last count Nov 9" },
           ],
+          lastWeek: {
+            from: "2026-11-02",
+            to: "2026-11-08",
+            rows: [
+              { label: "Sales", actual: "$24,180", target: "$25,000", tone: "warn" },
+              { label: "Food cost", actual: "29.4%", target: "30.0%", tone: "good" },
+              { label: "Beverage cost", actual: "23.1%", target: "22.0%", tone: "warn" },
+              { label: "Labor", actual: "31.8%", target: "29.0%", tone: "bad" },
+              { label: "Prime cost", actual: "58.6%", target: "59.0%", tone: "good" },
+            ],
+          },
         },
       }),
   },
@@ -143,6 +156,24 @@ export const SAMPLES = {
           { description: "Beef, ground 80/20 fresh chub", detail: "Charged $64.90, expected $62.40" },
           { description: "Lettuce, romaine hearts", detail: "Billed 2, received 1" },
         ],
+      }),
+  },
+  "staff-request": {
+    label: "Staff request",
+    render: () =>
+      staffRequestEmail({
+        name: "Max",
+        baseUrl: BASE,
+        request: { kind: "timeOff", employee: "Line Hansen", type: "PTO", startDate: "2026-11-21", endDate: "2026-11-22", hours: 12, note: "Sister's wedding", shiftsAffected: 1 },
+      }),
+  },
+  "bad-review": {
+    label: "Low review",
+    render: () =>
+      badReviewEmail({
+        name: "Max",
+        baseUrl: BASE,
+        reviews: [{ author: "Dana R.", rating: 2, source: "GOOGLE", date: "2026-11-12", text: "Beer was great but we waited 40 minutes for burgers and nobody checked on us." }],
       }),
   },
 } satisfies Record<string, { label: string; render: () => RenderedEmail }>;

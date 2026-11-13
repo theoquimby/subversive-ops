@@ -5,6 +5,9 @@ import { db } from "@/server/db";
 import { countUnitsFor } from "@/server/services/inventory";
 import { setPar } from "@/server/services/planning";
 import { canConvert, toBase } from "@/domain/units";
+import { archivedName, baseName } from "@/domain/archiveName";
+import { shortDate } from "@/lib/format";
+import { businessToday } from "@/server/services/sales";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -117,16 +120,40 @@ export async function unlinkProduct(ingredientId: string, productId: string) {
   revalidatePath(`/ingredients/${ingredientId}`);
 }
 
-export async function archiveIngredient(id: string) {
+/** Archive from the ingredients list. Blocked while an active recipe uses it. */
+export async function archiveIngredient(id: string): Promise<{ error?: string }> {
   await requireUser("MANAGER");
-  const used = await db.recipeLine.count({ where: { ingredientId: id, recipe: { active: true } } });
-  if (used > 0) return { error: `Used in ${used} recipe line${used > 1 ? "s" : ""}.` };
-  const ing = await db.ingredient.findUniqueOrThrow({ where: { id } });
-  await db.ingredient.update({ where: { id }, data: { active: false, name: `${ing.name} (archived ${Date.now()})` } });
+  const ing = await db.ingredient.findUnique({ where: { id } });
+  if (!ing) return { error: "That ingredient no longer exists." };
+  if (!ing.active) return {};
+  const used = await db.recipeLine.findMany({ where: { ingredientId: id, recipe: { active: true } }, select: { recipe: { select: { name: true } } }, distinct: ["recipeId"], take: 4 });
+  if (used.length > 0) {
+    const names = used.slice(0, 3).map((u) => u.recipe.name);
+    return { error: `Used in ${names.join(", ")}${used.length > 3 ? " and more" : ""}. Take it out of ${used.length === 1 ? "that recipe" : "those recipes"} first.` };
+  }
+  // Names are unique across active and archived ingredients, so park the old name under a readable suffix.
+  const label = shortDate(businessToday());
+  let name = archivedName(ing.name, label);
+  for (let n = 2; await db.ingredient.findUnique({ where: { name }, select: { id: true } }); n++) name = archivedName(ing.name, label, n);
+  await db.ingredient.update({ where: { id }, data: { active: false, name } });
   revalidatePath("/ingredients");
-  redirect("/ingredients");
+  revalidatePath("/count");
+  return {};
 }
 
+export async function restoreIngredient(id: string): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const ing = await db.ingredient.findUnique({ where: { id } });
+  if (!ing) return { error: "That ingredient no longer exists." };
+  if (ing.active) return {};
+  const name = baseName(ing.name);
+  const clash = await db.ingredient.findUnique({ where: { name }, select: { id: true } });
+  if (clash && clash.id !== id) return { error: `There's already an ingredient called "${name}". Rename it first, then restore this one.` };
+  await db.ingredient.update({ where: { id }, data: { active: true, name } });
+  revalidatePath("/ingredients");
+  revalidatePath("/count");
+  return {};
+}
 
 /** Minimum on hand, typed in the ingredient's count unit. Used for items no recipe uses. */
 export async function setMinOnHand(ingredientId: string, raw: string) {

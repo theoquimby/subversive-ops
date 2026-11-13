@@ -1,15 +1,19 @@
 import "server-only";
 import { busiestDays, weekStartOf } from "@/domain/budgets";
 import { addDays, businessDate, dateRange, daysBetween, ISODate, parseISODate, weekday } from "@/domain/dates";
+import { INVOICE_ISSUE_STATUSES } from "@/domain/alerts";
+import { decisions, weekRecap, worstRag } from "@/domain/weekRecap";
 import { db } from "../db";
 import { env } from "../env";
 import { laborByDay, loadTargets } from "./budgets";
 import { loadCostingSnapshot } from "./costing";
 import { dailySalesForecast } from "./forecasting";
-import { menuCosts, recentPriceMoves } from "./insights";
+import { costTargets, menuCosts, recentPriceMoves } from "./insights";
+import { periodKpis } from "./kpis";
 import { buildOrderPlan } from "./planning";
 import { ReviewAlert, reviewAlerts, unrepliedNegative } from "./reviews";
 import { businessToday } from "./sales";
+import { getAutoDraft } from "./scheduling";
 import { countPoints, varianceReport } from "./variance";
 
 /** The week the brief is about: this week on a Monday, otherwise next week. */
@@ -64,6 +68,38 @@ async function orderDrafts(today: ISODate, weekEnd: ISODate): Promise<OrderDraft
   return out.sort((a, b) => a.deliveryDate.localeCompare(b.deliveryDate) || b.total - a.total);
 }
 
+/** Square items that sold in [from, to) but aren't linked to a recipe (and aren't ignored), best sellers first. */
+async function unmappedSelling(from: ISODate, toExclusive: ISODate) {
+  const unmapped = await db.squareMapping.findMany({ where: { recipeId: null, ignored: false }, select: { squareId: true, squareName: true } });
+  if (unmapped.length === 0) return { count: 0, sales: 0, top: [] as { name: string; sales: number; qty: number }[] };
+  const sold = await db.dailySale.groupBy({
+    by: ["squareId"],
+    where: { squareId: { in: unmapped.map((m) => m.squareId) }, date: { gte: parseISODate(from), lt: parseISODate(toExclusive) } },
+    _sum: { netSales: true, qty: true },
+  });
+  const names = new Map(unmapped.map((m) => [m.squareId, m.squareName]));
+  const rows = sold
+    .map((r) => ({ name: names.get(r.squareId) ?? "Item", sales: r._sum.netSales?.toNumber() ?? 0, qty: r._sum.qty?.toNumber() ?? 0 }))
+    .filter((r) => r.qty > 0)
+    .sort((a, b) => b.sales - a.sales);
+  return { count: rows.length, sales: rows.reduce((s, r) => s + r.sales, 0), top: rows.slice(0, 5) };
+}
+
+/**
+ * The last finished week against its budget. On Sunday (when the brief goes out) that's
+ * the current week with today still running (left out, sales pro-rated); otherwise the
+ * Monday–Sunday before this one.
+ */
+async function lastWeekRecap(today: ISODate, snap: Awaited<ReturnType<typeof loadCostingSnapshot>>) {
+  const from = weekday(today) === 0 ? weekStartOf(today) : addDays(weekStartOf(today), -7);
+  const week = addDays(from, 7);
+  const [k, budgets, targets] = await Promise.all([periodKpis(from, week, { snap }), loadTargets(from, week), costTargets()]);
+  const budget = budgets.get(from) ?? null;
+  const elapsed = k.counted.length / 7;
+  const rows = weekRecap({ sales: k.total.sales, foodPct: k.foodPct, beveragePct: k.beveragePct, laborPct: k.laborPct, primePct: k.primePct, budget, targets, elapsed });
+  return { from, to: addDays(week, -1), days: k.counted.length, todayExcluded: k.todayExcluded, hasBudget: budget != null, rows, overall: worstRag(rows) };
+}
+
 export async function weeklyBrief() {
   const today = businessToday();
   const week = briefWeek(today);
@@ -71,7 +107,7 @@ export async function weeklyBrief() {
   const dates = dateRange(week, weekEnd);
   const snap = await loadCostingSnapshot();
 
-  const [forecast, targets, orders, shifts, scheduled, moves, costs, counts, timeOff, swaps, reviews, alerts, lastWaste] = await Promise.all([
+  const [forecast, targets, orders, shifts, scheduled, moves, costs, counts, timeOff, swaps, reviews, alerts, lastWaste, lastWeek, badReviews, invoiceIssues, unmapped, autoDraft] = await Promise.all([
     dailySalesForecast(dates),
     loadTargets(week, weekEnd),
     orderDrafts(today, weekEnd),
@@ -88,6 +124,14 @@ export async function weeklyBrief() {
       return [];
     }),
     db.wasteLog.findFirst({ orderBy: { loggedAt: "desc" }, select: { loggedAt: true } }),
+    lastWeekRecap(today, snap).catch((e) => {
+      console.error("brief: last week recap failed", e);
+      return null;
+    }),
+    db.review.count({ where: { replied: false, rating: { lte: 2 }, postedAt: { gte: parseISODate(addDays(today, -60)) } } }),
+    db.invoice.count({ where: { status: { in: [...INVOICE_ISSUE_STATUSES] } } }),
+    unmappedSelling(addDays(today, -7), addDays(today, 1)),
+    getAutoDraft(),
   ]);
 
   // Forecast
@@ -138,10 +182,23 @@ export async function weeklyBrief() {
   const lastWasteDate = lastWaste ? businessDate(lastWaste.loggedAt, env.BUSINESS_TIMEZONE) : null;
   const daysSinceWaste = lastWasteDate ? daysBetween(lastWasteDate, today) : null;
 
+  const decide = decisions({
+    timeOff,
+    swaps,
+    badReviews,
+    autoOrders: orders.filter((o) => o.existingDraftId && o.autoDrafted).length,
+    draftShifts: schedule.drafts,
+    scheduleAutoDrafted: autoDraft,
+    invoiceIssues,
+  });
+
   return {
     today,
     week,
     weekEnd,
+    lastWeek,
+    decisions: decide,
+    unmapped,
     forecast: { days: forecast.map((d) => ({ date: d.date, qty: d.qty, events: d.drivers.events.map((e) => e.title), closed: d.drivers.eventFactor === 0 })), total, busiest, events },
     budget: target,
     orders,

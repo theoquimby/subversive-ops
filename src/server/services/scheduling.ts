@@ -1,6 +1,6 @@
 import "server-only";
 import { addDays, ISODate, parseISODate, todayIn, toISODate, weekday } from "@/domain/dates";
-import { applyRuleSettings, assignShifts, Candidate, checkCompliance, curveToBlocks, defaultBreakMinutes, LaborRules, paidHours, PositionRule } from "@/domain/labor";
+import { applyRuleSettings, assignShifts, Candidate, checkCompliance, curveToBlocks, defaultBreakMinutes, LaborRules, PositionRule } from "@/domain/labor";
 import {
   Availability, availabilityConflicts, clipAvailability, coverage, curveHours, dayRequirement, fitSliderToTarget, HourDemand, hourlySalesOrFallback, inclusiveDates,
   intensityFromSlider, localParts, parseAvailability, ScheduledShift, ScheduleSummary, splitLongBlocks, staffVsDemand, summarizeSchedule, weekDates, weekStartOf, zonedInstant,
@@ -223,7 +223,8 @@ export async function loadWeek(monday: ISODate): Promise<WeekData> {
   const dates = weekDates(monday);
   const [positions, rules, opening, rows, pendingOff, pendingSwaps, laborTarget, autoDraft] = await Promise.all([
     loadPositions(),
-    getLaborRules(),
+    // Rates in force that week, so a week after January 1 uses the new minimum wage.
+    getLaborRules(monday),
     getOpeningHours(),
     db.shift.findMany({ where: weekWhere(monday), orderBy: { start: "asc" } }),
     db.timeOffRequest.findMany({ where: { status: "PENDING", startDate: { lte: parseISODate(dates[6]) }, endDate: { gte: parseISODate(monday) } } }),
@@ -451,8 +452,6 @@ export async function hasOverlap(employeeId: string, start: Date, end: Date, exc
   const n = await db.shift.count({ where: { employeeId, start: { lt: end }, end: { gt: start }, ...(exceptShiftId ? { id: { not: exceptShiftId } } : {}) } });
   return n > 0;
 }
-
-export const shiftHours = (s: { start: Date; end: Date; breakMinutes: number }) => paidHours(s);
 
 // ---- Announcements ---------------------------------------------------------------------
 

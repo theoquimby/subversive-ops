@@ -3,7 +3,7 @@ import { NY_DEFAULT_RULES as R } from "../labor";
 import {
   availabilityConflicts, availabilityLabel, clipAvailability, coverage, dayRequirement, formatMinutes, hourlySalesOrFallback, inclusiveDates, intensityFromSlider, localParts,
   parseAvailability, parseHHMM, shiftLabel, splitLongBlocks, staffedHours, summarizeSchedule, timeOptions, weekDates, weekStartOf, zonedInstant,
-  coverageShort, fitSliderToTarget, sliderFromIntensity, staffVsDemand,
+  coverageShort, fitSliderToTarget, staffVsDemand,
 } from "../schedule";
 
 const NY = "America/New_York";
@@ -163,7 +163,6 @@ describe("labor budget, call-in cost and hourly demand", () => {
     expect(fitSliderToTarget(pctAt, 0.25)).toEqual({ slider: 50, reachable: true });
     expect(fitSliderToTarget(pctAt, 0.5)).toEqual({ slider: 100, reachable: true });
     expect(fitSliderToTarget(pctAt, 0.1)).toEqual({ slider: 0, reachable: false });
-    expect(sliderFromIntensity(intensityFromSlider(37))).toBe(37);
   });
   it("compares people needed and scheduled per hour", () => {
     const need = [Array.from({ length: 24 }, (_, h) => (h >= 16 && h < 20 ? 2 : 0)), Array.from({ length: 24 }, (_, h) => (h === 18 ? 1 : 0))];

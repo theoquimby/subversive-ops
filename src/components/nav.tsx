@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, ChevronRight, CircleHelp, Home, MoreHorizontal, X, CalendarCheck, CalendarDays, CalendarRange, HandCoins, Carrot, ChartLine, ClipboardList, Clock, FileCheck, FileUp, LayoutGrid, LogOut, MessageSquareText, Receipt, Scale, Search, Settings, ShoppingCart, Sunrise, Target, Trash2, TrendingUp, Users } from "lucide-react";
+import { FolderOpen, Sparkles, Wheat, BookOpen, ChevronRight, CircleHelp, Home, MoreHorizontal, X, CalendarCheck, CalendarDays, CalendarRange, HandCoins, Carrot, ChartLine, ClipboardList, Clock, FileCheck, FileUp, LayoutGrid, LogOut, MessageSquareText, Receipt, Scale, Search, Settings, ShoppingCart, Sunrise, Target, Trash2, TrendingUp, Users } from "lucide-react";
 import { openCommandPalette } from "./command-palette";
 import { HelpButton } from "./help";
 import Link from "next/link";
@@ -16,6 +16,7 @@ const MANAGER: { title?: string; items: NavItem[] }[] = [
   { items: [
     { href: "/", label: "Overview", icon: LayoutGrid },
     { href: "/brief", label: "Weekly brief", icon: Sunrise },
+    { href: "/ask", label: "Ask", icon: Sparkles },
   ] },
   { title: "Food", items: [
     { href: "/menu", label: "Menu costs", icon: BookOpen },
@@ -24,10 +25,12 @@ const MANAGER: { title?: string; items: NavItem[] }[] = [
     { href: "/prices", label: "Prices", icon: Receipt },
     { href: "/ordering", label: "Ordering", icon: ShoppingCart },
     { href: "/invoices", label: "Invoices", icon: FileCheck },
+    { href: "/menu/allergens", label: "Allergen chart", icon: Wheat },
   ] },
   { title: "People", items: [
     { href: "/schedule", label: "Schedule", icon: CalendarRange },
     { href: "/team", label: "Team", icon: Users },
+    { href: "/team/documents", label: "Documents", icon: FolderOpen },
     { href: "/labor", label: "Timecards & payroll", icon: Clock },
     { href: "/tips", label: "Tips", icon: HandCoins },
     { href: "/my", label: "My shifts", icon: CalendarCheck },
@@ -56,7 +59,10 @@ const STAFF: { title?: string; items: NavItem[] }[] = [
   ] },
 ];
 
-const isActive = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+const matches = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`) || pathname.startsWith(`${href}?`));
+const ALL_HREFS = [...MANAGER, ...STAFF].flatMap((g) => g.items.map((i) => i.href));
+/** Active = the most specific nav item matching the path (so /menu/allergens lights "Allergen chart", not "Menu costs"). */
+const isActive = (pathname: string, href: string) => matches(pathname, href) && !ALL_HREFS.some((h) => h.length > href.length && h.startsWith(href) && matches(pathname, h));
 
 export function Nav({ role, name, logout }: { role: SessionRole; name: string; logout: () => Promise<void> }) {
   const pathname = usePathname();

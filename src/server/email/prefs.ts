@@ -9,6 +9,8 @@ export const NOTIFY_EVENTS = {
   weeklyBrief: { label: "Weekly brief", hint: "What needs you before the week starts.", audience: "manager" },
   priceSpikes: { label: "Price spikes", hint: "A supplier price jumped enough to move plate costs.", audience: "manager" },
   invoiceIssues: { label: "Invoice issues", hint: "An invoice doesn't match the order or delivery.", audience: "manager" },
+  staffRequests: { label: "Staff requests", hint: "Someone asked for time off or to swap a shift.", audience: "manager" },
+  badReviews: { label: "Low reviews", hint: "A new 1–2★ review came in.", audience: "manager" },
 } as const;
 
 export type NotifyEvent = keyof typeof NOTIFY_EVENTS;
@@ -30,6 +32,8 @@ export const DEFAULT_PREFS: NotifyPrefs = {
     weeklyBrief: { email: true, push: true },
     priceSpikes: { email: false, push: true },
     invoiceIssues: { email: false, push: true },
+    staffRequests: { email: false, push: true },
+    badReviews: { email: true, push: true },
   },
 };
 

@@ -40,13 +40,6 @@ export async function createOrder(input: z.infer<typeof draftSchema>) {
   redirect(`/ordering/po/${po.id}`);
 }
 
-export async function markSent(id: string) {
-  await requireUser("MANAGER");
-  await db.purchaseOrder.update({ where: { id, status: "DRAFT" }, data: { status: "SENT", sentAt: new Date() } });
-  revalidatePath(`/ordering/po/${id}`);
-  revalidatePath("/ordering");
-}
-
 export async function receiveOrder(id: string, form: FormData) {
   await requireUser("MANAGER");
   const po = await db.purchaseOrder.findUniqueOrThrow({ where: { id }, include: { lines: true } });

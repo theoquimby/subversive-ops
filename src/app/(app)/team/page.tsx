@@ -4,11 +4,13 @@ import { relativeTime } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { num } from "@/server/db";
 import { isSquareConnected } from "@/server/services/square";
-import { lastLaborSync, loadTeam } from "@/server/services/labor";
+import { describeDiff } from "@/domain/teamSync";
+import { lastLaborSync, loadTeam, squareTeamDiffs } from "@/server/services/labor";
 import { getLaborRules, getOpeningHours } from "@/server/services/labor-rules";
 import { sickBalances } from "@/server/services/payroll";
 import { listAnnouncements } from "@/server/services/scheduling";
 import { AnnouncementsManager } from "./announcements";
+import { PeopleNotesSection } from "./people-section";
 import { setPositionField } from "./actions";
 import { AddEmployeeRow, AddPositionRow, DeletePositionButton, EmployeeGrid, SyncTeamButton } from "./team-client";
 
@@ -26,6 +28,8 @@ const td = "border-b border-border px-2 py-1 align-middle [tr:last-child_&]:bord
 export default async function TeamPage() {
   await requireUser("MANAGER");
   const [{ positions, employees, users }, openingHours, lastSync, rules, sick, notes] = await Promise.all([loadTeam(), getOpeningHours(), lastLaborSync(), getLaborRules(), sickBalances(), listAnnouncements()]);
+  const diffs = await squareTeamDiffs();
+  const differing = employees.filter((e) => diffs[e.id]?.length);
   const tipEligible = new Map(positions.map((p) => [p.id, p.tipEligible]));
   const rateWarning = (rate: number | null, positionIds: string[]) => {
     if (rate == null) return null;
@@ -105,6 +109,20 @@ export default async function TeamPage() {
       </Section>
 
       <Section title="People" description="Rates here are the default; a timecard or a person's rate for a specific position wins. The calendar icon opens availability and login. Sick is NY paid sick leave available this year.">
+        {differing.length > 0 && (
+          <Card className="mb-3 border-warn/40 bg-warn-bg/40 p-4 text-sm">
+            <div className="font-medium text-warn">Square has different details for {differing.length} {differing.length === 1 ? "person" : "people"}</div>
+            <p className="mt-0.5 text-ink-2">What&apos;s set here is kept, and Square only fills in blanks. If Square is right, change it below; if Ops is right, update it in Square.</p>
+            <ul className="mt-2 space-y-1">
+              {differing.map((e) => (
+                <li key={e.id}>
+                  <span className="font-medium">{e.name}</span>
+                  <span className="text-muted"> · {diffs[e.id].map(describeDiff).join(" · ")}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
         <Card className="overflow-x-auto">
           <EmployeeGrid
             employees={employees.map((e) => ({
@@ -128,6 +146,8 @@ export default async function TeamPage() {
           <AddEmployeeRow />
         </Card>
       </Section>
+
+      <PeopleNotesSection />
 
       <Section title="Announcements" description="Short notes for the team. They show at the top of everyone's My shifts.">
         <AnnouncementsManager items={notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() }))} />

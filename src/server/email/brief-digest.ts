@@ -47,6 +47,10 @@ export function briefDigest(b: WeeklyBrief): BriefDigest {
   const gapBad = g != null && g.foodSales > 0 && g.unexplainedCost / g.foodSales > 0.02;
   add(gapBad, { title: "Margin gap", status: g == null ? "Needs two completed counts" : `${money(g.unexplainedCost, { whole: true })} unexplained between ${shortDate(g.from)} and ${shortDate(g.to)}`, path: "/variance" });
 
+  if (b.unmapped.count) add(true, { title: "Square items without a recipe", status: `${plural(b.unmapped.count, "item")} sold ${money(b.unmapped.sales, { whole: true })} in the last 7 days with no recipe: ${list(b.unmapped.top.slice(0, 3).map((u) => u.name))}`, path: "/sales/square-menu" });
+  const inv = b.decisions.find((d) => d.key === "invoiceIssues");
+  if (inv) add(true, { title: "Invoice issues", status: inv.title, path: inv.href });
+
   const c = b.counts;
   add(c.overdue, { title: c.overdue ? "Count is overdue" : "Counts", status: c.last == null ? "No completed counts yet" : c.overdue ? `Last full count was ${c.daysSince} days ago (${shortDate(c.last)})` : `Last count ${shortDate(c.last)}`, path: "/count" });
 
@@ -60,5 +64,17 @@ export function briefDigest(b: WeeklyBrief): BriefDigest {
     laborTarget: b.budget?.laborPct ?? null,
     todo,
     clear,
+    lastWeek: b.lastWeek
+      ? {
+          from: b.lastWeek.from,
+          to: b.lastWeek.to,
+          rows: b.lastWeek.rows.map((r) => ({
+            label: r.label,
+            actual: r.actual == null ? "—" : r.key === "sales" ? money(r.actual, { whole: true }) : pct(r.actual),
+            target: r.target == null ? null : r.key === "sales" ? money(r.target, { whole: true }) : pct(r.target),
+            tone: r.rag === "none" ? "neutral" : r.rag,
+          })),
+        }
+      : null,
   };
 }

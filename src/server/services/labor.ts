@@ -1,6 +1,7 @@
 import "server-only";
 import { addDays, businessDate, ISODate } from "@/domain/dates";
 import { payForWeek, PayLine } from "@/domain/labor";
+import { mergePositionRate, mergeTeamMember, parseTeamDiffs, type TeamDiff } from "@/domain/teamSync";
 import { blockHours, zonedTime } from "@/domain/timecards";
 import { Prisma } from "@prisma/client";
 import { db, num } from "../db";
@@ -104,40 +105,77 @@ async function positionResolver(): Promise<{ resolve: PositionResolver; created:
   return { resolve, created: () => created };
 }
 
+export const TEAM_DIFFS_KEY = "team.squareDiffs";
+const SYNC_DEACTIVATED_KEY = "team.squareDeactivated";
+
+/** Where Square disagrees with what was set in Ops, by employee id (from the last team sync). */
+export async function squareTeamDiffs(): Promise<Record<string, TeamDiff[]>> {
+  return parseTeamDiffs((await db.setting.findUnique({ where: { key: TEAM_DIFFS_KEY } }))?.value);
+}
+
+const D2 = (n: number) => new Prisma.Decimal(n.toFixed(2));
+
 /**
  * Pull team members and their wage settings from Square. Employees match on
  * Square id (or, the first time, on an unlinked employee with the same name).
+ * New people come straight from Square. For people we already have, Square only
+ * fills blanks: names, contact details and pay rates edited in Ops are kept and any
+ * difference is recorded for /team. Deactivations in Square carry over; someone
+ * deactivated in Ops is never reactivated by the sync.
  */
 export async function syncSquareTeam(client?: SquareClient) {
   const c = client ?? (await requireSquareClient());
   const members = await listTeamMembers(c);
   const pos = await positionResolver();
+  const syncDeactivated = new Set<string>(parseIdList((await db.setting.findUnique({ where: { key: SYNC_DEACTIVATED_KEY } }))?.value));
+  const diffs: Record<string, TeamDiff[]> = {};
+  const positionNames = new Map((await db.position.findMany({ select: { id: true, name: true } })).map((p) => [p.id, p.name]));
   for (const m of members) {
     const jobs = await getWageJobs(c, m.id);
     const baseRate = jobs.find((j) => j.hourlyRate != null)?.hourlyRate ?? null;
     let emp = await db.employee.findUnique({ where: { squareTeamMemberId: m.id } });
     if (!emp) emp = await db.employee.findFirst({ where: { squareTeamMemberId: null, name: { equals: m.name, mode: "insensitive" } } });
-    const data = {
-      name: m.name,
-      email: m.email,
-      phone: m.phone,
-      active: m.active,
-      squareTeamMemberId: m.id,
-      ...(baseRate != null ? { hourlyRate: new Prisma.Decimal(baseRate.toFixed(2)) } : {}),
-    };
-    emp = emp ? await db.employee.update({ where: { id: emp.id }, data }) : await db.employee.create({ data });
+    const merge = mergeTeamMember(
+      emp ? { name: emp.name, email: emp.email, phone: emp.phone, hourlyRate: num(emp.hourlyRate), active: emp.active } : null,
+      { name: m.name, email: m.email, phone: m.phone, hourlyRate: baseRate, active: m.active },
+      emp ? syncDeactivated.has(emp.id) : false,
+    );
+    const { hourlyRate, ...rest } = merge.data;
+    const data = { ...rest, squareTeamMemberId: m.id, ...(hourlyRate != null ? { hourlyRate: D2(hourlyRate) } : {}) };
+    if (emp) emp = await db.employee.update({ where: { id: emp.id }, data });
+    else emp = await db.employee.create({ data: { ...data, name: m.name } });
+    if (merge.deactivatedBySync) syncDeactivated.add(emp.id);
+    if (emp.active) syncDeactivated.delete(emp.id);
+    const empDiffs = [...merge.diffs];
+    const current = new Map((await db.employeePosition.findMany({ where: { employeeId: emp.id }, select: { positionId: true, rate: true } })).map((p) => [p.positionId, p]));
     for (const j of jobs) {
       const positionId = await pos.resolve(j.title);
       if (!positionId) continue;
-      const rate = j.hourlyRate != null ? new Prisma.Decimal(j.hourlyRate.toFixed(2)) : null;
-      await db.employeePosition.upsert({
-        where: { employeeId_positionId: { employeeId: emp.id, positionId } },
-        create: { employeeId: emp.id, positionId, rate },
-        update: { rate },
-      });
+      const have = current.get(positionId);
+      if (!have) {
+        await db.employeePosition.create({ data: { employeeId: emp.id, positionId, rate: j.hourlyRate != null ? D2(j.hourlyRate) : null } });
+        continue;
+      }
+      const r = mergePositionRate(num(have.rate), j.hourlyRate, positionNames.get(positionId) ?? j.title ?? "Position");
+      if (r.rate != null) await db.employeePosition.update({ where: { employeeId_positionId: { employeeId: emp.id, positionId } }, data: { rate: D2(r.rate) } });
+      if (r.diff) empDiffs.push(r.diff);
     }
+    if (empDiffs.length) diffs[emp.id] = empDiffs;
   }
-  return { members: members.length, positionsCreated: pos.created() };
+  await Promise.all([
+    db.setting.upsert({ where: { key: TEAM_DIFFS_KEY }, create: { key: TEAM_DIFFS_KEY, value: JSON.stringify(diffs) }, update: { value: JSON.stringify(diffs) } }),
+    db.setting.upsert({ where: { key: SYNC_DEACTIVATED_KEY }, create: { key: SYNC_DEACTIVATED_KEY, value: JSON.stringify([...syncDeactivated]) }, update: { value: JSON.stringify([...syncDeactivated]) } }),
+  ]);
+  return { members: members.length, positionsCreated: pos.created(), differences: Object.keys(diffs).length };
+}
+
+function parseIdList(raw: string | null | undefined): string[] {
+  try {
+    const v = raw ? JSON.parse(raw) : [];
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -194,12 +232,12 @@ export async function syncSquareTimecards(from: ISODate, toExclusive: ISODate, c
 }
 
 /** Team members, wages and timecards for business dates [from, toExclusive). */
-export async function syncLabor(from: ISODate, toExclusive: ISODate): Promise<{ skipped: string } | { members: number; timecards: number; keptEdited: number; positionsCreated: number }> {
+export async function syncLabor(from: ISODate, toExclusive: ISODate): Promise<{ skipped: string } | { members: number; timecards: number; keptEdited: number; positionsCreated: number; differences: number }> {
   if (!(await isSquareConnected())) return { skipped: "Square isn't connected — connect it under Settings → Square first." };
   const client = await requireSquareClient();
   const team = await syncSquareTeam(client);
   const cards = await syncSquareTimecards(from, toExclusive, client);
-  return { members: team.members, timecards: cards.timecards, keptEdited: cards.keptEdited, positionsCreated: team.positionsCreated + cards.positionsCreated };
+  return { members: team.members, timecards: cards.timecards, keptEdited: cards.keptEdited, positionsCreated: team.positionsCreated + cards.positionsCreated, differences: team.differences };
 }
 
 export async function lastLaborSync() {

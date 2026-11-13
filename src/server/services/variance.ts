@@ -185,6 +185,13 @@ export async function lastCountPeriod() {
 
 /** Waste logging leaderboard — keeps logging a habit (who's logging, not who's wasting). */
 export async function wasteLeaderboard(since: Date) {
-  const rows = await db.wasteLog.groupBy({ by: ["loggedBy"], where: { loggedAt: { gte: since } }, _count: { _all: true }, orderBy: { _count: { loggedBy: "desc" } } });
-  return rows.filter((r) => r.loggedBy).map((r) => ({ name: r.loggedBy!, logs: r._count._all }));
+  // A prep or menu item exploded into several ingredient rows counts as one log.
+  const rows = await db.wasteLog.findMany({ where: { loggedAt: { gte: since }, loggedBy: { not: null } }, select: { id: true, loggedBy: true, batchId: true } });
+  const by = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const s = by.get(r.loggedBy!) ?? new Set<string>();
+    s.add(r.batchId ?? r.id);
+    by.set(r.loggedBy!, s);
+  }
+  return [...by].map(([name, s]) => ({ name, logs: s.size })).sort((a, b) => b.logs - a.logs || a.name.localeCompare(b.name));
 }

@@ -220,8 +220,10 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
   await seedBeverage(db);
   const { seedInvoices } = await import("./demo/invoices");
   await seedInvoices(db);
+  const { seedFinal } = await import("./demo/final");
   const { seedReviews } = await import("./demo/reviews");
   await seedReviews(db);
+  await seedFinal(db);
 
   await db.setting.create({ data: { key: "square.lastSync", value: new Date(Date.now() - 3 * 3600_000).toISOString() } });
 

@@ -1,4 +1,5 @@
 import { env } from "@/server/env";
+import { alertPriceSpikes } from "@/server/services/notify";
 import { autoDraftOrders } from "@/server/services/planning";
 import { importGoogleReviewsDaily } from "@/server/services/reviews";
 import { autoDraftNextWeek } from "@/server/services/scheduling";
@@ -9,7 +10,9 @@ export const maxDuration = 300;
 
 /**
  * Morning housekeeping (Vercel Cron, Bearer CRON_SECRET): draft supplier orders
- * whose cutoff is coming up, pull new Google reviews, and (Fri/Sat) draft next
+ * whose cutoff is coming up, pull new Google reviews (managers hear about new 1–2★
+ * ones), alert managers to supplier price increases over the threshold that
+ * haven't been sent yet, and (Fri/Sat) draft next
  * week's schedule if auto-draft is on. Each job is isolated
  * so one failing doesn't stop the others.
  */
@@ -25,7 +28,12 @@ export async function GET(req: Request) {
       return { [name]: { error: (e as Error).message } };
     }
   };
-  const results = Object.assign({}, await run("orders", () => autoDraftOrders()), await run("reviews", () => importGoogleReviewsDaily()));
+  const results = Object.assign(
+    {},
+    await run("orders", () => autoDraftOrders()),
+    await run("reviews", () => importGoogleReviewsDaily()),
+    await run("priceSpikes", () => alertPriceSpikes()),
+  );
   // Next week's schedule is drafted at the end of the week (only if that's switched on and it's still empty).
   if ([5, 6].includes(weekday(businessToday()))) Object.assign(results, await run("schedule", () => autoDraftNextWeek()));
   return Response.json(results);

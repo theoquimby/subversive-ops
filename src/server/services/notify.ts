@@ -1,18 +1,24 @@
 import "server-only";
-import { addDays, ISODate, toISODate } from "@/domain/dates";
+import { after } from "next/server";
+import { isBadReview, newSpikes, parseSentKeys, parseSpikeThreshold, spikeKey } from "@/domain/alerts";
+import { addDays, businessDate, ISODate, toISODate } from "@/domain/dates";
 import { creditItems } from "@/domain/invoiceMatch";
 import { shiftPaidHours } from "@/domain/schedule";
 import { money } from "@/lib/format";
 import { db, num } from "../db";
+import { env } from "../env";
 import { briefDigest } from "../email/brief-digest";
 import type { RenderedEmail } from "../email/layout";
 import { DEFAULT_PREFS, NotifyEvent, NotifyPrefs, parsePrefs, prefsKey } from "../email/prefs";
-import { invoiceIssueEmail, priceSpikesEmail, schedulePublishedEmail, shiftUpdateEmail, weeklyBriefEmail, type PriceSpike, type ShiftUpdate } from "../email/templates";
+import { badReviewEmail, invoiceIssueEmail, priceSpikesEmail, schedulePublishedEmail, shiftUpdateEmail, staffRequestEmail, weeklyBriefEmail, type PriceSpike, type ShiftUpdate, type StaffRequest } from "../email/templates";
+import { badReviewSummary, staffRequestSummary } from "../email/templates/manager-requests";
 import { shiftUpdatePush } from "../email/templates/shift-update";
 import { emailConfigured, isEmail, sendEmail } from "../integrations/email";
 import { weeklyBrief } from "./brief";
+import { recentPriceMoves } from "./insights";
 import { loadTolerance, STATUS_META } from "./invoices";
 import { PushPayload, pushConfigured, sendPush } from "./push";
+import { businessToday } from "./sales";
 import { instantAt, shiftView } from "./scheduling";
 
 /**
@@ -46,6 +52,19 @@ export interface NotifyResult {
   /** Plain-English reasons something wasn't sent ("Email isn't set up yet", "Jamie has no email"). */
   skipped: string[];
   errors: string[];
+}
+
+/**
+ * Run a notification after the response is sent when we're inside a request
+ * (server action / route), or straight away (unawaited) in scripts and crons.
+ */
+export function inBackground(task: () => Promise<unknown>) {
+  const run = () => task().then(() => undefined, (e) => console.error("background notification failed", e));
+  try {
+    after(run);
+  } catch {
+    void run();
+  }
 }
 
 export function appUrl(): string {
@@ -298,6 +317,98 @@ export function notifyInvoiceIssue(invoiceId: string) {
       to: m,
       email: invoiceIssueEmail({ name: m.name, invoiceId: inv.id, supplierName: inv.supplier.name, invoiceNumber: inv.invoiceNumber, invoiceDate: toISODate(inv.invoiceDate), statusLabel: label, total: num(inv.total), issues, creditTotal: credit > 0 ? credit : null, baseUrl: base }),
       push: { title: `${inv.supplier.name} invoice ${ref}`, body: `${label}: ${issues.length} line${issues.length === 1 ? "" : "s"} don't match${credit > 0 ? ` · ${money(credit)} credit to request` : ""}`, url: `/invoices/${inv.id}`, tag: `invoice-${inv.id}` },
+    }));
+  });
+}
+
+// ---- Price spikes: threshold + "already sent" bookkeeping ---------------------------------
+
+export const SPIKE_THRESHOLD_KEY = "alerts.priceSpikeThreshold";
+const SPIKES_SENT_KEY = "alerts.priceSpikes.sent";
+
+/** Minimum increase (fraction, default 0.08) that counts as a spike. */
+export async function spikeThreshold(): Promise<number> {
+  return parseSpikeThreshold((await db.setting.findUnique({ where: { key: SPIKE_THRESHOLD_KEY } }))?.value);
+}
+
+export async function saveSpikeThreshold(fraction: number) {
+  const value = String(fraction);
+  await db.setting.upsert({ where: { key: SPIKE_THRESHOLD_KEY }, create: { key: SPIKE_THRESHOLD_KEY, value }, update: { value } });
+}
+
+/**
+ * Tell managers about price increases at or over the threshold that took effect in the
+ * last `days` days and haven't been alerted yet (one alert per product per price date).
+ * Called by the daily-ops cron and after a price sheet is imported. Never throws.
+ */
+export async function alertPriceSpikes(days = 7): Promise<{ spikes: number } & Partial<Pick<NotifyResult, "emailed" | "pushed" | "skipped" | "errors">>> {
+  try {
+    const today = businessToday();
+    const [threshold, sentRow, moves] = await Promise.all([spikeThreshold(), db.setting.findUnique({ where: { key: SPIKES_SENT_KEY } }), recentPriceMoves(days)]);
+    const sent = parseSentKeys(sentRow?.value, today);
+    const fresh = newSpikes(moves, threshold, new Set(sent));
+    if (fresh.length === 0) return { spikes: 0 };
+    // Mark first: a slow or failed send must not turn into a repeat alert tomorrow.
+    const value = JSON.stringify([...sent, ...fresh.map(spikeKey)]);
+    await db.setting.upsert({ where: { key: SPIKES_SENT_KEY }, create: { key: SPIKES_SENT_KEY, value }, update: { value } });
+    const r = await notifyPriceSpikes(fresh);
+    return { spikes: fresh.length, emailed: r.emailed, pushed: r.pushed, skipped: r.skipped, errors: r.errors };
+  } catch (e) {
+    console.error("price spike alert failed", e);
+    return { spikes: 0, errors: [(e as Error).message] };
+  }
+}
+
+// ---- Managers: things waiting on a decision ----------------------------------------------
+
+/** Call after a staff member asks for time off or posts a swap. */
+export function notifyStaffRequest(ref: { timeOffId: string } | { swapId: string }) {
+  return safely("staffRequests", async () => {
+    let request: StaffRequest;
+    let tag: string;
+    if ("timeOffId" in ref) {
+      const r = await db.timeOffRequest.findUnique({ where: { id: ref.timeOffId }, include: { employee: { select: { name: true } } } });
+      if (!r || r.status !== "PENDING") return [];
+      const startDate = toISODate(r.startDate);
+      const endDate = toISODate(r.endDate);
+      const shiftsAffected = await db.shift.count({ where: { employeeId: r.employeeId, published: true, start: { gte: instantAt(startDate, 0), lt: instantAt(addDays(endDate, 1), 0) } } });
+      request = { kind: "timeOff", employee: r.employee.name, type: r.type, startDate, endDate, hours: num(r.hours), note: r.note, shiftsAffected };
+      tag = `request-timeoff-${r.id}`;
+    } else {
+      const s = await db.shiftSwap.findUnique({
+        where: { id: ref.swapId },
+        include: { shift: { include: { position: { select: { name: true } } } }, requester: { select: { name: true } }, taker: { select: { name: true } } },
+      });
+      if (!s || s.status !== "PENDING") return [];
+      const v = shiftView(s.shift);
+      request = { kind: "swap", employee: s.requester.name, shift: { date: v.date, startMin: v.startMin, endMin: v.endMin, position: s.shift.position.name }, taker: s.taker?.name ?? null };
+      tag = `request-swap-${s.id}`;
+    }
+    const base = appUrl();
+    const sum = staffRequestSummary(request);
+    return (await managers()).map((m) => ({
+      to: m,
+      email: staffRequestEmail({ name: m.name, request, baseUrl: base }),
+      push: { title: sum.title, body: sum.body, url: "/schedule/requests", tag },
+    }));
+  });
+}
+
+/** Call with newly imported review ids; managers hear about recent 1–2★ ones only. */
+export function notifyBadReviews(reviewIds: string[]) {
+  return safely("badReviews", async () => {
+    if (reviewIds.length === 0) return [];
+    // A first import can pull in old reviews; only recent ones are news.
+    const since = instantAt(addDays(businessToday(), -14), 0);
+    const rows = await db.review.findMany({ where: { id: { in: reviewIds }, postedAt: { gte: since } }, orderBy: { postedAt: "desc" }, select: { author: true, rating: true, source: true, text: true, postedAt: true } });
+    const bad = rows.filter((r) => isBadReview(r.rating)).map((r) => ({ author: r.author, rating: r.rating, source: r.source, text: r.text, date: businessDate(r.postedAt, env.BUSINESS_TIMEZONE) }));
+    if (bad.length === 0) return [];
+    const base = appUrl();
+    const sum = badReviewSummary(bad);
+    return (await managers()).map((m) => ({
+      to: m,
+      email: badReviewEmail({ name: m.name, reviews: bad, baseUrl: base }),
+      push: { title: sum.title, body: sum.body, url: "/reviews", tag: `reviews-${bad[0].date}` },
     }));
   });
 }

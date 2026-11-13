@@ -82,8 +82,6 @@ function readDone(): string[] {
   return doneCache;
 }
 
-export const isTourDone = (id: string) => readDone().includes(id);
-
 export function markTourDone(id: string) {
   const next = [...new Set([...readDone(), id])];
   doneCache = next;

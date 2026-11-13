@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateRating, fallbackReply, operationalHint, keywordSentiment, keywordThemes, parsePastedReviews, parseRating, parseReviewDate, reviewFingerprint, rollingRating, themeCounts, weeklyRatings } from "../reviews";
-import { weekStartOf } from "../budgets";
+import { estimateRating, fallbackReply, operationalHint, keywordSentiment, keywordThemes, parsePastedReviews, parseRating, parseReviewDate, reviewFingerprint, rollingRating, themeCounts } from "../reviews";
 
 const TODAY = "2026-11-13";
 
@@ -151,12 +150,6 @@ describe("summaries", () => {
     { rating: 3, postedAt: "2026-11-04", themes: ["beer", "service-speed"], sentiment: "mixed" },
     { rating: 1, postedAt: "2026-11-10", themes: ["service-speed"], sentiment: "negative" },
   ];
-  it("averages per Monday week", () => {
-    expect(weeklyRatings(rs, weekStartOf)).toEqual([
-      { week: "2026-11-02", avg: 4, count: 2 },
-      { week: "2026-11-09", avg: 1, count: 1 },
-    ]);
-  });
   it("computes a rolling average", () => {
     expect(rollingRating(rs, 2).map((x) => x.avg)).toEqual([5, 4, 2]);
   });

@@ -4,26 +4,49 @@ import { Button, Card, cx, Field, Input, Select } from "@/components/ui";
 import { useActionState, useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
 import { useConfirm } from "@/components/dialog";
-import { deleteWaste, logWaste } from "./actions";
+import { deleteWaste, logRecipeWaste, logWaste } from "./actions";
 import { HelpTip } from "@/components/help";
 
 const REASONS = ["Spoiled", "Expired", "Dropped", "Overcooked", "Returned", "Other"];
 
 type Errors = { item?: string; qty?: string };
 
-export function WasteForm({ items }: { items: { id: string; name: string; units: string[] }[] }) {
-  const [state, action, pending] = useActionState(logWaste, undefined);
+export interface RecipeItem {
+  id: string;
+  name: string;
+  /** PREP | MENU | MODIFIER */
+  kind: string;
+  units: string[];
+}
+
+type Mode = "ingredient" | "recipe";
+
+export function WasteForm({ items, recipes = [] }: { items: { id: string; name: string; units: string[] }[]; recipes?: RecipeItem[] }) {
+  const [mode, setMode] = useState<Mode>("ingredient");
+  const [ingState, ingAction, ingPending] = useActionState(logWaste, undefined);
+  const [recState, recAction, recPending] = useActionState(logRecipeWaste, undefined);
+  const state = mode === "ingredient" ? ingState : recState;
+  const pending = mode === "ingredient" ? ingPending : recPending;
   const [itemId, setItemId] = useState("");
   const [reason, setReason] = useState(REASONS[0]);
   const [errors, setErrors] = useState<Errors>({});
-  const units = items.find((i) => i.id === itemId)?.units ?? [];
+  const list = mode === "ingredient" ? items : recipes;
+  const units = list.find((i) => i.id === itemId)?.units ?? [];
+  const switchMode = (m: Mode) => { setMode(m); setItemId(""); setErrors({}); };
   return (
     <Card className="p-5" data-tour="waste.form">
+      {recipes.length > 0 && (
+        <div role="tablist" aria-label="What was thrown out" className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-surface-2 p-1" data-tour="waste.mode">
+          {([["ingredient", "Ingredient"], ["recipe", "Prep or menu item"]] as const).map(([m, label]) => (
+            <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => switchMode(m)} className={cx("h-10 rounded-md text-sm", mode === m ? "bg-surface font-medium text-ink shadow-sm" : "text-ink-2")}>{label}</button>
+          ))}
+        </div>
+      )}
       <form
-        action={action}
+        action={mode === "ingredient" ? ingAction : recAction}
         noValidate
         className="space-y-4"
-        key={state?.ok}
+        key={`${mode}-${state?.ok ?? ""}`}
         onSubmit={(e) => {
           // App-styled validation instead of the browser's "Please fill out this field" bubbles.
           const qty = Number(new FormData(e.currentTarget).get("qty"));
@@ -37,19 +60,26 @@ export function WasteForm({ items }: { items: { id: string; name: string; units:
           }
         }}
       >
-        <Field label="Item" hint={errors.item && <span className="text-bad" role="alert">{errors.item}</span>}>
-          <Select id="waste-item" name="ingredientId" value={itemId} onChange={(e) => { setItemId(e.target.value); setErrors((x) => ({ ...x, item: undefined })); }} className={cx("h-11 text-base", errors.item && "border-bad")}>
-            <option value="" disabled>Choose…</option>
-            {items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </Select>
+        <Field
+          label={mode === "ingredient" ? "Item" : <span className="inline-flex items-center gap-1.5">Prep or menu item <HelpTip id="waste.prepItems" /></span>}
+          hint={errors.item ? <span className="text-bad" role="alert">{errors.item}</span> : mode === "recipe" ? "Logged as the ingredients it's made from, so food cost counts it." : undefined}
+        >
+          <Select
+            id="waste-item"
+            name={mode === "ingredient" ? "ingredientId" : "recipeId"}
+            value={itemId}
+            onChange={(e) => { setItemId(e.target.value); setErrors((x) => ({ ...x, item: undefined })); }}
+            className={cx("h-11 text-base", errors.item && "border-bad")}
+            options={mode === "ingredient" ? items.map((i) => ({ value: i.id, label: i.name })) : recipes.map((r) => ({ value: r.id, label: r.name, group: r.kind === "PREP" ? "Prep" : "Menu" }))}
+          />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="How much" hint={errors.qty && <span className="text-bad" role="alert">{errors.qty}</span>}>
+          <Field label={mode === "recipe" && recipes.find((r) => r.id === itemId)?.kind !== "PREP" && itemId ? "How many" : "How much"} hint={errors.qty && <span className="text-bad" role="alert">{errors.qty}</span>}>
             <Input id="waste-qty" name="qty" type="number" inputMode="decimal" step="any" min={0} aria-invalid={errors.qty ? true : undefined} onChange={() => errors.qty && setErrors((x) => ({ ...x, qty: undefined }))} className={cx("num h-11 text-base", errors.qty && "border-bad")} />
           </Field>
           <Field label="Unit">
-            {/* Defaults to the item's count unit, so it's never blank. */}
-            <Select name="unit" className="h-11 text-base" key={itemId} defaultValue={units[0] ?? ""} disabled={!units.length} placeholder={itemId ? "Choose…" : "Pick an item"}>
+            {/* Defaults to the item's count unit (or a prep's batch unit), so it's never blank. */}
+            <Select name="unit" className="h-11 text-base" key={`${mode}-${itemId}`} defaultValue={units[0] ?? ""} disabled={!units.length} placeholder={itemId ? "Choose…" : "Pick an item"}>
               {units.map((u) => <option key={u}>{u}</option>)}
             </Select>
           </Field>

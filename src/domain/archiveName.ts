@@ -1,5 +1,5 @@
 /**
- * Recipe names are unique (including archived ones), so archiving appends a
+ * Recipe and ingredient names are unique (including archived ones), so archiving appends a
  * readable suffix — "Burger · archived Nov 13" — that restoring strips again.
  * Also understands the old "Burger (archived 1794…)" form.
  */

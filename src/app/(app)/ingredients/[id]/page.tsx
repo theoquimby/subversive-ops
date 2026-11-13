@@ -2,7 +2,8 @@ import { LineChart } from "@/components/line-chart";
 import { Badge, Button, Card, Input, PageHeader, Section, Select } from "@/components/ui";
 import { addDays } from "@/domain/dates";
 import { formatBase, STANDARD_UNITS_BY_BASE, type BaseUnit } from "@/domain/units";
-import { money } from "@/lib/format";
+import { money, shortDate } from "@/lib/format";
+import { toISODate } from "@/domain/dates";
 import { DISPLAY_UNIT } from "@/lib/units-display";
 import { requireUser } from "@/server/auth";
 import { db, num } from "@/server/db";
@@ -13,6 +14,7 @@ import { notFound } from "next/navigation";
 import { addConversion, removeConversion, setPackSize, setPreferredProduct, unlinkProduct } from "../actions";
 import { IngredientForm } from "./ingredient-form";
 import { HelpTip } from "@/components/help";
+import { AllergenChips } from "./allergen-chips";
 
 export default async function IngredientPage({ params }: { params: Promise<{ id: string }> }) {
   await requireUser("MANAGER");
@@ -68,6 +70,24 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
       })
     : [];
   const recipes = [...new Map(ing.recipeLines.filter((l) => l.recipe.active).map((l) => [l.recipe.id, l.recipe])).values()];
+
+  // Drill-down: what was actually invoiced and ordered for this ingredient lately.
+  const [invoiceLines, orderLines] = await Promise.all([
+    db.invoiceLine.findMany({
+      where: { product: { ingredientId: ing.id } },
+      orderBy: [{ invoice: { invoiceDate: "desc" } }, { id: "asc" }],
+      take: 12,
+      include: { invoice: { select: { id: true, invoiceDate: true, invoiceNumber: true, supplier: { select: { name: true } } } }, product: { select: { purchaseUnit: true } } },
+    }),
+    db.purchaseOrderLine.findMany({
+      where: { product: { ingredientId: ing.id }, qty: { gt: 0 } },
+      orderBy: [{ order: { deliveryDate: "desc" } }, { id: "asc" }],
+      take: 12,
+      include: { order: { select: { id: true, deliveryDate: true, status: true, supplier: { select: { name: true } } } }, product: { select: { purchaseUnit: true } } },
+    }),
+  ]);
+  const LINE_FLAG: Record<string, string> = { PRICE: "Price changed", QTY: "Qty short", PRICE_QTY: "Price and qty", UNMATCHED: "Not on order" };
+  const ORDER_STATUS: Record<string, string> = { DRAFT: "Draft", SENT: "Sent", RECEIVED: "Received" };
 
   return (
     <>
@@ -126,6 +146,41 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
             <Card className="p-4"><LineChart points={history} ariaLabel={`${ing.name} cost per ${disp.unit}`} /></Card>
           </Section>
 
+          <Section title={<span className="inline-flex items-center gap-1.5">Recent invoices and orders <HelpTip id="ingredients.drilldown" /></span>} description="What was actually billed and ordered — tap one to open it." className="mb-0">
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Card className="divide-y divide-border" data-tour="ingredients.invoiceLines">
+                <div className="px-4 py-2.5 text-[0.75rem] font-medium text-muted">Invoice lines</div>
+                {invoiceLines.length === 0 ? <p className="px-4 py-3 text-sm text-muted">None yet.</p> : invoiceLines.map((l) => (
+                  <Link key={l.id} href={`/invoices/${l.invoice.id}`} className="flex min-h-12 items-center justify-between gap-3 px-4 py-2.5 text-sm hover:bg-surface-2/60">
+                    <span className="min-w-0">
+                      <span className="block truncate">{shortDate(toISODate(l.invoice.invoiceDate))} · {l.invoice.supplier.name}</span>
+                      <span className="block truncate text-xs text-muted">{l.invoice.invoiceNumber ? `#${l.invoice.invoiceNumber}` : "No number"}{LINE_FLAG[l.status] ? <> · <span className="text-warn">{LINE_FLAG[l.status]}</span></> : null}</span>
+                    </span>
+                    <span className="num shrink-0 text-right">
+                      <span className="block">{money(l.unitPrice.toNumber())}<span className="text-muted"> / {l.product?.purchaseUnit ?? "unit"}</span></span>
+                      <span className="block text-xs text-muted">× {Number(l.qty.toNumber().toFixed(2))}{l.expectedPrice && Math.abs(l.expectedPrice.toNumber() - l.unitPrice.toNumber()) >= 0.005 ? ` · was ${money(l.expectedPrice.toNumber())}` : ""}</span>
+                    </span>
+                  </Link>
+                ))}
+              </Card>
+              <Card className="divide-y divide-border">
+                <div className="px-4 py-2.5 text-[0.75rem] font-medium text-muted">Order lines</div>
+                {orderLines.length === 0 ? <p className="px-4 py-3 text-sm text-muted">None yet.</p> : orderLines.map((l) => (
+                  <Link key={l.id} href={`/ordering/po/${l.order.id}`} className="flex min-h-12 items-center justify-between gap-3 px-4 py-2.5 text-sm hover:bg-surface-2/60">
+                    <span className="min-w-0">
+                      <span className="block truncate">{shortDate(toISODate(l.order.deliveryDate))} · {l.order.supplier.name}</span>
+                      <span className="block text-xs text-muted">{ORDER_STATUS[l.order.status]}{l.receivedQty != null && Math.abs(l.receivedQty.toNumber() - l.qty.toNumber()) >= 0.005 ? <> · <span className="text-warn">got {Number(l.receivedQty.toNumber().toFixed(2))}</span></> : null}</span>
+                    </span>
+                    <span className="num shrink-0 text-right">
+                      <span className="block">{Number(l.qty.toNumber().toFixed(2))} {l.product.purchaseUnit}</span>
+                      {l.unitPrice && <span className="block text-xs text-muted">{money(l.unitPrice.toNumber())} / {l.product.purchaseUnit}</span>}
+                    </span>
+                  </Link>
+                ))}
+              </Card>
+            </div>
+          </Section>
+
           <Section title={<span className="inline-flex items-center gap-1.5">Custom units <HelpTip id="ingredients.customUnits" /></span>} description={`For recipes and counts — e.g. 1 slice = 21 g. Base unit is ${base}.`} className="mb-0">
             <Card className="divide-y divide-border">
               {ing.conversions.map((c) => (
@@ -152,6 +207,10 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
 
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <Card className="p-5"><IngredientForm v={form} units={units} categories={categories.map((c) => c.category)} areas={areas.map((a) => a.storageArea)} /></Card>
+          <Card className="p-5" data-tour="ingredients.allergens">
+            <h2 className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold">Allergens <HelpTip id="ingredients.allergens" /></h2>
+            <AllergenChips ingredientId={ing.id} initial={ing.allergens} />
+          </Card>
           <Card className="p-5">
             <h2 className="text-sm font-semibold">Used in</h2>
             {recipes.length === 0 ? <p className="mt-2 text-sm text-muted">No recipes yet.</p> : (

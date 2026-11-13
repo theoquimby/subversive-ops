@@ -129,10 +129,6 @@ export interface SoldUnit {
 }
 
 /** All units sold (items and modifiers) in completed orders closed in [start, end), plus per-order totals. */
-export async function listSoldUnits(client: SquareClient, startISO: string, endISO: string): Promise<SoldUnit[]> {
-  return (await listOrders(client, startISO, endISO)).units;
-}
-
 export async function listOrders(client: SquareClient, startISO: string, endISO: string): Promise<{ units: SoldUnit[]; orders: OrderTotal[] }> {
   const out: SoldUnit[] = [];
   const totals: OrderTotal[] = [];

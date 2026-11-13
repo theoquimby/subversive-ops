@@ -79,7 +79,7 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
         actions={
           <>
             <PeriodPicker start={period.start} prev={payPeriodFor(addDays(period.start, -1), rules).start} next={addDays(period.end, 1)} label={label} />
-            <SquareSyncButton week={period.start} connected={squareConnected} />
+            <SquareSyncButton periodStart={period.start} connected={squareConnected} />
             <LinkButton href={`/labor/payroll?start=${period.start}`} prefetch={false}><Download className="size-3.5" />{approved ? "Payroll CSV" : "Draft CSV"}</LinkButton>
           </>
         }

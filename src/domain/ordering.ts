@@ -66,14 +66,6 @@ export interface OrderSuggestion {
 /** `runs-out`: stock runs out before this delivery arrives (order anyway, and find a bridge). */
 export type OrderStatus = "covered" | "order" | "runs-out" | "needs-setup" | "needs-count";
 
-export const ORDER_STATUS_META: Record<OrderStatus, { label: string; tone: "good" | "warn" | "bad" | "neutral" }> = {
-  covered: { label: "Covered", tone: "good" },
-  order: { label: "Order", tone: "neutral" },
-  "runs-out": { label: "Runs out before delivery", tone: "bad" },
-  "needs-setup": { label: "Set pack size", tone: "warn" },
-  "needs-count": { label: "Count to auto-order", tone: "warn" },
-};
-
 /** Days the stock on hand lasts at the forecast rate of use. */
 export function daysOfCover(onHand: number, usage: number, days: number): number | null {
   if (days <= 0 || usage <= 0) return null;

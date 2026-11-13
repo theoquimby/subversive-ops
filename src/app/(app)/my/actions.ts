@@ -5,6 +5,7 @@ import { parseWindows } from "@/domain/timecards";
 import { Prisma } from "@prisma/client";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
+import { inBackground, notifyStaffRequest } from "@/server/services/notify";
 import { businessToday } from "@/server/services/sales";
 import { employeeForUser, hasOverlap } from "@/server/services/scheduling";
 import { revalidatePath } from "next/cache";
@@ -48,7 +49,8 @@ export async function requestSwap(shiftId: string, takerId: string | null): Prom
     const ok = await db.employeePosition.findUnique({ where: { employeeId_positionId: { employeeId: takerId, positionId: s.positionId } } });
     if (!ok) return { error: "They can't work that position." };
   }
-  await db.shiftSwap.create({ data: { shiftId, requesterId: e.id, takerId } });
+  const swap = await db.shiftSwap.create({ data: { shiftId, requesterId: e.id, takerId } });
+  inBackground(() => notifyStaffRequest({ swapId: swap.id }));
   done();
   return { ok: takerId ? "Asked your manager to approve the swap." : "Posted. Anyone who can cover it can offer, then your manager approves." };
 }
@@ -97,9 +99,10 @@ export async function requestTimeOff(input: { start: string; end: string; note?:
     hours = Number(p.data.hours.replace(/h(ours?)?$/i, "").trim());
     if (!Number.isFinite(hours) || hours <= 0 || hours > 400) return { error: "Hours should be a number like 6 or 7.5 (or blank for your scheduled hours)." };
   }
-  await db.timeOffRequest.create({
+  const req = await db.timeOffRequest.create({
     data: { employeeId: e.id, startDate: parseISODate(start), endDate: parseISODate(end), type, hours: hours == null ? null : new Prisma.Decimal(hours.toFixed(2)), note: note?.trim() || null },
   });
+  inBackground(() => notifyStaffRequest({ timeOffId: req.id }));
   done();
   return { ok: "Requested. You'll see it here once it's approved." };
 }

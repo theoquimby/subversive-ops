@@ -9,6 +9,8 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { notifySchedulePublished, notifyShiftChanged, shiftSnapshot } from "@/server/services/notify";
 import { z } from "zod";
+import { parseImpactPct } from "@/domain/events";
+import { setManualAdjustment } from "@/server/services/forecasting";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const shiftInput = z
@@ -176,5 +178,21 @@ export async function setScheduleAutoDraft(on: boolean): Promise<Res> {
   await requireUser("MANAGER");
   await setAutoDraft(on);
   done();
+  return {};
+}
+
+const nudgeSchema = z.object({ date: isoDate, pct: z.string().max(10), reason: z.string().max(200) });
+
+/** Nudge one day's sales forecast from the schedule ("+15" / "-20", blank clears), with why. */
+export async function nudgeForecast(input: z.input<typeof nudgeSchema>): Promise<Res> {
+  await requireUser("MANAGER");
+  const p = nudgeSchema.safeParse(input);
+  if (!p.success) return { error: "Check the adjustment." };
+  const m = parseImpactPct(p.data.pct);
+  if (m == null || m <= 0) return { error: "Enter a percent between −99 and +500, like +15 or −20." };
+  if (m !== 1 && !p.data.reason.trim()) return { error: "Add a short reason, like “festival” or “road closed”." };
+  await setManualAdjustment(p.data.date, m === 1 ? null : m, p.data.reason);
+  done();
+  revalidatePath("/sales");
   return {};
 }

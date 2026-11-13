@@ -10,6 +10,7 @@ import { getOpeningHours } from "@/server/services/labor-rules";
 import { AnnouncementsFeed } from "../team/announcements";
 import { MyApp, type MyShift } from "./my-app";
 import { PushToggle } from "@/components/push-toggle";
+import { MyPeopleTop, MyPolicyAsk } from "./people-section";
 
 export const metadata = { title: "My shifts" };
 
@@ -64,6 +65,7 @@ export default async function MyPage() {
       <div className="mb-10 empty:hidden">
         <AnnouncementsFeed items={notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() }))} />
       </div>
+      <MyPeopleTop employeeId={me.id} />
       <MyApp
         today={today}
         weekHours={weekHours}
@@ -76,6 +78,7 @@ export default async function MyPage() {
         openingHours={opening}
         team={team.map((t) => ({ id: t.id, name: t.name, positionIds: t.positions.map((p) => p.positionId) }))}
       />
+      <MyPolicyAsk />
       <div className="mt-10"><PushToggle /></div>
     </div>
   );

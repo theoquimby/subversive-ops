@@ -183,7 +183,7 @@ export async function syncTeamFromSquare(): Promise<{ error?: string; message?: 
     const r = await syncLabor(addDays(today, -14), addDays(today, 1));
     if ("skipped" in r) return { error: r.skipped };
     refresh();
-    return { message: `Synced ${r.members} team members and ${r.timecards} timecards${r.positionsCreated ? `, added ${r.positionsCreated} positions` : ""}${r.keptEdited ? `; kept ${r.keptEdited} edited` : ""}.` };
+    return { message: `Synced ${r.members} team members and ${r.timecards} timecards${r.positionsCreated ? `, added ${r.positionsCreated} positions` : ""}${r.keptEdited ? `; kept ${r.keptEdited} edited` : ""}.${r.differences ? ` Square differs for ${r.differences} ${r.differences === 1 ? "person" : "people"} — see below.` : ""}` };
   } catch (e) {
     return { error: friendlySquareError(e) };
   }

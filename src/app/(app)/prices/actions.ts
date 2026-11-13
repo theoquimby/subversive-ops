@@ -7,6 +7,7 @@ import type { BaseUnit } from "@/domain/units";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { commitImport, previewImport, recordManualPrice, type ImportPreview } from "@/server/services/priceImport";
+import { alertPriceSpikes, inBackground, saveSpikeThreshold } from "@/server/services/notify";
 import { businessToday } from "@/server/services/sales";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -29,6 +30,7 @@ export async function previewPriceSheet(form: FormData): Promise<{ error?: strin
 export async function commitPriceSheet(args: { supplierId: string; filename: string; effectiveDate: ISODate; mapping: ColumnMapping; rows: ParsedRow[] }) {
   await requireUser("MANAGER");
   const res = await commitImport(args);
+  if (res.priceChanges > 0) inBackground(() => alertPriceSpikes());
   revalidatePath("/", "layout");
   return res;
 }
@@ -64,4 +66,13 @@ export async function linkProduct(productId: string, form: FormData) {
   ]);
   revalidatePath("/prices");
   revalidatePath("/ingredients");
+}
+
+/** "Alert me when a price rises by at least N%" — typed as a percent. */
+export async function savePriceAlertThreshold(value: string): Promise<{ error?: string } | void> {
+  await requireUser("MANAGER");
+  const n = Number(value.trim().replace(/%$/, ""));
+  if (!Number.isFinite(n) || n < 1 || n > 100) return { error: "Enter a percent from 1 to 100." };
+  await saveSpikeThreshold(n / 100);
+  revalidatePath("/prices");
 }

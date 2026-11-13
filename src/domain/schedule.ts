@@ -148,9 +148,6 @@ export function availabilityLabel(a: Availability | undefined, wd: number): stri
  */
 export const intensityFromSlider = (v: number) => Number((1.3 - (0.6 * Math.max(0, Math.min(100, v))) / 100).toFixed(3));
 
-/** Inverse of intensityFromSlider (rounded to a whole slider step). */
-export const sliderFromIntensity = (i: number) => Math.max(0, Math.min(100, Math.round(((1.3 - i) / 0.6) * 100)));
-
 /**
  * The most generous slider position (0–100) whose plan stays at or under the
  * labor % target. `laborPctAt(slider)` builds the plan and returns its labor %

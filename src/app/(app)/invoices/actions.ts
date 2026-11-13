@@ -6,8 +6,10 @@ import { requireUser } from "@/server/auth";
 import { claudeConfigured } from "@/server/integrations/claude";
 import { db } from "@/server/db";
 import { approvalNeedsNote } from "@/domain/invoiceHistory";
+import { sendCreditRequest } from "@/server/email/outbound";
 import { saveAccount, saveTaxRate } from "@/server/services/accounting";
 import {
+  alertedKey,
   approve,
   candidateOrders,
   createInvoice,
@@ -225,6 +227,22 @@ export async function saveAutoApprove(on: boolean) {
   revalidatePath("/invoices");
 }
 
+/** Email the credit request to the supplier (copy/mailto stay available on the sheet). */
+export async function sendCredit(id: string, to: string, copyMe: boolean): Promise<{ error?: string; ok?: string }> {
+  const user = await requireUser("MANAGER");
+  const addr = z.string().trim().max(200).safeParse(to);
+  if (!addr.success) return { error: "That email address doesn't look right." };
+  const r = await sendCreditRequest({ invoiceId: id, to: addr.data, copyMe: Boolean(copyMe), by: { userId: user.userId, name: user.name } });
+  if ("skipped" in r) return { error: "Email isn't set up yet — copy the text or open it in your email app instead." };
+  if ("error" in r) return { error: r.error };
+  // Remember the supplier's address for next time.
+  const inv = await db.invoice.findUnique({ where: { id }, select: { supplierId: true, supplier: { select: { email: true } } } });
+  if (inv && !inv.supplier.email) await db.supplier.update({ where: { id: inv.supplierId }, data: { email: r.to } });
+  await recordEvent(id, { by: user.name, action: "credit-requested", note: `Emailed to ${r.to}${r.cc.length ? ` (copy to ${r.cc.join(", ")})` : ""}` });
+  revalidatePath(`/invoices/${id}`);
+  return { ok: `Sent to ${r.to}` };
+}
+
 export async function updatePrices(id: string) {
   const user = await requireUser("MANAGER");
   const changes = await updatePricesFromInvoice(id);
@@ -238,7 +256,7 @@ export async function updatePrices(id: string) {
 export async function deleteInvoice(id: string) {
   await requireUser("MANAGER");
   await db.invoice.delete({ where: { id } });
-  await db.setting.deleteMany({ where: { key: `invoices.history.${id}` } });
+  await db.setting.deleteMany({ where: { key: { in: [`invoices.history.${id}`, alertedKey(id), `invoice.credit.${id}`] } } });
   revalidatePath("/invoices");
   redirect("/invoices");
 }

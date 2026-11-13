@@ -4,7 +4,7 @@ import { addDays, weekday } from "@/domain/dates";
 import { dayDate, money, pct, shortDate, signedPct } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { weeklyBrief, WeeklyBrief } from "@/server/services/brief";
-import { CalendarDays, ClipboardList, Inbox, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Star, Tag, Trash2, TrendingUp, UtensilsCrossed } from "lucide-react";
+import { CalendarDays, ChevronRight, ClipboardList, Gavel, History, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Star, Tag, Trash2, TrendingUp, Unlink, UtensilsCrossed } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CreateOrderButton } from "./create-order-button";
@@ -52,6 +52,8 @@ export default async function BriefPage() {
         <p className="mt-3 max-w-2xl text-[1.05rem] leading-relaxed text-ink-2">{summary.join(" ")}</p>
       </header>
 
+      {b.lastWeek && <LastWeekCard r={b.lastWeek} />}
+      <DecisionsCard items={b.decisions} />
       <ForecastCard b={b} />
 
       {todo.length > 0 && (
@@ -89,6 +91,69 @@ export default async function BriefPage() {
 }
 
 const fullDay = (d: string) => ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][weekday(d)];
+
+const RAG_TEXT = { good: "text-good", warn: "text-warn", bad: "text-bad", none: "text-ink" } as const;
+const RAG_DOT = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", none: "bg-border-strong" } as const;
+
+function LastWeekCard({ r }: { r: NonNullable<WeeklyBrief["lastWeek"]> }) {
+  const fmt = (key: string, n: number | null) => (n == null ? "—" : key === "sales" ? money(n, { whole: true }) : pct(n));
+  const vs = (key: string, d: number | null) => (d == null ? null : key === "sales" ? `${d >= 0 ? "+" : "−"}${money(Math.abs(d), { whole: true })}` : `${d >= 0 ? "+" : "−"}${(Math.abs(d) * 100).toFixed(1)} pts`);
+  return (
+    <Card className="mb-6 p-5 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-[0.8rem] font-medium text-muted">
+            <History className="size-4" strokeWidth={1.75} />
+            Last week vs budget
+          </div>
+          <div className="mt-1 text-sm text-muted">
+            {shortDate(r.from)} – {shortDate(r.to)}
+            {r.todayExcluded && <> · {r.days} of 7 days, today still running</>}
+            {!r.hasBudget && <> · no budget set · <Link href="/budgets" className="underline decoration-border-strong underline-offset-2 hover:text-ink">set one</Link></>}
+          </div>
+        </div>
+        <LinkButton href={`/pnl?period=custom&from=${r.from}&to=${r.to}`} variant="secondary" size="sm" className="h-10 sm:h-8">Open P&amp;L</LinkButton>
+      </div>
+      <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-5">
+        {r.rows.map((row) => (
+          <div key={row.key} className="min-w-0">
+            <div className="flex items-center gap-1.5 text-xs text-muted">
+              <span className={cx("size-1.5 shrink-0 rounded-full", RAG_DOT[row.rag])} aria-hidden />
+              {row.label}
+            </div>
+            <div className={cx("num mt-1 text-lg font-semibold tracking-tight", RAG_TEXT[row.rag])}>{fmt(row.key, row.actual)}</div>
+            <div className="num text-xs text-muted">
+              {row.target == null ? "No target" : <>{row.key === "sales" ? "Budget" : "Target"} {fmt(row.key, row.target)}{vs(row.key, row.diff) && <> · {vs(row.key, row.diff)}</>}</>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function DecisionsCard({ items }: { items: WeeklyBrief["decisions"] }) {
+  return (
+    <Card className="mb-6 overflow-hidden">
+      <div className="flex items-center gap-2 px-5 pt-4 pb-2 text-[0.8rem] font-medium text-muted">
+        <Gavel className="size-4" strokeWidth={1.75} />
+        Needs a decision
+      </div>
+      {items.length === 0 ? (
+        <p className="px-5 pb-4 text-sm text-ink-2">Nothing waiting on you: no requests, drafts, invoice issues or low reviews.</p>
+      ) : (
+        <div className="divide-y divide-border border-t border-border">
+          {items.map((d) => (
+            <Link key={d.key} href={d.href} className="flex min-h-11 items-center justify-between gap-3 px-5 py-2.5 text-sm hover:bg-surface-2/60">
+              <span className="min-w-0">{d.title}</span>
+              <ChevronRight className="size-4 shrink-0 text-muted" />
+            </Link>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function ForecastCard({ b }: { b: WeeklyBrief }) {
   const max = Math.max(1, ...b.forecast.days.map((d) => d.qty));
@@ -254,10 +319,7 @@ function buildItems(b: WeeklyBrief): Item[] {
     items.push({ id: "schedule", icon: CalendarDays, title: "Schedule", status: `Published · ${s.published} shift${s.published === 1 ? "" : "s"} · ${Math.round(s.hours)} h${laborNote}${s.open ? ` · ${s.open} open` : ""}`, needsYou: s.open > 0, action: go("/schedule", s.open ? "Fill open shifts" : "Schedule", s.open > 0) });
   }
 
-  // Requests
-  const req = b.requests.timeOff + b.requests.swaps;
-  const reqText = [b.requests.timeOff ? `${b.requests.timeOff} time-off` : "", b.requests.swaps ? `${b.requests.swaps} shift swap${b.requests.swaps === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
-  items.push({ id: "requests", icon: Inbox, title: req ? "Answer staff requests" : "Staff requests", status: req ? `${reqText} waiting` : "Nothing waiting", needsYou: req > 0, action: go("/schedule", req ? "Review requests" : "Schedule", req > 0) });
+  // Staff requests are in the "Needs a decision" card above.
 
   // Reviews
   const rv = b.reviews.unreplied;
@@ -332,6 +394,27 @@ function buildItems(b: WeeklyBrief): Item[] {
     status: c.last == null ? "No completed counts yet — ordering and the margin gap need one" : c.overdue ? `Last full count was ${c.daysSince} days ago (${shortDate(c.last)})` : `Last count ${shortDate(c.last)}`,
     needsYou: c.overdue,
     action: go("/count", c.overdue ? "Start a count" : "Counts", c.overdue),
+  });
+
+  // Square items selling without a recipe: their cost is missing from food cost.
+  const u = b.unmapped;
+  items.push({
+    id: "unmapped",
+    icon: Unlink,
+    title: u.count ? "Square items without a recipe" : "Square menu",
+    status: u.count ? `${u.count} item${u.count === 1 ? "" : "s"} sold ${money(u.sales, { whole: true })} in the last 7 days with no recipe, so food cost reads low` : "Everything that sold is linked to a recipe",
+    needsYou: u.count > 0,
+    body: u.count ? (
+      <Rows>
+        {u.top.slice(0, 3).map((m) => (
+          <div key={m.name} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+            <span className="min-w-0 truncate">{m.name}</span>
+            <span className="num shrink-0 text-muted">{Number(m.qty.toFixed(1))} sold · {money(m.sales, { whole: true })}</span>
+          </div>
+        ))}
+      </Rows>
+    ) : undefined,
+    action: go("/sales/square-menu", u.count ? "Link recipes" : "Square menu", u.count > 0),
   });
 
   // Waste log

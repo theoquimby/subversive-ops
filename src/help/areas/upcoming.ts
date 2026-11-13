@@ -1,11 +1,12 @@
 import type { HelpEntry } from "../types";
 
 /**
- * Pages being built now (team, labor, scheduling, P&L…). Written from the
- * feature descriptions, so every entry is `draft: true` — refine the wording
- * against the real page once it ships, then drop the flag.
+ * Help for the people-and-money pages: team, labor and payroll, scheduling,
+ * staff app, tips, P&L, events, invoices, reviews, budgets and the weekly brief.
+ * (The file name is historical — everything here has shipped.) For a page
+ * that's still being built, mark its entries `draft: true` and its area
+ * `upcoming: true` in content.ts until it ships.
  */
-const draft = (entries: Omit<HelpEntry, "draft">[]): HelpEntry[] => entries.map((e) => ({ ...e, draft: true }));
 
 export const team: HelpEntry[] = [
   {
@@ -549,24 +550,29 @@ export const reviews: HelpEntry[] = [
   },
 ];
 
-export const budgets = draft([
+export const budgets: HelpEntry[] = [
   {
     id: "budgets.page",
     area: "budgets",
     route: "/budgets",
     title: "Budgets",
-    body: "Weekly targets for sales, food cost % and labor % that the P&L and brief measure against.",
-    related: ["pnl.page", "brief.page"],
-    keywords: ["targets", "goals"],
+    body: "Weekly targets for sales, food cost % and labor %. The P&L, the Overview and the weekly brief measure against them.",
+    article: `- **This week** at the top: sales to yesterday against the target, plus how many of the last 6 finished weeks hit it.
+- **Weekly targets** — one row per week (weeks start Monday). Type a target and it saves. Under each one you'll see the actual so far, or the forecast for weeks ahead, in green, amber or red.
+- **Copy last week** or **Fill 8 weeks** to reuse targets. Weeks you've already set keep their numbers.
+
+The labor target also drives **Fit to budget** on the schedule, and the weekly brief opens with last week against these targets.`,
+    related: ["budgets.targets", "pnl.page", "brief.page"],
+    keywords: ["targets", "goals", "budget"],
   },
   {
     id: "budgets.targets",
     area: "budgets",
     route: "/budgets",
     title: "Weekly targets",
-    body: "Set each week's sales, food cost and labor targets. Copy forward to reuse last week's.",
+    body: "Set each week's sales, food cost and labor targets. Copy last week or fill the next 8 weeks to reuse them.",
   },
-]);
+];
 
 export const brief: HelpEntry[] = [
   {
@@ -574,8 +580,10 @@ export const brief: HelpEntry[] = [
     area: "brief",
     route: "/brief",
     title: "Weekly brief",
-    body: "Next week at a glance: the forecast against budget, then everything that needs you before it starts, each with a button to do it.",
-    article: `It covers orders to place (and drafts saved automatically before a supplier's cutoff), items that run out before their delivery, the schedule, staff requests, reviews needing a reply, a slipping rating, price increases, items over target, the margin gap, overdue counts and a quiet waste log.`,
+    body: "Last week against budget, what's waiting on a decision, next week's forecast, then everything that needs you before it starts, each with a button to do it.",
+    article: `**Last week vs budget** shows sales, food cost, beverage cost, labor and prime cost with green, amber or red. **Needs a decision** lists time-off and swap requests, auto-drafted orders and schedules, invoices with issues and low reviews without a reply.
+
+The rest covers orders to place (and drafts saved automatically before a supplier's cutoff), items that run out before their delivery, the schedule, staff requests, reviews needing a reply, a slipping rating, price increases, items over target, Square items selling without a recipe, the margin gap, overdue counts and a quiet waste log.`,
     related: ["brief.actions", "budgets.page"],
     keywords: ["summary", "report", "weekly"],
   },

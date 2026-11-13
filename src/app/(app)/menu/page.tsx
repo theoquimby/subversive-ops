@@ -10,7 +10,7 @@ import { menuCosts } from "@/server/services/insights";
 import { db } from "@/server/db";
 import Link from "next/link";
 import { HelpTip, HelpZone } from "@/components/help";
-import { archivedLabel, baseName } from "./archive-name";
+import { archivedLabel, baseName } from "@/domain/archiveName";
 import { RestoreButton } from "./restore-button";
 
 export const metadata = { title: "Menu costs" };
@@ -50,6 +50,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
         actions={
           <>
             <LinkButton href="/menu/draft-beer" data-tour="menu.draft-beer-link">Draft beer</LinkButton>
+            <LinkButton href="/menu/allergens" data-tour="menu.allergens-link">Allergens</LinkButton>
             <LinkButton href={`/menu/new?kind=${isArchived ? "MENU" : kind}`} variant="primary">New recipe</LinkButton>
           </>
         }

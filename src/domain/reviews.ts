@@ -266,19 +266,6 @@ export interface ReviewLite {
   sentiment: string | null;
 }
 
-/** Average rating per week (Monday start) — the trend line. */
-export function weeklyRatings(reviews: readonly ReviewLite[], weekStartOf: (d: ISODate) => ISODate) {
-  const by = new Map<ISODate, { sum: number; n: number }>();
-  for (const r of reviews) {
-    const w = weekStartOf(r.postedAt);
-    const cur = by.get(w) ?? { sum: 0, n: 0 };
-    cur.sum += r.rating;
-    cur.n += 1;
-    by.set(w, cur);
-  }
-  return [...by].sort(([a], [b]) => a.localeCompare(b)).map(([week, v]) => ({ week, avg: v.sum / v.n, count: v.n }));
-}
-
 /** Rolling average rating (last `window` reviews) at each review, oldest first — smoother than weekly with few reviews. */
 export function rollingRating(reviews: readonly ReviewLite[], window = 5) {
   const sorted = [...reviews].sort((a, b) => a.postedAt.localeCompare(b.postedAt));

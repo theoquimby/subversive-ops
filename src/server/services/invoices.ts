@@ -11,6 +11,7 @@ import {
   Tolerance,
 } from "@/domain/invoiceMatch";
 import { appendEvent, canAutoApprove, InvoiceEvent, parseHistory } from "@/domain/invoiceHistory";
+import { invoiceAlertDue } from "@/domain/alerts";
 import { InvoiceStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, num } from "../db";
@@ -94,8 +95,32 @@ export async function rematch(invoiceId: string) {
     ),
     ...(inv.status === "APPROVED" ? [] : [db.invoice.update({ where: { id: inv.id }, data: { status: r.status } })]),
   ]);
-  if (inv.status !== "APPROVED") await maybeAutoApprove(inv.id);
+  if (inv.status !== "APPROVED") {
+    await maybeAutoApprove(inv.id);
+    await alertIfIssue(inv.id);
+  }
   return r;
+}
+
+// ---- Issue alerts (once per invoice per issue status) ------------------------------------
+
+export const alertedKey = (invoiceId: string) => `invoices.alerted.${invoiceId}`;
+
+/**
+ * If the invoice now sits in PRICE_ISSUE / QTY_ISSUE / PRICE_AND_QTY and we haven't
+ * alerted for that status yet, remember it and tell managers after the response.
+ */
+export async function alertIfIssue(invoiceId: string) {
+  const [inv, last] = await Promise.all([
+    db.invoice.findUnique({ where: { id: invoiceId }, select: { status: true } }),
+    db.setting.findUnique({ where: { key: alertedKey(invoiceId) } }),
+  ]);
+  if (!inv || !invoiceAlertDue(last?.value ?? null, inv.status)) return;
+  const key = alertedKey(invoiceId);
+  await db.setting.upsert({ where: { key }, create: { key, value: inv.status }, update: { value: inv.status } });
+  // Imported lazily: notify.ts imports this module.
+  const { inBackground, notifyInvoiceIssue } = await import("./notify");
+  inBackground(() => notifyInvoiceIssue(invoiceId));
 }
 
 // ---- Approval history (append-only, one Setting per invoice) -------------------------------
@@ -192,6 +217,7 @@ export async function createInvoice(args: {
     },
   });
   await maybeAutoApprove(inv.id);
+  await alertIfIssue(inv.id);
   return inv.id;
 }
 

@@ -110,6 +110,6 @@ describe("notification prefs", () => {
   });
   it("staff only see staff events", () => {
     expect(eventsFor("STAFF")).toEqual(["schedulePublished", "shiftChanges"]);
-    expect(eventsFor("MANAGER")).toHaveLength(5);
+    expect(eventsFor("MANAGER")).toHaveLength(7);
   });
 });

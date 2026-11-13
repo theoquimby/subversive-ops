@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { shortDate } from "@/lib/format";
 import { businessToday } from "@/server/services/sales";
-import { archivedName, baseName } from "./archive-name";
+import { archivedName, baseName } from "@/domain/archiveName";
 
 const lineSchema = z.object({
   ingredientId: z.string().nullable(),
