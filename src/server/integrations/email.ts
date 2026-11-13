@@ -12,6 +12,7 @@ import { getSecrets } from "../services/secrets";
 import { NO_NETWORK } from "./network";
 
 const API = "https://api.resend.com";
+const USER_AGENT = "subversive-ops/1.0";
 export const EMAIL_NOT_SET_UP = "Email isn't set up yet";
 
 export interface EmailAttachment {
@@ -83,6 +84,8 @@ export async function sendEmail(msg: EmailMessage, config?: { key: string; from:
       headers: {
         Authorization: `Bearer ${cfg.key.trim()}`,
         "Content-Type": "application/json",
+        // Resend rejects requests without a User-Agent (403).
+        "User-Agent": USER_AGENT,
         ...(msg.idempotencyKey ? { "Idempotency-Key": msg.idempotencyKey.slice(0, 256) } : {}),
       },
       body: JSON.stringify(body),
@@ -117,7 +120,7 @@ export async function emailDeliveryStatus(id: string): Promise<DeliveryEvent | n
   if (!cfg) return null;
   try {
     const res = await fetch(`${API}/emails/${encodeURIComponent(id)}`, {
-      headers: { Authorization: `Bearer ${cfg.key.trim()}` },
+      headers: { Authorization: `Bearer ${cfg.key.trim()}`, "User-Agent": USER_AGENT },
       signal: AbortSignal.timeout(5_000),
       cache: "no-store",
     });

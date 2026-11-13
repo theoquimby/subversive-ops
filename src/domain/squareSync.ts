@@ -79,13 +79,18 @@ export function webhookStream(type: string): WebhookStream {
   return null;
 }
 
-/** Find the most relevant timestamp in a webhook payload's data.object. */
+/**
+ * Find the most relevant timestamp in a webhook payload's data.object: when
+ * the sale or shift happened (closed_at / start_at / created_at), not when it
+ * was last touched — a tip adjusted or a refund made this morning belongs to
+ * last night's order. (The receiver resyncs today as well.)
+ */
 export function webhookTimestamp(event: { created_at?: string; data?: { object?: Record<string, unknown> } }): string | null {
   const obj = event.data?.object ?? {};
   for (const v of Object.values(obj)) {
     if (v && typeof v === "object") {
       const o = v as Record<string, unknown>;
-      for (const k of ["closed_at", "start_at", "updated_at", "created_at"]) {
+      for (const k of ["closed_at", "start_at", "created_at", "updated_at"]) {
         if (typeof o[k] === "string") return o[k] as string;
       }
     }

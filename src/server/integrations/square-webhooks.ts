@@ -23,7 +23,8 @@ export async function ensureWebhookSubscription(token: string, environment: Squa
     await squareRequest(environment, `/v2/webhooks/subscriptions/${existing.id}`, {
       method: "PUT",
       authorization,
-      body: JSON.stringify({ subscription: { enabled: true, event_types: SQUARE_WEBHOOK_EVENTS, notification_url: url } }),
+      // Bring the API version along too: an older subscription may predate the labor.timecard.* events.
+      body: JSON.stringify({ subscription: { enabled: true, event_types: SQUARE_WEBHOOK_EVENTS, notification_url: url, api_version: SQUARE_VERSION } }),
     });
     const r = await squareRequest<{ signature_key?: string }>(environment, `/v2/webhooks/subscriptions/${existing.id}/signature-key`, {
       method: "POST",

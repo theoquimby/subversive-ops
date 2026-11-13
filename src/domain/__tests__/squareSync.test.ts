@@ -73,6 +73,12 @@ describe("webhooks", () => {
     expect(webhookTimestamp({ created_at: "2026-11-13T01:00:00Z", data: { object: { order_updated: { updated_at: "2026-11-13T00:59:00Z" } } } })).toBe("2026-11-13T00:59:00Z");
     expect(webhookTimestamp({ created_at: "2026-11-13T01:00:00Z" })).toBe("2026-11-13T01:00:00Z");
   });
+  it("dates a late tip or refund to when the sale happened, not when it was touched", () => {
+    const payment = { created_at: "2026-11-13T15:00:00Z", data: { object: { payment: { created_at: "2026-11-13T01:30:00Z", updated_at: "2026-11-13T14:59:00Z" } } } };
+    expect(webhookTimestamp(payment)).toBe("2026-11-13T01:30:00Z");
+    const order = { data: { object: { order_updated: { created_at: "2026-11-12T23:00:00Z", updated_at: "2026-11-13T14:00:00Z" } } } };
+    expect(webhookTimestamp(order)).toBe("2026-11-12T23:00:00Z");
+  });
   it("merges pending dates", () => {
     const p = mergePending(mergePending(emptyPending(), { sales: ["2026-11-13"] }), { sales: ["2026-11-12", "2026-11-13"], catalog: true });
     expect(p).toEqual({ sales: ["2026-11-12", "2026-11-13"], labor: [], catalog: true });

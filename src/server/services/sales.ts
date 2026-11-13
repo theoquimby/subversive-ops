@@ -98,6 +98,8 @@ export async function syncSales(from: ISODate, toExclusive: ISODate) {
     db.hourlySale.createMany({
       data: [...hourly.values()].map((h) => ({ date: parseISODate(h.date), hour: h.hour, netSales: new Prisma.Decimal(h.netSales.toFixed(2)), orders: h.orders })),
     }),
+    // Clear the days first, so a day that no longer has sales (a refund, a voided tab) doesn't keep old tips/tax.
+    db.setting.deleteMany({ where: { key: { in: dateRange(from, toExclusive).flatMap((d) => [`tips.${d}`, `tax.${d}`]) } } }),
     ...tipRows(hourly),
     db.setting.upsert({ where: { key: "square.lastSync" }, create: { key: "square.lastSync", value: new Date().toISOString() }, update: { value: new Date().toISOString() } }),
   ]);

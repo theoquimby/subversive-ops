@@ -1,4 +1,5 @@
 import "server-only";
+import { lineNetCents, lineUnits, type SquareLine, type SquareMoney } from "@/domain/squareOrders";
 import { squareCall, SquareClient } from "./square-http";
 
 /**
@@ -89,17 +90,7 @@ export async function listSellables(client: SquareClient): Promise<SellableObjec
 
 // ---- Orders ------------------------------------------------------------------
 
-interface Money { amount?: number }
-interface OrderLine {
-  catalog_object_id?: string;
-  name?: string;
-  variation_name?: string;
-  quantity: string;
-  item_type?: string;
-  total_money?: Money;
-  total_tax_money?: Money;
-  modifiers?: { catalog_object_id?: string; name?: string; quantity?: string; total_price_money?: Money }[];
-}
+type Money = SquareMoney;
 interface Order {
   id: string;
   closed_at?: string;
@@ -109,8 +100,8 @@ interface Order {
   total_service_charge_money?: Money;
   /** After returns; preferred when present. */
   net_amounts?: { total_money?: Money; tax_money?: Money; tip_money?: Money; service_charge_money?: Money };
-  line_items?: OrderLine[];
-  returns?: { return_line_items?: OrderLine[] }[];
+  line_items?: SquareLine[];
+  returns?: { return_line_items?: SquareLine[] }[];
 }
 
 export interface OrderTotal {
@@ -125,7 +116,7 @@ export interface SoldUnit {
   squareId: string;
   name: string;
   qty: number; // negative for returns
-  netSales: number; // dollars before tax; an item's figure excludes its modifiers (they are their own units)
+  netSales: number; // dollars after discounts, before tax; a line's net is shared between the item and its modifiers (each its own unit)
 }
 
 /** All units sold (items and modifiers) in completed orders closed in [start, end), plus per-order totals. */
@@ -159,32 +150,11 @@ export async function listOrders(client: SquareClient, startISO: string, endISO:
         const gross = n ? cents(n.total_money) - cents(n.tax_money) - cents(n.tip_money) - cents(n.service_charge_money)
           : cents(order.total_money) - cents(order.total_tax_money) - cents(order.total_tip_money) - cents(order.total_service_charge_money);
         // Gift card loads are money in, not sales.
-        const lineNet = (li: OrderLine) => cents(li.total_money) - cents(li.total_tax_money);
-        const giftCards = (order.line_items ?? []).filter((li) => li.item_type === "GIFT_CARD").reduce((s, li) => s + lineNet(li), 0);
+        const giftCards = (order.line_items ?? []).filter((li) => li.item_type === "GIFT_CARD").reduce((s, li) => s + lineNetCents(li), 0);
         totals.push({ closedAt: order.closed_at, netSales: (gross - giftCards) / 100, tips: cents(n?.tip_money ?? order.total_tip_money) / 100, tax: cents(n?.tax_money ?? order.total_tax_money) / 100 });
-        const push = (lines: OrderLine[] | undefined, sign: 1 | -1) => {
+        const push = (lines: SquareLine[] | undefined, sign: 1 | -1) => {
           for (const li of lines ?? []) {
-            const qty = Number(li.quantity) || 0;
-            const modTotal = (li.modifiers ?? []).reduce((s, m) => s + cents(m.total_price_money), 0);
-            if (li.catalog_object_id) {
-              out.push({
-                closedAt: order.closed_at!,
-                squareId: li.catalog_object_id,
-                name: [li.name, li.variation_name && li.variation_name !== "Regular" ? li.variation_name : null].filter(Boolean).join(" · "),
-                qty: sign * qty,
-                netSales: (sign * (lineNet(li) - modTotal)) / 100,
-              });
-            }
-            for (const m of li.modifiers ?? []) {
-              if (!m.catalog_object_id) continue;
-              out.push({
-                closedAt: order.closed_at!,
-                squareId: m.catalog_object_id,
-                name: m.name ?? "Modifier",
-                qty: sign * qty * (m.quantity ? Number(m.quantity) : 1),
-                netSales: (sign * cents(m.total_price_money)) / 100,
-              });
-            }
+            for (const u of lineUnits(li, sign)) out.push({ closedAt: order.closed_at!, squareId: u.squareId, name: u.name, qty: u.qty, netSales: u.netCents / 100 });
           }
         };
         push(order.line_items, 1);

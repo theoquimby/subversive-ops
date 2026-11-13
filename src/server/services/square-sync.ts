@@ -224,7 +224,8 @@ export async function backfillStep(budgetMs = 25_000): Promise<{ state: Backfill
       await save({ lastError: msg });
       return { error: msg, state };
     }
-  }, 120_000);
+    // The lock must outlive the whole step (budget plus the chunk in flight), or a page view could start a second sync alongside it.
+  }, budgetMs + 120_000);
   return res ?? { busy: true };
 }
 
