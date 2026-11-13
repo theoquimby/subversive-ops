@@ -43,7 +43,7 @@ export function ManualPrices({ rows, today }: { rows: Row[]; today: string }) {
           );
         })}
       </Card>
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
+      <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-3 px-4 py-3 sm:px-8">
           {msg && <span className="mr-auto text-sm text-good">{msg}</span>}
           <label className="flex items-center gap-2 text-sm text-muted">Effective <DatePicker value={date} onChange={(e) => setDate(e.target.value)} className="w-48" aria-label="Effective date" /></label>

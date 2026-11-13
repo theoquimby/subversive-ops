@@ -55,7 +55,7 @@ export function CountSheet({ countId, items }: { countId: string; items: Item[] 
 
   return (
     <div className="pb-28">
-      <div className="sticky top-[6.5rem] z-10 -mx-4 bg-bg/95 px-4 pb-3 backdrop-blur lg:top-0 lg:pt-2">
+      <div className="sticky top-[calc(3.25rem+env(safe-area-inset-top))] z-10 -mx-4 bg-bg/95 px-4 pb-3 backdrop-blur lg:top-0 lg:pt-2">
         <Input type="search" placeholder="Find an item" value={filter} onChange={(e) => setFilter(e.target.value)} className="h-11 text-base" />
       </div>
       {[...groups].map(([area, list]) => (
@@ -100,7 +100,7 @@ export function CountSheet({ countId, items }: { countId: string; items: Item[] 
           </Card>
         </section>
       ))}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
+      <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
         <div className="mx-auto flex max-w-xl items-center justify-between gap-3 px-4 py-3">
           <span className="num flex items-center gap-1.5 text-sm text-muted">{done} of {items.length} counted <HelpTip id="count.autosave" placement="top-start" /></span>
           <div className="flex gap-2">

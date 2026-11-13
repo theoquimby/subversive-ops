@@ -177,7 +177,7 @@ export function ImportFlow() {
       )}
 
       {tables.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
+        <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
           <div className="mx-auto flex max-w-6xl items-center justify-end gap-2 px-4 py-3 sm:px-8">
             <Button variant="ghost" onClick={() => { setTables([]); setPlan(null); }}>Start over</Button>
             {!plan ? (

@@ -101,7 +101,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Nav role={session.role} name={session.name} logout={signOut} />
       <CommandPalette commands={commands} />
       <HelpProvider userId={session.userId} />
-      <main className="lg:pl-60">
+      <main className="pb-[var(--tabbar)] lg:pl-60 lg:pb-0">
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 lg:py-12">{children}</div>
       </main>
     </div>

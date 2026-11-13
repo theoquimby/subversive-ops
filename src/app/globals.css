@@ -143,3 +143,13 @@ input[type="number"] {
 .scroll-quiet:hover::-webkit-scrollbar-thumb {
   background-color: var(--scrollbar);
 }
+
+/* Height of the mobile bottom tab bar (0 on desktop). Fixed bottom bars sit above it. */
+:root {
+  --tabbar: calc(3.75rem + env(safe-area-inset-bottom));
+}
+@media (min-width: 1024px) {
+  :root {
+    --tabbar: 0px;
+  }
+}

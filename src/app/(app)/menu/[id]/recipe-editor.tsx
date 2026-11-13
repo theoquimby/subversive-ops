@@ -200,7 +200,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
                 onChange={(e) => { setQuick(e.target.value); setQuickMsg(null); }}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (quick.trim()) addQuick(quick); } }}
                 onPaste={(e) => { const t = e.clipboardData.getData("text/plain"); if (t.includes("\n")) { e.preventDefault(); addQuick(t); } }}
-                placeholder='Type "6 oz ground beef" and press Enter — or paste a whole list'
+                placeholder='Add an ingredient: "6 oz ground beef"'
                 className="block h-10 w-full resize-none rounded-lg border border-dashed border-border-strong bg-transparent py-2.5 pr-9 pl-9 text-sm placeholder:text-muted focus:border-ink-2 focus:border-solid focus:outline-none"
                 aria-label="Quick add ingredient"
               />
@@ -260,7 +260,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
 
       {/* Save bar */}
       {(dirty || error) && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
+        <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-8">
             <span className={cx("text-sm", error ? "text-bad" : "text-muted")}>{error ?? "Unsaved changes"}</span>
             <div className="flex gap-2">

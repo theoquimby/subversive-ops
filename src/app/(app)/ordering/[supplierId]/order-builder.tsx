@@ -111,7 +111,7 @@ export function OrderBuilder(props: {
         )}
       </Card>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
+      <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-8" data-tour="ordering.save">
           <div className="text-sm">
             <span className="num font-semibold">{money(total)}</span>
