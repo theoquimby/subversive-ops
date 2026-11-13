@@ -63,31 +63,49 @@ export interface ParseResult {
   errors: { row: number; message: string }[];
 }
 
-export function parseRows(records: Record<string, unknown>[], mapping: ColumnMapping): ParseResult {
+/**
+ * Parse sheet records into price rows.
+ *
+ * Distributors (Driscoll / Cut+Dry) list the same item number twice — once per
+ * case and once per piece (broken case). We keep one row per item number: the
+ * unit we already buy it in (`preferredUnit`), otherwise the case row.
+ * Section headers ("DAIRY + EGGS": text, no item number, no price) are skipped.
+ */
+export function parseRows(records: Record<string, unknown>[], mapping: ColumnMapping, preferredUnit?: (sku: string) => string | undefined): ParseResult {
   const rows: ParsedRow[] = [];
   const errors: ParseResult["errors"] = [];
-  const seen = new Set<string>();
+  const bySku = new Map<string, number>(); // sku → index in rows
   records.forEach((rec, i) => {
     const rowNum = i + 2;
     const sku = String(rec[mapping.sku] ?? "").trim();
     const description = String(rec[mapping.description] ?? "").trim();
     if (!sku && !description) return; // blank row
+    if (!sku && String(rec[mapping.price] ?? "").trim() === "") return; // section header
     if (!sku) return void errors.push({ row: rowNum, message: "Missing item number" });
     const price = parsePrice(rec[mapping.price]);
     if (price == null) return void errors.push({ row: rowNum, message: `Unreadable price "${String(rec[mapping.price] ?? "")}"` });
-    if (seen.has(sku)) return void errors.push({ row: rowNum, message: `Duplicate item number ${sku}` });
-    seen.add(sku);
     const packText = mapping.pack ? String(rec[mapping.pack] ?? "").trim() || null : null;
     const unitRaw = mapping.unit ? String(rec[mapping.unit] ?? "").trim() : "";
-    rows.push({ row: rowNum, sku, description, price, packText, purchaseUnit: normalizePurchaseUnit(unitRaw) });
+    const row: ParsedRow = { row: rowNum, sku, description, price, packText, purchaseUnit: normalizePurchaseUnit(unitRaw) };
+    const at = bySku.get(sku);
+    if (at != null) {
+      const kept = rows[at];
+      if (kept.purchaseUnit === row.purchaseUnit) return void errors.push({ row: rowNum, message: `Duplicate item number ${sku}` });
+      const want = preferredUnit?.(sku) ?? "case";
+      if (row.purchaseUnit === want && kept.purchaseUnit !== want) rows[at] = row;
+      return;
+    }
+    bySku.set(sku, rows.length);
+    rows.push(row);
   });
   return { rows, errors };
 }
 
-function normalizePurchaseUnit(u: string): string {
-  const x = u.toLowerCase();
+export function normalizePurchaseUnit(u: string): string {
+  const x = u.trim().toLowerCase();
   if (!x || ["cs", "case", "cse"].includes(x)) return "case";
   if (["ea", "each"].includes(x)) return "each";
+  if (["pc", "pcs", "piece", "pieces"].includes(x)) return "piece";
   if (["bg", "bag"].includes(x)) return "bag";
   if (["lb", "lbs"].includes(x)) return "lb";
   return x;
@@ -115,6 +133,13 @@ export function inferPackQty(packText: string | null, base: BaseUnit): number | 
   const s = standardUnit(unit);
   if (!s || s.base !== base) return null;
   return count * size * s.factor;
+}
+
+/** Pack text for one purchase unit: a "piece" of a "36/1 LB" case is "1 LB". */
+export function packTextForUnit(packText: string | null, purchaseUnit: string): string | null {
+  if (!packText || purchaseUnit !== "piece") return packText;
+  const m = packText.trim().match(/^\d+(?:\.\d+)?\s*\/\s*(\d*\.?\d+\s*[A-Za-z#].*)$/);
+  return m ? m[1].trim() : packText;
 }
 
 export interface CurrentProduct {

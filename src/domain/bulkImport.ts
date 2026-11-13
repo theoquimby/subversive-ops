@@ -5,6 +5,8 @@
  * Two table shapes are understood:
  *   - "ingredients": one row per thing you buy
  *       Ingredient · Category · Storage · Supplier · Item # · Pack · Pack qty · Pack unit · Price · Yield %
+ *       optional: Description · Order unit (case/piece) · Conversions ("1 slice = 21 g") · Count unit · Par
+ *     Several rows with the same ingredient name = several products (first row is the one we normally buy).
  *   - "recipes": one row per recipe line (long format)
  *       Recipe · Type · Category · Menu price · Ingredient · Qty · Unit
  *     A tab with no Recipe column is treated as ONE recipe named after the tab.
@@ -13,7 +15,7 @@
  * issues; the server applies the plan in one transaction.
  */
 
-import { inferPackQty, parsePrice } from "./priceSheet";
+import { inferPackQty, normalizePurchaseUnit, parsePrice } from "./priceSheet";
 import { fuzzyScore } from "./search";
 import { BaseUnit, normalizeUnit, standardUnit } from "./units";
 
@@ -25,7 +27,9 @@ export interface RawTable {
   rows: Record<string, unknown>[];
 }
 
-export type IngredientField = "ingredient" | "category" | "storage" | "supplier" | "sku" | "pack" | "packQty" | "packUnit" | "price" | "yield" | "baseUnit";
+export type IngredientField =
+  | "ingredient" | "category" | "storage" | "supplier" | "sku" | "pack" | "packQty" | "packUnit" | "price" | "yield" | "baseUnit"
+  | "description" | "purchaseUnit" | "conversions" | "countUnit" | "par";
 export type RecipeField = "recipe" | "kind" | "category" | "menuPrice" | "ingredient" | "qty" | "unit" | "yieldQty" | "yieldUnit";
 export type Mapping = Partial<Record<IngredientField | RecipeField, string>>;
 
@@ -41,6 +45,11 @@ const PATTERNS: Record<IngredientField | RecipeField, RegExp[]> = {
   price: [/^(case|pack|unit|purchase)?\s*(price|cost)$/i, /price/i, /^cost$/i],
   yield: [/yield/i, /usable/i],
   baseUnit: [/^(base|recipe)\s*unit$/i],
+  description: [/^(product |supplier |item )?desc(ription)?$/i],
+  purchaseUnit: [/^(order|ordering|buy|buying|sell|purchasing)\s*(unit|uom)$/i],
+  conversions: [/conversions?|equivalents?/i],
+  countUnit: [/^count(ed)?\s*(unit|uom|in|by)$/i],
+  par: [/^par(\s*level)?$/i, /min(imum)?\s*on\s*hand/i],
   recipe: [/^(recipe|menu item|dish|item name)$/i, /recipe/i, /menu item/i, /dish/i],
   kind: [/^type$/i, /^kind$/i],
   menuPrice: [/menu\s*price|sell(ing)?\s*price|^price$/i],
@@ -50,13 +59,14 @@ const PATTERNS: Record<IngredientField | RecipeField, RegExp[]> = {
   yieldUnit: [/yield\s*unit|batch\s*unit/i],
 };
 
-const INGREDIENT_FIELDS: IngredientField[] = ["ingredient", "supplier", "sku", "price", "packQty", "packUnit", "pack", "yield", "category", "storage", "baseUnit"];
+const INGREDIENT_FIELDS: IngredientField[] = ["ingredient", "supplier", "sku", "price", "packQty", "packUnit", "pack", "yield", "category", "storage", "baseUnit", "description", "purchaseUnit", "conversions", "countUnit", "par"];
 const RECIPE_FIELDS: RecipeField[] = ["recipe", "ingredient", "qty", "unit", "menuPrice", "kind", "category", "yieldQty", "yieldUnit"];
 
 export const FIELD_LABELS: Record<IngredientField | RecipeField, string> = {
   ingredient: "Ingredient", category: "Category", storage: "Storage area", supplier: "Supplier", sku: "Item #",
   pack: "Pack text (e.g. 6/5 LB)", packQty: "Pack amount", packUnit: "Pack unit", price: "Price per pack", yield: "Yield %",
-  baseUnit: "Measured by", recipe: "Recipe", kind: "Type", menuPrice: "Menu price", qty: "Qty", unit: "Unit",
+  baseUnit: "Measured by", description: "Supplier description", purchaseUnit: "Order unit (case / piece)",
+  conversions: "Conversions (1 slice = 21 g)", countUnit: "Count unit", par: "Par (in count units)", recipe: "Recipe", kind: "Type", menuPrice: "Menu price", qty: "Qty", unit: "Unit",
   yieldQty: "Batch yield", yieldUnit: "Batch yield unit",
 };
 
@@ -84,6 +94,16 @@ export function detectTable(t: RawTable): { kind: TableKind; mapping: Mapping } 
 
 // ---- Plan --------------------------------------------------------------------
 
+export interface PlannedProduct {
+  supplier: string;
+  sku: string;
+  description: string;
+  packText: string | null;
+  packQtyBase: number | null;
+  purchaseUnit: string;
+  price: number | null;
+}
+
 export interface PlannedIngredient {
   name: string;
   category: string;
@@ -91,7 +111,13 @@ export interface PlannedIngredient {
   baseUnit: BaseUnit;
   yieldPct: number;
   existingId?: string;
-  product?: { supplier: string; sku: string; description: string; packText: string | null; packQtyBase: number | null; purchaseUnit: string; price: number | null };
+  /** First = the product we normally buy (becomes the preferred product). */
+  products: PlannedProduct[];
+  /** Custom units, base units per 1 unit. */
+  conversions: { unit: string; baseQty: number }[];
+  countUnit: string | null;
+  /** Minimum on hand, in `countUnit` (or the first product's order unit). */
+  par: number | null;
 }
 
 export interface PlannedRecipe {
@@ -145,6 +171,42 @@ export const cleanUnit = (u: string) => {
 };
 const dimensionOf = (unit: string): BaseUnit | null => standardUnit(cleanUnit(unit))?.base ?? null;
 
+/**
+ * "1 slice = 21 g; 1 cup = 340 g" → [{ unit: "slice", baseQty: 21 }, { unit: "cup", baseQty: 340 }].
+ * The right-hand side may use any standard unit of the ingredient's base ("1 ball = 2.85 oz").
+ */
+export function parseConversions(text: string, base: BaseUnit): { conversions: { unit: string; baseQty: number }[]; errors: string[] } {
+  const conversions: { unit: string; baseQty: number }[] = [];
+  const errors: string[] = [];
+  for (const part of text.split(/[;\n]+/).map((x) => x.trim()).filter(Boolean)) {
+    const m = part.match(/^(\d*\.?\d+)?\s*([^=\d][^=]*?)\s*=\s*(\d*\.?\d+)\s*([a-z][a-z .]*)$/i);
+    const rhs = m ? standardUnit(cleanUnit(m[4])) : undefined;
+    if (!m || !rhs || rhs.base !== base) {
+      errors.push(`couldn't read conversion "${part}"`);
+      continue;
+    }
+    const lhsQty = m[1] ? Number(m[1]) : 1;
+    const unit = normalizeUnit(m[2]);
+    const baseQty = (Number(m[3]) * rhs.factor) / lhsQty;
+    if (!(baseQty > 0) || !unit) { errors.push(`couldn't read conversion "${part}"`); continue; }
+    conversions.push({ unit, baseQty });
+  }
+  return { conversions, errors };
+}
+
+/** Par (in count units) → base units, or null when the count unit can't be converted. */
+export function parToBase(ing: Pick<PlannedIngredient, "par" | "countUnit" | "baseUnit" | "conversions" | "products">): number | null {
+  if (ing.par == null || !(ing.par > 0)) return null;
+  const p = ing.products[0];
+  const unit = ing.countUnit ?? p?.purchaseUnit ?? ing.baseUnit;
+  const custom = ing.conversions.find((c) => c.unit === normalizeUnit(unit));
+  if (custom) return ing.par * custom.baseQty;
+  const s = standardUnit(cleanUnit(unit));
+  if (s && s.base === ing.baseUnit) return ing.par * s.factor;
+  if (p && normalizeUnit(unit) === p.purchaseUnit && p.packQtyBase) return ing.par * p.packQtyBase;
+  return null;
+}
+
 function parseKind(v: string): PlannedRecipe["kind"] {
   const s = v.toLowerCase();
   if (/prep|sauce|batch|sub/.test(s)) return "PREP";
@@ -193,26 +255,51 @@ export function buildPlan(tables: { table: RawTable; kind: TableKind; mapping: M
       const yieldPct = yieldRaw == null ? 1 : yieldRaw > 1 ? yieldRaw / 100 : yieldRaw;
       if (supplier) suppliers.add(supplier);
 
-      ingredients.set(key(name), {
+      const product: PlannedProduct | null = price != null || supplier || (m.sku && str(row[m.sku]))
+        ? {
+            supplier: supplier || "Unassigned supplier",
+            sku: (m.sku && str(row[m.sku])) || `IMPORT-${key(name).replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`,
+            description: (m.description && str(row[m.description])) || name,
+            packText: packText ?? (packQty != null ? `${packQty} ${packUnit}`.trim() : null),
+            packQtyBase,
+            purchaseUnit: (m.purchaseUnit && normalizePurchaseUnit(str(row[m.purchaseUnit]))) || "case",
+            price,
+          }
+        : null;
+      if (!supplier && price != null) suppliers.add("Unassigned supplier");
+
+      const prev = ingredients.get(key(name));
+      if (prev) {
+        // Another product for the same ingredient (second supplier, case vs piece, …).
+        if (product) {
+          if (base !== prev.baseUnit) product.packQtyBase = null;
+          if (product.packQtyBase == null && product.packText) product.packQtyBase = inferPackQty(product.packText, prev.baseUnit);
+          if (prev.products.some((p) => p.supplier === product.supplier && p.sku === product.sku)) {
+            issues.push({ level: "warn", table: table.name, row: rowNum, message: `${name}: ${product.supplier} ${product.sku} is listed twice; kept the first` });
+          } else prev.products.push(product);
+        }
+        return;
+      }
+      const conv = m.conversions && str(row[m.conversions]) ? parseConversions(str(row[m.conversions]), base) : { conversions: [], errors: [] };
+      for (const e of conv.errors) issues.push({ level: "warn", table: table.name, row: rowNum, message: `${name}: ${e}` });
+      const countUnit = (m.countUnit && normalizeUnit(str(row[m.countUnit]))) || null;
+      const par = m.par ? numOrNull(row[m.par]) : null;
+      const planned: PlannedIngredient = {
         name,
         category: (m.category && str(row[m.category])) || "Other",
         storageArea: (m.storage && str(row[m.storage])) || "Dry storage",
         baseUnit: base,
         yieldPct: yieldPct > 0 && yieldPct <= 1 ? yieldPct : 1,
         existingId: existingIng.get(key(name))?.id,
-        product: price != null || supplier || (m.sku && str(row[m.sku]))
-          ? {
-              supplier: supplier || "Unassigned supplier",
-              sku: (m.sku && str(row[m.sku])) || `IMPORT-${key(name).replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`,
-              description: name,
-              packText: packText ?? (packQty != null ? `${packQty} ${packUnit}`.trim() : null),
-              packQtyBase,
-              purchaseUnit: "case",
-              price,
-            }
-          : undefined,
-      });
-      if (!supplier && price != null) suppliers.add("Unassigned supplier");
+        products: product ? [product] : [],
+        conversions: conv.conversions,
+        countUnit,
+        par: par != null && par > 0 ? par : null,
+      };
+      if (planned.par != null && parToBase(planned) == null) {
+        issues.push({ level: "warn", table: table.name, row: rowNum, message: `${name}: par ${planned.par} ${countUnit ?? ""} can't be converted — set it on the ingredient after import` });
+      }
+      ingredients.set(key(name), planned);
     });
   }
 
@@ -273,7 +360,7 @@ export function buildPlan(tables: { table: RawTable; kind: TableKind; mapping: M
         line.ingredient = best;
       } else {
         const dim = dimensionOf(line.unit) ?? "each";
-        ingredients.set(k, { name: line.ingredient!, category: "Other", storageArea: "Dry storage", baseUnit: dim, yieldPct: 1 });
+        ingredients.set(k, { name: line.ingredient!, category: "Other", storageArea: "Dry storage", baseUnit: dim, yieldPct: 1, products: [], conversions: [], countUnit: null, par: null });
         allIngNames.set(k, line.ingredient!);
         issues.push({ level: "warn", table: rec.name, message: `"${line.ingredient}" isn't in the ingredient list — created without a price` });
       }

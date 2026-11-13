@@ -2,7 +2,7 @@ import "server-only";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { ISODate, parseISODate } from "@/domain/dates";
-import { ColumnMapping, detectMapping, diffPrices, inferPackQty, ParsedRow, parseRows, PriceDiff } from "@/domain/priceSheet";
+import { ColumnMapping, detectMapping, diffPrices, inferPackQty, packTextForUnit, ParsedRow, parseRows, PriceDiff } from "@/domain/priceSheet";
 import { BaseUnit } from "@/domain/units";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
@@ -68,8 +68,10 @@ export async function previewImport(supplierId: string, file: File, mappingOverr
   const mappingComplete = Boolean(mapping.sku && mapping.description && mapping.price);
   if (!mappingComplete) return { headers, mapping, mappingComplete, rows: [], errors: [], diff: null };
 
-  const { rows, errors } = parseRows(records, mapping as ColumnMapping);
-  const diff = diffPrices(rows, await currentProducts(supplierId));
+  const current = await currentProducts(supplierId);
+  const unitBySku = new Map(current.map((c) => [c.sku, c.purchaseUnit]));
+  const { rows, errors } = parseRows(records, mapping as ColumnMapping, (sku) => unitBySku.get(sku));
+  const diff = diffPrices(rows, current);
   return { headers, mapping, mappingComplete, rows, errors, diff };
 }
 
@@ -78,7 +80,7 @@ async function currentProducts(supplierId: string) {
     where: { supplierId, active: true },
     include: { prices: { orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }], take: 1 } },
   });
-  return products.map((p) => ({ sku: p.sku, description: p.description, currentPrice: p.prices[0]?.price.toNumber() ?? null }));
+  return products.map((p) => ({ sku: p.sku, description: p.description, purchaseUnit: p.purchaseUnit, currentPrice: p.prices[0]?.price.toNumber() ?? null }));
 }
 
 /**
@@ -110,7 +112,7 @@ export async function commitImport(args: { supplierId: string; filename: string;
           newProducts++;
         } else {
           const packQtyBase =
-            product.packQtyBase ?? (product.ingredient ? inferPackQty(row.packText, product.ingredient.baseUnit as BaseUnit) : null);
+            product.packQtyBase ?? (product.ingredient ? inferPackQty(packTextForUnit(row.packText, product.purchaseUnit), product.ingredient.baseUnit as BaseUnit) : null);
           await tx.supplierProduct.update({
             where: { id: product.id },
             data: { description: row.description, packText: row.packText, active: true, packQtyBase: packQtyBase == null ? undefined : packQtyBase },

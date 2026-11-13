@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectMapping, diffPrices, inferPackQty, parsePrice, parseRows } from "../priceSheet";
+import { detectMapping, diffPrices, inferPackQty, packTextForUnit, parsePrice, parseRows } from "../priceSheet";
 
 describe("detectMapping", () => {
   it("finds typical distributor columns", () => {
@@ -55,5 +55,30 @@ describe("parseRows + diffPrices", () => {
     expect(d.unchanged.map((r) => r.sku)).toEqual(["2"]);
     expect(d.newProducts.map((r) => r.sku)).toEqual(["4"]);
     expect(d.missing.map((m) => m.sku)).toEqual(["9"]);
+  });
+});
+
+describe("distributor exports with case and piece rows", () => {
+  const mapping = { sku: "Item Code", description: "Item Name", price: "Unit Price", pack: "Pack Size", unit: "UOM" };
+  const records = [
+    { "Item Name": "DAIRY + EGGS", "Item Code": "", "Unit Price": "" },
+    { "Item Name": "Butter Solid Unsalted", "Item Code": "023611", "Pack Size": "36/1 LB", UOM: "Case", "Unit Price": "$93.60" },
+    { "Item Name": "Butter Solid Unsalted", "Item Code": "023611", "Pack Size": "36/1 LB", UOM: "Piece", "Unit Price": "$2.60" },
+    { "Item Name": "Sanitizer Hard Surface", "Item Code": "770298", "Pack Size": "4/1 GAL", UOM: "Piece", "Unit Price": "$25.94" },
+    { "Item Name": "Sanitizer Hard Surface", "Item Code": "770298", "Pack Size": "4/1 GAL", UOM: "Case", "Unit Price": "$103.77" },
+  ];
+  it("skips section headers and keeps the case row by default", () => {
+    const { rows, errors } = parseRows(records, mapping);
+    expect(errors).toEqual([]);
+    expect(rows.map((r) => [r.sku, r.purchaseUnit, r.price])).toEqual([["023611", "case", 93.6], ["770298", "case", 103.77]]);
+  });
+  it("keeps the unit we already buy in", () => {
+    const { rows } = parseRows(records, mapping, (sku) => (sku === "023611" ? "piece" : undefined));
+    expect(rows.find((r) => r.sku === "023611")).toMatchObject({ purchaseUnit: "piece", price: 2.6 });
+  });
+  it("sizes a piece as one inner pack", () => {
+    expect(packTextForUnit("36/1 LB", "piece")).toBe("1 LB");
+    expect(packTextForUnit("36/1 LB", "case")).toBe("36/1 LB");
+    expect(packTextForUnit("1/BOX", "piece")).toBe("1/BOX");
   });
 });

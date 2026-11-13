@@ -162,7 +162,7 @@ export function ImportFlow({ focus }: { focus?: "recipes" } = {}) {
           <h2 className="flex items-center gap-1.5 text-sm font-semibold">What will happen <HelpTip id="import.review" /></h2>
           <div className="num mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Mini label="Ingredients" value={plan.ingredients.length} hint={`${plan.ingredients.filter((i) => !i.existingId).length} new`} />
-            <Mini label="With prices" value={plan.ingredients.filter((i) => i.product?.price != null).length} />
+            <Mini label="With prices" value={plan.ingredients.filter((i) => i.products.some((p) => p.price != null)).length} />
             <Mini label="Recipes" value={plan.recipes.length} hint={`${plan.recipes.filter((r) => r.kind === "PREP").length} prep`} />
             <Mini label="Suppliers" value={plan.suppliers.length} />
           </div>

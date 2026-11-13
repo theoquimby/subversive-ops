@@ -830,7 +830,7 @@ Re-importing the same sheet later only updates what changed — it doesn't make 
     route: "/import",
     title: "What's in each tab",
     body: "Tell it whether a tab is ingredients & prices, recipes, or something to skip, and which column is which. Starred columns are required.",
-    article: `- **Ingredients & prices** needs at least an ingredient column. Supplier, price and pack columns bring prices in too.
+    article: `- **Ingredients & prices** needs at least an ingredient column. Supplier, price and pack columns bring prices in too. Optional columns: *Description* (the supplier's item name), *Order unit* (case or piece), *Conversions* (e.g. \`1 slice = 21 g; 1 cup = 340 g\`), *Count unit* and *Par* (minimum on hand, in the count unit). The same ingredient on several rows means several products — the first row is the one you normally buy.
 - **Recipes** needs an ingredient and a quantity column. With a recipe column, one tab can hold many recipes; without one, the whole tab becomes one recipe named after the tab.
 - **Skip** ignores the tab.`,
   },

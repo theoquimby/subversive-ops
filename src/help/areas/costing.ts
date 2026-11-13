@@ -699,7 +699,7 @@ Plate costs update straight away. New products then need linking to ingredients.
 - **Description** — "Description", "Item name"…
 - **Price** — "Case price", "Unit price", "Cost"…
 - **Pack / size** — "Pack/Size", "Pk/Sz". Text like \`6/32 OZ\`, \`4/1 GAL\`, \`25 LB\` or \`200 CT\` is turned into a pack size automatically.
-- **Unit** — "UOM", "Unit": CS becomes case, EA becomes each.
+- **Unit** — "UOM", "Unit": CS becomes case, EA becomes each, Piece stays piece. When an item is listed twice (per case and per piece), the unit you already buy it in is kept — the case otherwise. Section headings like "DAIRY + EGGS" are skipped.
 
 If a guess is wrong, pick the right column and the preview refreshes. The choice is remembered, so next week's sheet from the same supplier just works.`,
     related: ["ingredients.packSize", "prices.import.diff"],

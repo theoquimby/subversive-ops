@@ -1,5 +1,5 @@
 import "server-only";
-import { buildPlan, googleSheetXlsxUrl, type ImportPlan, type Mapping, type RawTable, type TableKind } from "@/domain/bulkImport";
+import { buildPlan, googleSheetXlsxUrl, parToBase, type ImportPlan, type Mapping, type RawTable, type TableKind } from "@/domain/bulkImport";
 import { parseISODate } from "@/domain/dates";
 import type { BaseUnit } from "@/domain/units";
 import { Prisma } from "@prisma/client";
@@ -39,6 +39,18 @@ export async function fetchGoogleSheet(url: string): Promise<RawTable[]> {
   return parseWorkbook(new Uint8Array(await res.arrayBuffer())).map((t) => ({ name: t.name, headers: t.headers, rows: t.records }));
 }
 
+// Same setting the ingredients page edits ("Min on hand"); base units per ingredient id.
+const PAR_KEY = "ordering.minOnHand";
+
+async function loadParsIn(tx: Prisma.TransactionClient): Promise<Record<string, number>> {
+  const row = await tx.setting.findUnique({ where: { key: PAR_KEY } });
+  try {
+    return row ? (JSON.parse(row.value) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
 export interface ApplyResult {
   suppliers: number;
   ingredientsCreated: number;
@@ -49,10 +61,13 @@ export interface ApplyResult {
   recipesUpdated: number;
 }
 
-/** Apply a plan in one transaction. Re-running the same import is safe (upserts; prices only added when changed). */
-export async function applyImport(specs: TableSpec[]): Promise<ApplyResult> {
+/**
+ * Apply a plan in one transaction. Re-running the same import is safe (upserts; prices only added when changed).
+ * `effectiveDate` dates the imported prices (default today), e.g. the date of the price list they came from.
+ */
+export async function applyImport(specs: TableSpec[], opts: { effectiveDate?: string } = {}): Promise<ApplyResult> {
   const plan = await planImport(specs);
-  const today = businessToday();
+  const today = opts.effectiveDate ?? businessToday();
   const r: ApplyResult = { suppliers: 0, ingredientsCreated: 0, ingredientsUpdated: 0, products: 0, prices: 0, recipesCreated: 0, recipesUpdated: 0 };
 
   await db.$transaction(
@@ -68,35 +83,51 @@ export async function applyImport(specs: TableSpec[]): Promise<ApplyResult> {
 
       // Ingredients + supplier products + prices
       const ingredientId = new Map<string, string>();
+      const pars = await loadParsIn(tx);
+      let parsChanged = false;
       for (const ing of plan.ingredients) {
         let id = ing.existingId;
+        const fields = { category: ing.category, storageArea: ing.storageArea, yieldPct: new Prisma.Decimal(ing.yieldPct), ...(ing.countUnit ? { countUnit: ing.countUnit } : {}) };
         if (id) {
-          await tx.ingredient.update({ where: { id }, data: { category: ing.category, storageArea: ing.storageArea, yieldPct: new Prisma.Decimal(ing.yieldPct) } });
+          await tx.ingredient.update({ where: { id }, data: fields });
           r.ingredientsUpdated++;
         } else {
-          id = (await tx.ingredient.create({ data: { name: ing.name, category: ing.category, storageArea: ing.storageArea, baseUnit: ing.baseUnit, yieldPct: new Prisma.Decimal(ing.yieldPct) } })).id;
+          id = (await tx.ingredient.create({ data: { name: ing.name, baseUnit: ing.baseUnit, ...fields } })).id;
           r.ingredientsCreated++;
         }
         ingredientId.set(ing.name.toLowerCase(), id);
 
-        const p = ing.product;
-        if (!p) continue;
-        const sid = supplierId.get(p.supplier)!;
-        const product = await tx.supplierProduct.upsert({
-          where: { supplierId_sku: { supplierId: sid, sku: p.sku } },
-          create: { supplierId: sid, sku: p.sku, description: p.description, packText: p.packText, purchaseUnit: p.purchaseUnit, ingredientId: id, packQtyBase: p.packQtyBase == null ? null : new Prisma.Decimal(p.packQtyBase.toFixed(4)) },
-          update: { ingredientId: id, packText: p.packText ?? undefined, packQtyBase: p.packQtyBase == null ? undefined : new Prisma.Decimal(p.packQtyBase.toFixed(4)), active: true },
-          include: { prices: { select: { price: true, effectiveDate: true }, orderBy: { effectiveDate: "asc" } } },
-        });
-        r.products++;
-        await tx.ingredient.updateMany({ where: { id, preferredProductId: null }, data: { preferredProductId: product.id } });
-        if (p.price != null) {
-          const current = priceAsOf(product.prices.map((x) => ({ date: x.effectiveDate.toISOString().slice(0, 10), price: x.price.toNumber() })), today);
-          if (current == null || Math.abs(current - p.price) >= 0.005) {
-            await tx.priceRecord.create({ data: { supplierProductId: product.id, price: new Prisma.Decimal(p.price.toFixed(2)), effectiveDate: parseISODate(today), source: "IMPORT" } });
-            r.prices++;
+        for (const c of ing.conversions) {
+          const baseQty = new Prisma.Decimal(c.baseQty.toFixed(4));
+          await tx.unitConversion.upsert({ where: { ingredientId_unit: { ingredientId: id, unit: c.unit } }, create: { ingredientId: id, unit: c.unit, baseQty }, update: { baseQty } });
+        }
+        const parBase = parToBase(ing);
+        if (parBase != null) { pars[id] = Number(parBase.toFixed(4)); parsChanged = true; }
+
+        for (const p of ing.products) {
+          const sid = supplierId.get(p.supplier)!;
+          const packQtyBase = p.packQtyBase == null ? null : new Prisma.Decimal(p.packQtyBase.toFixed(4));
+          const product = await tx.supplierProduct.upsert({
+            where: { supplierId_sku: { supplierId: sid, sku: p.sku } },
+            create: { supplierId: sid, sku: p.sku, description: p.description, packText: p.packText, purchaseUnit: p.purchaseUnit, ingredientId: id, packQtyBase },
+            update: { ingredientId: id, packText: p.packText ?? undefined, purchaseUnit: p.purchaseUnit, packQtyBase: packQtyBase ?? undefined, active: true },
+            include: { prices: { select: { price: true, effectiveDate: true }, orderBy: { effectiveDate: "asc" } } },
+          });
+          r.products++;
+          // The first product listed is the one we normally buy.
+          await tx.ingredient.updateMany({ where: { id, preferredProductId: null }, data: { preferredProductId: product.id } });
+          if (p.price != null) {
+            const current = priceAsOf(product.prices.map((x) => ({ date: x.effectiveDate.toISOString().slice(0, 10), price: x.price.toNumber() })), today);
+            if (current == null || Math.abs(current - p.price) >= 0.005) {
+              await tx.priceRecord.create({ data: { supplierProductId: product.id, price: new Prisma.Decimal(p.price.toFixed(2)), effectiveDate: parseISODate(today), source: "IMPORT" } });
+              r.prices++;
+            }
           }
         }
+      }
+      if (parsChanged) {
+        const value = JSON.stringify(pars);
+        await tx.setting.upsert({ where: { key: PAR_KEY }, create: { key: PAR_KEY, value }, update: { value } });
       }
       for (const i of await tx.ingredient.findMany({ where: { active: true }, select: { id: true, name: true } })) {
         if (!ingredientId.has(i.name.toLowerCase())) ingredientId.set(i.name.toLowerCase(), i.id);

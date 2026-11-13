@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPlan, detectTable, parsePastedTable } from "../bulkImport";
+import { buildPlan, detectTable, parseConversions, parsePastedTable, parToBase } from "../bulkImport";
 
 const ingredientsTab = parsePastedTable(
   [
@@ -47,10 +47,10 @@ describe("buildPlan", () => {
   it("creates ingredients with base units and pack sizes", () => {
     const beef = plan.ingredients.find((i) => i.name === "Ground beef")!;
     expect(beef.baseUnit).toBe("g");
-    expect(beef.product?.packQtyBase).toBeCloseTo(4535.9237);
-    expect(beef.product?.price).toBe(61.5);
+    expect(beef.products[0].packQtyBase).toBeCloseTo(4535.9237);
+    expect(beef.products[0].price).toBe(61.5);
     expect(plan.ingredients.find((i) => i.name === "Mayo")!.baseUnit).toBe("ml");
-    expect(plan.ingredients.find((i) => i.name === "Burger bun")!.product?.packQtyBase).toBe(12);
+    expect(plan.ingredients.find((i) => i.name === "Burger bun")!.products[0].packQtyBase).toBe(12);
   });
   it("links recipe lines case-insensitively and detects sub-recipes", () => {
     const burger = plan.recipes.find((r) => r.name === "Burger")!;
@@ -70,3 +70,55 @@ describe("buildPlan", () => {
   });
 });
 
+
+describe("order-guide columns", () => {
+  const guide = parsePastedTable(
+    [
+      "Ingredient\tSupplier\tItem #\tDescription\tPack\tPack qty\tPack unit\tOrder unit\tPrice\tBase unit\tConversions\tCount unit\tPar",
+      "Bacon\tDriscoll\t871506\tBacon Layout 18/22 Slice CT\t1/15 LBA\t6803.8855\tg\tCase\t67.20\tg\t1 slice = 22.9087 g\tcase\t2",
+      "Butter\tDriscoll\t013602\tButter Solid AA Unsalted\t36/1 LB\t453.5924\tg\tPiece\t2.22\tg\t1 tbsp = 0.5 oz\tpiece\t10",
+      "Butter\tPrice Chopper\tPC-BUTTER\tCabot butter 1 lb\t1 LB\t\t\tEach\t4.99\t\t\t\t",
+      "Beef\tKilcoyne\tKIL-1\t\t1 LB\t453.5924\tg\tlb\t6.25\tg\t1 ball = 2.85 oz; nonsense\tlb\t110",
+    ].join("\n"),
+    "Guide",
+  );
+  const d = detectTable(guide);
+  const plan = buildPlan([{ table: guide, ...d }], { ingredients: [], recipes: [], suppliers: [] });
+  const get = (n: string) => plan.ingredients.find((i) => i.name === n)!;
+
+  it("maps the new columns", () => {
+    expect(d.kind).toBe("ingredients");
+    expect(d.mapping).toMatchObject({ description: "Description", purchaseUnit: "Order unit", conversions: "Conversions", countUnit: "Count unit", par: "Par", baseUnit: "Base unit" });
+  });
+  it("keeps the supplier description and order unit", () => {
+    expect(get("Bacon").products[0]).toMatchObject({ description: "Bacon Layout 18/22 Slice CT", purchaseUnit: "case", packQtyBase: 6803.8855, price: 67.2 });
+    expect(get("Butter").products[0].purchaseUnit).toBe("piece");
+  });
+  it("turns repeated ingredient rows into extra products, first one preferred", () => {
+    expect(get("Butter").products.map((p) => p.supplier)).toEqual(["Driscoll", "Price Chopper"]);
+    expect(get("Butter").products[1].packQtyBase).toBeCloseTo(453.59237);
+    expect(plan.ingredients.filter((i) => i.name === "Butter")).toHaveLength(1);
+  });
+  it("reads conversions, count unit and par", () => {
+    expect(get("Bacon").conversions).toEqual([{ unit: "slice", baseQty: 22.9087 }]);
+    expect(get("Butter").conversions[0].baseQty).toBeCloseTo(14.17476);
+    expect(get("Bacon").countUnit).toBe("case");
+    expect(parToBase(get("Bacon"))).toBeCloseTo(2 * 6803.8855);
+    expect(parToBase(get("Butter"))).toBeCloseTo(10 * 453.5924);
+    expect(parToBase(get("Beef"))).toBeCloseTo(110 * 453.59237);
+    expect(plan.issues.map((i) => i.message).join("\n")).toMatch(/Beef: couldn't read conversion "nonsense"/);
+  });
+});
+
+describe("parseConversions", () => {
+  it("accepts any standard unit of the base on the right", () => {
+    expect(parseConversions("1 cup = 340 g; 2 slices = 1.5 oz", "g").conversions).toEqual([
+      { unit: "cup", baseQty: 340 },
+      { unit: "slices", baseQty: (1.5 * 28.349523125) / 2 },
+    ]);
+    expect(parseConversions("1 bottle = 28 fl oz", "ml").conversions[0].baseQty).toBeCloseTo(828.06);
+  });
+  it("rejects units of another dimension", () => {
+    expect(parseConversions("1 cup = 8 oz", "ml").errors).toHaveLength(1);
+  });
+});
