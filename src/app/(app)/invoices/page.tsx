@@ -7,7 +7,7 @@ import { requireUser } from "@/server/auth";
 import { db, num } from "@/server/db";
 import { autoApproveEnabled, listInvoices, loadTolerance, STATUS_META } from "@/server/services/invoices";
 import { InvoiceStatus } from "@prisma/client";
-import { Camera, FileSpreadsheet } from "lucide-react";
+import { Camera, FileSpreadsheet, Receipt } from "lucide-react";
 import { AutoApproveCell, ToleranceCells } from "./list-client";
 import { InvoicesTable } from "./invoices-table";
 import { SendWaiting } from "./quickbooks-client";
@@ -44,6 +44,7 @@ export default async function InvoicesPage() {
         actions={
           <>
             <LinkButton href="/invoices/exports" size="lg"><FileSpreadsheet className="size-4" />Exports</LinkButton>
+            <LinkButton href="/invoices/new?kind=receipt" size="lg"><Receipt className="size-4" />Snap a receipt</LinkButton>
             <LinkButton href="/invoices/new" variant="primary" size="lg"><Camera className="size-4" />Add invoice</LinkButton>
           </>
         }

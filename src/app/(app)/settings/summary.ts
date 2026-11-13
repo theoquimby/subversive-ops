@@ -12,7 +12,7 @@ import { getFixedCosts, getRange } from "@/server/services/analytics";
 import { location } from "@/server/services/forecasting";
 import { classSettings, targetFoodCost } from "@/server/services/insights";
 import { storageAreasWithCounts } from "@/server/services/inventory";
-import { autoApproveEnabled, loadTolerance } from "@/server/services/invoices";
+import { autoApproveEnabled, loadTolerance, pricesOnApproveEnabled } from "@/server/services/invoices";
 import { getLaborRules, getRegularHours, getSeasonalHours, wageAutoOn } from "@/server/services/labor-rules";
 import { spikeThreshold } from "@/server/services/notify";
 import { quickbooksStatus } from "@/server/services/quickbooks";
@@ -86,6 +86,7 @@ export async function settingsSummary(): Promise<{ values: Record<string, string
     "money.tax": tax == null ? "From Square" : `${Number((tax * 100).toFixed(3))}%`,
     "money.tolerance": `${money(tol.price)} price · ${tol.qty} qty`,
     "money.autoApprove": auto ? "On" : "Off",
+    "money.pricesOnApprove": (await pricesOnApproveEnabled()) ? "On" : "Off",
     "money.terms": accounts.termsDays === 0 ? "Due on receipt" : `Net ${accounts.termsDays}`,
     "money.fixed": fixedSum > 0 ? `${money(fixedSum, { whole: true })} a month` : "Not set",
     "insights.range": RANGE_PRESETS.find((p) => p.id === range)?.label ?? range,

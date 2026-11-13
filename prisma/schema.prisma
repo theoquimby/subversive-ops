@@ -611,8 +611,29 @@ model Invoice {
   notes         String?
   createdAt     DateTime      @default(now())
   lines         InvoiceLine[]
+  /// "invoice" (a supplier's bill) or "receipt" (a store run: Price Chopper, Restaurant Depot…)
+  kind          String        @default("invoice")
+  dueDate       DateTime?     @db.Date
+  /// Receipts: how it was paid, as printed ("cash", "card", "Visa 1234")
+  paymentMethod String?
+  /// Pages 2, 3… of a multi-page invoice (page 1 stays in `image`).
+  pages         InvoicePage[]
 
   @@unique([supplierId, invoiceNumber])
+}
+
+/// Extra pages of an invoice photo set (page 1 is Invoice.image). Bytes in Postgres, ≤ 8 MB each.
+model InvoicePage {
+  id        String   @id @default(cuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  /// 2, 3, … in reading order
+  position  Int
+  bytes     Bytes
+  type      String
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId, position])
 }
 
 /// Links between records here and a QuickBooks Online company (Supplier ↔ Vendor,
@@ -656,6 +677,12 @@ model InvoiceLine {
   expectedQty       Decimal?         @db.Decimal(10, 2)
   expectedPrice     Decimal?         @db.Decimal(10, 2)
   status            String           @default("OK") // OK | PRICE | QTY | PRICE_QTY | UNMATCHED
+  /// item | fee | deposit | tax | credit — only items are matched to products and priced
+  kind              String           @default("item")
+  /// Pack size as printed, e.g. "4/10 LB"
+  packText          String?
+  /// Quantity ordered, when the invoice prints it next to quantity shipped
+  orderedQty        Decimal?         @db.Decimal(10, 2)
 }
 
 // ---------------------------------------------------------------------------

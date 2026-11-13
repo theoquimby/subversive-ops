@@ -38,6 +38,8 @@ export interface InvoiceLineInput {
   unitPrice: number;
   /** A product someone already picked by hand — kept as is. */
   supplierProductId?: string | null;
+  /** "item" (default) is a product; fees, deposits, tax and credits aren't matched to one. */
+  kind?: string | null;
 }
 
 export interface MatchedLine extends InvoiceLineInput {
@@ -136,12 +138,14 @@ export function matchInvoice(args: {
   const remaining = new Map([...order].map(([id, l]) => [id, l.receivedQty ?? l.orderedQty]));
   const billed = new Set<string>();
 
-  const matches = args.lines.map((line) => matchProduct(line, args.catalog));
+  const isItem = (line: InvoiceLineInput) => !line.kind || line.kind === "item";
+  const matches = args.lines.map((line) => (isItem(line) ? matchProduct(line, args.catalog) : null));
   const lastIndex = new Map<string, number>();
   matches.forEach((m, i) => m && lastIndex.set(m.id, i));
 
   const lines: MatchedLine[] = args.lines.map((line, i) => {
     const m = matches[i];
+    if (!isItem(line)) return { ...line, supplierProductId: null, matchedBy: null, expectedQty: null, expectedPrice: null, status: "OK" };
     if (!m) return { ...line, supplierProductId: null, matchedBy: null, expectedQty: null, expectedPrice: null, status: "UNMATCHED" };
     billed.add(m.id);
     const ol = order.get(m.id);

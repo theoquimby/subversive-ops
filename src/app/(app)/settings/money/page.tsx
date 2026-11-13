@@ -6,10 +6,10 @@ import { money } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { loadAccounts, loadTaxRate } from "@/server/services/accounting";
 import { getFixedCosts } from "@/server/services/analytics";
-import { autoApproveEnabled, loadTolerance } from "@/server/services/invoices";
+import { autoApproveEnabled, loadTolerance, pricesOnApproveEnabled } from "@/server/services/invoices";
 import { quickbooksStatus } from "@/server/services/quickbooks";
 import { LinkRow, SettingGroup, SettingRow } from "../controls";
-import { AutoApproveSwitch, FixedInput, PriceTolInput, QtyTolInput, TaxInput, TermsInput } from "./money-client";
+import { AutoApproveSwitch, PricesOnApproveSwitch, FixedInput, PriceTolInput, QtyTolInput, TaxInput, TermsInput } from "./money-client";
 
 export const metadata = { title: "Money & accounting" };
 
@@ -22,7 +22,7 @@ const FIXED = [
 
 export default async function MoneySettingsPage() {
   await requireUser("MANAGER");
-  const [tax, tol, auto, accounts, fixed, qbo] = await Promise.all([loadTaxRate(), loadTolerance(), autoApproveEnabled(), loadAccounts(), getFixedCosts(), quickbooksStatus()]);
+  const [tax, tol, auto, accounts, fixed, qbo, pricesOnApprove] = await Promise.all([loadTaxRate(), loadTolerance(), autoApproveEnabled(), loadAccounts(), getFixedCosts(), quickbooksStatus(), pricesOnApproveEnabled()]);
   const total = fixedTotal(fixed);
 
   return (
@@ -44,6 +44,9 @@ export default async function MoneySettingsPage() {
         </SettingRow>
         <SettingRow label="Auto-approve clean invoices" help="settings.money.autoApprove" what="An invoice that matches its order and delivery approves itself. Anything off still waits for you." defaultNote="Default off">
           <AutoApproveSwitch on={auto} />
+        </SettingRow>
+        <SettingRow label="Approving updates prices" help="settings.money.pricesOnApprove" what="Approved invoices and receipts record their prices in costing, dated the invoice day. Price-jump alerts still go out." defaultNote="Default on">
+          <PricesOnApproveSwitch on={pricesOnApprove} />
         </SettingRow>
         <SettingRow label="Payment terms" help="settings.money.terms" what="Days after the invoice date a bill is due — 30 is net 30, 0 is due on receipt." defaultNote="Default 30 days">
           <TermsInput value={accounts.termsDays} />

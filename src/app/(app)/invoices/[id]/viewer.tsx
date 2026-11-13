@@ -5,13 +5,78 @@ import { Card, cx } from "@/components/ui";
 import { Camera, ExternalLink, ImageOff, Loader2, Maximize, Minus, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { attachFile } from "../actions";
-import { prepareUpload } from "../compress";
+import { addInvoicePage, attachFile, removeInvoicePage } from "../actions";
+import { PAGE_QUALITY, prepareUpload } from "../compress";
 
 interface View { s: number; x: number; y: number }
 const MIN = 1;
 const MAX = 8;
 const clampS = (s: number) => Math.min(MAX, Math.max(MIN, s));
+
+/**
+ * All pages of an invoice: page tabs above the viewer, plus "Add page" so a
+ * forgotten back page can be snapped later. With one page it's just the viewer.
+ */
+export function InvoicePages({ invoiceId, locked, hasImage, type, pages }: { invoiceId: string; locked: boolean; hasImage: boolean; type: string | null; pages: { position: number; type: string }[] }) {
+  const router = useRouter();
+  const [current, setCurrent] = useState(1);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const input = useRef<HTMLInputElement>(null);
+  const all = [{ position: 1, type: type ?? "image/jpeg" }, ...pages];
+  const shown = all.find((p) => p.position === current) ?? all[0];
+  if (!hasImage) return <InvoiceViewer src={null} type={type} invoiceId={invoiceId} locked={locked} />;
+  const add = (files: FileList | null) => {
+    const list = [...(files ?? [])];
+    if (!list.length) return;
+    setError(null);
+    start(async () => {
+      let last = current;
+      for (const f of list) {
+        const ready = await prepareUpload(f, PAGE_QUALITY);
+        if ("error" in ready) { setError(ready.error); break; }
+        const fd = new FormData();
+        fd.set("file", ready);
+        const r = await addInvoicePage(invoiceId, fd);
+        if (r.error) { setError(r.error); break; }
+        if (r.page) last = r.page;
+      }
+      setCurrent(last);
+      router.refresh();
+    });
+  };
+  const remove = () =>
+    start(async () => {
+      await removeInvoicePage(invoiceId, current);
+      setCurrent(1);
+      router.refresh();
+    });
+  return (
+    <div className="flex h-full flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Pages">
+        {all.length > 1 && all.map((p, i) => (
+          <button key={p.position} type="button" role="tab" aria-selected={p.position === shown.position} onClick={() => setCurrent(p.position)} className={cx("num h-10 min-w-10 rounded-lg px-3 text-sm font-medium sm:h-8 sm:min-w-8", p.position === shown.position ? "bg-primary text-primary-ink" : "bg-surface-2 text-ink-2 hover:text-ink")}>
+            {all.length > 1 ? i + 1 : "Page 1"}
+          </button>
+        ))}
+        {all.length > 1 && <span className="mr-auto pl-1 text-xs text-muted">{all.length} pages</span>}
+        {!locked && (
+          <span className="ml-auto flex items-center gap-1">
+            {shown.position > 1 && <button type="button" disabled={pending} onClick={remove} className="h-10 rounded-lg px-2.5 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink sm:h-8">Remove page</button>}
+            <button type="button" disabled={pending} onClick={() => input.current?.click()} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-border-strong bg-surface px-3 text-sm font-medium hover:bg-surface-2 sm:h-8">
+              {pending ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}Add page
+            </button>
+            <input ref={input} type="file" accept="image/*,application/pdf" multiple className="sr-only" tabIndex={-1} onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
+          </span>
+        )}
+      </div>
+      {error && <div className="text-sm text-bad">{error}</div>}
+      <div className="min-h-0 flex-1">
+        <InvoiceViewer key={shown.position} src={`/invoices/${invoiceId}/image${shown.position > 1 ? `?page=${shown.position}` : ""}`} type={shown.type} invoiceId={invoiceId} locked={locked} label={`Invoice page ${shown.position}`} />
+      </div>
+    </div>
+  );
+}
 
 /** Zoomable, pannable invoice photo: wheel / pinch to zoom, drag to pan, double-click to toggle. */
 export function InvoiceViewer({ src, type, invoiceId, locked, label = "Invoice" }: { src: string | null; type: string | null; invoiceId: string; locked: boolean; label?: string }) {

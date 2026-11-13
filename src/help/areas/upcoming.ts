@@ -726,7 +726,7 @@ Approved invoices with no checked-in order count as received stock for ordering.
     area: "invoices",
     route: "/invoices",
     title: "Snap an invoice",
-    body: "Take a photo or upload a PDF. Lines, quantities and prices are read for you once AI features are on in Settings → Connections.",
+    body: "Take a photo of each page or upload a PDF. Lines, quantities and prices are read for you once AI features are on in Settings → Connections.",
   },
   {
     id: "invoices.match",
@@ -740,8 +740,8 @@ Approved invoices with no checked-in order count as received stock for ordering.
     area: "invoices",
     route: "/invoices",
     title: "Approve and history",
-    body: "Approving a clean match is one tap. Approving with open issues asks for a note. Approvals, reopens and price updates are logged on the invoice and never erased, even if it's reopened.",
-    related: ["prices.history", "invoices.autoApprove"],
+    body: "Approving a clean match is one tap; with open issues it asks for a note. Approving also sends the prices to costing and checks in the order. Approvals, reopens and price updates are logged on the invoice and never erased.",
+    related: ["prices.history", "invoices.autoApprove", "invoices.prices", "invoices.received"],
   },
   {
     id: "invoices.autoApprove",
@@ -837,7 +837,7 @@ Account names must match your chart of accounts exactly. Nothing is paid or post
     area: "invoices",
     route: "/invoices",
     title: "One invoice",
-    body: "The supplier, invoice number, match status and date, with the photo beside the lines. Check the flagged lines, then approve, update prices or request a credit from the buttons at the top.",
+    body: "The supplier, invoice number, match status and date, with the photo beside the lines. Link any new lines, check the flagged ones, then approve or request a credit from the buttons at the top.",
     related: ["invoices.match", "invoices.approve"],
   },
   {

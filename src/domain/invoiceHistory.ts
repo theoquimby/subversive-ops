@@ -6,7 +6,7 @@
  * `appendEvent` returns a new array and never edits earlier entries.
  */
 
-export type InvoiceAction = "approved" | "auto-approved" | "reopened" | "prices-updated" | "credit-requested" | "sent-to-quickbooks";
+export type InvoiceAction = "approved" | "auto-approved" | "reopened" | "prices-updated" | "credit-requested" | "sent-to-quickbooks" | "order-received";
 
 export interface InvoiceEvent {
   at: string; // ISO instant
@@ -17,7 +17,7 @@ export interface InvoiceEvent {
   note?: string;
 }
 
-const ACTIONS: InvoiceAction[] = ["approved", "auto-approved", "reopened", "prices-updated", "credit-requested", "sent-to-quickbooks"];
+const ACTIONS: InvoiceAction[] = ["approved", "auto-approved", "reopened", "prices-updated", "credit-requested", "sent-to-quickbooks", "order-received"];
 
 /** Parse a stored log, dropping anything malformed rather than failing. */
 export function parseHistory(raw: string | null | undefined): InvoiceEvent[] {

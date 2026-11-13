@@ -3,6 +3,7 @@
 import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
 import { Badge, Button, Card, cx, DatePicker, Input, LinkButton, Textarea, type Tone } from "@/components/ui";
+import { LINE_KIND_LABEL, LINE_KINDS, type LineKind } from "@/domain/invoiceAutopilot";
 import { money, qty as fmtQty, shortDate } from "@/lib/format";
 import { Check, Copy, Mail, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -13,17 +14,20 @@ type Opt = { value: string; label: string; hint?: string };
 
 // ---- Header fields ---------------------------------------------------------------
 
-export function HeaderFields({ id, locked, invoiceNumber, invoiceDate, total, orderId, orderOptions }: { id: string; locked: boolean; invoiceNumber: string | null; invoiceDate: string; total: number | null; orderId: string; orderOptions: Opt[] }) {
+export function HeaderFields({ id, locked, invoiceNumber, invoiceDate, total, orderId, orderOptions, dueDate = null, receipt = false }: { id: string; locked: boolean; invoiceNumber: string | null; invoiceDate: string; total: number | null; orderId: string; orderOptions: Opt[]; dueDate?: string | null; receipt?: boolean }) {
   const [date, setDate] = useState(invoiceDate);
+  const [due, setDue] = useState(dueDate ?? "");
   const [, start] = useTransition();
   useEffect(() => setDate(invoiceDate), [invoiceDate]);
+  useEffect(() => setDue(dueDate ?? ""), [dueDate]);
   if (locked) {
     return (
       <Card className="grid grid-cols-2 gap-4 p-4 text-sm sm:grid-cols-4">
         <Item label="Number">{invoiceNumber ?? "—"}</Item>
         <Item label="Date">{shortDate(invoiceDate)}</Item>
         <Item label="Total">{money(total)}</Item>
-        <Item label="Order">{orderOptions.find((o) => o.value === orderId)?.label ?? "No order"}</Item>
+        {receipt ? <Item label="Kind">Store receipt</Item> : <Item label="Order">{orderOptions.find((o) => o.value === orderId)?.label ?? "No order"}</Item>}
+        {dueDate && <Item label="Due">{shortDate(dueDate)}</Item>}
       </Card>
     );
   }
@@ -34,14 +38,23 @@ export function HeaderFields({ id, locked, invoiceNumber, invoiceDate, total, or
         <DatePicker value={date} aria-label="Invoice date" className="h-10 sm:h-8" onChange={(e) => { const v = e.target.value; setDate(v); start(async () => { await updateHeader(id, { field: "invoiceDate", value: v }); }); }} />
       </Item>
       <Item label="Total"><GridCell grid="inv-head" col="total" type="number" prefix="$" decimals={2} align="left" value={total} placeholder="0.00" ariaLabel="Invoice total" onSave={(v) => updateHeader(id, { field: "total", value: v })} className="-mx-2" /></Item>
-      <Item label="Order"><GridSelect value={orderId} options={orderOptions} ariaLabel="Linked order" onSave={(v) => updateHeader(id, { field: "orderId", value: v })} className="-mx-2" /></Item>
+      {receipt ? (
+        <Item label="Kind"><div className="px-0 py-1.5 sm:py-1">Store receipt</div></Item>
+      ) : (
+        <Item label="Order"><GridSelect value={orderId} options={orderOptions} ariaLabel="Linked order" onSave={(v) => updateHeader(id, { field: "orderId", value: v })} className="-mx-2" /></Item>
+      )}
+      {!receipt && (
+        <Item label="Due" className="col-span-2">
+          <DatePicker value={due} aria-label="Due date" className="h-10 sm:h-8" onChange={(e) => { const v = e.target.value; setDue(v); start(async () => { await updateHeader(id, { field: "dueDate", value: v }); }); }} />
+        </Item>
+      )}
     </Card>
   );
 }
 
-function Item({ label, children }: { label: string; children: React.ReactNode }) {
+function Item({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="min-w-0">
+    <div className={cx("min-w-0", className)}>
       <div className="mb-0.5 text-xs text-muted">{label}</div>
       <div className="num">{children}</div>
     </div>
@@ -62,7 +75,12 @@ export interface LineVM {
   productId: string | null;
   productName: string | null;
   unit: string | null;
+  kind?: string;
+  packText?: string | null;
+  orderedQty?: number | null;
 }
+
+const KIND_OPTIONS: Opt[] = LINE_KINDS.map((k) => ({ value: k, label: k === "item" ? "Product" : LINE_KIND_LABEL[k] }));
 
 const LINE_STATUS: Record<string, { label: string; tone: Tone }> = {
   OK: { label: "OK", tone: "good" },
@@ -117,7 +135,9 @@ export function LinesGrid({ invoiceId, locked, lines, products, hasOrder }: { in
           const st = LINE_STATUS[l.status] ?? LINE_STATUS.OK;
           const qtyOff = off(l.qty, l.expectedQty);
           const priceOff = off(l.unitPrice, l.expectedPrice, 0.005);
-          const badge = <Badge tone={st.tone}>{st.label}</Badge>;
+          const nonItem = Boolean(l.kind && l.kind !== "item");
+          const badge = nonItem ? <Badge>{LINE_KIND_LABEL[l.kind as LineKind] ?? l.kind}</Badge> : <Badge tone={st.tone}>{st.label}</Badge>;
+          const printedShort = l.orderedQty != null && l.orderedQty - l.qty > 1e-9 ? l.orderedQty - l.qty : 0;
           return (
             <div key={l.id} className={cx(COLS, "items-start border-b border-border py-1.5 last:border-0", l.status !== "OK" && "bg-surface-2/40")}>
               <div className="col-span-4 min-w-0 sm:col-span-1">
@@ -132,10 +152,20 @@ export function LinesGrid({ invoiceId, locked, lines, products, hasOrder }: { in
                     <div className="flex min-w-0 items-center gap-1">
                       <GridCell grid={`lines-${invoiceId}`} col="sku" value={l.sku} ariaLabel="Item number" placeholder="Item #" onSave={(v) => updateLine(l.id, { field: "sku", value: v })} className="w-20 shrink-0 [&_input]:text-xs [&_input]:text-muted" />
                       <div className="min-w-0 flex-1">
-                        <GridSelect value={l.productId ?? ""} options={productOptions} ariaLabel="Matched product" onSave={(v) => updateLine(l.id, { field: "product", value: v })} className={cx("w-full text-xs", !l.productId && "text-warn")} />
+                        {l.kind && l.kind !== "item" ? (
+                          <GridSelect value={l.kind} options={KIND_OPTIONS} ariaLabel="Kind of line" onSave={(v) => updateLine(l.id, { field: "kind", value: v })} className="w-full text-xs text-muted" />
+                        ) : (
+                          <GridSelect value={l.productId ?? ""} options={productOptions} ariaLabel="Matched product" onSave={(v) => updateLine(l.id, { field: "product", value: v })} className={cx("w-full text-xs", !l.productId && "text-warn")} />
+                        )}
                       </div>
                     </div>
                   </>
+                )}
+                {(l.packText || printedShort > 0) && (
+                  <div className="flex flex-wrap items-center gap-1.5 px-2 pb-1 text-xs text-muted">
+                    {l.packText && <span>{l.packText}</span>}
+                    {printedShort > 0 && <Badge tone="warn">shipped {fmtQty(l.qty)} of {fmtQty(l.orderedQty!)} ordered</Badge>}
+                  </div>
                 )}
               </div>
               <div className="self-center px-2 sm:hidden">{badge}</div>
@@ -179,7 +209,7 @@ export function LinesGrid({ invoiceId, locked, lines, products, hasOrder }: { in
 
 interface Credit { subject: string; body: string; total: number; count: number; email: string | null; /** Email (Resend) is set up, so we can send it from here. */ canSend: boolean; lastSent: string | null }
 
-export function InvoiceActions({ id, status, statusLabel, flagged, priceChanges, invoiceDate, credit }: { id: string; status: string; statusLabel: string; flagged: number; priceChanges: number; invoiceDate: string; credit: Credit | null }) {
+export function InvoiceActions({ id, status, statusLabel, flagged, priceChanges, invoiceDate, credit, pricesOnApprove = false, receivesOrder = false }: { id: string; status: string; statusLabel: string; flagged: number; priceChanges: number; invoiceDate: string; credit: Credit | null; pricesOnApprove?: boolean; receivesOrder?: boolean }) {
   const confirm = useConfirm();
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -195,15 +225,17 @@ export function InvoiceActions({ id, status, statusLabel, flagged, priceChanges,
     }
     start(async () => {
       await approveInvoice(id);
+      const did = [receivesOrder && "order checked in", pricesOnApprove && priceChanges > 0 && `${priceChanges} price${priceChanges === 1 ? "" : "s"} sent to costing`].filter(Boolean);
+      if (did.length) setMsg(`Approved · ${did.join(" · ")}`);
       router.refresh();
     });
   };
 
   const prices = async () => {
     const ok = await confirm({
-      title: `Update ${priceChanges} price${priceChanges === 1 ? "" : "s"}?`,
+      title: `${approved ? "Re-apply" : "Update"} ${priceChanges} price${priceChanges === 1 ? "" : "s"}?`,
       body: `Records the billed prices as of ${shortDate(invoiceDate)}. Recipe and menu costs pick them up straight away.`,
-      confirmLabel: "Update prices",
+      confirmLabel: approved ? "Re-apply prices" : "Update prices",
     });
     if (!ok) return;
     start(async () => {
@@ -217,20 +249,23 @@ export function InvoiceActions({ id, status, statusLabel, flagged, priceChanges,
     <>
       {msg && <span className="inline-flex items-center gap-1 text-sm text-good"><Check className="size-4" />{msg}</span>}
       {credit && <Button onClick={() => setShowCredit(true)}><Mail className="size-4" />Credit request</Button>}
-      {priceChanges > 0 && <Button onClick={prices} disabled={pending}>Update {priceChanges} price{priceChanges === 1 ? "" : "s"}</Button>}
+      {priceChanges > 0 && (approved || !pricesOnApprove) && <Button onClick={prices} disabled={pending}>{approved ? "Re-apply" : "Update"} {priceChanges} price{priceChanges === 1 ? "" : "s"}</Button>}
+      {!approved && !msg && (receivesOrder || (pricesOnApprove && priceChanges > 0)) && (
+        <span className="hidden text-xs text-muted lg:inline">Approving {[receivesOrder && "checks in the order", pricesOnApprove && priceChanges > 0 && `sends ${priceChanges} price${priceChanges === 1 ? "" : "s"} to costing`].filter(Boolean).join(" and ")}</span>
+      )}
       {approved ? (
         <Button variant="ghost" disabled={pending} onClick={() => start(async () => { await reopenInvoice(id); router.refresh(); })}><RotateCcw className="size-4" />Reopen</Button>
       ) : (
         <Button variant="primary" disabled={pending} onClick={approve}><Check className="size-4" />Approve</Button>
       )}
       {showCredit && credit && <CreditSheet id={id} credit={credit} onClose={() => setShowCredit(false)} />}
-      {approving && <ApproveSheet id={id} statusLabel={statusLabel} flagged={flagged} credit={credit} onClose={() => setApproving(false)} />}
+      {approving && <ApproveSheet id={id} statusLabel={statusLabel} flagged={flagged} credit={credit} after={[receivesOrder && "The order is checked in with the invoice's quantities", pricesOnApprove && priceChanges > 0 && `${priceChanges} price${priceChanges === 1 ? "" : "s"} go to costing`].filter((x): x is string => Boolean(x))} onClose={() => setApproving(false)} />}
     </>
   );
 }
 
 /** Approving with open issues: the note is required and stays in the invoice history. */
-function ApproveSheet({ id, statusLabel, flagged, credit, onClose }: { id: string; statusLabel: string; flagged: number; credit: Credit | null; onClose: () => void }) {
+function ApproveSheet({ id, statusLabel, flagged, credit, after = [], onClose }: { id: string; statusLabel: string; flagged: number; credit: Credit | null; after?: string[]; onClose: () => void }) {
   const router = useRouter();
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -255,6 +290,7 @@ function ApproveSheet({ id, statusLabel, flagged, credit, onClose }: { id: strin
           This invoice is marked <b className="text-ink-2">{statusLabel.toLowerCase()}</b>
           {flagged > 0 && <> with {flagged} line{flagged === 1 ? "" : "s"} that don&apos;t match</>}.
           {credit && <> You may be owed {money(credit.total)}.</>} Your name and note go on the record.
+          {after.length > 0 && <> {after.join(", and ")}.</>}
         </p>
         <Textarea
           autoFocus
@@ -277,7 +313,7 @@ function ApproveSheet({ id, statusLabel, flagged, credit, onClose }: { id: strin
   );
 }
 
-const ACTION_LABEL: Record<string, string> = { approved: "Approved", "auto-approved": "Auto-approved", reopened: "Reopened", "prices-updated": "Prices updated", "credit-requested": "Credit requested", "sent-to-quickbooks": "Sent to QuickBooks" };
+const ACTION_LABEL: Record<string, string> = { approved: "Approved", "auto-approved": "Auto-approved", reopened: "Reopened", "prices-updated": "Prices updated", "credit-requested": "Credit requested", "sent-to-quickbooks": "Sent to QuickBooks", "order-received": "Order checked in" };
 
 /** The approval history, oldest first. Nothing in it is ever removed. */
 export function InvoiceHistory({ events }: { events: { at: string; when: string; by: string; action: string; status?: string; statusLabel?: string; note?: string }[] }) {

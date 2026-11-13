@@ -104,7 +104,7 @@ export async function computeLearned(): Promise<LearnedSnapshot> {
     squareProfile(),
     // "Unassigned supplier" is a catch-all for lines with no supplier, not someone who delivers.
     db.supplier.findMany({ where: { active: true, NOT: { name: { startsWith: "Unassigned", mode: "insensitive" } } }, select: { id: true, name: true } }),
-    db.invoice.findMany({ where: { invoiceDate: { gte: since } }, select: { supplierId: true, invoiceDate: true } }),
+    db.invoice.findMany({ where: { invoiceDate: { gte: since }, kind: { not: "receipt" } }, select: { supplierId: true, invoiceDate: true } }),
     db.purchaseOrder.findMany({ where: { createdAt: { gte: since }, status: { in: ["SENT", "RECEIVED"] } }, select: { supplierId: true, status: true, deliveryDate: true, sentAt: true, receivedAt: true } }),
     db.ingredient.findMany({ where: { active: true, recipeLines: { none: {} } }, select: { id: true, name: true, products: { where: { active: true, packQtyBase: { gt: 0 } }, select: { id: true, packQtyBase: true, purchaseUnit: true, supplier: { select: { deliveryDays: true } } } }, preferredProductId: true } }),
     readSettingJSON<{ details?: { plans?: { id: string; name: string; best: number; onHand: number; pack: number; mean: number }[] } }>("analytics.orders"),

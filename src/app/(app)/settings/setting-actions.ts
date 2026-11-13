@@ -8,7 +8,7 @@
  */
 
 import { saveBevTarget } from "@/app/(app)/menu/draft-beer/actions";
-import { saveAccountField, saveAutoApprove, saveSalesTaxRate, saveTolerance } from "@/app/(app)/invoices/actions";
+import { saveAccountField, saveAutoApprove, savePricesOnApprove, saveSalesTaxRate, saveTolerance } from "@/app/(app)/invoices/actions";
 import { saveFixedCost, setRange } from "@/app/(app)/insights/actions";
 import { savePriceAlertThreshold } from "@/app/(app)/prices/actions";
 import { saveCutoff } from "@/app/(app)/ordering/actions";
@@ -290,6 +290,7 @@ export async function setSupplierActive(id: string, active: boolean): Promise<R>
 export const saveTax = async (raw: string) => pass(saveSalesTaxRate(raw));
 export const saveTol = async (kind: "price" | "qty", raw: string) => pass(saveTolerance(kind, raw.replace(/^\$/, "")));
 export const saveAuto = async (on: boolean) => pass(saveAutoApprove(on));
+export const savePricesOnApproveSetting = async (on: boolean) => pass(savePricesOnApprove(on));
 export const saveTerms = async (raw: string) => pass(saveAccountField("termsDays", raw));
 export const saveFixed = async (field: "rent" | "utilities" | "insurance" | "other", raw: string) => pass(saveFixedCost(field, raw));
 

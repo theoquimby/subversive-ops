@@ -3,13 +3,21 @@
 import { parseISODate } from "@/domain/dates";
 import { parsePastedLines, pickOrder, suggestSupplier } from "@/domain/invoiceMatch";
 import { requireUser } from "@/server/auth";
-import { claudeReady, CLAUDE_NOT_SET_UP } from "@/server/integrations/claude";
+import { CLAUDE_NOT_SET_UP } from "@/server/integrations/claude";
+import { checkInvoiceMath, expandReceiptText, knownStore, LINE_KINDS, looksLikeReceipt, type LineKind } from "@/domain/invoiceAutopilot";
 import { db } from "@/server/db";
 import { approvalNeedsNote } from "@/domain/invoiceHistory";
 import { sendCreditRequest } from "@/server/email/outbound";
 import { saveAccount, saveTaxRate } from "@/server/services/accounting";
 import {
+  addPage,
   alertedKey,
+  applyInvoicePrices,
+  applyLinkSuggestion,
+  linkSuggestions,
+  MAX_PAGES,
+  readerReady,
+  setPricesOnApprove,
   approve,
   candidateOrders,
   createInvoice,
@@ -21,7 +29,6 @@ import {
   reopen,
   setAutoApprove,
   TOLERANCE_KEYS,
-  updatePricesFromInvoice,
 } from "@/server/services/invoices";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -33,36 +40,87 @@ const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/gif", "applica
 async function readUpload(form: FormData): Promise<{ bytes: Uint8Array; type: string } | { error: string } | null> {
   const f = form.get("file");
   if (!(f instanceof File) || f.size === 0) return null;
+  return checkFile(f);
+}
+
+async function checkFile(f: File): Promise<{ bytes: Uint8Array; type: string } | { error: string }> {
   if (f.size > MAX_FILE_BYTES) return { error: "That file is over 8 MB. Try a photo instead of a scan, or split the PDF." };
   if (!ACCEPTED.includes(f.type)) return { error: "Upload a photo (JPEG/PNG) or a PDF." };
   return { bytes: new Uint8Array(await f.arrayBuffer()), type: f.type };
 }
 
-/** Read an invoice photo/PDF with Claude and suggest the supplier and order. */
+const modeSchema = z.enum(["auto", "invoice", "receipt"]).catch("auto");
+
+/**
+ * Read every page of one invoice (or a store receipt) with Claude in a single
+ * request, check its math, and suggest the supplier and order.
+ */
 export async function readInvoice(form: FormData) {
   await requireUser("MANAGER");
-  if (!(await claudeReady())) return { error: CLAUDE_NOT_SET_UP };
-  const up = await readUpload(form);
-  if (!up) return { error: "Choose a photo or PDF first." };
-  if ("error" in up) return up;
-  const r = await extractInvoice(up.bytes, up.type);
+  if (!(await readerReady())) return { error: CLAUDE_NOT_SET_UP };
+  const files = form.getAll("file").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!files.length) return { error: "Choose a photo or PDF first." };
+  if (files.length > MAX_PAGES) return { error: `Up to ${MAX_PAGES} pages at a time.` };
+  const pages = [];
+  for (const f of files) {
+    const up = await checkFile(f);
+    if ("error" in up) return up;
+    pages.push(up);
+  }
+  const mode = modeSchema.parse(form.get("mode") ?? "auto");
+  const r = await extractInvoice(pages, mode);
   if (!r.ok) return { error: r.error };
+  const d = r.data;
+  const receipt = mode === "receipt" || (mode === "auto" && looksLikeReceipt({ documentType: d.documentType, supplierName: d.supplierName }));
+  const storeName = knownStore(d.supplierName);
   const suppliers = await db.supplier.findMany({ where: { active: true }, select: { id: true, name: true } });
-  const supplier = suggestSupplier(r.data.supplierName, suppliers);
-  const date = r.data.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(r.data.invoiceDate) ? r.data.invoiceDate : null;
-  const order = supplier ? pickOrder(await candidateOrders(), supplier.id, date) : null;
+  const supplier = (storeName && suppliers.find((s) => s.name.toLowerCase() === storeName.toLowerCase())) || suggestSupplier(storeName ?? d.supplierName, suppliers) || suggestSupplier(d.supplierName, suppliers);
+  const iso = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const date = iso(d.invoiceDate);
+  const order = supplier && !receipt ? pickOrder(await candidateOrders(), supplier.id, date) : null;
+  const lines = d.lines.map((l) => {
+    const tidy = receipt ? expandReceiptText(l.description) : null;
+    return {
+      kind: l.kind as LineKind,
+      sku: l.sku ?? tidy?.sku ?? null,
+      description: tidy?.text || l.description,
+      packText: l.packText,
+      orderedQty: l.qtyOrdered,
+      qty: l.qty,
+      unitPrice: l.unitPrice,
+      lineTotal: l.lineTotal,
+    };
+  });
+  // Tax becomes its own line so the lines always add up to what's paid.
+  if (d.tax && Math.abs(d.tax) >= 0.005) lines.push({ kind: "tax", sku: null, description: "Sales tax", packText: null, orderedQty: null, qty: 1, unitPrice: d.tax, lineTotal: d.tax });
+  const math = checkInvoiceMath({ lines, subtotal: d.subtotal, total: d.total });
   return {
     data: {
-      ...r.data,
+      receipt,
+      supplierName: storeName ?? d.supplierName,
+      invoiceNumber: d.invoiceNumber,
       invoiceDate: date,
+      dueDate: iso(d.dueDate),
+      total: d.total,
+      paymentMethod: d.paymentMethod,
       supplierId: supplier?.id ?? null,
       orderId: order?.id ?? null,
-      lines: r.data.lines.map((l) => ({ sku: l.sku, description: l.description, qty: l.qty, unitPrice: l.unitPrice })),
+      pages: pages.length,
+      lines,
+      issues: math.issues.map((i) => ({ kind: i.kind, lineIndex: i.lineIndex ?? null, message: i.message })),
     },
   };
 }
 
-const lineSchema = z.object({ sku: z.string().trim().max(60).nullable().optional(), description: z.string().trim().max(300), qty: z.number().finite(), unitPrice: z.number().finite() });
+const lineSchema = z.object({
+  sku: z.string().trim().max(60).nullable().optional(),
+  description: z.string().trim().max(300),
+  qty: z.number().finite(),
+  unitPrice: z.number().finite(),
+  kind: z.enum(LINE_KINDS).optional(),
+  packText: z.string().trim().max(60).nullable().optional(),
+  orderedQty: z.number().finite().nullable().optional(),
+});
 const createSchema = z.object({
   supplierId: z.string().min(1, "Choose a supplier."),
   orderId: z.string().nullable(),
@@ -71,9 +129,17 @@ const createSchema = z.object({
   total: z.number().finite().nullable(),
   lines: z.array(lineSchema).max(500),
   extractedBy: z.enum(["claude", "manual"]),
+  kind: z.enum(["invoice", "receipt"]).optional(),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  paymentMethod: z.string().trim().max(60).nullable().optional(),
 });
 
-export async function saveNewInvoice(form: FormData) {
+/**
+ * Save a new invoice with page 1 (`file`). With `more=1` it returns the id
+ * instead of redirecting, so the browser can send the other pages one by one
+ * (each request stays well under the hosting upload limit).
+ */
+export async function saveNewInvoice(form: FormData): Promise<{ error: string; duplicateId?: string } | { id: string } | undefined> {
   await requireUser("MANAGER");
   let input: z.infer<typeof createSchema>;
   try {
@@ -89,9 +155,28 @@ export async function saveNewInvoice(form: FormData) {
   const dupe = await exactDuplicate(input.supplierId, invoiceNumber);
   if (dupe) return { error: `Invoice ${invoiceNumber} from this supplier is already in.`, duplicateId: dupe.id };
   const lines = input.lines.filter((l) => l.description || l.sku || l.qty || l.unitPrice).map((l) => ({ ...l, description: l.description || l.sku || "Item" }));
-  const id = await createInvoice({ ...input, invoiceNumber, lines, image: up, orderId: input.orderId || null });
+  const id = await createInvoice({ ...input, invoiceNumber, lines, image: up, orderId: input.kind === "receipt" ? null : input.orderId || null });
   revalidatePath("/invoices");
+  if (form.get("more") === "1") return { id };
   redirect(`/invoices/${id}`);
+}
+
+/** Add one more page (photo or PDF) to an invoice. */
+export async function addInvoicePage(id: string, form: FormData): Promise<{ error?: string; page?: number }> {
+  await requireUser("MANAGER");
+  const up = await readUpload(form);
+  if (!up) return { error: "Choose a photo or PDF first." };
+  if ("error" in up) return up;
+  const r = await addPage(id, up);
+  revalidatePath(`/invoices/${id}`);
+  return typeof r === "number" ? { page: r } : r;
+}
+
+/** Remove an extra page (2, 3…). */
+export async function removeInvoicePage(id: string, position: number) {
+  await requireUser("MANAGER");
+  await db.invoicePage.deleteMany({ where: { invoiceId: id, position: z.number().int().min(2).parse(position) } });
+  revalidatePath(`/invoices/${id}`);
 }
 
 // ---- Detail page edits ------------------------------------------------------------------
@@ -115,6 +200,7 @@ const lineField = z.discriminatedUnion("field", [
   z.object({ field: z.literal("qty"), value: z.coerce.number().finite() }),
   z.object({ field: z.literal("unitPrice"), value: z.coerce.number().finite() }),
   z.object({ field: z.literal("product"), value: z.string() }),
+  z.object({ field: z.literal("kind"), value: z.enum(LINE_KINDS) }),
 ]);
 
 export async function updateLine(lineId: string, input: { field: string; value: string }) {
@@ -131,6 +217,7 @@ export async function updateLine(lineId: string, input: { field: string; value: 
     : p.field === "description" ? { description: p.value }
     : p.field === "qty" ? { qty: new Prisma.Decimal(p.value) }
     : p.field === "unitPrice" ? { unitPrice: new Prisma.Decimal(p.value.toFixed(2)) }
+    : p.field === "kind" ? { kind: p.value, ...(p.value === "item" ? {} : { supplierProductId: null }) }
     : { supplierProductId: p.value || null };
   await db.invoiceLine.update({ where: { id: lineId }, data });
   await after(line.invoiceId);
@@ -162,6 +249,7 @@ export async function deleteLine(lineId: string) {
 const headerField = z.discriminatedUnion("field", [
   z.object({ field: z.literal("invoiceNumber"), value: z.string().trim().max(60) }),
   z.object({ field: z.literal("invoiceDate"), value: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+  z.object({ field: z.literal("dueDate"), value: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/) }),
   z.object({ field: z.literal("total"), value: z.string().trim() }),
   z.object({ field: z.literal("orderId"), value: z.string() }),
   z.object({ field: z.literal("notes"), value: z.string().max(2000) }),
@@ -183,6 +271,7 @@ export async function updateHeader(id: string, input: { field: string; value: st
     if (dupe && dupe.id !== id) return { error: `Invoice ${p.value} from this supplier is already in.` };
     data = { invoiceNumber: p.value || null };
   } else if (p.field === "invoiceDate") data = { invoiceDate: parseISODate(p.value) };
+  else if (p.field === "dueDate") data = { dueDate: p.value ? parseISODate(p.value) : null };
   else if (p.field === "total") {
     const n = p.value === "" ? null : Number(p.value.replace(/[$,]/g, ""));
     if (n != null && !Number.isFinite(n)) return { error: "Enter an amount." };
@@ -243,14 +332,64 @@ export async function sendCredit(id: string, to: string, copyMe: boolean): Promi
   return { ok: `Sent to ${r.to}` };
 }
 
+/** Record (or re-apply) the invoice's prices in costing now. Approving does this automatically unless it's turned off. */
 export async function updatePrices(id: string) {
   const user = await requireUser("MANAGER");
-  const changes = await updatePricesFromInvoice(id);
-  if (changes.length) await recordEvent(id, { by: user.name, action: "prices-updated", note: `${changes.length} price${changes.length === 1 ? "" : "s"} recorded` });
+  const updated = await applyInvoicePrices(id, user.name);
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/prices");
   revalidatePath("/menu");
-  return { updated: changes.length };
+  return { updated };
+}
+
+/** Settings → Money: record prices in costing when an invoice is approved. */
+export async function savePricesOnApprove(on: boolean) {
+  await requireUser("MANAGER");
+  await setPricesOnApprove(z.boolean().parse(on));
+  revalidatePath("/invoices");
+}
+
+// ---- Linking lines to products --------------------------------------------------------------
+
+/**
+ * Accept the autopilot's suggestion for one line (or, with `ingredientId`,
+ * create the product for a different ingredient; "" = a new ingredient).
+ */
+export async function acceptLinkSuggestion(invoiceId: string, lineId: string, ingredientId?: string | null): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const blocked = await editable(invoiceId);
+  if (blocked) return blocked;
+  const { suggestions } = await linkSuggestions(invoiceId);
+  const s = suggestions.find((x) => x.lineId === lineId);
+  if (!s) return { error: "That line is already linked." };
+  await applyLinkSuggestion(lineId, s.suggestion, ingredientId === undefined ? {} : { ingredientId: z.string().max(64).nullable().parse(ingredientId) });
+  await after(invoiceId);
+  revalidatePath("/prices");
+  return {};
+}
+
+/** Accept every suggestion on the invoice at once. */
+export async function acceptAllLinkSuggestions(invoiceId: string, ingredientChoices: Record<string, string> = {}): Promise<{ error?: string; message?: string }> {
+  await requireUser("MANAGER");
+  const blocked = await editable(invoiceId);
+  if (blocked) return blocked;
+  const choices = z.record(z.string().max(64), z.string().max(64)).safeParse(ingredientChoices);
+  if (!choices.success) return { error: "That doesn't look right." };
+  const { suggestions } = await linkSuggestions(invoiceId);
+  let linked = 0;
+  let created = 0;
+  for (const s of suggestions) {
+    if (s.suggestion.kind === "skip") continue;
+    const choice = choices.data[s.lineId];
+    await applyLinkSuggestion(s.lineId, s.suggestion, choice === undefined ? {} : { ingredientId: choice || null });
+    if (s.suggestion.kind === "create") created++;
+    else linked++;
+  }
+  await after(invoiceId);
+  revalidatePath("/prices");
+  revalidatePath("/ingredients");
+  const parts = [linked && `linked ${linked} line${linked === 1 ? "" : "s"}`, created && `added ${created} new product${created === 1 ? "" : "s"}`].filter(Boolean);
+  return { message: parts.length ? `Done: ${parts.join(", ")}.` : "Nothing left to link." };
 }
 
 export async function deleteInvoice(id: string) {

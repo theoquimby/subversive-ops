@@ -1,0 +1,66 @@
+import type { HelpEntry } from "../types";
+
+/** Invoice & receipt autopilot: several pages, store receipts, math checks, one-tap linking, prices on approval. */
+export const invoiceAutopilot: HelpEntry[] = [
+  {
+    id: "invoices.pages",
+    area: "invoices",
+    route: "/invoices/new",
+    title: "Several pages",
+    body: "Snap each page of a long invoice one after another, or pick several photos (or a PDF) at once. All pages are read together as one invoice and kept with it. A forgotten page can be added later from the invoice.",
+    related: ["invoices.snap", "invoices.math"],
+    keywords: ["multi-page", "second page", "back page", "pdf"],
+  },
+  {
+    id: "invoices.receipt",
+    area: "invoices",
+    route: "/invoices/new",
+    title: "Store receipts",
+    body: "For grocery runs (Price Chopper, Restaurant Depot, Hannaford). Pick **Store receipt**, or it's spotted for you. Short names like ORG BNNS become Organic Bananas, the store is the supplier (one tap to add it), no order is needed, and how you paid is noted.",
+    related: ["invoices.link", "invoices.prices"],
+    keywords: ["receipt", "grocery", "cash", "petty cash", "price chopper", "restaurant depot", "hannaford", "costco"],
+  },
+  {
+    id: "invoices.math",
+    area: "invoices",
+    route: "/invoices/new",
+    title: "Math check",
+    body: "After reading, each line's quantity × price is checked against the printed line total, and the lines against the subtotal and total. Anything that doesn't add up is listed and highlighted. A misread number is the usual cause.",
+    related: ["invoices.pages"],
+  },
+  {
+    id: "invoices.link",
+    area: "invoices",
+    route: "/invoices",
+    title: "Lines to link",
+    body: "Lines not yet tied to a product, each with a best guess: the same product under another name, or a new product with its pack size and the ingredient it's for. Tap **Accept all**, or change the ingredient first. Next time they link on their own.",
+    related: ["invoices.match", "invoices.prices"],
+    keywords: ["link", "new product", "ingredient", "unmatched", "no match"],
+  },
+  {
+    id: "invoices.prices",
+    area: "invoices",
+    route: "/invoices",
+    title: "Prices into costing",
+    body: "Approving an invoice or receipt records the prices of its linked lines, dated the invoice day, so recipe and menu costs update. Big jumps still send a price alert. **Re-apply prices** shows if lines were linked after approving.",
+    related: ["settings.money.pricesOnApprove", "invoices.approve"],
+    keywords: ["update prices", "costing", "price change"],
+  },
+  {
+    id: "invoices.received",
+    area: "invoices",
+    route: "/invoices",
+    title: "Order checked in for you",
+    body: "If the invoice bills an order that hasn't been checked in, approving it fills in the received quantities from the invoice. Anything short, extra or missing is noted in the invoice's history.",
+    related: ["invoices.approve", "ordering.po"],
+    keywords: ["receive", "received", "check in", "short"],
+  },
+  {
+    id: "settings.money.pricesOnApprove",
+    area: "settings",
+    route: "/settings/money",
+    title: "Approving updates prices",
+    body: "When on, approving an invoice or receipt records its prices in costing, dated the invoice day. Turn it off to update prices by hand from each invoice instead.",
+    related: ["invoices.prices"],
+  },
+];

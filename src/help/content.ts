@@ -12,11 +12,12 @@ import { upcoming } from "./areas/upcoming";
 import { finalParity } from "./areas/final";
 import { training } from "./areas/training";
 import { insights } from "./areas/insights";
-import { drafting } from "./areas/drafting";
 import { quickbooks } from "./areas/quickbooks";
 import { tables } from "./areas/tables";
 import { kegs } from "./areas/kegs";
+import { invoiceAutopilot } from "./areas/invoiceAutopilot";
 import { settingsPages } from "./areas/settings";
+import { drafting } from "./areas/drafting";
 import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
 
@@ -56,6 +57,7 @@ export const HELP: HelpEntry[] = [
   ...tables,
   ...overview,
   ...menu,
+  ...drafting,
   ...ingredients,
   ...prices,
   ...ordering,
@@ -70,9 +72,9 @@ export const HELP: HelpEntry[] = [
   ...finalParity,
   ...training,
   ...insights,
-  ...drafting,
   ...quickbooks,
   ...kegs,
+  ...invoiceAutopilot,
 ];
 
 const BY_ID = new Map(HELP.map((e) => [e.id, e]));

@@ -1,5 +1,5 @@
 import "server-only";
-import { addDays, ISODate, parseISODate, toISODate } from "@/domain/dates";
+import { addDays, ISODate, parseISODate, toISODate, zonedMidnightUTC } from "@/domain/dates";
 import {
   CatalogProduct,
   DEFAULT_TOLERANCE,
@@ -15,8 +15,12 @@ import { invoiceAlertDue } from "@/domain/alerts";
 import { InvoiceStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, num } from "../db";
-import { claudeJSON, fileBlock } from "../integrations/claude";
+import { claudeJSON, claudeReady, fileBlock } from "../integrations/claude";
 import { priceAsOf } from "./costing";
+import { env } from "../env";
+import { planPriceRecords, receiveFromInvoice, shouldRecordPricesOnApprove, suggestLink, type LinkSuggestion } from "@/domain/invoiceAutopilot";
+import { inferPackQty } from "@/domain/priceSheet";
+import type { BaseUnit } from "@/domain/units";
 
 // ---- Settings -------------------------------------------------------------------
 
@@ -84,7 +88,7 @@ export async function rematch(invoiceId: string) {
     invoiceNumber: inv.invoiceNumber,
     invoiceDate: toISODate(inv.invoiceDate),
     total: num(inv.total),
-    lines: inv.lines.map((l) => ({ sku: l.sku, description: l.description, qty: l.qty.toNumber(), unitPrice: l.unitPrice.toNumber(), supplierProductId: l.supplierProductId })),
+    lines: inv.lines.map((l) => ({ sku: l.sku, description: l.description, qty: l.qty.toNumber(), unitPrice: l.unitPrice.toNumber(), supplierProductId: l.supplierProductId, kind: l.kind })),
   });
   await db.$transaction([
     ...inv.lines.map((l, i) =>
@@ -172,8 +176,23 @@ export async function approve(invoiceId: string, by: string, note: string | null
   await afterApproval(invoiceId, by);
 }
 
-/** With "send to QuickBooks automatically" on, the approved invoice goes over as a bill in the background. */
+/**
+ * After any approval: check in a sent order from the invoice's quantities, record
+ * the prices in costing (unless turned off in Settings), then — with "send to
+ * QuickBooks automatically" on — send the bill in the background.
+ */
 async function afterApproval(invoiceId: string, by: string) {
+  try {
+    const r = await receiveOrderFromInvoice(invoiceId, by);
+    if (r.received) await rematch(invoiceId);
+  } catch (e) {
+    console.error("receiving the order from the invoice failed", e);
+  }
+  try {
+    if (await pricesOnApproveEnabled()) await applyInvoicePrices(invoiceId, by);
+  } catch (e) {
+    console.error("recording invoice prices failed", e);
+  }
   // Imported lazily: quickbooks.ts imports this module (for the invoice history).
   const [{ inBackground }, { autoSendApproved }] = await Promise.all([import("./notify"), import("./quickbooks")]);
   inBackground(() => autoSendApproved(invoiceId, by));
@@ -195,9 +214,12 @@ export async function createInvoice(args: {
   invoiceNumber: string | null;
   invoiceDate: ISODate;
   total: number | null;
-  lines: InvoiceLineInput[];
+  lines: (InvoiceLineInput & { packText?: string | null; orderedQty?: number | null })[];
   image: { bytes: Uint8Array; type: string } | null;
   extractedBy: "claude" | "manual";
+  kind?: "invoice" | "receipt";
+  dueDate?: ISODate | null;
+  paymentMethod?: string | null;
 }) {
   const r = await computeMatch(args);
   const inv = await db.invoice.create({
@@ -211,8 +233,14 @@ export async function createInvoice(args: {
       image: args.image ? Buffer.from(args.image.bytes) : null,
       imageType: args.image?.type ?? null,
       extractedBy: args.extractedBy,
+      kind: args.kind ?? "invoice",
+      dueDate: args.dueDate ? parseISODate(args.dueDate) : null,
+      paymentMethod: args.paymentMethod || null,
       lines: {
-        create: r.lines.map((l) => ({
+        create: r.lines.map((l, i) => ({
+          kind: l.kind || "item",
+          packText: args.lines[i]?.packText || null,
+          orderedQty: args.lines[i]?.orderedQty == null ? null : new Prisma.Decimal(args.lines[i].orderedQty!),
           supplierProductId: l.supplierProductId,
           sku: l.sku || null,
           description: l.description,
@@ -230,6 +258,24 @@ export async function createInvoice(args: {
   return inv.id;
 }
 
+export const MAX_PAGES = 10;
+
+/** Add the next page to an invoice: page 1 goes in Invoice.image, later ones in InvoicePage. Returns the page number. */
+export async function addPage(invoiceId: string, page: { bytes: Uint8Array; type: string }): Promise<number | { error: string }> {
+  const inv = await db.invoice.findUnique({ where: { id: invoiceId }, select: { imageType: true, _count: { select: { pages: true } } } });
+  if (!inv) return { error: "That invoice is gone." };
+  if (!inv.imageType) {
+    await db.invoice.update({ where: { id: invoiceId }, data: { image: Buffer.from(page.bytes), imageType: page.type } });
+    return 1;
+  }
+  const count = 1 + inv._count.pages;
+  if (count >= MAX_PAGES) return { error: `An invoice can have up to ${MAX_PAGES} pages.` };
+  const last = await db.invoicePage.findFirst({ where: { invoiceId }, orderBy: { position: "desc" }, select: { position: true } });
+  const position = Math.max(1, last?.position ?? 1) + 1;
+  await db.invoicePage.create({ data: { invoiceId, position, bytes: Buffer.from(page.bytes), type: page.type } });
+  return position;
+}
+
 /** Exact duplicate (same supplier + number) — the database refuses these. */
 export async function exactDuplicate(supplierId: string, invoiceNumber: string | null) {
   if (!invoiceNumber) return null;
@@ -239,53 +285,112 @@ export async function exactDuplicate(supplierId: string, invoiceNumber: string |
 // ---- Reading with Claude ---------------------------------------------------------------
 
 const extractionSchema = z.object({
-  supplierName: z.string().nullable().describe("The seller / vendor name printed on the invoice, not the customer."),
-  invoiceNumber: z.string().nullable(),
-  invoiceDate: z.string().nullable().describe("Invoice date as YYYY-MM-DD."),
-  total: z.number().nullable().describe("Amount due / invoice total in dollars."),
+  documentType: z.enum(["invoice", "receipt"]).describe("\"receipt\" for a store / cash-register receipt (grocery store, Restaurant Depot, Costco); \"invoice\" for a supplier's bill or delivery invoice."),
+  supplierName: z.string().nullable().describe("The seller / vendor / store name printed on the document, not the customer."),
+  invoiceNumber: z.string().nullable().describe("Invoice number. For receipts, null unless a transaction / receipt number is clearly printed."),
+  invoiceDate: z.string().nullable().describe("Invoice or purchase date as YYYY-MM-DD."),
+  dueDate: z.string().nullable().describe("Payment due date as YYYY-MM-DD, if printed."),
+  subtotal: z.number().nullable().describe("Subtotal before tax, if printed."),
+  tax: z.number().nullable().describe("Total sales tax, if printed."),
+  total: z.number().nullable().describe("Amount due / invoice total / receipt total in dollars."),
+  paymentMethod: z.string().nullable().describe("Receipts: how it was paid as printed, e.g. \"cash\", \"Visa 1234\", \"debit\". Null if not shown."),
   lines: z.array(
     z.object({
-      sku: z.string().nullable().describe("Item / product code as printed, or null."),
-      description: z.string(),
-      qty: z.number().describe("Quantity shipped and billed, in the invoice's units."),
+      kind: z.enum(["item", "fee", "deposit", "credit"]).describe("item = a product; fee = delivery/fuel/surcharge; deposit = bottle, keg or container deposit; credit = a return or credit (negative)."),
+      sku: z.string().nullable().describe("Item / product code as printed (or the receipt's long item code), or null."),
+      description: z.string().describe("The item description exactly as printed (keep store abbreviations)."),
+      packText: z.string().nullable().describe("Pack / size as printed, e.g. \"4/10 LB\", \"6/#10\", \"1 GAL\", or null."),
+      unit: z.string().nullable().describe("Billing unit if printed: CS, EA, LB, BG…"),
+      qtyOrdered: z.number().nullable().describe("Quantity ordered, only when printed separately from quantity shipped."),
+      qty: z.number().describe("Quantity shipped and billed (or the weight for priced-by-weight items). Negative for credits/returns."),
       unitPrice: z.number().describe("Price per unit in dollars."),
-      lineTotal: z.number().nullable(),
+      lineTotal: z.number().nullable().describe("The extended price printed for the line."),
     }),
   ),
 });
 export type InvoiceExtraction = z.infer<typeof extractionSchema>;
 
-const SYSTEM = `You read supplier invoices for a restaurant's back office. Extract exactly what is printed; never guess values that aren't there (use null).
-- Lines are billed products only. Skip subtotals, tax, deposits summaries and page headers; include fees or surcharges as their own line with qty 1.
-- qty is the quantity shipped/billed (not ordered, if both appear). If a line shows a weight-based price, qty is the billed weight.
+const SYSTEM = `You read supplier invoices and store receipts for a restaurant and brewery's back office. Extract exactly what is printed; never guess values that aren't there (use null).
+- The pages are given in order and belong to ONE document: read every page, don't repeat lines that are carried over, and take totals from the last page.
+- Lines are billed products, plus fees, deposits and credits as their own lines (kind). Skip subtotals, tax lines, payment lines, change due, savings summaries and page headers.
+- qty is the quantity shipped/billed (not ordered, if both appear — put the ordered amount in qtyOrdered). For a weight-priced line, qty is the billed weight and unitPrice the price per pound.
+- On receipts: a line "2 @ 3.99" means qty 2, unitPrice 3.99. A sale price or coupon right under an item lowers that item's price (use the price actually paid); a store-wide coupon is a credit line. Keep the store's abbreviated description as printed.
 - Dollar amounts are plain numbers (42.5, not "$42.50").`;
 
-export async function extractInvoice(bytes: Uint8Array, mediaType: string) {
-  const block = fileBlock(bytes, mediaType);
-  if (!block) return { ok: false as const, error: "Upload a photo (JPEG/PNG) or a PDF." };
-  return claudeJSON({ schema: extractionSchema, system: SYSTEM, content: [block, "Read this supplier invoice."], effort: "medium" });
+/** One page to read: a photo or a PDF. */
+export interface PageInput {
+  bytes: Uint8Array;
+  type: string;
+}
+
+/**
+ * For trying the reading path without a Claude key (local dev and browser
+ * tests only): INVOICE_READER_STUB=1 returns a sample invoice, =receipt a
+ * sample store receipt, or a path to a JSON file in the extraction's shape.
+ */
+function stubReader(): string | null {
+  if (process.env.NODE_ENV === "production") return null;
+  return process.env.INVOICE_READER_STUB || null;
+}
+
+/** Whether invoices can be read automatically (a Claude key, or the dev stub). */
+export async function readerReady() {
+  return Boolean(stubReader()) || claudeReady();
+}
+
+async function stubExtraction(kind: string, mode: "auto" | "invoice" | "receipt"): Promise<InvoiceExtraction> {
+  if (kind !== "1" && kind !== "receipt" && kind !== "invoice") {
+    const { readFile } = await import("node:fs/promises");
+    return extractionSchema.parse(JSON.parse(await readFile(kind, "utf8")));
+  }
+  const { STUB_INVOICE, STUB_RECEIPT } = await import("./invoiceStub");
+  return extractionSchema.parse(kind === "receipt" || mode === "receipt" ? STUB_RECEIPT : STUB_INVOICE);
+}
+
+export async function extractInvoice(pages: PageInput[], mode: "auto" | "invoice" | "receipt" = "auto", deps: { json?: typeof claudeJSON } = {}): Promise<{ ok: true; data: InvoiceExtraction } | { ok: false; error: string }> {
+  if (!pages.length) return { ok: false, error: "Add a photo or PDF first." };
+  const blocks = pages.map((p) => fileBlock(p.bytes, p.type));
+  if (blocks.some((b) => !b)) return { ok: false, error: "Upload photos (JPEG/PNG) or a PDF." };
+  const stub = stubReader();
+  if (stub && !deps.json) return { ok: true, data: await stubExtraction(stub, mode) };
+  const hint =
+    mode === "receipt" ? "This is a store receipt from a grocery or supply run."
+    : mode === "invoice" ? "This is a supplier invoice."
+    : "Decide whether this is a supplier invoice or a store receipt.";
+  const content = [
+    ...blocks.flatMap((b, i) => (pages.length > 1 ? [`Page ${i + 1} of ${pages.length}:`, b!] : [b!])),
+    `${hint} Read ${pages.length > 1 ? `all ${pages.length} pages` : "it"}.`,
+  ];
+  return (deps.json ?? claudeJSON)({ schema: extractionSchema, system: SYSTEM, content, effort: "medium" });
 }
 
 // ---- Prices into costing -----------------------------------------------------------------
 
-/** New PriceRecords (source IMPORT, effective invoice date) for every matched line whose price differs from the one on record. */
+export const PRICES_ON_APPROVE_KEY = "invoices.pricesOnApprove";
+
+/** Approving an invoice records its prices in costing (default on). */
+export async function pricesOnApproveEnabled() {
+  return shouldRecordPricesOnApprove((await db.setting.findUnique({ where: { key: PRICES_ON_APPROVE_KEY } }))?.value);
+}
+
+export async function setPricesOnApprove(on: boolean) {
+  await db.setting.upsert({ where: { key: PRICES_ON_APPROVE_KEY }, create: { key: PRICES_ON_APPROVE_KEY, value: String(on) }, update: { value: String(on) } });
+}
+
+/** New PriceRecords (source IMPORT, effective invoice date) for every linked item whose billed price differs from the one on record. */
 export async function updatePricesFromInvoice(invoiceId: string) {
-  const inv = await db.invoice.findUniqueOrThrow({ where: { id: invoiceId }, include: { lines: true } });
+  const inv = await db.invoice.findUniqueOrThrow({ where: { id: invoiceId }, include: { lines: { orderBy: { id: "asc" } } } });
   const date = toISODate(inv.invoiceDate);
   const ids = [...new Set(inv.lines.map((l) => l.supplierProductId).filter((x): x is string => Boolean(x)))];
   const products = await db.supplierProduct.findMany({
     where: { id: { in: ids } },
     include: { prices: { select: { price: true, effectiveDate: true }, orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }] } },
   });
-  const changes: { supplierProductId: string; from: number | null; to: number }[] = [];
-  for (const p of products) {
-    // The latest billed price for this product on the invoice wins.
-    const line = inv.lines.filter((l) => l.supplierProductId === p.id && l.unitPrice.toNumber() > 0).at(-1);
-    if (!line) continue;
-    const current = priceAsOf(p.prices.map((r) => ({ date: toISODate(r.effectiveDate), price: r.price.toNumber() })), date);
-    const to = line.unitPrice.toNumber();
-    if (current == null || Math.abs(current - to) >= 0.005) changes.push({ supplierProductId: p.id, from: current, to });
-  }
+  const history = new Map(products.map((p) => [p.id, p.prices.map((r) => ({ date: toISODate(r.effectiveDate), price: r.price.toNumber() }))]));
+  const changes = planPriceRecords(
+    inv.lines.filter((l) => l.supplierProductId && history.has(l.supplierProductId)).map((l) => ({ supplierProductId: l.supplierProductId, unitPrice: l.unitPrice.toNumber(), qty: l.qty.toNumber(), kind: l.kind })),
+    (id) => priceAsOf(history.get(id), date),
+  );
   if (changes.length) {
     await db.priceRecord.createMany({
       data: changes.map((c) => ({ supplierProductId: c.supplierProductId, price: new Prisma.Decimal(c.to.toFixed(2)), effectiveDate: parseISODate(date), source: "IMPORT" as const })),
@@ -294,20 +399,144 @@ export async function updatePricesFromInvoice(invoiceId: string) {
   return changes;
 }
 
-/** How many matched lines would change a price on record (for the button label). */
-export async function pendingPriceChanges(inv: { invoiceDate: Date; lines: { supplierProductId: string | null; unitPrice: Prisma.Decimal }[] }) {
+/** How many linked items would change a price on record (for the button label). */
+export async function pendingPriceChanges(inv: { invoiceDate: Date; lines: { supplierProductId: string | null; unitPrice: Prisma.Decimal; qty?: Prisma.Decimal; kind?: string }[] }) {
   const date = toISODate(inv.invoiceDate);
   const ids = [...new Set(inv.lines.map((l) => l.supplierProductId).filter((x): x is string => Boolean(x)))];
   if (!ids.length) return 0;
   const prices = await db.priceRecord.findMany({ where: { supplierProductId: { in: ids }, effectiveDate: { lte: parseISODate(date) } }, orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }] });
-  let n = 0;
-  for (const id of ids) {
-    const line = inv.lines.filter((l) => l.supplierProductId === id && l.unitPrice.toNumber() > 0).at(-1);
-    if (!line) continue;
-    const current = prices.filter((p) => p.supplierProductId === id).at(-1)?.price.toNumber() ?? null;
-    if (current == null || Math.abs(current - line.unitPrice.toNumber()) >= 0.005) n++;
+  return planPriceRecords(
+    inv.lines.map((l) => ({ supplierProductId: l.supplierProductId, unitPrice: l.unitPrice.toNumber(), qty: l.qty?.toNumber() ?? 1, kind: l.kind })),
+    (id) => prices.filter((p) => p.supplierProductId === id).at(-1)?.price.toNumber() ?? null,
+  ).length;
+}
+
+/** Record the invoice's prices and alert on spikes, noting it in the history. Returns how many changed. */
+export async function applyInvoicePrices(invoiceId: string, by: string) {
+  const changes = await updatePricesFromInvoice(invoiceId);
+  if (changes.length) {
+    await recordEvent(invoiceId, { by, action: "prices-updated", note: `${changes.length} price${changes.length === 1 ? "" : "s"} recorded in costing` });
+    const { inBackground, alertPriceSpikes } = await import("./notify");
+    inBackground(() => alertPriceSpikes());
   }
-  return n;
+  return changes.length;
+}
+
+// ---- Received quantities -------------------------------------------------------------------
+
+/**
+ * A sent order that this invoice bills is checked in with the invoice's
+ * quantities, so nobody types them twice. Shorts and extras go in the history.
+ * Orders already checked in by hand are left as they are.
+ */
+export async function receiveOrderFromInvoice(invoiceId: string, by: string): Promise<{ received: boolean; shorts: number }> {
+  const inv = await db.invoice.findUnique({ where: { id: invoiceId }, select: { invoiceDate: true, orderId: true, order: { select: { status: true, sentAt: true } }, lines: { orderBy: { id: "asc" }, select: { supplierProductId: true, qty: true, kind: true, unitPrice: true, product: { select: { description: true, ingredient: { select: { name: true } } } } } } } });
+  if (!inv?.orderId || inv.order?.status !== "SENT") return { received: false, shorts: 0 };
+  const orderLines = await db.purchaseOrderLine.findMany({ where: { orderId: inv.orderId }, orderBy: { id: "asc" }, include: { product: { select: { description: true, purchaseUnit: true } } } });
+  const r = receiveFromInvoice(
+    orderLines.map((l) => ({ id: l.id, supplierProductId: l.supplierProductId, qty: l.qty.toNumber(), receivedQty: num(l.receivedQty) })),
+    inv.lines.map((l) => ({ supplierProductId: l.supplierProductId, qty: l.qty.toNumber(), kind: l.kind })),
+  );
+  if (!r.updates.length) return { received: false, shorts: 0 };
+  // Received at midday on the invoice date (as planning counts PO-less invoices), never in the future.
+  const midday = new Date(zonedMidnightUTC(toISODate(inv.invoiceDate), env.BUSINESS_TIMEZONE).getTime() + 12 * 3600_000);
+  const receivedAt = midday.getTime() > Date.now() ? new Date() : midday;
+  await db.$transaction([
+    ...r.updates.map((u) => db.purchaseOrderLine.update({ where: { id: u.orderLineId }, data: { receivedQty: new Prisma.Decimal(u.receivedQty) } })),
+    // Billed but never ordered: it arrived, so it goes on the order as received (ordered 0).
+    ...r.notOnOrder.map((x) => {
+      const price = inv.lines.filter((l) => l.supplierProductId === x.supplierProductId).at(-1)?.unitPrice ?? null;
+      return db.purchaseOrderLine.create({ data: { orderId: inv.orderId!, supplierProductId: x.supplierProductId, suggestedQty: new Prisma.Decimal(0), qty: new Prisma.Decimal(0), unitPrice: price, receivedQty: new Prisma.Decimal(x.shipped) } });
+    }),
+    db.purchaseOrder.update({ where: { id: inv.orderId }, data: { status: "RECEIVED", receivedAt, sentAt: inv.order.sentAt ?? receivedAt } }),
+  ]);
+  const billedName = (pid: string) => {
+    const p = inv.lines.find((l) => l.supplierProductId === pid)?.product;
+    return p?.ingredient?.name ?? p?.description ?? "an item";
+  };
+  const name = (pid: string) => orderLines.find((l) => l.supplierProductId === pid)?.product.description ?? "an item";
+  const unit = (pid: string) => orderLines.find((l) => l.supplierProductId === pid)?.product.purchaseUnit ?? "";
+  const q = (n: number) => String(Number(n.toFixed(2)));
+  const notes = [
+    ...r.shorts.map((s) => `${name(s.supplierProductId)} short ${q(s.ordered - s.shipped)} ${unit(s.supplierProductId)} (${q(s.shipped)} of ${q(s.ordered)})`),
+    ...r.overs.map((s) => `${name(s.supplierProductId)} ${q(s.shipped - s.ordered)} extra`),
+    ...r.notOnOrder.map((x) => `${billedName(x.supplierProductId)} wasn't ordered (${q(x.shipped)} added as received)`),
+    ...(r.notOnInvoice.length ? [`${r.notOnInvoice.length} ordered item${r.notOnInvoice.length === 1 ? "" : "s"} not on the invoice`] : []),
+  ];
+  await recordEvent(invoiceId, { by, action: "order-received", note: notes.length ? `Checked in from the invoice. ${notes.join("; ")}.`.slice(0, 480) : "Checked in from the invoice: everything as ordered." });
+  return { received: true, shorts: r.shorts.length };
+}
+
+// ---- Linking lines to products ---------------------------------------------------------------
+
+export async function linkContext(supplierId: string) {
+  const [products, ingredients] = await Promise.all([
+    db.supplierProduct.findMany({ where: { supplierId }, select: { id: true, sku: true, description: true, active: true, ingredient: { select: { name: true } } } }),
+    db.ingredient.findMany({ where: { active: true }, select: { id: true, name: true, baseUnit: true }, orderBy: { name: "asc" } }),
+  ]);
+  return { products: products.sort((a, b) => Number(b.active) - Number(a.active)), ingredients: ingredients.map((i) => ({ ...i, baseUnit: i.baseUnit as BaseUnit })) };
+}
+
+/** A suggestion for every unlinked item line of an invoice. */
+export async function linkSuggestions(invoiceId: string) {
+  const inv = await db.invoice.findUniqueOrThrow({ where: { id: invoiceId }, select: { supplierId: true, kind: true, lines: { orderBy: { id: "asc" }, select: { id: true, sku: true, description: true, kind: true, packText: true, supplierProductId: true } } } });
+  const ctx = await linkContext(inv.supplierId);
+  const usedSkus = new Set(ctx.products.map((p) => p.sku.toLowerCase()));
+  const out: { lineId: string; suggestion: LinkSuggestion }[] = [];
+  for (const l of inv.lines) {
+    if (l.supplierProductId || l.kind !== "item") continue;
+    out.push({ lineId: l.id, suggestion: suggestLink(l, ctx.products, ctx.ingredients, { receipt: inv.kind === "receipt", usedSkus }) });
+  }
+  return { suggestions: out, ...ctx };
+}
+
+/**
+ * Apply one suggestion: link to an existing product, or create the product
+ * (and the ingredient, or link it to the chosen one) and link the line.
+ * `ingredientId` overrides the suggested ingredient ("" = create a new one).
+ */
+export async function applyLinkSuggestion(lineId: string, s: LinkSuggestion, choice: { ingredientId?: string | null } = {}) {
+  if (s.kind === "skip") return null;
+  const line = await db.invoiceLine.findUniqueOrThrow({ where: { id: lineId }, select: { id: true, invoice: { select: { supplierId: true } } } });
+  let productId: string;
+  if (s.kind === "linked" || s.kind === "product") productId = s.productId;
+  else {
+    const p = s.plan;
+    let ingredientId = choice.ingredientId === undefined ? p.ingredient?.id ?? "" : choice.ingredientId ?? "";
+    let base: BaseUnit = p.newIngredient.baseUnit;
+    if (ingredientId) {
+      const ing = await db.ingredient.findUnique({ where: { id: ingredientId }, select: { id: true, baseUnit: true } });
+      if (!ing) ingredientId = "";
+      else base = ing.baseUnit as BaseUnit;
+    }
+    if (!ingredientId) {
+      const name = p.newIngredient.name.slice(0, 80);
+      const existing = await db.ingredient.findFirst({ where: { name: { equals: name, mode: "insensitive" } }, select: { id: true, baseUnit: true } });
+      const ing = existing ?? (await db.ingredient.create({ data: { name, baseUnit: p.newIngredient.baseUnit }, select: { id: true, baseUnit: true } }));
+      ingredientId = ing.id;
+      base = ing.baseUnit as BaseUnit;
+    }
+    const pack = p.purchaseUnit === "lb" && base === "g" ? 453.5924 : inferPackQty(p.packText, base);
+    const existing = await db.supplierProduct.findUnique({ where: { supplierId_sku: { supplierId: line.invoice.supplierId, sku: p.sku } }, select: { id: true } });
+    const product =
+      existing ??
+      (await db.supplierProduct.create({
+        data: {
+          supplierId: line.invoice.supplierId,
+          sku: p.sku,
+          description: p.description,
+          packText: p.packText,
+          purchaseUnit: p.purchaseUnit,
+          ingredientId,
+          packQtyBase: pack == null ? undefined : new Prisma.Decimal(pack.toFixed(4)),
+        },
+        select: { id: true },
+      }));
+    await db.ingredient.updateMany({ where: { id: ingredientId, preferredProductId: null }, data: { preferredProductId: product.id } });
+    productId = product.id;
+  }
+  await db.invoiceLine.update({ where: { id: lineId }, data: { supplierProductId: productId } });
+  return productId;
 }
 
 // ---- Queries ---------------------------------------------------------------------

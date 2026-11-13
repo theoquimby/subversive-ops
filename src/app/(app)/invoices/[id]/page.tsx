@@ -8,12 +8,14 @@ import { db, num } from "@/server/db";
 import { env } from "@/server/env";
 import { emailReady } from "@/server/integrations/email";
 import { currentApproval } from "@/domain/invoiceHistory";
-import { candidateOrders, loadHistory, loadInvoice, loadTolerance, pendingPriceChanges, STATUS_META } from "@/server/services/invoices";
+import { candidateOrders, linkSuggestions, loadHistory, loadInvoice, loadTolerance, pendingPriceChanges, pricesOnApproveEnabled, STATUS_META } from "@/server/services/invoices";
+import { formatBase } from "@/domain/units";
+import { LinkPanel, type LinkItem } from "./link-panel";
 import { InvoiceStatus } from "@prisma/client";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DeleteInvoice, HeaderFields, InvoiceActions, InvoiceHistory, LinesGrid } from "./detail-client";
-import { InvoiceViewer } from "./viewer";
+import { InvoicePages } from "./viewer";
 import { InvoiceQuickBooks, QboBadge } from "../quickbooks-client";
 import { invoiceBillState, quickbooksStatus } from "@/server/services/quickbooks";
 
@@ -39,6 +41,25 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
     quickbooksStatus(),
     invoiceBillState(id),
   ]);
+  const [pages, pricesOnApprove, links] = await Promise.all([
+    db.invoicePage.findMany({ where: { invoiceId: id }, select: { position: true, type: true }, orderBy: { position: "asc" } }),
+    pricesOnApproveEnabled(),
+    inv.status === "APPROVED" ? null : linkSuggestions(id),
+  ]);
+  const productLabel = (pid: string) => {
+    const p = links?.products.find((x) => x.id === pid);
+    return p ? `${p.ingredient?.name ?? p.description} (#${p.sku})` : "a product";
+  };
+  const lineById = new Map(inv.lines.map((l) => [l.id, l]));
+  const packNote = (q: number | null, base: "g" | "ml" | "each") => (q == null ? null : base === "g" ? `${Number((q / 453.5924).toFixed(2))} lb` : formatBase(q, base));
+  const linkItems: LinkItem[] = (links?.suggestions ?? []).flatMap(({ lineId, suggestion: sg }): LinkItem[] => {
+    const l = lineById.get(lineId);
+    if (!l) return [];
+    const base = { lineId, description: l.description, sku: l.sku };
+    if (sg.kind === "product") return [{ ...base, kind: "product", productLabel: productLabel(sg.productId) }];
+    if (sg.kind === "create") return [{ ...base, kind: "create", packText: sg.plan.packText, purchaseUnit: sg.plan.purchaseUnit, packNote: packNote(sg.plan.packQtyBase, sg.plan.newIngredient.baseUnit), ingredientId: sg.plan.ingredient?.id ?? null, ingredientName: sg.plan.ingredient?.name ?? null, newIngredientName: sg.plan.newIngredient.name }];
+    return [];
+  });
   const lastCredit = (() => {
     try {
       const v = creditSent ? (JSON.parse(creditSent.value) as { at?: string; to?: string; byName?: string }) : null;
@@ -68,6 +89,9 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
     productId: l.supplierProductId,
     productName: l.product ? l.product.ingredient?.name ?? l.product.description : null,
     unit: l.product?.purchaseUnit ?? null,
+    kind: l.kind,
+    packText: l.packText,
+    orderedQty: num(l.orderedQty),
   }));
   const linesTotal = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
   const total = num(inv.total);
@@ -97,6 +121,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             {qbo.connected && <QboBadge state={billState} />}
             <span className="num">{shortDate(date)}</span>
             {inv.order && <>· <Link href={`/ordering/po/${inv.order.id}`} className="hover:text-ink hover:underline">Order for {shortDate(toISODate(inv.order.deliveryDate))}</Link></>}
+            {inv.kind === "receipt" && <span>· store receipt{inv.paymentMethod ? `, paid ${inv.paymentMethod}` : ""}</span>}
             {inv.extractedBy === "claude" && <span>· read by Claude</span>}
           </span>
         }
@@ -109,6 +134,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             flagged={flagged}
             priceChanges={priceChanges}
             invoiceDate={date}
+            pricesOnApprove={pricesOnApprove}
+            receivesOrder={inv.order?.status === "SENT"}
             credit={credit && { ...credit, count: credits.length, email: inv.supplier.email, canSend: (await emailReady()), lastSent: lastCredit }}
           /></HelpZone>
         }
@@ -138,11 +165,15 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <div className={hasImage ? "h-[24rem] sm:h-[32rem] xl:sticky xl:top-6 xl:h-[calc(100dvh-8rem)]" : "xl:sticky xl:top-6 xl:h-[calc(100dvh-8rem)]"}>
           {/* Without a photo: a slim "Add photo" row below xl so the lines stay above the fold; the full drop area beside them on wide screens. */}
-          <HelpZone id="invoices.viewer" className="h-full"><InvoiceViewer src={hasImage ? `/invoices/${inv.id}/image` : null} type={inv.imageType} invoiceId={inv.id} locked={locked} /></HelpZone>
+          <HelpZone id="invoices.viewer" className="h-full"><InvoicePages invoiceId={inv.id} hasImage={hasImage > 0} type={inv.imageType} locked={locked} pages={pages} /></HelpZone>
         </div>
 
         <div className="min-w-0 space-y-6">
-          <HelpZone id="invoices.fields"><HeaderFields id={inv.id} locked={locked} invoiceNumber={inv.invoiceNumber} invoiceDate={date} total={total} orderId={inv.orderId ?? ""} orderOptions={orderOptions} /></HelpZone>
+          <HelpZone id="invoices.fields"><HeaderFields id={inv.id} locked={locked} invoiceNumber={inv.invoiceNumber} invoiceDate={date} total={total} orderId={inv.orderId ?? ""} orderOptions={orderOptions} dueDate={inv.dueDate ? toISODate(inv.dueDate) : null} receipt={inv.kind === "receipt"} /></HelpZone>
+
+          {!locked && linkItems.length > 0 && (
+            <HelpZone id="invoices.link"><LinkPanel invoiceId={inv.id} items={linkItems} ingredients={(links?.ingredients ?? []).map((i) => ({ value: i.id, label: i.name }))} /></HelpZone>
+          )}
 
           <HelpZone id="invoices.match"><LinesGrid
             invoiceId={inv.id}
