@@ -2,7 +2,8 @@ import { Badge, Button, Card, PageHeader, Section } from "@/components/ui";
 import { relativeTime } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { storageAreas } from "@/server/services/inventory";
+import { storageAreasWithCounts } from "@/server/services/inventory";
+import { AreasPanel } from "./areas-panel";
 import Link from "next/link";
 import { startCount } from "./actions";
 import { HelpZone } from "@/components/help";
@@ -10,13 +11,14 @@ import { HelpZone } from "@/components/help";
 export const metadata = { title: "Counts" };
 
 export default async function CountHome({ searchParams }: { searchParams: Promise<{ done?: string }> }) {
-  await requireUser();
+  const me = await requireUser();
   const { done } = await searchParams;
-  const [areas, open, recent] = await Promise.all([
-    storageAreas(),
+  const [areaRows, open, recent] = await Promise.all([
+    storageAreasWithCounts(),
     db.stockCount.findMany({ where: { completed: false }, include: { _count: { select: { lines: true } }, user: { select: { name: true } } } }),
     db.stockCount.findMany({ where: { completed: true }, orderBy: { takenAt: "desc" }, take: 8, include: { _count: { select: { lines: true } }, user: { select: { name: true } } } }),
   ]);
+  const areas = areaRows.map((a) => a.name);
 
   return (
     <div className="mx-auto max-w-xl">
@@ -42,7 +44,7 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
       )}
 
       <HelpZone id="count.start" tour="count.start">
-      <Section title="Start a count">
+      <Section title="Start a count" actions={me.role === "MANAGER" ? <AreasPanel areas={areaRows} /> : undefined}>
         <div className="grid grid-cols-2 gap-3">
           {["All", ...areas].map((a) => (
             <form key={a} action={startCount}>

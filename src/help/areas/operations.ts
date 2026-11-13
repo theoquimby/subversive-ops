@@ -271,7 +271,22 @@ Counts feed the suggested orders (so you don't over- or under-order) and the mar
     route: "/count",
     audience: "all",
     title: "Start a count",
-    body: "Each button is a storage area. \"Everything\" lists every item. If that area already has a count in progress, you'll continue it.",
+    body: "Each button is a storage area. \"Everything\" lists every item, in the order you walk the areas. If that area already has a count in progress, you'll continue it. Managers can add, rename or reorder areas with Add or edit areas.",
+  },
+  {
+    id: "settings.areas",
+    area: "settings",
+    route: "/settings/areas",
+    title: "Storage areas",
+    body: "Where things live: walk-in, freezer, bar, dry storage. Each area gets its own count button. Add one, rename it (every item in it follows), move it up or down to match the order you walk, or remove it — its items move to an area you pick.",
+    keywords: ["storage", "areas", "locations", "walk-in", "freezer", "inventory space", "shelf"],
+  },
+  {
+    id: "settings.areas.list",
+    area: "settings",
+    route: "/settings/areas",
+    title: "Your areas",
+    body: "The number on the left is the walking order. Tap the item count to see what's in an area on Ingredients. To put items in an area, set their Storage on Ingredients.",
   },
   {
     id: "count.inProgress",
