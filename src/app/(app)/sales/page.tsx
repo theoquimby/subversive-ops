@@ -1,4 +1,5 @@
 import { HelpZone } from "@/components/help";
+import { ForecastRanges } from "@/app/(app)/insights/forecast-ranges";
 import { Card, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import { addDays, dateRange, weekday } from "@/domain/dates";
 import { dayDate, money, qty, relativeTime, shortDate, signedPct } from "@/lib/format";
@@ -138,6 +139,8 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
         />
         <Stat help="sales.bias" label="Bias" value={accuracy.bias == null ? "—" : signedPct(accuracy.bias, 0)} hint={accuracy.bias == null ? "" : accuracy.bias > 0.02 ? "we forecast a little high" : accuracy.bias < -0.02 ? "we forecast a little low" : "no lean either way"} />
       </div>
+
+      <div className="mb-8 empty:hidden"><ForecastRanges /></div>
 
       <Section
         help="sales.forecast5w"

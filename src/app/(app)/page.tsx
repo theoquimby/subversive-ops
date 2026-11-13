@@ -1,6 +1,7 @@
 import { refreshIfStale } from "@/server/services/square-sync";
 import { addDays, businessDate, zonedMidnightUTC } from "@/domain/dates";
 import { dayDate, money, pct, qty, shortDate, signedPct } from "@/lib/format";
+import { TopInsights } from "@/app/(app)/insights/top-insights";
 import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import type { Tone } from "@/components/ui";
 import { costTone } from "@/domain/pnl";
@@ -82,6 +83,8 @@ export default async function OverviewPage() {
           </div>
         </Card></HelpZone>
       )}
+
+      <div className="mb-8 empty:hidden"><TopInsights /></div>
 
       <HelpZone id="overview.today" tour="overview.today" className="mb-8">
         <Card className="grid grid-cols-2 gap-x-4 gap-y-3 p-4 lg:grid-cols-4">
