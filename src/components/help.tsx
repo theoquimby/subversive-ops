@@ -95,10 +95,16 @@ function HelpRuntime() {
   const pathname = usePathname();
   // Pages without outlined sections still get help: the bar offers "About this page".
   const [zoneCount, setZoneCount] = useState<number | null>(null);
+  const [barLift, setBarLift] = useState(0);
   const [aboutOpen, setAboutOpen] = useState(false);
   useEffect(() => {
     if (!on) { setAboutOpen(false); return; }
-    const count = () => setZoneCount(document.querySelectorAll("[data-help-zone]").length);
+    const count = () => {
+      setZoneCount(document.querySelectorAll("[data-help-zone]").length);
+      // Sit above any fixed bottom action bar (save bars, count bar) so it never covers it.
+      const bars = Array.from(document.querySelectorAll<HTMLElement>('[class*="bottom-[var(--tabbar)]"]')).filter((el) => getComputedStyle(el).position === "fixed");
+      setBarLift(bars.reduce((m, el) => Math.max(m, el.getBoundingClientRect().height), 0));
+    };
     count();
     const t = setTimeout(count, 400); // sections can mount a moment later
     return () => clearTimeout(t);
@@ -135,7 +141,7 @@ function HelpRuntime() {
     <>
       <TourHost />
       {on && (
-        <div className="pointer-events-none fixed inset-x-0 top-[calc(3.25rem+env(safe-area-inset-top)+0.5rem)] z-[65] flex flex-col-reverse items-center gap-2 px-3 lg:top-4">
+        <div style={{ bottom: `calc(var(--tabbar) + ${barLift}px + 0.75rem)` }} className="pointer-events-none fixed inset-x-0 z-[65] flex flex-col items-center gap-2 px-3">
           {aboutOpen && pageHelp.length > 0 && (
             <div className="pointer-events-auto max-h-[50dvh] w-full max-w-md origin-bottom animate-scale-in overflow-y-auto rounded-xl border border-border bg-surface p-3.5 shadow-xl">
               {pageHelp.slice(0, 4).map((e, i) => (
