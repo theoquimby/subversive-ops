@@ -6,23 +6,24 @@ import { db } from "@/server/db";
 import { SQUARE_VERSION } from "@/server/integrations/square-http";
 import { emailForUser } from "@/server/services/notify";
 import { getBusinessProfile } from "@/server/services/onboarding";
-import { isLocalOrigin, publicOrigin, SQUARE_REDIRECT_PATH, SQUARE_WEBHOOK_PATH } from "@/server/services/public-url";
+import { isLocalOrigin, publicOrigin, QUICKBOOKS_PRIVACY_PATH, QUICKBOOKS_REDIRECT_PATH, QUICKBOOKS_TERMS_PATH, SQUARE_REDIRECT_PATH, SQUARE_WEBHOOK_PATH } from "@/server/services/public-url";
 import { pushDeviceCount } from "@/server/services/push";
 import { SETTING_PLACE_ID } from "@/server/services/reviews";
 import { secretStatus } from "@/server/services/secrets";
 import { lastWebhookSeen, squareStatus } from "@/server/services/square";
+import { loadQuickBooksData } from "../quickbooks/data";
 import type { ServiceId, TestResult } from "./actions";
 import { Connections, type ConnectionsData } from "./connections-client";
 
 export const metadata = { title: "Connections" };
 
-const SERVICES: ServiceId[] = ["square", "email", "push", "ai", "google"];
+const SERVICES: ServiceId[] = ["square", "email", "push", "ai", "google", "quickbooks"];
 const isService = (s: string | undefined): s is ServiceId => !!s && (SERVICES as string[]).includes(s);
 
 export default async function ConnectionsPage({ searchParams }: { searchParams: Promise<{ open?: string; error?: string; connected?: string }> }) {
   const me = await requireUser("MANAGER");
   const sp = await searchParams;
-  const [secrets, square, origin, webhookSeen, devices, myEmail, profile, rows] = await Promise.all([
+  const [secrets, square, origin, webhookSeen, devices, myEmail, profile, rows, quickbooks] = await Promise.all([
     secretStatus(),
     squareStatus(),
     publicOrigin(),
@@ -31,6 +32,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
     emailForUser(me.userId),
     getBusinessProfile(),
     db.setting.findMany({ where: { OR: [{ key: { startsWith: "connections.test." } }, { key: { in: [SETTING_PLACE_ID, "reviews.googlePlaceName"] } }] } }),
+    loadQuickBooksData(),
   ]);
   const get = (k: string) => rows.find((r) => r.key === k)?.value ?? null;
   const tests = Object.fromEntries(
@@ -66,9 +68,22 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
     email: { me: myEmail },
     push: { devices },
     google: { placeId: get(SETTING_PLACE_ID), placeName: get("reviews.googlePlaceName"), businessName: profile.name },
+    quickbooks: {
+      ...quickbooks,
+      redirectUrl: `${origin}${QUICKBOOKS_REDIRECT_PATH}`,
+      privacyUrl: `${origin}${QUICKBOOKS_PRIVACY_PATH}`,
+      termsUrl: `${origin}${QUICKBOOKS_TERMS_PATH}`,
+      launchUrl: `${origin}/settings/quickbooks`,
+      disconnectUrl: `${origin}/settings/connections?open=quickbooks`,
+      host: origin.replace(/^https?:\/\//, ""),
+    },
     tests,
     open: isService(sp.open) ? sp.open : null,
-    flash: sp.error ? { error: sp.error } : sp.connected ? { message: `Connected to ${sp.connected}. Next, bring in your sales history on the Square page.` } : null,
+    flash: sp.error
+      ? { error: sp.error }
+      : sp.connected
+        ? { message: sp.open === "quickbooks" ? `Connected to ${sp.connected}. Next, choose which accounts bills go to (Part 3 below).` : `Connected to ${sp.connected}. Next, bring in your sales history on the Square page.` }
+        : null,
   };
 
   return (

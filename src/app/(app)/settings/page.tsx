@@ -5,6 +5,7 @@ import { db } from "@/server/db";
 import { targetFoodCost } from "@/server/services/insights";
 import { relativeTime } from "@/lib/format";
 import { squareStatus } from "@/server/services/square";
+import { quickbooksStatus } from "@/server/services/quickbooks";
 import { secretStatus } from "@/server/services/secrets";
 import { ChevronRight, Plug } from "lucide-react";
 import Link from "next/link";
@@ -23,7 +24,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const me = await requireUser("MANAGER");
   const { welcome } = await searchParams;
   const empty = (await db.ingredient.count()) === 0 && (await db.recipe.count()) === 0;
-  const [users, suppliers, target, lastSync, square, secrets, placeId] = await Promise.all([
+  const [users, suppliers, target, lastSync, square, secrets, placeId, qbo] = await Promise.all([
     db.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }),
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     targetFoodCost(),
@@ -31,6 +32,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     squareStatus(),
     secretStatus(),
     db.setting.findUnique({ where: { key: "reviews.googlePlaceId" } }),
+    quickbooksStatus(),
   ]);
   const has = (n: string) => secrets.some((x) => x.name === n && x.set);
   const linked = [
@@ -39,6 +41,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     has("VAPID_PUBLIC_KEY") && has("VAPID_PRIVATE_KEY"),
     has("ANTHROPIC_API_KEY"),
     has("GOOGLE_PLACES_API_KEY") && !!placeId,
+    qbo.connected,
   ].filter(Boolean).length;
 
   return (
@@ -63,9 +66,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-base font-semibold">Connections</span>
-                <Badge tone={linked === 5 ? "good" : linked ? "neutral" : "warn"}>{linked} of 5 on</Badge>
+                <Badge tone={linked === 6 ? "good" : linked ? "neutral" : "warn"}>{linked} of 6 on</Badge>
               </div>
-              <div className="mt-1 text-sm text-muted">Square, email, phone notifications, AI features and Google reviews — each with a step-by-step guide.</div>
+              <div className="mt-1 text-sm text-muted">Square, email, phone notifications, AI features, Google reviews and QuickBooks — each with a step-by-step guide.</div>
             </div>
           </div>
           <ChevronRight className="size-5 shrink-0 text-muted group-hover:text-ink" />
@@ -80,7 +83,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <ChevronRight className="size-5 shrink-0 text-muted group-hover:text-ink" />
         </Card>
       </Link></HelpZone>
-      <HelpZone id="settings.square" className="mb-10"><Link href="/settings/square" className="group block">
+      <HelpZone id="settings.square" className="mb-3"><Link href="/settings/square" className="group block">
         <Card className="flex items-center justify-between gap-3 p-5 transition-colors group-hover:border-border-strong">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -92,6 +95,24 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               {square.connected
                 ? `${square.merchantName ?? "Connected"} · ${square.selectedCount} location${square.selectedCount === 1 ? "" : "s"} · last sync ${relativeTime(lastSync)}`
                 : "Connect Square to bring in sales, the menu and timecards. The guide is under Connections."}
+            </div>
+          </div>
+          <ChevronRight className="size-5 shrink-0 text-muted group-hover:text-ink" />
+        </Card>
+      </Link></HelpZone>
+
+      <HelpZone id="settings.quickbooks" className="mb-10"><Link href={qbo.connected ? "/settings/quickbooks" : "/settings/connections?open=quickbooks"} className="group block">
+        <Card className="flex items-center justify-between gap-3 p-5 transition-colors group-hover:border-border-strong">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-base font-semibold">QuickBooks</span>
+              <Badge tone={qbo.connected ? "good" : qbo.needsReconnect ? "bad" : "neutral"}>{qbo.connected ? "Live" : qbo.needsReconnect ? "Connect again" : "Not set up"}</Badge>
+              {qbo.connected && qbo.environment === "sandbox" && <Badge tone="warn">Test company</Badge>}
+            </div>
+            <div className="mt-1 text-sm text-muted">
+              {qbo.connected
+                ? `${qbo.companyName ?? "Connected"}${qbo.mapping.autoSend ? " · approved invoices go over by themselves" : ""}${qbo.lastSync ? ` · last sent ${relativeTime(new Date(qbo.lastSync))}` : ""}`
+                : "Send approved supplier invoices to QuickBooks Online as bills. The guide is under Connections."}
             </div>
           </div>
           <ChevronRight className="size-5 shrink-0 text-muted group-hover:text-ink" />

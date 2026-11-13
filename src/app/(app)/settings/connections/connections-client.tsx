@@ -10,11 +10,13 @@ import { checkAccessToken, SQUARE_WEBHOOK_EVENTS } from "@/domain/squareWebhooks
 import type { SecretStatus } from "@/domain/secrets";
 import { areaStyle, type Area } from "@/lib/areas";
 import { relativeTime } from "@/lib/format";
-import { ArrowLeft, ArrowRight, BellRing, Check, ChevronRight, Copy, ExternalLink, Mail, Search, Sparkles, Star, Store, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, BellRing, Check, ChevronRight, Copy, ExternalLink, Mail, Receipt, Search, Sparkles, Star, Store, X, type LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { Chips } from "../square/square-client";
+import type { QuickBooksData } from "../quickbooks/data";
+import { AccountMapping, EnvironmentPicker, QboConnectButton, QboDisconnect, QboTestButton, SendOptions } from "../quickbooks/quickbooks-client";
 import { findBusiness, forgetBusiness, pickBusiness, removeKey, saveKey, testAI, testEmail, testSquare, turnOnInstantUpdates, turnOnPush, type ServiceId, type TestResult } from "./actions";
 import * as Art from "./illustrations";
 
@@ -29,6 +31,7 @@ export interface ConnectionsData {
   email: { me: string | null };
   push: { devices: number };
   google: { placeId: string | null; placeName: string | null; businessName: string };
+  quickbooks: QuickBooksData & { redirectUrl: string; privacyUrl: string; termsUrl: string; launchUrl: string; disconnectUrl: string; host: string };
   tests: Record<ServiceId, TestResult | null>;
   open: ServiceId | null;
   flash: { error?: string; message?: string } | null;
@@ -54,6 +57,7 @@ const SERVICES: ServiceMeta[] = [
   { id: "push", title: "Phone notifications", icon: BellRing, area: "people", turnsOn: "Pops up alerts on phones: new schedules, shift swaps, price spikes and more.", time: "1 minute per phone", guide: "Turn on phone notifications" },
   { id: "ai", title: "AI features", icon: Sparkles, area: "assist", turnsOn: "Reads invoices from a photo, drafts review replies and answers questions in Ask.", time: "About 3 minutes", guide: "Turn on AI features" },
   { id: "google", title: "Google reviews", icon: Star, area: "food", turnsOn: "Brings in new Google reviews every morning, with alerts for low ratings.", time: "About 5 minutes", guide: "Bring in Google reviews" },
+  { id: "quickbooks", title: "QuickBooks", icon: Receipt, area: "numbers", turnsOn: "Sends approved supplier invoices to QuickBooks Online as bills, with the photo attached.", time: "About 20 minutes, plus Intuit's review", guide: "Connect QuickBooks" },
 ];
 
 type Status = { tone: Tone; label: string; detail: string };
@@ -82,7 +86,23 @@ function statusOf(id: ServiceId, d: ConnectionsData, pushReady: boolean): Status
       if (s.GOOGLE_PLACES_API_KEY.set && d.google.placeId) return { tone: test && !test.ok ? "bad" : "good", label: test && !test.ok ? "Needs attention" : "On", detail: d.google.placeName ?? "Business picked" };
       if (s.GOOGLE_PLACES_API_KEY.set) return { tone: "warn", label: "Pick your business", detail: "The key is saved. Now find your business on Google." };
       return { tone: "neutral", label: "Not set up", detail: "You can still paste reviews in on the Reviews page." };
+    case "quickbooks":
+      return quickbooksStatusOf(d);
   }
+}
+
+function quickbooksStatusOf(d: ConnectionsData): Status {
+  const q = d.quickbooks.status;
+  const s = d.secrets;
+  if (q.connected && !q.mappingReady) return { tone: "warn", label: "Choose accounts", detail: `${q.companyName ?? "QuickBooks"} is connected. Pick which account bills go to.` };
+  if (q.connected) {
+    const waiting = d.quickbooks.waiting;
+    return { tone: d.quickbooks.missing.length ? "bad" : "good", label: d.quickbooks.missing.length ? "Needs attention" : "Connected", detail: `${q.companyName ?? "QuickBooks"}${q.environment === "sandbox" ? " (test)" : ""}${q.mapping.autoSend ? " · sends when approved" : ""}${waiting ? ` · ${waiting} waiting` : ""}` };
+  }
+  if (q.needsReconnect) return { tone: "bad", label: "Connect again", detail: "QuickBooks signed the app out. Press Connect to QuickBooks again." };
+  if (q.appReady) return { tone: "warn", label: "Ready to connect", detail: "Part 1 is done. Part 2 takes a minute: sign in and pick the company." };
+  if (s.QUICKBOOKS_CLIENT_ID.set || s.QUICKBOOKS_CLIENT_SECRET.set) return { tone: "warn", label: "Half done", detail: "One of the two QuickBooks keys is still missing." };
+  return { tone: "neutral", label: "Not set up", detail: "Bills can still be downloaded for QuickBooks on Invoices → Exports." };
 }
 
 function StatusPill({ status }: { status: Status }) {
@@ -141,7 +161,7 @@ export function Connections({ data }: { data: ConnectionsData }) {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {SERVICES.map((s) => (
           <HelpZone key={s.id} id={`settings.connections.${s.id}`} className="h-full min-w-0">
-            <ServiceTile meta={s} status={statusOf(s.id, data, pushReady)} selected={open === s.id} href={s.id === "square" && data.square.connected ? "/settings/square" : undefined} onOpen={() => choose(open === s.id ? null : s.id)} />
+            <ServiceTile meta={s} status={statusOf(s.id, data, pushReady)} selected={open === s.id} href={s.id === "square" && data.square.connected ? "/settings/square" : s.id === "quickbooks" && data.quickbooks.status.connected && data.quickbooks.status.mappingReady ? "/settings/quickbooks" : undefined} onOpen={() => choose(open === s.id ? null : s.id)} />
           </HelpZone>
         ))}
         <HelpZone id="settings.connections.more" className="h-full min-w-0">
@@ -183,6 +203,7 @@ export function Connections({ data }: { data: ConnectionsData }) {
                   {meta.id === "push" && <PushGuide d={data} ready={pushReady} />}
                   {meta.id === "ai" && <AIGuide d={data} />}
                   {meta.id === "google" && <GoogleGuide d={data} />}
+                  {meta.id === "quickbooks" && <QuickBooksGuide d={data} />}
                 </>
               )}
             </Card>
@@ -278,6 +299,7 @@ function Manage({ id, d, pushReady, onGuide }: { id: ServiceId; d: ConnectionsDa
           <SecretField name="GOOGLE_PLACES_API_KEY" status={s.GOOGLE_PLACES_API_KEY} label="Google key" placeholder="AIza…" hint="Starts with AIza, 39 characters." />
         </>
       )}
+      {id === "quickbooks" && <QuickBooksManage d={d} />}
       {id === "push" && (
         <>
           <PushToggle variant="inline" />
@@ -1195,5 +1217,253 @@ function FindBusiness({ d }: { d: ConnectionsData }) {
       )}
       <p className="text-xs text-muted">The search doubles as the connection test: if Google answers, the key works.<HelpTip id="settings.connections.google" className="ml-1 align-middle" /></p>
     </>
+  );
+}
+
+// ---- QuickBooks ---------------------------------------------------------------------------
+
+function QuickBooksGuide({ d }: { d: ConnectionsData }) {
+  const s = d.secrets;
+  const q = d.quickbooks;
+  const st = q.status;
+  const part1 = s.QUICKBOOKS_CLIENT_ID.set && s.QUICKBOOKS_CLIENT_SECRET.set;
+  const localWarn = d.local && (
+    <Note tone="warn">
+      You&apos;re using the app at <b>{d.origin}</b>. For the real company, QuickBooks only accepts the live app&apos;s <b>https://</b> address, so do this while signed in to the live app.
+    </Note>
+  );
+  const steps: Step[] = [
+    {
+      id: "qbo-open",
+      part: "p1",
+      title: "Open Intuit's developer site",
+      done: part1,
+      art: <Art.IntuitSignIn />,
+      body: (
+        <>
+          <p>Sign in to Intuit&apos;s developer site with any Intuit or QuickBooks login, then open <b>My Hub</b> → <b>App dashboard</b>.</p>
+          <Outbound href="https://developer.intuit.com/app/developer/dashboard">Open Intuit&apos;s site</Outbound>
+          <More>It&apos;s free and only done once, and it doesn&apos;t have to be Max — whoever set up this app can do Part 1. No login yet? Press <b>Sign up</b> there; if it asks for a workspace name, <i>Subversive</i> is fine.</More>
+        </>
+      ),
+    },
+    {
+      id: "qbo-create",
+      part: "p1",
+      title: "Create the app",
+      done: part1,
+      art: <Art.IntuitCreateApp />,
+      body: (
+        <>
+          <p>Press the <b>+</b> tile. Name it <b>Subversive Ops</b>, tick <b>Accounting</b>, and press <b>Create app</b>.</p>
+          <CopyChip label="Name" value="Subversive Ops" />
+          <More>If Intuit asks what you&apos;re building for, pick <b>QuickBooks Online</b>. <b>Accounting</b> is the only permission needed: the app reads your accounts and vendors and adds bills. Leave <b>Payments</b> unticked. Max sees this name when he connects.</More>
+        </>
+      ),
+    },
+    {
+      id: "qbo-redirect",
+      part: "p1",
+      title: "Add the return address",
+      done: part1,
+      art: <Art.IntuitRedirect />,
+      body: (
+        <>
+          <p>Open <b>Settings</b> → <b>Redirect URIs</b> → <b>Production</b>, press <b>Add URI</b>, paste this address and press <b>Save</b>.</p>
+          <CopyChip label="Address to paste" value={q.redirectUrl} />
+          <More>This tells QuickBooks where to send Max back after he connects. It has to match exactly, so use the copy button. Trying a test company first? Add the same address under <b>Development</b> too.</More>
+          {localWarn}
+        </>
+      ),
+    },
+    {
+      id: "qbo-details",
+      part: "p1",
+      title: "Fill in the app details",
+      done: part1,
+      art: <Art.IntuitAppDetails />,
+      body: (
+        <>
+          <p>Open <b>Keys and credentials</b> → <b>Production</b> → <b>App details</b>. Copy each address below into the box with the same name, then save each section.</p>
+          <div className="grid gap-3 sm:grid-cols-2 [&>*]:min-w-0">
+            <CopyChip label="End-user license agreement" value={q.termsUrl} />
+            <CopyChip label="Privacy policy" value={q.privacyUrl} />
+            <CopyChip label="Host domain" value={q.host} />
+            <CopyChip label="Launch URL" value={q.launchUrl} />
+            <CopyChip label="Disconnect URL" value={q.disconnectUrl} />
+            <CopyChip label="Connect / Reconnect URL" value={q.launchUrl} />
+          </div>
+          <More>
+            Intuit asks for these before it hands out the real (Production) keys — even for a private app only Subversive uses. The two policy pages are already published by this app, in plain English. For <b>categories</b> pick the closest, such as accounting. <b>Regulated industries</b>: none. <b>Where it&apos;s hosted</b>: United States. Also check <b>My Hub</b> → <b>Account profile</b> has your contact details.
+          </More>
+        </>
+      ),
+    },
+    {
+      id: "qbo-questionnaire",
+      part: "p1",
+      title: "Answer Intuit's questions",
+      done: part1,
+      art: <Art.IntuitQuestionnaire />,
+      body: (
+        <>
+          <p>Next to <b>App details</b>, open <b>Compliance</b>, press <b>Start questionnaire</b> and answer each page. Intuit reviews it and emails you when it&apos;s approved.</p>
+          <More>
+            <div>Answer plainly — the true answers are short:</div>
+            <div className="mt-1">• A private app, used only by Subversive&apos;s managers. Not for sale or listed in the app store.</div>
+            <div>• It reads the chart of accounts and vendors, and adds vendors and bills (with the invoice photo).</div>
+            <div>• No QuickBooks data is sent to an AI service, sold or shared. The sign-in is stored encrypted.</div>
+            <div className="mt-1">The keys only appear after Intuit approves the answers. Intuit doesn&apos;t say how long that takes — allow a few days. It costs nothing: every app starts on Intuit&apos;s free plan, which is far more than one restaurant uses.</div>
+          </More>
+        </>
+      ),
+    },
+    {
+      id: "qbo-keys",
+      part: "p1",
+      title: "Copy the two keys",
+      done: part1,
+      art: <Art.IntuitKeys />,
+      body: (
+        <>
+          <p>Once approved, open <b>Keys and credentials</b> → <b>Production</b>, turn on <b>Show credentials</b>, and paste the <b>Client ID</b> and <b>Client secret</b> here. They save by themselves.</p>
+          <SecretField name="QUICKBOOKS_CLIENT_ID" status={s.QUICKBOOKS_CLIENT_ID} label="Client ID" placeholder="AB…" hint="About 50 letters and numbers." sensitive={false} />
+          <SecretField name="QUICKBOOKS_CLIENT_SECRET" status={s.QUICKBOOKS_CLIENT_SECRET} label="Client secret" placeholder="Paste the Client secret" hint="About 40 letters and numbers, just below the Client ID." />
+          <More>
+            <div>Want to try it with a pretend company first, before approval? Copy the keys under <b>Development</b> instead and choose <b>Test company</b> here. Development keys only work with Intuit&apos;s test companies (your developer account comes with one).</div>
+            <div className="mt-2"><EnvironmentPicker value={st.environment} locked={st.connected} /></div>
+          </More>
+          {part1 && <Note tone="good">Done — this never needs doing again. Next, Max connects.</Note>}
+        </>
+      ),
+    },
+    {
+      id: "qbo-connect",
+      part: "p2",
+      title: "Sign in, pick the company, Connect",
+      done: st.connected,
+      art: <Art.IntuitConnect />,
+      body: st.connected ? (
+        <>
+          <Note tone="good">
+            Connected to <b>{st.companyName ?? "your QuickBooks company"}</b>
+            {st.environment === "sandbox" && " · test company"}.
+          </Note>
+          <QboTestButton last={d.tests.quickbooks} />
+        </>
+      ) : (
+        <>
+          <p>Max presses the button, signs in to QuickBooks, picks the company and presses <b>Connect</b>.</p>
+          {st.needsReconnect && <Note tone="bad">{st.needsReconnect}</Note>}
+          {part1 || st.appReady ? <QboConnectButton back="/settings/connections" label={st.needsReconnect ? "Connect to QuickBooks again" : "Connect to QuickBooks"} /> : <Note tone="warn">The button appears once the two keys from Part 1 are saved.</Note>}
+          {st.environment === "sandbox" && <p className="text-sm text-muted">Connecting to a test company. Pick the sandbox company when Intuit asks.</p>}
+          <More>Use a QuickBooks login that&apos;s an admin of the company. The app can read the chart of accounts and vendors and add vendors and bills — it never pays a bill or moves money. It stays signed in by itself as long as it&apos;s used at least once every 100 days.</More>
+        </>
+      ),
+    },
+    {
+      id: "qbo-accounts",
+      part: "p3",
+      title: "Choose where bills go",
+      done: st.connected && st.mappingReady,
+      art: st.connected ? <QboBillPreview d={d} /> : undefined,
+      body: st.connected ? (
+        <>
+          <p>Pick the account bills go to — usually <b>Cost of Goods Sold</b>. Then, if you split costs, pick an account for each kind of purchase.</p>
+          <AccountMapping accounts={q.accounts} accountsAt={q.accountsAt} mapping={st.mapping} categories={q.categories} suggestions={q.suggestions} defaultSuggestion={q.defaultSuggestion} missing={q.missing} />
+          <More>The kinds come from your ingredient categories (Produce, Beer…). An invoice&apos;s lines are added up per account, so a bill has a few tidy lines rather than every item. Anything not covered — delivery fees, tax, deposits — goes to <b>Fees, tax, delivery</b>.</More>
+        </>
+      ) : (
+        <Note tone="warn">Connect QuickBooks first (Part 2).</Note>
+      ),
+    },
+    {
+      id: "qbo-send",
+      part: "p3",
+      title: "Send invoices",
+      art: st.connected ? <QboBillPreview d={d} sent /> : undefined,
+      done: st.connected && st.mappingReady && (!!st.lastSync || st.mapping.autoSend),
+      body: st.connected ? (
+        <>
+          <p>Turn on <b>Send automatically</b> so each approved invoice goes over by itself — or send the waiting ones now.</p>
+          <SendOptions autoSend={st.mapping.autoSend} sendFrom={q.sendFrom} waiting={q.waiting} ready={st.mappingReady} />
+          <More>Each supplier becomes a vendor in QuickBooks — matched by name, or created the first time. Check or change them on the <Link href="/settings/quickbooks" className="text-ink underline underline-offset-2">QuickBooks page</Link>. Sending again updates the same bill instead of adding a second one. A bill with a payment against it is never changed.</More>
+        </>
+      ) : (
+        <Note tone="warn">Connect QuickBooks first (Part 2).</Note>
+      ),
+    },
+  ];
+  return (
+    <Stepper
+      steps={steps}
+      parts={[
+        { id: "p1", title: "Register the app · one time, on Intuit's site", note: "" },
+        { id: "p2", title: "Max connects", note: "" },
+        { id: "p3", title: "Choose accounts", note: "" },
+      ]}
+    />
+  );
+}
+
+function QuickBooksManage({ d }: { d: ConnectionsData }) {
+  const q = d.quickbooks;
+  const st = q.status;
+  return (
+    <>
+      <div className="grid gap-2 text-sm sm:grid-cols-3">
+        <div className="rounded-lg border border-border px-3.5 py-2.5"><div className="text-xs text-muted">Company</div><div className="font-medium">{st.companyName ?? "QuickBooks"}{st.environment === "sandbox" && <span className="text-muted"> · test</span>}</div></div>
+        <div className="rounded-lg border border-border px-3.5 py-2.5"><div className="text-xs text-muted">Connected</div><div className="font-medium">{st.connectedAt ? relativeTime(new Date(st.connectedAt)) : "—"}{st.connectedBy && <span className="text-muted"> · {st.connectedBy}</span>}</div></div>
+        <div className="rounded-lg border border-border px-3.5 py-2.5"><div className="text-xs text-muted">Last sent</div><div className="font-medium">{st.lastSync ? relativeTime(new Date(st.lastSync)) : "Nothing yet"}{q.waiting > 0 && <span className="text-muted"> · {q.waiting} waiting</span>}</div></div>
+      </div>
+      <QboTestButton last={d.tests.quickbooks} />
+      <div>
+        <div className="mb-2 text-sm font-semibold">Where bills go</div>
+        <AccountMapping accounts={q.accounts} accountsAt={q.accountsAt} mapping={st.mapping} categories={q.categories} suggestions={q.suggestions} defaultSuggestion={q.defaultSuggestion} missing={q.missing} />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <LinkButton href="/settings/quickbooks">Sending, suppliers and problems <ChevronRight className="size-4" /></LinkButton>
+        <QboDisconnect />
+      </div>
+    </>
+  );
+}
+
+/** A sketch of the bill an invoice becomes, using the accounts picked so far. */
+function QboBillPreview({ d, sent }: { d: ConnectionsData; sent?: boolean }) {
+  const q = d.quickbooks;
+  const m = q.status.mapping;
+  const name = (id: string | null | undefined) => q.accounts.find((a) => a.id === id)?.fullName ?? null;
+  const fallback = name(m.defaultAccountId) ?? "Bills go to…";
+  const beerCat = q.categories.find((c) => /beer|wine|bev/i.test(c));
+  const rows: [string, string][] = [
+    [fallback, "$45.25"],
+    ...(beerCat ? ([[name(m.byCategory[beerCat]) ?? fallback, "$80.00"]] as [string, string][]) : []),
+    [name(m.otherAccountId) ?? fallback, "$5.25"],
+  ];
+  const total = beerCat ? "$130.50" : "$50.50";
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-surface p-4 text-sm">
+      <div className="flex items-center justify-between gap-2 text-xs text-muted">
+        <span>How a bill looks in QuickBooks</span>
+        {sent && <Badge tone="good">Sent when approved</Badge>}
+      </div>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 border-t border-border pt-2">
+        <span className="font-semibold">Hudson Valley Foodservice</span>
+        <span className="num text-xs text-muted">Bill no. INV-1001 · due in {q.termsDays} days</span>
+      </div>
+      <div className="divide-y divide-border">
+        {rows.map(([a, amt], i) => (
+          <div key={i} className="flex items-center justify-between gap-3 py-1.5">
+            <span className="min-w-0 truncate text-ink-2">{i === rows.length - 1 ? <>{a} <span className="text-muted">· fees, tax</span></> : a}</span>
+            <span className="num shrink-0">{amt}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between border-t border-border pt-2 font-medium">
+        <span>Total · invoice photo attached</span>
+        <span className="num">{total}</span>
+      </div>
+    </div>
   );
 }

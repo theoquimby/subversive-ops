@@ -18,7 +18,7 @@ import { squareEnvironment, SquareNotConnectedError, testSquareConnection } from
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-export type ServiceId = "square" | "email" | "push" | "ai" | "google";
+export type ServiceId = "square" | "email" | "push" | "ai" | "google" | "quickbooks";
 export interface TestResult {
   ok: boolean;
   message: string;
@@ -34,6 +34,8 @@ const PASTABLE: ReadonlySet<SecretName> = new Set([
   "EMAIL_FROM",
   "ANTHROPIC_API_KEY",
   "GOOGLE_PLACES_API_KEY",
+  "QUICKBOOKS_CLIENT_ID",
+  "QUICKBOOKS_CLIENT_SECRET",
 ]);
 
 const SETTING_PLACE_NAME = "reviews.googlePlaceName";
@@ -57,7 +59,7 @@ async function forget(id: ServiceId) {
 }
 
 const serviceOf = (n: SecretName): ServiceId =>
-  n.startsWith("SQUARE") ? "square" : n === "RESEND_API_KEY" || n === "EMAIL_FROM" ? "email" : n === "ANTHROPIC_API_KEY" ? "ai" : n === "GOOGLE_PLACES_API_KEY" ? "google" : "push";
+  n.startsWith("QUICKBOOKS") ? "quickbooks" : n.startsWith("SQUARE") ? "square" : n === "RESEND_API_KEY" || n === "EMAIL_FROM" ? "email" : n === "ANTHROPIC_API_KEY" ? "ai" : n === "GOOGLE_PLACES_API_KEY" ? "google" : "push";
 
 /** Save a pasted key after checking it looks right. Returns only a masked hint, never the value. */
 export async function saveKey(name: string, raw: string): Promise<{ error?: string; hint?: string }> {
@@ -69,7 +71,7 @@ export async function saveKey(name: string, raw: string): Promise<{ error?: stri
   await setSecret(name, v.value);
   await forget(serviceOf(name));
   refresh();
-  return { hint: name === "EMAIL_FROM" || name === "SQUARE_APPLICATION_ID" ? v.value : (maskSecret(v.value) ?? undefined) };
+  return { hint: name === "EMAIL_FROM" || name === "SQUARE_APPLICATION_ID" || name === "QUICKBOOKS_CLIENT_ID" ? v.value : (maskSecret(v.value) ?? undefined) };
 }
 
 export async function removeKey(name: string): Promise<{ error?: string }> {

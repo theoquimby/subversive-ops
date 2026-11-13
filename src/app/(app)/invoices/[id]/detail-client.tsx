@@ -277,7 +277,7 @@ function ApproveSheet({ id, statusLabel, flagged, credit, onClose }: { id: strin
   );
 }
 
-const ACTION_LABEL: Record<string, string> = { approved: "Approved", "auto-approved": "Auto-approved", reopened: "Reopened", "prices-updated": "Prices updated", "credit-requested": "Credit requested" };
+const ACTION_LABEL: Record<string, string> = { approved: "Approved", "auto-approved": "Auto-approved", reopened: "Reopened", "prices-updated": "Prices updated", "credit-requested": "Credit requested", "sent-to-quickbooks": "Sent to QuickBooks" };
 
 /** The approval history, oldest first. Nothing in it is ever removed. */
 export function InvoiceHistory({ events }: { events: { at: string; when: string; by: string; action: string; status?: string; statusLabel?: string; note?: string }[] }) {

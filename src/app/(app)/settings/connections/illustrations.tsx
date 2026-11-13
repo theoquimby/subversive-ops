@@ -872,3 +872,250 @@ export const DesktopAllow = () => (
     <Bar x={20} y={120} w={100} />
   </Browser>
 );
+
+// ---- QuickBooks (Intuit Developer) ---------------------------------------------------
+
+const intuitNav = (active: number) => <SideNav items={["Overview", "Keys", "Settings", "Analytics"]} active={active} title="Subversive Ops" />;
+
+export const IntuitSignIn = () => (
+  <Browser url="developer.intuit.com" label="Intuit's developer site: sign in with any Intuit or QuickBooks login, then open My Hub, App dashboard.">
+    <Mark x={12} y={10} />
+    <T x={30} y={20} s={10} w={600}>
+      Intuit Developer
+    </T>
+    <Bar x={122} y={15} w={34} />
+    <Bar x={164} y={15} w={28} />
+    <Btn x={252} y={8} w={56} label="Sign in" />
+    <Spot x={252} y={8} w={56} h={18} />
+    <Num x={248} y={8} n={1} />
+    <Box x={196} y={34} w={112} h={58} r={8} stroke={LINE} />
+    <T x={206} y={50} s={8} w={600} c={INK2}>
+      My Hub
+    </T>
+    <rect x={202} y={56} width={100} height={14} rx={4} fill={SURF2} />
+    <T x={208} y={66} s={8} w={600}>
+      App dashboard
+    </T>
+    <T x={208} y={83} s={8} c={INK2}>
+      Account profile
+    </T>
+    <Spot x={202} y={56} w={100} h={14} r={5} />
+    <Num x={312} y={60} n={2} />
+    <Cursor x={250} y={64} />
+    <T x={16} y={58} s={13} w={700}>
+      Build with QuickBooks
+    </T>
+    <Bar x={16} y={68} w={150} />
+    <Bar x={16} y={78} w={120} />
+    <rect x={16} y={102} width={110} height={64} rx={8} fill={SURF2} stroke={LINE} strokeDasharray="4 3" />
+    <circle cx={71} cy={126} r={11} fill={SURF} stroke={LINE} />
+    <path d="M71,120 v12 M65,126 h12" stroke={INK} strokeWidth={2} strokeLinecap="round" />
+    <T x={71} y={154} s={8} a="middle" c={INK2}>
+      Create an app
+    </T>
+    <Spot x={16} y={102} w={110} h={64} r={10} />
+    <Num x={128} y={104} n={3} />
+  </Browser>
+);
+
+export const IntuitCreateApp = () => (
+  <Browser url="developer.intuit.com/app/developer/dashboard" label="Create an app: name it Subversive Ops, tick Accounting, then press Create app.">
+    <rect x={0} y={0} width={320} height={178} fill={INK} fillOpacity={0.06} />
+    <Box x={56} y={14} w={208} h={150} r={10} stroke={LINE} />
+    <T x={72} y={36} s={11} w={700}>
+      Create an app
+    </T>
+    <Field x={72} y={58} w={176} label="App name" value="Subversive Ops" />
+    <Spot x={72} y={58} w={176} h={18} />
+    <Num x={256} y={58} n={1} />
+    <T x={72} y={96} s={8} w={500} c={INK2}>
+      What does it need to reach?
+    </T>
+    <Check x={72} y={102} />
+    <T x={84} y={109} s={8}>
+      Accounting
+    </T>
+    <Check x={72} y={116} on={false} />
+    <T x={84} y={123} s={8} c={MUTED}>
+      Payments
+    </T>
+    <Spot x={70} y={100} w={64} h={12} r={4} />
+    <Num x={142} y={104} n={2} />
+    <Btn x={176} y={138} w={72} label="Create app" primary />
+    <Spot x={176} y={138} w={72} h={18} />
+    <Num x={256} y={138} n={3} />
+    <Cursor x={214} y={148} />
+  </Browser>
+);
+
+export const IntuitRedirect = () => (
+  <Browser url="developer.intuit.com/app/developer/appdetail/…/settings" label="Settings, then Redirect URIs, then Production: press Add URI, paste the address and press Save.">
+    {intuitNav(2)}
+    <Spot x={5} y={62} w={66} h={15} r={5} />
+    <Num x={74} y={62} n={1} />
+    <T x={90} y={22} s={11} w={700}>
+      Settings
+    </T>
+    {["Basic info", "App URLs", "Redirect URIs"].map((t, i) => (
+      <g key={t}>
+        <T x={90 + i * 62} y={40} s={8} w={i === 2 ? 700 : 400} c={i === 2 ? INK : INK2}>
+          {t}
+        </T>
+        {i === 2 && <line x1={214} x2={266} y1={44} y2={44} stroke={INK} strokeWidth={1.5} />}
+      </g>
+    ))}
+    <rect x={90} y={52} width={110} height={16} rx={8} fill={SURF2} stroke={LINE} />
+    <T x={117} y={63} s={8} a="middle" c={INK2}>
+      Development
+    </T>
+    <rect x={145} y={54} width={53} height={12} rx={6} fill={INK} />
+    <T x={171.5} y={63} s={8} w={600} a="middle" c={SURF}>
+      Production
+    </T>
+    <Spot x={90} y={52} w={110} h={16} r={9} />
+    <Num x={208} y={56} n={2} />
+    <Field x={90} y={92} w={218} label="Redirect URI" value="https://…/api/quickbooks/oauth/callback" mono />
+    <Spot x={90} y={92} w={218} h={18} />
+    <Num x={302} y={86} n={3} />
+    <Btn x={90} y={120} w={58} label="+ Add URI" />
+    <Btn x={256} y={146} w={52} label="Save" primary />
+    <Spot x={256} y={146} w={52} h={18} />
+    <Num x={252} y={144} n={4} />
+    <Cursor x={282} y={156} />
+  </Browser>
+);
+
+export const IntuitAppDetails = () => (
+  <Browser url="developer.intuit.com/app/developer/appdetail/…/keys" label="Keys and credentials, then Production, then App details: fill in each section with the addresses shown here." h={216}>
+    <SideNav items={["Overview", "Keys", "Settings", "Analytics"]} active={1} title="Subversive Ops" h={194} />
+    <Spot x={5} y={44} w={66} h={15} r={5} />
+    <Num x={74} y={44} n={1} />
+    <T x={90} y={22} s={11} w={700}>
+      Production
+    </T>
+    {["App details", "Compliance", "Credentials"].map((t, i) => (
+      <g key={t}>
+        <T x={90 + i * 66} y={40} s={8} w={i === 0 ? 700 : 400} c={i === 0 ? INK : INK2}>
+          {t}
+        </T>
+        {i === 0 && <line x1={90} x2={140} y1={44} y2={44} stroke={INK} strokeWidth={1.5} />}
+      </g>
+    ))}
+    <Spot x={86} y={30} w={56} h={16} r={5} />
+    <Num x={86} y={28} n={2} />
+    <Field x={90} y={64} w={104} label="License URL" value="…/legal/terms" mono />
+    <Field x={204} y={64} w={104} label="Privacy URL" value="…/legal/privacy" mono />
+    <Field x={90} y={100} w={104} label="Host domain" value="your-app.app" mono />
+    <Field x={204} y={100} w={104} label="Launch URL" value="…/settings/…" mono />
+    <Field x={90} y={136} w={104} label="Disconnect URL" value="…/connections" mono />
+    <Field x={204} y={136} w={104} label="Categories" value="Accounting" />
+    <Spot x={88} y={56} w={222} h={100} r={8} />
+    <Num x={302} y={52} n={3} />
+    <Btn x={244} y={170} w={64} label="Save" primary />
+    <Spot x={244} y={170} w={64} h={18} />
+    <Num x={240} y={168} n={4} />
+  </Browser>
+);
+
+export const IntuitQuestionnaire = () => (
+  <Browser url="developer.intuit.com/app/developer/appdetail/…/keys" label="Production, then Compliance: press Start questionnaire, answer each page, then submit and wait for the approval email.">
+    {intuitNav(1)}
+    <T x={90} y={22} s={11} w={700}>
+      Production
+    </T>
+    {["App details", "Compliance", "Credentials"].map((t, i) => (
+      <g key={t}>
+        <T x={90 + i * 66} y={40} s={8} w={i === 1 ? 700 : 400} c={i === 1 ? INK : INK2}>
+          {t}
+        </T>
+        {i === 1 && <line x1={156} x2={204} y1={44} y2={44} stroke={INK} strokeWidth={1.5} />}
+      </g>
+    ))}
+    <Spot x={152} y={30} w={56} h={16} r={5} />
+    <Num x={214} y={28} n={1} />
+    <Box x={90} y={56} w={218} h={108} r={8} />
+    <T x={102} y={74} s={9} w={700}>
+      App assessment questionnaire
+    </T>
+    <Bar x={102} y={82} w={170} />
+    <Bar x={102} y={92} w={130} />
+    {["Your app", "Data use", "Security"].map((t, i) => (
+      <g key={t}>
+        <circle cx={108} cy={110 + i * 12} r={3.5} fill={i < 1 ? INK : SURF} stroke={LINE} />
+        <T x={116} y={113 + i * 12} s={7.5} c={INK2}>
+          {t}
+        </T>
+      </g>
+    ))}
+    <Btn x={214} y={136} w={86} label="Start questionnaire" primary />
+    <Spot x={214} y={136} w={86} h={18} />
+    <Num x={210} y={134} n={2} />
+    <Cursor x={258} y={146} />
+  </Browser>
+);
+
+export const IntuitKeys = () => (
+  <Browser url="developer.intuit.com/app/developer/appdetail/…/keys" label="Once approved: Production, then turn on Show credentials, then copy the Client ID and the Client secret.">
+    {intuitNav(1)}
+    <T x={90} y={22} s={11} w={700}>
+      Production
+    </T>
+    <T x={90} y={42} s={8} c={INK2}>
+      Show credentials
+    </T>
+    <rect x={160} y={34} width={22} height={12} rx={6} fill={INK} />
+    <circle cx={176} cy={40} r={4.2} fill={SURF} />
+    <Spot x={158} y={33} w={26} h={14} r={7} />
+    <Num x={192} y={38} n={1} />
+    <Field x={90} y={70} w={218} label="Client ID" value="ABx7Qp2…Lm9" mono />
+    <rect x={288} y={73} width={14} height={12} rx={3} fill={SURF2} stroke={LINE} />
+    <rect x={292} y={76} width={6} height={6} rx={1} fill="none" stroke={INK2} />
+    <Spot x={90} y={70} w={218} h={18} />
+    <Num x={302} y={64} n={2} />
+    <Field x={90} y={112} w={218} label="Client secret" value="••••••••••••••••" masked />
+    <rect x={288} y={115} width={14} height={12} rx={3} fill={SURF2} stroke={LINE} />
+    <rect x={292} y={118} width={6} height={6} rx={1} fill="none" stroke={INK2} />
+    <Spot x={90} y={112} w={218} h={18} />
+    <Num x={302} y={106} n={3} />
+    <Cursor x={295} y={122} />
+    <Bar x={90} y={146} w={150} />
+    <Bar x={90} y={156} w={100} />
+  </Browser>
+);
+
+export const IntuitConnect = () => (
+  <Browser url="appcenter.intuit.com/connect/oauth2" label="Intuit's own page: sign in with the QuickBooks admin login, pick the company, then press Connect.">
+    <Box x={14} y={14} w={128} h={150} r={8} />
+    <Mark x={70} y={24} s={16} />
+    <T x={78} y={56} s={10} w={700} a="middle">
+      Sign in
+    </T>
+    <Field x={26} y={70} w={104} value="max@…" />
+    <Field x={26} y={94} w={104} value="••••••••" masked />
+    <Btn x={26} y={120} w={104} label="Sign in" primary />
+    <Num x={20} y={20} n={1} />
+    <Arrow x1={146} y1={89} x2={170} y2={89} bend={0} />
+    <Box x={176} y={14} w={130} h={150} r={8} />
+    <T x={186} y={32} s={8.5} w={700}>
+      Subversive Ops wants to
+    </T>
+    <T x={186} y={43} s={8.5} w={700}>
+      connect to:
+    </T>
+    <rect x={186} y={52} width={110} height={18} rx={4} fill={SURF} stroke={LINE} />
+    <T x={192} y={64} s={8}>
+      Subversive LLC
+    </T>
+    <path d="M286,59 l3,3 l3,-3" fill="none" stroke={INK2} strokeWidth={1.2} />
+    <Spot x={186} y={52} w={110} h={18} />
+    <Num x={300} y={50} n={2} />
+    <Bar x={186} y={82} w={96} />
+    <Bar x={186} y={92} w={80} />
+    <Bar x={186} y={102} w={90} />
+    <Btn x={186} y={128} w={50} label="Cancel" />
+    <Btn x={242} y={128} w={54} label="Connect" primary />
+    <Spot x={242} y={128} w={54} h={18} />
+    <Num x={300} y={126} n={3} />
+    <Cursor x={270} y={138} />
+  </Browser>
+);

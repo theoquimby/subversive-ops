@@ -866,7 +866,7 @@ export const settings: HelpEntry[] = [
     area: "settings",
     route: "/settings/connections",
     title: "Connections",
-    body: "Link Square, email, phone notifications, AI features and Google reviews. Each card says what it turns on and opens a step-by-step guide with pictures. Keys you paste are stored locked (encrypted) and never shown again.",
+    body: "Link Square, email, phone notifications, AI features, Google reviews and QuickBooks. Each card says what it turns on and opens a step-by-step guide with pictures. Keys you paste are stored locked (encrypted) and never shown again.",
     article: `Every connection is optional — the app works without them, each one just turns more on.
 
 - **Square** — sales, the menu and timecards, brought in by themselves. About 6 minutes.
@@ -874,6 +874,7 @@ export const settings: HelpEntry[] = [
 - **Phone notifications** — alerts on phones. One tap, then a minute per phone.
 - **AI features** — invoice reading, review replies and Ask. About 3 minutes.
 - **Google reviews** — new Google reviews every morning. About 5 minutes.
+- **QuickBooks** — approved supplier invoices go to QuickBooks Online as bills. About 20 minutes, plus a review by Intuit.
 
 Press **Set up** on a card. The guide shows exactly where to click on the other site (numbered circles), gives you copy buttons for anything you need to paste there, and a box to paste what you bring back. Each box checks the value as you paste it and says plainly if it looks wrong — for example a code pasted into the wrong box.
 
@@ -884,7 +885,7 @@ Press **Set up** on a card. The guide shows exactly where to click on the other 
 **Is it safe?** Keys are encrypted before they're saved, only the last four characters are ever shown, and only managers can open this page. **Replace** swaps a key; **Remove** turns that feature off.
 
 Whoever hosts the app can still set the same keys as hosting settings instead; a key pasted here takes priority.`,
-    related: ["settings.connections.square", "settings.connections.email", "settings.connections.push", "settings.connections.ai", "settings.connections.google"],
+    related: ["settings.connections.square", "settings.connections.email", "settings.connections.push", "settings.connections.ai", "settings.connections.google", "settings.connections.quickbooks"],
     keywords: ["api key", "keys", "integrations", "connect", "setup", "resend", "anthropic", "claude", "google", "vapid", "environment variables", "env"],
   },
   {

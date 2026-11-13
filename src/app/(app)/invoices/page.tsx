@@ -10,6 +10,8 @@ import { InvoiceStatus } from "@prisma/client";
 import { Camera, FileSpreadsheet } from "lucide-react";
 import Link from "next/link";
 import { AutoApproveCell, InvoiceFilters, ToleranceCells } from "./list-client";
+import { QboBadge, SendWaiting } from "./quickbooks-client";
+import { billStates, isQuickBooksConnected, pendingInvoices } from "@/server/services/quickbooks";
 
 export const metadata = { title: "Invoices" };
 
@@ -19,13 +21,15 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
   await requireUser("MANAGER");
   const sp = await searchParams;
   const status = sp.status === "OPEN" || STATUSES.includes(sp.status as InvoiceStatus) ? (sp.status as InvoiceStatus | "OPEN") : undefined;
-  const [invoices, all, suppliers, tolerance, autoApprove] = await Promise.all([
+  const [invoices, all, suppliers, tolerance, autoApprove, qboConnected] = await Promise.all([
     listInvoices({ status, supplierId: sp.supplier }),
     db.invoice.findMany({ select: { status: true, lines: { select: { qty: true, unitPrice: true, expectedQty: true, expectedPrice: true, description: true, sku: true } } } }),
     db.supplier.findMany({ where: { invoices: { some: {} } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     loadTolerance(),
     autoApproveEnabled(),
+    isQuickBooksConnected(),
   ]);
+  const [qboStates, qboWaiting] = qboConnected ? await Promise.all([billStates(invoices.filter((i) => i.status === "APPROVED").map((i) => i.id)), pendingInvoices()]) : [new Map(), []];
 
   const open = all.filter((i) => i.status !== "APPROVED");
   const issues = open.filter((i) => i.status !== "MATCHED");
@@ -60,6 +64,12 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
             <AutoApproveCell on={autoApprove} />
           </Card></HelpZone>
         </div>
+      )}
+
+      {qboWaiting.length > 0 && (
+        <HelpZone id="invoices.quickbooks.waiting">
+          <SendWaiting waiting={qboWaiting.length} />
+        </HelpZone>
       )}
 
       <Section
@@ -109,6 +119,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                     </Td>
                     <Td>
                       <Badge tone={meta.tone}>{meta.label}</Badge>
+                      {qboStates.get(i.id) && <span className="ml-1.5 hidden lg:inline"><QboBadge state={qboStates.get(i.id)!} /></span>}
                       {i.status !== "APPROVED" && i.status !== "MATCHED" && flagged > 0 && <span className="ml-1.5 hidden text-xs text-muted lg:inline">{flagged} {flagged === 1 ? "line" : "lines"}</span>}
                     </Td>
                     <Td align="right">{money(total)}</Td>

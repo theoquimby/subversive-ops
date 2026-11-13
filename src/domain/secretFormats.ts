@@ -15,6 +15,8 @@ export const SECRET_NAMES = [
   "VAPID_PUBLIC_KEY",
   "VAPID_PRIVATE_KEY",
   "VAPID_SUBJECT",
+  "QUICKBOOKS_CLIENT_ID",
+  "QUICKBOOKS_CLIENT_SECRET",
 ] as const;
 
 export type SecretName = (typeof SECRET_NAMES)[number];
@@ -22,7 +24,7 @@ export type SecretName = (typeof SECRET_NAMES)[number];
 export const isSecretName = (s: string): s is SecretName => (SECRET_NAMES as readonly string[]).includes(s);
 
 /** Values that aren't really secret (shown in full in the UI rather than masked). */
-const PUBLIC: ReadonlySet<SecretName> = new Set(["SQUARE_APPLICATION_ID", "EMAIL_FROM", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT"]);
+const PUBLIC: ReadonlySet<SecretName> = new Set(["SQUARE_APPLICATION_ID", "EMAIL_FROM", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "QUICKBOOKS_CLIENT_ID"]);
 export const isPublicSetting = (n: SecretName) => PUBLIC.has(n);
 
 /** Setting-table key for a stored secret. */
@@ -80,6 +82,8 @@ function looksLike(v: string): string | null {
   if (/^sk-ant-/.test(v)) return "That's a Claude key";
   if (/^AIza/.test(v)) return "That's a Google key";
   if (/^https?:\/\//i.test(v)) return "That's a web address";
+  if (/^\d{9,20}$/.test(v)) return "That's a QuickBooks company ID (Realm ID)";
+  if (/^eyJ|^eJ/.test(v) && v.length > 200) return "That's a QuickBooks sign-in token";
   return null;
 }
 
@@ -128,6 +132,15 @@ export function validateSecret(name: SecretName, raw: string): Validation {
     case "VAPID_PRIVATE_KEY":
       if (/^[\w-]{40,120}$/.test(v)) return { ok: true, value: v };
       return fail("That isn't a valid notification key. Use the Turn on button and the app makes one for you.");
+    case "QUICKBOOKS_CLIENT_ID":
+      // Intuit doesn't document a format; real ones are ~50 letters and digits (e.g. AB…).
+      if (/^[A-Za-z0-9]{40,64}$/.test(v) && /[A-Za-z]/.test(v) && /\d/.test(v) && !looksLike(v)) return { ok: true, value: v };
+      if (/^[A-Za-z0-9]{20,39}$/.test(v) && !looksLike(v)) return fail("That looks cut short — a Client ID is about 50 letters and numbers. Turn on Show credentials and copy it again in full.");
+      return fail(wrongBox(v, "the Client ID") ?? "That doesn't look like a QuickBooks Client ID. It's about 50 letters and numbers, under Keys and credentials → Production.");
+    case "QUICKBOOKS_CLIENT_SECRET":
+      if (/^[A-Za-z0-9]{30,64}$/.test(v) && /[A-Za-z]/.test(v) && /\d/.test(v) && !looksLike(v)) return { ok: true, value: v };
+      if (/^[A-Za-z0-9]{12,29}$/.test(v) && !looksLike(v)) return fail("That looks cut short — a Client secret is about 40 letters and numbers. Copy it again in full.");
+      return fail(wrongBox(v, "the Client secret") ?? "That doesn't look like a QuickBooks Client secret. It's about 40 letters and numbers, just below the Client ID.");
     case "VAPID_SUBJECT":
       if (/^mailto:[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(v) || /^https:\/\/(?!localhost)[^\s]+$/i.test(v)) return { ok: true, value: v };
       return fail("Use mailto: followed by an email address, or an https:// web address.");

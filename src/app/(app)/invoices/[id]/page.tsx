@@ -14,6 +14,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DeleteInvoice, HeaderFields, InvoiceActions, InvoiceHistory, LinesGrid } from "./detail-client";
 import { InvoiceViewer } from "./viewer";
+import { InvoiceQuickBooks, QboBadge } from "../quickbooks-client";
+import { invoiceBillState, quickbooksStatus } from "@/server/services/quickbooks";
 
 export const metadata = { title: "Invoice" };
 
@@ -25,7 +27,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const inv = await loadInvoice(id);
   if (!inv) notFound();
 
-  const [tolerance, hasImage, products, orders, siblings, priceChanges, history, creditSent] = await Promise.all([
+  const [tolerance, hasImage, products, orders, siblings, priceChanges, history, creditSent, qbo, billState] = await Promise.all([
     loadTolerance(),
     db.invoice.count({ where: { id, image: { not: null } } }),
     db.supplierProduct.findMany({ where: { supplierId: inv.supplierId }, select: { id: true, sku: true, description: true, active: true, ingredient: { select: { name: true } } }, orderBy: { description: "asc" } }),
@@ -34,6 +36,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
     pendingPriceChanges(inv),
     loadHistory(id),
     db.setting.findUnique({ where: { key: `invoice.credit.${id}` } }),
+    quickbooksStatus(),
+    invoiceBillState(id),
   ]);
   const lastCredit = (() => {
     try {
@@ -90,6 +94,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         description={
           <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
             <Badge tone={meta.tone}>{meta.label}</Badge>
+            {qbo.connected && <QboBadge state={billState} />}
             <span className="num">{shortDate(date)}</span>
             {inv.order && <>· <Link href={`/ordering/po/${inv.order.id}`} className="hover:text-ink hover:underline">Order for {shortDate(toISODate(inv.order.deliveryDate))}</Link></>}
             {inv.extractedBy === "claude" && <span>· read by Claude</span>}
@@ -153,6 +158,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             {gap != null && Math.abs(gap) > 0.05 && <Row label={gap > 0 ? "Not covered by lines" : "Lines exceed total"} value={money(Math.abs(gap))} tone="warn" />}
             {credit && <Row label="Credit to request" value={money(credit.total)} tone="bad" />}
           </Card></HelpZone>
+
+          {qbo.connected && billState && (
+            <HelpZone id="invoices.quickbooks">
+              <InvoiceQuickBooks invoiceId={inv.id} state={billState} approved={locked} ready={qbo.mappingReady} autoSend={qbo.mapping.autoSend} />
+            </HelpZone>
+          )}
 
           {notBilled.length > 0 && (
             <HelpZone id="invoices.notBilled">

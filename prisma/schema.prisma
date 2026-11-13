@@ -583,6 +583,34 @@ model Invoice {
   @@unique([supplierId, invoiceNumber])
 }
 
+/// Links between records here and a QuickBooks Online company (Supplier ↔ Vendor,
+/// Invoice ↔ Bill), so sending again updates instead of duplicating. Keyed by
+/// the QuickBooks company (realmId): connecting a different company starts fresh.
+model QuickBooksLink {
+  id           String    @id @default(cuid())
+  realmId      String
+  /// "vendor" (localId = Supplier.id) | "bill" (localId = Invoice.id)
+  kind         String
+  localId      String
+  qboId        String?
+  syncToken    String?
+  /// The invoice photo/PDF attached to the bill (uploaded once).
+  attachableId String?
+  /// Fingerprint of what was last sent, so an unchanged invoice isn't re-sent.
+  hash         String?
+  /// "ok" | "sending" | "error"
+  status       String    @default("ok")
+  /// The bill was already in QuickBooks (typed in by hand): linked, never changed by the app.
+  manual       Boolean   @default(false)
+  error        String?
+  sentAt       DateTime?
+  sentBy       String?
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([realmId, kind, localId])
+  @@index([kind, localId])
+}
+
 model InvoiceLine {
   id                String           @id @default(cuid())
   invoiceId         String

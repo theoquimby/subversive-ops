@@ -159,6 +159,7 @@ export async function maybeAutoApprove(invoiceId: string): Promise<boolean> {
   if (!canAutoApprove({ status: inv.status, orderStatus: inv.order?.status ?? null, duplicate: Boolean(duplicate), history })) return false;
   await db.invoice.update({ where: { id: inv.id }, data: { status: "APPROVED", approvedBy: "auto", approvedAt: new Date() } });
   await recordEvent(inv.id, { by: "auto", action: "auto-approved", status: inv.status, note: "Clean three-way match with a checked-in order." });
+  await afterApproval(inv.id, "auto");
   return true;
 }
 
@@ -168,6 +169,14 @@ export async function approve(invoiceId: string, by: string, note: string | null
   if (inv.status === "APPROVED") return;
   await db.invoice.update({ where: { id: invoiceId }, data: { status: "APPROVED", approvedBy: by, approvedAt: new Date() } });
   await recordEvent(invoiceId, { by, action: "approved", status: inv.status, note: note ?? undefined });
+  await afterApproval(invoiceId, by);
+}
+
+/** With "send to QuickBooks automatically" on, the approved invoice goes over as a bill in the background. */
+async function afterApproval(invoiceId: string, by: string) {
+  // Imported lazily: quickbooks.ts imports this module (for the invoice history).
+  const [{ inBackground }, { autoSendApproved }] = await Promise.all([import("./notify"), import("./quickbooks")]);
+  inBackground(() => autoSendApproved(invoiceId, by));
 }
 
 /** Reopen for changes. The approval stays in the history; only the status changes. */
