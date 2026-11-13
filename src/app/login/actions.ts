@@ -11,7 +11,7 @@ export async function login(_: { error?: string } | undefined, form: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const res = await loginWithPin(parsed.data.name, parsed.data.pin);
   if (!res.ok) return { error: res.error };
-  redirect(res.role === "MANAGER" ? "/" : "/count");
+  redirect(res.role === "MANAGER" ? "/" : "/my");
 }
 
 export async function setup(_: { error?: string } | undefined, form: FormData) {

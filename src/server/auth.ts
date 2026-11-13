@@ -20,7 +20,7 @@ export async function getSession(): Promise<Session | null> {
 export async function requireUser(role?: "MANAGER"): Promise<Session> {
   const s = await getSession();
   if (!s) redirect("/login");
-  if (role === "MANAGER" && s.role !== "MANAGER") redirect("/count");
+  if (role === "MANAGER" && s.role !== "MANAGER") redirect("/my");
   return s;
 }
 

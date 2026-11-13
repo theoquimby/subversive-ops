@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/server/session";
 
 // Staff only ever see the floor tools; everything else is manager-only.
-const STAFF_PATHS = ["/count", "/waste"];
+const STAFF_PATHS = ["/my", "/count", "/waste"];
 const PUBLIC_PATHS = ["/login", "/api/cron"];
 
 export async function middleware(req: NextRequest) {
@@ -18,7 +18,7 @@ export async function middleware(req: NextRequest) {
   }
   if (session.role === "STAFF" && !STAFF_PATHS.some((p) => pathname.startsWith(p))) {
     const url = req.nextUrl.clone();
-    url.pathname = "/count";
+    url.pathname = "/my";
     return NextResponse.redirect(url);
   }
   return NextResponse.next();

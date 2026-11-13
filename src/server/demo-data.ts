@@ -214,6 +214,8 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
   await seedForecast(db);
   const { seedLabor } = await import("./demo/labor");
   await seedLabor(db);
+  const { seedScheduling } = await import("./demo/scheduling");
+  await seedScheduling(db);
   const { seedInvoices } = await import("./demo/invoices");
   await seedInvoices(db);
   const { seedReviews } = await import("./demo/reviews");

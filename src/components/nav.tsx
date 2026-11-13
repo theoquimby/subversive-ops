@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { BookOpen, CalendarDays, Carrot, ChartLine, ClipboardList, Clock, FileCheck, FileUp, LayoutGrid, LogOut, MessageSquareText, Receipt, Scale, Search, Settings, ShoppingCart, Sunrise, Target, Trash2, TrendingUp, Users } from "lucide-react";
+import { BookOpen, CalendarCheck, CalendarDays, CalendarRange, HandCoins, Carrot, ChartLine, ClipboardList, Clock, FileCheck, FileUp, LayoutGrid, LogOut, MessageSquareText, Receipt, Scale, Search, Settings, ShoppingCart, Sunrise, Target, Trash2, TrendingUp, Users } from "lucide-react";
 import { openCommandPalette } from "./command-palette";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -24,8 +24,11 @@ const MANAGER: { title?: string; items: NavItem[] }[] = [
     { href: "/invoices", label: "Invoices", icon: FileCheck },
   ] },
   { title: "People", items: [
+    { href: "/schedule", label: "Schedule", icon: CalendarRange },
     { href: "/team", label: "Team", icon: Users },
     { href: "/labor", label: "Timecards", icon: Clock },
+    { href: "/tips", label: "Tips", icon: HandCoins },
+    { href: "/my", label: "My shifts", icon: CalendarCheck },
   ] },
   { title: "Numbers", items: [
     { href: "/pnl", label: "P&L", icon: TrendingUp },
@@ -45,6 +48,7 @@ const MANAGER: { title?: string; items: NavItem[] }[] = [
 ];
 const STAFF: { title?: string; items: NavItem[] }[] = [
   { items: [
+    { href: "/my", label: "My shifts", icon: CalendarCheck },
     { href: "/count", label: "Count", icon: ClipboardList },
     { href: "/waste", label: "Waste", icon: Trash2 },
   ] },

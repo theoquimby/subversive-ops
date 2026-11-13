@@ -6,6 +6,7 @@ import { db } from "@/server/db";
 import { redirect } from "next/navigation";
 
 const STAFF_COMMANDS: Command[] = [
+  { id: "my", label: "My shifts / request time off", group: "Do", href: "/my" },
   { id: "count", label: "Start a count", group: "Do", href: "/count" },
   { id: "waste", label: "Log waste", group: "Do", href: "/waste" },
 ];
@@ -28,6 +29,9 @@ async function managerCommands(): Promise<Command[]> {
     { id: "do-event", label: "Add an event (game, music, closure)", group: "Do", href: "/events", hint: "forecast" },
     { id: "go-settings", label: "Settings", group: "Go to", href: "/settings" },
     { id: "go-brief", label: "Weekly brief", group: "Go to", href: "/brief" },
+    { id: "go-schedule", label: "Schedule", group: "Go to", href: "/schedule" },
+    { id: "go-tips", label: "Tips", group: "Go to", href: "/tips" },
+    { id: "do-requests", label: "Approve time off & swaps", group: "Do", href: "/schedule/requests" },
     { id: "go-invoices", label: "Invoices", group: "Go to", href: "/invoices" },
     { id: "do-invoice", label: "Add a supplier invoice", group: "Do", href: "/invoices/new", hint: "photo" },
     { id: "do-invoices-open", label: "Invoices to approve", group: "Do", href: "/invoices?status=OPEN" },
