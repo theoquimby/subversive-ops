@@ -30,6 +30,9 @@ const STANDARD: Record<string, { base: BaseUnit; factor: number }> = {
   pt: { base: "ml", factor: 473.176473 },
   qt: { base: "ml", factor: 946.352946 },
   gal: { base: "ml", factor: 3785.411784 },
+  // US beer barrel = 31 gal; hectolitre = 100 l
+  bbl: { base: "ml", factor: 31 * 3785.411784 },
+  hl: { base: "ml", factor: 100000 },
   // count → each
   each: { base: "each", factor: 1 },
   ea: { base: "each", factor: 1 },
@@ -42,7 +45,7 @@ const STANDARD: Record<string, { base: BaseUnit; factor: number }> = {
 
 export const STANDARD_UNITS_BY_BASE: Record<BaseUnit, string[]> = {
   g: ["g", "kg", "oz", "lb"],
-  ml: ["ml", "l", "tsp", "tbsp", "fl oz", "cup", "pt", "qt", "gal"],
+  ml: ["ml", "l", "tsp", "tbsp", "fl oz", "cup", "pt", "qt", "gal", "bbl", "hl"],
   each: ["each", "dozen"],
 };
 

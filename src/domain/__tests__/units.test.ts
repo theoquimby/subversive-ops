@@ -20,3 +20,11 @@ describe("toBase", () => {
     expect(formatBase(250, "ml")).toBe("250 ml");
   });
 });
+
+describe("brewing volumes", () => {
+  it("knows barrels and hectolitres", () => {
+    expect(toBase(1, "bbl", "ml")).toBeCloseTo(117347.77, 1);
+    expect(toBase(0.5, "bbl", "ml") / toBase(1, "gal", "ml")).toBeCloseTo(15.5, 5);
+    expect(toBase(1, "hl", "ml")).toBe(100000);
+  });
+});
