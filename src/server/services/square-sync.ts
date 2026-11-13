@@ -33,7 +33,10 @@ export async function dailySync() {
   const sales = await logged("sales", () => syncSales(addDays(today, -3), addDays(today, 1)));
   const labor = await logged("labor", () => syncSquareTimecards(addDays(today, -1), addDays(today, 1)));
   await processPending().catch(() => undefined);
-  return { catalog, ...sales, timecards: labor.timecards };
+  // Carry on a first import nobody finished (it normally runs from the Square page).
+  const bf = await getBackfill();
+  const backfill = bf && bf.phase !== "done" ? await backfillStep(150_000).catch((e) => ({ error: (e as Error).message })) : null;
+  return { catalog, ...sales, timecards: labor.timecards, backfill: backfill && "state" in backfill ? backfill.state?.phase : backfill };
 }
 
 // ---- Near-live ------------------------------------------------------------------------

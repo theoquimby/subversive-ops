@@ -6,7 +6,7 @@ import { addDays } from "@/domain/dates";
 import { shortDate } from "@/lib/format";
 import { Check } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { ReactNode, useRef, useState, useTransition } from "react";
+import { ReactNode, useEffect, useRef, useState, useTransition } from "react";
 import type { BackfillState } from "@/server/services/square-sync";
 import { clearLog, disconnect, importStep, pasteToken, resetImport, saveLocations, startImport, testConnection } from "./actions";
 
@@ -253,6 +253,15 @@ export function BackfillPanel({ initial, connected }: { initial: BackfillState |
       setRunning(false);
     }
   };
+
+  // An import that's started but not finished carries on by itself while this page is open.
+  const auto = useRef(false);
+  useEffect(() => {
+    if (auto.current || !connected || !initial || initial.phase === "done") return;
+    auto.current = true;
+    void run(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!connected) {
     return (

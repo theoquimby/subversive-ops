@@ -5,6 +5,8 @@ import { lastWebhookSeen, squareStatus, squareStreams, squareSyncLog, squareWebh
 import { publicOrigin, SQUARE_WEBHOOK_PATH } from "@/server/services/public-url";
 import { dataCoverage, getBackfill } from "@/server/services/square-sync";
 import Link from "next/link";
+import { InstantUpdates } from "../connections/connections-client";
+import { isLocalOrigin } from "@/server/services/public-url";
 import { BackfillPanel, ClearLogButton, ConnectionActions, LocationPicker } from "./square-client";
 
 export const metadata = { title: "Square" };
@@ -37,7 +39,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
 
       {(justConnected || error) && (
         <Card role="status" className={`mb-8 p-4 text-sm ${error ? "border-bad/40 text-bad" : "border-good/40 text-good"}`}>
-          {error ? error : `Connected to ${justConnected}. Next, import your history below.`}
+          {error ? error : `Connected to ${justConnected}. Your past sales and timecards are coming in now — see First import below.`}
         </Card>
       )}
 
@@ -74,6 +76,14 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
           </div>
         </Card>
       </Section>
+
+      {status.connected && (
+        <Section help="settings.square.sync" title="Instant updates" description={webhooksOn ? undefined : "Recommended. One paste, done by whoever set up the Square app."}>
+          <Card className="space-y-4 p-5 text-[0.95rem] leading-relaxed text-ink-2">
+            <InstantUpdates on={webhooksOn} lastSeen={lastWebhook ? new Date(lastWebhook).toISOString() : null} local={isLocalOrigin(origin)} />
+          </Card>
+        </Section>
+      )}
 
       {status.locations.length > 0 && (
         <Section

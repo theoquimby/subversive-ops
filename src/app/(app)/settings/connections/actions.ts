@@ -6,12 +6,15 @@ import { db } from "@/server/db";
 import { testClaudeKey } from "@/server/integrations/claude";
 import { isEmail, sendEmail } from "@/server/integrations/email";
 import { findPlaces, type PlaceMatch } from "@/server/integrations/google-places";
-import { friendlySquareError } from "@/server/integrations/square-http";
+import { friendlySquareError, SquareError } from "@/server/integrations/square-http";
+import { ensureWebhookSubscription } from "@/server/integrations/square-webhooks";
+import { checkAccessToken } from "@/domain/squareWebhooks";
+import { isLocalOrigin, publicOrigin, SQUARE_WEBHOOK_PATH } from "@/server/services/public-url";
 import { emailForUser } from "@/server/services/notify";
 import { ensurePushKeys } from "@/server/services/push";
 import { SETTING_PLACE_ID } from "@/server/services/reviews";
 import { getSecret, getSecrets, removeSecret, setSecret } from "@/server/services/secrets";
-import { SquareNotConnectedError, testSquareConnection } from "@/server/services/square";
+import { squareEnvironment, SquareNotConnectedError, testSquareConnection } from "@/server/services/square";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -172,5 +175,35 @@ export async function turnOnPush(): Promise<{ error?: string }> {
   } catch (e) {
     console.error("turnOnPush", e);
     return { error: "Couldn't turn phone notifications on. Try again in a minute." };
+  }
+}
+
+// ---- Instant updates ------------------------------------------------------------------
+
+/**
+ * One paste turns on instant updates: the access token from Square's Credentials
+ * page is used once to create the webhook subscription, and only the signature
+ * key that comes back is kept.
+ */
+export async function turnOnInstantUpdates(raw: string): Promise<{ error?: string; created?: boolean }> {
+  await requireUser("MANAGER");
+  if (typeof raw !== "string" || raw.length > 2000) return { error: "That's far too long to be a token. Copy just the token itself." };
+  const t = checkAccessToken(raw);
+  if (!t.ok) return { error: t.error };
+  const origin = await publicOrigin();
+  const url = process.env.SQUARE_WEBHOOK_URL?.trim() || `${origin}${SQUARE_WEBHOOK_PATH}`;
+  if (isLocalOrigin(url)) return { error: "Instant updates only work on the live app, not on a test copy running on a computer." };
+  try {
+    const r = await ensureWebhookSubscription(t.value, await squareEnvironment(), url);
+    await setSecret("SQUARE_WEBHOOK_SIGNATURE_KEY", r.signatureKey);
+    await forget("square");
+    refresh();
+    revalidatePath("/settings/square");
+    return { created: r.created };
+  } catch (e) {
+    if (e instanceof SquareError && (e.status === 401 || e.status === 403)) {
+      return { error: "Square didn't accept that token. Make sure Production is picked at the top of Square's page, then copy the Access token again." };
+    }
+    return { error: friendlySquareError(e) };
   }
 }

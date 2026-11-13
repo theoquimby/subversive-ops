@@ -6,6 +6,7 @@ import { useReducedMotion } from "@/components/motion";
 import { PushToggle } from "@/components/push-toggle";
 import { Badge, Button, Card, cx, Field, Input, LinkButton, type Tone } from "@/components/ui";
 import { validateSecret, type SecretName } from "@/domain/secretFormats";
+import { checkAccessToken, SQUARE_WEBHOOK_EVENTS } from "@/domain/squareWebhooks";
 import type { SecretStatus } from "@/domain/secrets";
 import { areaStyle, type Area } from "@/lib/areas";
 import { relativeTime } from "@/lib/format";
@@ -14,7 +15,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { Chips } from "../square/square-client";
-import { findBusiness, forgetBusiness, pickBusiness, removeKey, saveKey, testAI, testEmail, testSquare, turnOnPush, type ServiceId, type TestResult } from "./actions";
+import { findBusiness, forgetBusiness, pickBusiness, removeKey, saveKey, testAI, testEmail, testSquare, turnOnInstantUpdates, turnOnPush, type ServiceId, type TestResult } from "./actions";
 import * as Art from "./illustrations";
 
 export interface ConnectionsData {
@@ -33,18 +34,7 @@ export interface ConnectionsData {
   flash: { error?: string; message?: string } | null;
 }
 
-export const SQUARE_EVENTS = [
-  "order.created",
-  "order.updated",
-  "payment.created",
-  "payment.updated",
-  "refund.created",
-  "refund.updated",
-  "labor.timecard.created",
-  "labor.timecard.updated",
-  "labor.timecard.deleted",
-  "catalog.version.updated",
-];
+export const SQUARE_EVENTS = SQUARE_WEBHOOK_EVENTS;
 
 // ---- Status ---------------------------------------------------------------------------
 
@@ -109,12 +99,15 @@ function StatusPill({ status }: { status: Status }) {
 
 export function Connections({ data }: { data: ConnectionsData }) {
   const [open, setOpen] = useState<ServiceId | null>(data.open);
+  // A finished connection opens on "manage" (what's connected, test, remove); the guide is one tap away.
+  const [guide, setGuide] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
   const pushReady = data.secrets.VAPID_PUBLIC_KEY.set && data.secrets.VAPID_PRIVATE_KEY.set;
 
   const choose = (id: ServiceId | null) => {
     setOpen(id);
+    setGuide(false);
     try {
       const u = new URL(window.location.href);
       if (id) u.searchParams.set("open", id);
@@ -135,6 +128,7 @@ export function Connections({ data }: { data: ConnectionsData }) {
   }, []);
 
   const meta = SERVICES.find((s) => s.id === open);
+  const managing = !!meta && !guide && meta.id !== "square" && statusOf(meta.id, data, pushReady).tone === "good";
 
   return (
     <>
@@ -147,7 +141,7 @@ export function Connections({ data }: { data: ConnectionsData }) {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {SERVICES.map((s) => (
           <HelpZone key={s.id} id={`settings.connections.${s.id}`} className="h-full min-w-0">
-            <ServiceTile meta={s} status={statusOf(s.id, data, pushReady)} selected={open === s.id} onOpen={() => choose(open === s.id ? null : s.id)} />
+            <ServiceTile meta={s} status={statusOf(s.id, data, pushReady)} selected={open === s.id} href={s.id === "square" && data.square.connected ? "/settings/square" : undefined} onOpen={() => choose(open === s.id ? null : s.id)} />
           </HelpZone>
         ))}
         <HelpZone id="settings.connections.more" className="h-full min-w-0">
@@ -170,7 +164,7 @@ export function Connections({ data }: { data: ConnectionsData }) {
                   <IconChip icon={meta.icon} />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-base font-semibold">{meta.guide}</h2>
+                      <h2 className="text-base font-semibold">{managing ? meta.title : meta.guide}</h2>
                       <StatusPill status={statusOf(meta.id, data, pushReady)} />
                     </div>
                     <p className="mt-0.5 text-sm text-muted">{meta.turnsOn}</p>
@@ -180,11 +174,17 @@ export function Connections({ data }: { data: ConnectionsData }) {
                   <X className="size-4" />
                 </Button>
               </div>
-              {meta.id === "square" && <SquareGuide d={data} />}
-              {meta.id === "email" && <EmailGuide d={data} />}
-              {meta.id === "push" && <PushGuide d={data} ready={pushReady} />}
-              {meta.id === "ai" && <AIGuide d={data} />}
-              {meta.id === "google" && <GoogleGuide d={data} />}
+              {managing ? (
+                <Manage id={meta.id} d={data} pushReady={pushReady} onGuide={() => setGuide(true)} />
+              ) : (
+                <>
+                  {meta.id === "square" && <SquareGuide d={data} />}
+                  {meta.id === "email" && <EmailGuide d={data} />}
+                  {meta.id === "push" && <PushGuide d={data} ready={pushReady} />}
+                  {meta.id === "ai" && <AIGuide d={data} />}
+                  {meta.id === "google" && <GoogleGuide d={data} />}
+                </>
+              )}
             </Card>
           </HelpZone>
         )}
@@ -201,7 +201,7 @@ function IconChip({ icon: Icon, area }: { icon: LucideIcon; area?: Area }) {
   );
 }
 
-function ServiceTile({ meta, status, selected, onOpen }: { meta: ServiceMeta; status: Status; selected: boolean; onOpen: () => void }) {
+function ServiceTile({ meta, status, selected, onOpen, href }: { meta: ServiceMeta; status: Status; selected: boolean; onOpen: () => void; href?: string }) {
   const done = status.tone === "good";
   return (
     <Card className={cx("flex h-full flex-col p-5 transition-[border-color,box-shadow] duration-180", selected && "border-ink/50 shadow-[0_0_0_3px_color-mix(in_oklab,var(--ink)_7%,transparent)]")} data-tour={`connections.${meta.id}`}>
@@ -214,12 +214,82 @@ function ServiceTile({ meta, status, selected, onOpen }: { meta: ServiceMeta; st
       <p className="mt-2 line-clamp-2 text-[0.8rem] text-muted">{status.detail}</p>
       <div className="mt-auto flex items-center justify-between gap-3 pt-4">
         <span className="text-xs text-muted">{done ? "" : meta.time}</span>
+        {href ? (
+          <LinkButton href={href} variant="secondary">Manage <ChevronRight className="size-4" /></LinkButton>
+        ) : (
         <Button variant={done || selected ? "secondary" : "primary"} onClick={onOpen} aria-expanded={selected}>
           {selected ? "Close" : { good: "Manage", warn: "Continue", bad: "Fix", neutral: "Set up" }[status.tone]}
           {!selected && <ChevronRight className="size-4" />}
         </Button>
+        )}
       </div>
     </Card>
+  );
+}
+
+// ---- Manage ---------------------------------------------------------------------------
+
+/** A connection that's working: what it's connected to, a test, and how to change or remove it. */
+function Manage({ id, d, pushReady, onGuide }: { id: ServiceId; d: ConnectionsData; pushReady: boolean; onGuide: () => void }) {
+  const s = d.secrets;
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  const confirm = useConfirm();
+  const status = statusOf(id, d, pushReady);
+  return (
+    <div className="space-y-5 p-5">
+      <div className="flex items-center gap-2.5 rounded-lg bg-good-bg/60 px-3.5 py-3 text-sm text-ink">
+        <span className="grid size-5 shrink-0 place-items-center rounded-full bg-good text-white"><Check className="size-3" strokeWidth={3} /></span>
+        <span className="min-w-0">{status.detail}</span>
+      </div>
+
+      {id === "email" && (
+        <>
+          <TestButton run={() => testEmail()} last={d.tests.email} label="Send a test email" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SecretField name="EMAIL_FROM" status={s.EMAIL_FROM} label="Sending from" placeholder="Name <orders@yourrestaurant.com>" sensitive={false} />
+            <SecretField name="RESEND_API_KEY" status={s.RESEND_API_KEY} label="Email service key" placeholder="re_…" hint="Starts with re_." />
+          </div>
+        </>
+      )}
+      {id === "ai" && (
+        <>
+          <TestButton run={testAI} last={d.tests.ai} />
+          <SecretField name="ANTHROPIC_API_KEY" status={s.ANTHROPIC_API_KEY} label="Claude key" placeholder="sk-ant-…" hint="Starts with sk-ant-." />
+        </>
+      )}
+      {id === "google" && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-3.5 py-3 text-sm">
+            <span className="min-w-0"><span className="text-muted">Business · </span><span className="font-medium">{d.google.placeName ?? "Picked"}</span></span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={pending}
+              onClick={async () => {
+                if (await confirm({ title: "Pick a different business?", body: "New reviews stop coming in until you pick one again. Reviews already brought in stay.", confirmLabel: "Unlink" })) {
+                  start(async () => { await forgetBusiness(); router.refresh(); });
+                }
+              }}
+            >
+              Pick a different one
+            </Button>
+          </div>
+          <SecretField name="GOOGLE_PLACES_API_KEY" status={s.GOOGLE_PLACES_API_KEY} label="Google key" placeholder="AIza…" hint="Starts with AIza, 39 characters." />
+        </>
+      )}
+      {id === "push" && (
+        <>
+          <PushToggle variant="inline" />
+          <p className="text-sm text-muted">Each person turns notifications on for their own phone — staff do it from My shifts. Choose which alerts you get under <Link href="/settings/notifications" className="text-ink underline underline-offset-2">Notifications</Link>.</p>
+        </>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4 text-sm">
+        <span className="text-muted">{id === "push" ? "Setting up a new phone?" : "Changing accounts, or need to set it up again?"}</span>
+        <Button size="sm" variant="ghost" onClick={onGuide}>Show the setup steps <ChevronRight className="size-4" /></Button>
+      </div>
+    </div>
   );
 }
 
@@ -548,6 +618,81 @@ function TestButton({ run, last, label = "Test connection", disabled, disabledNo
   );
 }
 
+/**
+ * Instant updates in one paste: the access token from Square's Credentials page
+ * is used once to subscribe the app to Square's events, and isn't kept.
+ */
+export function InstantUpdates({ on, lastSeen, local }: { on: boolean; lastSeen: string | null; local?: boolean }) {
+  const [editing, setEditing] = useState(!on);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  const id = useId();
+  const check = value.trim() ? checkAccessToken(value) : null;
+
+  const submit = (raw: string) => {
+    const t = checkAccessToken(raw);
+    if (!t.ok) return setError(t.error);
+    setError(null);
+    start(async () => {
+      const r = await turnOnInstantUpdates(raw);
+      if (r.error) return setError(r.error);
+      setValue("");
+      setEditing(false);
+      router.refresh();
+    });
+  };
+
+  if (on && !editing) {
+    return (
+      <div className="space-y-3">
+        <Note tone="good">
+          {lastSeen ? `Instant updates are on — the last one arrived ${relativeTime(new Date(lastSeen))}.` : "Instant updates are on. The first one arrives with the next sale or clock-in."}
+        </Note>
+        <Button size="sm" variant="ghost" className="px-0 hover:bg-transparent" onClick={() => setEditing(true)}>Set them up again</Button>
+      </div>
+    );
+  }
+
+  const showError = error ?? (check && !check.ok ? check.error : null);
+  return (
+    <>
+      <p>New sales and clock-ins show up within seconds instead of every 15 minutes. On Square&apos;s site press <b>Credentials</b>, press <b>Show</b> next to <b>Access token</b>, copy it and paste it here.</p>
+      <More>The app uses the token once, to ask Square to send it each sale and clock-in, and then throws it away. Without instant updates everything still works — numbers refresh every 15 minutes while the app is open and catch up overnight.</More>
+      <div>
+        <label htmlFor={id} className="mb-1 block text-[0.8rem] font-medium text-ink-2">Access token</label>
+        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); submit(value); }}>
+          <Input
+            id={id}
+            value={value}
+            onChange={(e) => { setValue(e.target.value); setError(null); }}
+            onPaste={(e) => {
+              const text = e.clipboardData.getData("text");
+              if (text && checkAccessToken(text).ok) { e.preventDefault(); setValue(text.trim()); submit(text); }
+            }}
+            placeholder="EAAA…"
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-invalid={!!showError}
+            aria-describedby={`${id}-msg`}
+            className={cx("min-w-0 flex-1 font-mono", showError && "border-bad/60 focus:border-bad")}
+            style={value ? ({ WebkitTextSecurity: "disc" } as CSSProperties) : undefined}
+            disabled={local}
+          />
+          <Button type="submit" variant="primary" disabled={pending || !check?.ok || local}>{pending ? "Turning on…" : "Turn on"}</Button>
+          {on && <Button type="button" variant="ghost" onClick={() => { setEditing(false); setValue(""); setError(null); }}>Cancel</Button>}
+        </form>
+        <p id={`${id}-msg`} role={showError ? "alert" : undefined} className={cx("mt-1.5 text-sm", showError ? "text-bad" : "text-muted")}>
+          {local ? "Only works on the live app." : showError ?? (pending ? "Setting it up with Square…" : "Starts with EAAA. It turns on by itself when you paste it.")}
+        </p>
+      </div>
+    </>
+  );
+}
+
 /** Extra detail, hidden until asked for — keeps each step to one instruction. */
 function More({ children }: { children: ReactNode }) {
   return (
@@ -678,42 +823,10 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
     {
       id: "square-instant",
       part: "p3",
-      optional: true,
-      title: "Add instant updates",
+      title: "Turn on instant updates",
       done: s.SQUARE_WEBHOOK_SIGNATURE_KEY.set,
-      art: <Art.SquareWebhook />,
-      body: (
-        <>
-          <p>On Square&apos;s site press <b>Webhooks</b> → <b>Add subscription</b>. Paste the three things below, tick the events, and press <b>Save</b>.</p>
-          <More>This is optional. Without it, numbers refresh every 15 minutes while the app is open and catch up overnight. With it, each sale and clock-in shows up within seconds. You can search for each event by name.</More>
-          <CopyChip label="Notification URL" value={d.webhookUrl} />
-          <div className="grid gap-3 sm:grid-cols-[11rem_1fr]">
-            <CopyChip label="API version" value={d.squareVersion} />
-            <CopyChip label="Name" value="Subversive Ops" />
-          </div>
-          <CopyChip label="Events to tick (10)" value={SQUARE_EVENTS.join("\n")} block />
-          {localWarn}
-        </>
-      ),
-    },
-    {
-      id: "square-signature",
-      part: "p3",
-      optional: true,
-      title: "Copy the signature key",
-      done: s.SQUARE_WEBHOOK_SIGNATURE_KEY.set,
-      art: <Art.SquareSignatureKey />,
-      body: (
-        <>
-          <p>Open the subscription you just saved, press <b>Show</b> next to <b>Signature key</b>, and paste it here.</p>
-          <SecretField name="SQUARE_WEBHOOK_SIGNATURE_KEY" status={s.SQUARE_WEBHOOK_SIGNATURE_KEY} label="Signature key" placeholder="Paste the signature key" hint="About 22 letters and numbers." />
-          {s.SQUARE_WEBHOOK_SIGNATURE_KEY.set && (
-            <Note tone={d.square.webhookSeen ? "good" : "neutral"}>
-              {d.square.webhookSeen ? `Working — the last instant update arrived ${relativeTime(new Date(d.square.webhookSeen))}.` : "Saved. The first instant update arrives with your next sale or clock-in. On Square's page you can also press Send test event."}
-            </Note>
-          )}
-        </>
-      ),
+      art: <Art.SquareCredentials />,
+      body: <InstantUpdates on={s.SQUARE_WEBHOOK_SIGNATURE_KEY.set} lastSeen={d.square.webhookSeen} local={d.local} />,
     },
   ];
   return (
@@ -722,7 +835,7 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
       parts={[
         { id: "p1", title: "Register the app · one time, for whoever set up the app", note: "" },
         { id: "p2", title: "Max connects", note: "" },
-        { id: "p3", title: "Instant updates", note: "", optional: true },
+        { id: "p3", title: "Instant updates · recommended", note: "" },
       ]}
     />
   );
