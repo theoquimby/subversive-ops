@@ -161,10 +161,13 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
           <Fragment key={e.id}>
             <tr className={cx("transition-colors hover:bg-surface-2/60", !e.active && "opacity-55")}>
               <td className={tdCell}>
-                <div className="flex items-center gap-1.5">
-                  <GridCell grid="emp" col="name" value={e.name} onSave={setEmployeeField.bind(null, e.id, "name")} ariaLabel="Name" className="min-w-28 flex-1 font-medium" />
-                  {e.isMinor && <Badge tone="warn">Minor</Badge>}
-                </div>
+                <GridCell grid="emp" col="name" value={e.name} onSave={setEmployeeField.bind(null, e.id, "name")} ariaLabel={`Name of ${e.name}`} className="min-w-28 font-medium" />
+                {/* The Minor badge sits under the name (the Minor column takes over on wide screens) so it never cuts the name off. */}
+                {e.isMinor && (
+                  <div className="px-2 pb-1 lg:hidden">
+                    <Badge tone="warn">Minor</Badge>
+                  </div>
+                )}
                 <div className="px-2 pb-1 md:hidden">
                   <PositionChips employeeId={e.id} assigned={e.positionIds} positions={positions} />
                 </div>
@@ -245,7 +248,7 @@ function PositionChips({ employeeId, assigned, positions }: { employeeId: string
             aria-label={`Remove ${p.name}`}
             disabled={pending}
             onClick={() => start(async () => { await removeEmployeePosition(employeeId, p.id); })}
-            className="grid size-6 place-items-center rounded text-muted hover:bg-surface hover:text-ink"
+            className="relative grid size-6 place-items-center rounded text-muted after:absolute after:-inset-2 after:content-[''] hover:bg-surface hover:text-ink"
           >
             <X className="size-3" />
           </button>

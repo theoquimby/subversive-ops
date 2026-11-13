@@ -138,12 +138,13 @@ function UrlCommands() {
   const pathname = usePathname();
   useEffect(() => {
     const help = params.get("help");
-    const tour = params.get("tour");
+    // /help?tour= is handled by the help center, which only starts tours the user's role may take.
+    const tour = pathname === "/help" ? null : params.get("tour");
     if (!help && !tour) return;
     if (help) setHelpMode(help !== "0");
     const rest = new URLSearchParams(params);
     rest.delete("help");
-    rest.delete("tour");
+    if (tour) rest.delete("tour");
     // Strip the command from the URL without a navigation (which would race the tour's own).
     window.history.replaceState(null, "", `${pathname}${rest.size ? `?${rest}` : ""}`);
     if (tour) startTour(tour);
@@ -229,7 +230,7 @@ export function HelpTip({ id, placement = "top", className, label }: { id: strin
         aria-label={label ?? `Help: ${entry.title}`}
         className={clsx(
           "relative inline-grid size-4 shrink-0 place-items-center rounded-full align-[-0.15em] text-muted/80 transition-colors hover:text-ink focus-visible:text-ink",
-          "after:absolute after:-inset-3 after:content-['']", // ≥40px touch target without taking space
+          "after:absolute after:-inset-x-2 after:-inset-y-3 after:content-['']", // 40px-tall touch target; narrower sideways so it never widens a table
           open && "text-ink",
           className,
         )}

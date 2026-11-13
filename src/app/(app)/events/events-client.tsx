@@ -23,6 +23,17 @@ export interface EventRowView {
   lift?: { lift: number | null; actual: number; baseline: number } | null;
 }
 
+/** "Add more dates for …" hint, in words that fit the kind of event. */
+const MORE_DATES: Record<string, string> = {
+  GAME: "every home game",
+  FESTIVAL: "each festival day",
+  MUSIC: "each show",
+  PRIVATE: "each booking",
+  CLOSURE: "each day you're closed",
+  HOLIDAY: "each holiday",
+  OTHER: "each date it happens",
+};
+
 const pctText = (m: number) => {
   const p = Math.round((m - 1) * 100);
   return p > 0 ? `+${p}` : String(p);
@@ -93,7 +104,7 @@ export function QuickAdd({ today }: { today: string }) {
         {dates.map((d) => (
           <span key={d} className="inline-flex h-8 items-center gap-1 rounded-lg bg-surface-2 pr-1 pl-2.5 text-sm">
             {dayDate(d)}
-            <button type="button" onClick={() => setDates(dates.filter((x) => x !== d))} className="rounded p-1 text-muted hover:text-ink" aria-label={`Remove ${d}`}>
+            <button type="button" onClick={() => setDates(dates.filter((x) => x !== d))} className="rounded p-1 text-muted hover:text-ink" aria-label={`Remove ${dayDate(d)}`}>
               <X className="size-3.5" />
             </button>
           </span>
@@ -108,7 +119,7 @@ export function QuickAdd({ today }: { today: string }) {
             }}
           />
         </div>
-        <span className="text-xs text-muted">{dates.length === 0 ? "Pick one or more dates" : "Add more dates for every home game"}</span>
+        <span className="text-xs text-muted">{dates.length === 0 ? "Pick one or more dates" : `Add more dates for ${MORE_DATES[kind] ?? "each date it happens"}`}</span>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem_auto] sm:items-center">
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes for the website (optional)" aria-label="Notes" />
@@ -147,7 +158,7 @@ export function EventsGrid({ rows, grid, past = false }: { rows: EventRowView[];
             <th className="hidden border-b border-border px-3 py-2.5 font-medium lg:table-cell">Ends</th>
             <th className="border-b border-border px-3 py-2.5 text-right font-medium">Impact</th>
             {past && <th className="hidden border-b border-border px-3 py-2.5 text-right font-medium whitespace-nowrap sm:table-cell">vs usual</th>}
-            <th className="hidden border-b border-border px-3 py-2.5 font-medium xl:table-cell">Notes</th>
+            <th className={cx("hidden border-b border-border px-3 py-2.5 font-medium", past ? "2xl:table-cell" : "xl:table-cell")}>Notes</th>
             <th className="w-10 border-b border-border" />
           </tr>
         </thead>
@@ -167,10 +178,10 @@ export function EventsGrid({ rows, grid, past = false }: { rows: EventRowView[];
                 <td className="hidden w-40 border-b border-border px-1 py-1.5 sm:table-cell">
                   <GridSelect value={r.kind} options={KIND_OPTIONS} onSave={save("kind")} ariaLabel={`Kind of ${r.title}`} />
                 </td>
-                <td className="hidden w-24 border-b border-border px-1 py-1.5 md:table-cell">
+                <td className="hidden w-28 min-w-[6.5rem] border-b border-border px-1 py-1.5 md:table-cell">
                   <GridCell grid={grid} col="start" value={displayTime(r.startTime)} placeholder="—" onSave={save("startTime")} ariaLabel={`Start of ${r.title}`} />
                 </td>
-                <td className="hidden w-24 border-b border-border px-1 py-1.5 lg:table-cell">
+                <td className="hidden w-28 min-w-[6.5rem] border-b border-border px-1 py-1.5 lg:table-cell">
                   <GridCell grid={grid} col="end" value={displayTime(r.endTime)} placeholder="—" onSave={save("endTime")} ariaLabel={`End of ${r.title}`} />
                 </td>
                 <td className="w-24 border-b border-border px-1 py-1.5 text-right">
@@ -191,7 +202,7 @@ export function EventsGrid({ rows, grid, past = false }: { rows: EventRowView[];
                     )}
                   </td>
                 )}
-                <td className="hidden min-w-48 border-b border-border px-1 py-1.5 xl:table-cell">
+                <td className={cx("hidden min-w-48 border-b border-border px-1 py-1.5", past ? "2xl:table-cell" : "xl:table-cell")}>
                   <GridCell grid={grid} col="notes" value={r.notes ?? ""} placeholder="Add a note" onSave={save("notes")} ariaLabel={`Notes for ${r.title}`} />
                 </td>
                 <td className="border-b border-border pr-2 text-right">

@@ -73,7 +73,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
     <>
       <PageHeader title={ing.name} description={`${ing.category} · ${ing.storageArea}`} back={{ href: "/ingredients", label: "Ingredients" }} />
       <div className="grid gap-6 lg:grid-cols-5">
-        <div className="space-y-6 lg:col-span-3">
+        <div className="min-w-0 space-y-6 lg:col-span-3">
           <Section title={<span className="inline-flex items-center gap-1.5">Bought as <HelpTip id="ingredients.boughtAs" /></span>} description="Supplier products linked to this ingredient. The starred one sets the cost." className="mb-0">
             {ing.products.length === 0 ? (
               <Card className="p-5 text-sm text-muted">Not linked to any supplier product yet. Link one from <Link href="/prices?filter=unlinked" className="text-ink underline">Prices</Link>.</Card>
@@ -87,7 +87,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
                     <div key={p.id} className="p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2 text-sm font-medium">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium break-words">
                             {p.description}
                             {isPreferred && ing.products.length > 1 && <Badge tone="good">Sets cost</Badge>}
                           </div>
@@ -99,18 +99,20 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
                         </div>
                       </div>
                       <form action={setPackSize.bind(null, p.id)} className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                        <span className="text-muted">1</span>
-                        <Input name="purchaseUnit" defaultValue={p.purchaseUnit} className="h-8 w-20" aria-label="Purchase unit" />
-                        <span className="text-muted">=</span>
-                        <Input name="amount" type="number" step="any" min={0} defaultValue={pack ? Number((pack / (base === "g" ? 453.59237 : base === "ml" ? 3785.411784 : 1)).toFixed(3)) : ""} placeholder="?" className="num h-8 w-24 text-right" aria-label="Pack amount" />
-                        <Select name="unit" defaultValue={base === "g" ? "lb" : base === "ml" ? "gal" : "each"} className="h-8 w-24" aria-label="Pack unit">
-                          {units.map((u) => <option key={u}>{u}</option>)}
-                        </Select>
-                        <Button size="sm">Save pack</Button>
+                        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+                          <span className="text-muted">1</span>
+                          <Input name="purchaseUnit" defaultValue={p.purchaseUnit} className="h-10 min-w-0 flex-1 sm:h-8 sm:w-20 sm:flex-none" aria-label="Purchase unit" />
+                          <span className="text-muted">=</span>
+                          <Input name="amount" type="number" step="any" min={0} defaultValue={pack ? Number((pack / (base === "g" ? 453.59237 : base === "ml" ? 3785.411784 : 1)).toFixed(3)) : ""} placeholder="?" className="num h-10 min-w-0 flex-1 text-right sm:h-8 sm:w-24 sm:flex-none" aria-label="Pack amount" />
+                          <Select name="unit" defaultValue={base === "g" ? "lb" : base === "ml" ? "gal" : "each"} className="h-10 w-24 shrink-0 sm:h-8" aria-label="Pack unit">
+                            {units.map((u) => <option key={u}>{u}</option>)}
+                          </Select>
+                        </div>
+                        <Button size="sm" className="h-10 sm:h-8">Save pack</Button>
                         {!pack && <span className="inline-flex items-center gap-1.5"><Badge tone="warn">Pack size needed for costing</Badge><HelpTip id="ingredients.packSize" /></span>}
                         <span className="ml-auto flex gap-1">
-                          {!isPreferred && <Button size="sm" variant="ghost" formAction={setPreferredProduct.bind(null, ing.id, p.id)}>Use for cost</Button>}
-                          <Button size="sm" variant="ghost" formAction={unlinkProduct.bind(null, ing.id, p.id)}>Unlink</Button>
+                          {!isPreferred && <Button size="sm" variant="ghost" className="h-10 sm:h-8" formAction={setPreferredProduct.bind(null, ing.id, p.id)}>Use for cost</Button>}
+                          <Button size="sm" variant="ghost" className="h-10 sm:h-8" formAction={unlinkProduct.bind(null, ing.id, p.id)}>Unlink</Button>
                         </span>
                       </form>
                     </div>
@@ -129,24 +131,26 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
               {ing.conversions.map((c) => (
                 <form key={c.id} action={removeConversion.bind(null, ing.id, c.id)} className="flex items-center justify-between px-4 py-2.5 text-sm">
                   <span>1 {c.unit} <span className="text-muted">=</span> <span className="num">{formatBase(c.baseQty.toNumber(), base)}</span></span>
-                  <Button size="sm" variant="ghost">Remove</Button>
+                  <Button size="sm" variant="ghost" className="h-10 sm:h-8">Remove</Button>
                 </form>
               ))}
               <form action={addConversion.bind(null, ing.id)} className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
-                <span className="text-muted">1</span>
-                <Input name="unit" placeholder="slice" className="h-8 w-28" required aria-label="Unit name" />
-                <span className="text-muted">=</span>
-                <Input name="amount" type="number" step="any" min={0} placeholder="21" className="num h-8 w-24 text-right" required aria-label="Amount" />
-                <Select name="amountUnit" defaultValue={base} className="h-8 w-24" aria-label="Amount unit">
-                  {STANDARD_UNITS_BY_BASE[base].map((u) => <option key={u}>{u}</option>)}
-                </Select>
-                <Button size="sm">Add unit</Button>
+                <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+                  <span className="text-muted">1</span>
+                  <Input name="unit" placeholder="slice" className="h-10 min-w-0 flex-1 sm:h-8 sm:w-28 sm:flex-none" required aria-label="Unit name" />
+                  <span className="text-muted">=</span>
+                  <Input name="amount" type="number" step="any" min={0} placeholder="21" className="num h-10 min-w-0 flex-1 text-right sm:h-8 sm:w-24 sm:flex-none" required aria-label="Amount" />
+                  <Select name="amountUnit" defaultValue={base} className="h-10 w-24 shrink-0 sm:h-8" aria-label="Amount unit">
+                    {STANDARD_UNITS_BY_BASE[base].map((u) => <option key={u}>{u}</option>)}
+                  </Select>
+                </div>
+                <Button size="sm" className="h-10 w-full sm:h-8 sm:w-auto">Add unit</Button>
               </form>
             </Card>
           </Section>
         </div>
 
-        <div className="space-y-6 lg:col-span-2">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           <Card className="p-5"><IngredientForm v={form} units={units} categories={categories.map((c) => c.category)} areas={areas.map((a) => a.storageArea)} /></Card>
           <Card className="p-5">
             <h2 className="text-sm font-semibold">Used in</h2>

@@ -85,7 +85,8 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
   return (
     <>
       <PageHeader title={recipe?.name ?? "New recipe"} back={{ href: `/menu?kind=${initial.kind}`, label: "Menu costs" }} />
-      <RecipeEditor initial={initial} catalog={catalog} />
+      {/* Remount after a save so the editor starts clean from what was stored (line ids change on save). */}
+      <RecipeEditor key={JSON.stringify(initial)} initial={initial} catalog={catalog} />
       {recipe && (
         <HelpZone id="menu.editor.history" tour="menu.history">
         <Section title="Plate cost over time" description="Weekly, last six months — recalculated from price history">

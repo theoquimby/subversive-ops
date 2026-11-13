@@ -10,7 +10,7 @@ export const metadata = { title: "Square" };
 // The first-import steps run as server actions from this page.
 export const maxDuration = 60;
 
-const SOURCE_LABEL = { oauth: "Signed in with Square", token: "Personal access token", env: "Environment variables" } as const;
+const SOURCE_LABEL = { oauth: "Signed in with Square", token: "Personal access token", env: "Hosting settings" } as const;
 const STREAMS = [
   { id: "catalog", label: "Menu (catalog)", unit: "items" },
   { id: "sales", label: "Sales", unit: "orders" },
@@ -53,7 +53,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
                   : "Connect the restaurant's Square account so sales, the menu and timecards flow in."}
               </div>
               {status.source === "env" && (
-                <div className="mt-1 text-sm text-muted">Using SQUARE_ACCESS_TOKEN from the hosting settings. Connect with Square here to manage it from the app instead.</div>
+                <div className="mt-1 text-sm text-muted">Connected through the hosting settings. Connect with Square here to manage it from the app instead.</div>
               )}
             </div>
             <div className="flex items-center gap-2">

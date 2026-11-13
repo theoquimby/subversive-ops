@@ -9,19 +9,21 @@ const GROUPS = [
   { value: "beverage", label: "Beverage" },
 ] as const;
 
-export function PeriodPicker({ points, start, end, group }: { points: { id: string; label: string }[]; start: string; end: string; group: string }) {
+export function PeriodPicker({ points, start, end, group }: { points: { id: string; label: string; hint?: string }[]; start: string; end: string; group: string }) {
   const router = useRouter();
   const go = (s: string, e: string, g = group) => router.push(`/variance?start=${s}&end=${e}${g !== "all" ? `&group=${g}` : ""}`);
+  const options = points.map((p) => ({ value: p.id, label: p.label, hint: p.hint }));
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm">
-      <div className="flex w-full items-center gap-2 sm:w-auto">
-        <Select value={start} onChange={(e) => go(e.target.value, end)} className="min-w-0 flex-1 sm:w-60 sm:flex-none" aria-label="From count">
-          {points.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-        </Select>
-        <span className="text-muted">→</span>
-        <Select value={end} onChange={(e) => go(start, e.target.value)} className="min-w-0 flex-1 sm:w-60 sm:flex-none" aria-label="To count">
-          {points.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-        </Select>
+    <div className="flex flex-wrap items-end gap-2 text-sm">
+      <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+        <label className="min-w-0">
+          <span className="mb-1 block text-xs text-muted">From count</span>
+          <Select value={start} onChange={(e) => go(e.target.value, end)} options={options} className="w-full sm:w-52" aria-label="From count" />
+        </label>
+        <label className="min-w-0">
+          <span className="mb-1 block text-xs text-muted">To count</span>
+          <Select value={end} onChange={(e) => go(start, e.target.value)} options={options} className="w-full sm:w-52" aria-label="To count" />
+        </label>
       </div>
       <div role="tablist" aria-label="Food or beverage" className="grid w-full grid-cols-3 gap-0.5 rounded-lg border border-border-strong bg-surface p-0.5 sm:ml-2 sm:inline-flex sm:w-auto">
         {GROUPS.map((g) => (

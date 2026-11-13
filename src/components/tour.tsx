@@ -282,6 +282,9 @@ function TourOverlay({ tour, state }: { tour: Tour; state: Active }) {
   const step = tour.steps[state.index];
   const reduced = useMedia("(prefers-reduced-motion: reduce)");
   const phone = useMedia("(max-width: 639px)");
+  // Below lg the app has bottom tabs and no sidebar (and usually no keyboard): use the touch copy.
+  const touch = useMedia("(max-width: 1023px)");
+  const copy = { title: (touch && step.touch?.title) || step.title, body: (touch && step.touch?.body) || step.body };
   const [phase, setPhase] = useState<Phase>("waiting");
   const [box, setBox] = useState<Box | null>(null);
   const [animate, setAnimate] = useState(false);
@@ -459,7 +462,7 @@ function TourOverlay({ tour, state }: { tour: Tour; state: Active }) {
           }}
           role="dialog"
           aria-modal="false"
-          aria-label={`${tour.title} tour, step ${state.index + 1} of ${tour.steps.length}: ${step.title}`}
+          aria-label={`${tour.title} tour, step ${state.index + 1} of ${tour.steps.length}: ${copy.title}`}
           tabIndex={-1}
           style={!docked && !centered ? floatingStyles : undefined}
           className={clsx(
@@ -483,8 +486,8 @@ function TourOverlay({ tour, state }: { tour: Tour; state: Active }) {
               </button>
             </div>
           </div>
-          <h2 className="text-[0.95rem] font-semibold tracking-tight">{step.title}</h2>
-          <p className="mt-1 text-sm leading-relaxed text-ink-2">{step.body}</p>
+          <h2 className="text-[0.95rem] font-semibold tracking-tight">{copy.title}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-ink-2">{copy.body}</p>
           <div className="mt-4 flex items-center justify-between gap-2">
             <div className="flex items-center gap-3">
               {!last && (

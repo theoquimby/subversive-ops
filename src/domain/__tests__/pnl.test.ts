@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addInputs, costTone, gapTone, hourlyShape, mondayOf, periodRange, projectClose, proratedBudget, salesTone, splitCents, summarize, theoreticalByDay, toCsv } from "../pnl";
+import { addInputs, countsToward, rollupKpis, costTone, gapTone, hourlyShape, mondayOf, periodRange, projectClose, proratedBudget, salesTone, splitCents, summarize, theoreticalByDay, toCsv } from "../pnl";
 
 describe("periodRange", () => {
   const today = "2026-11-13"; // Friday
@@ -135,5 +135,40 @@ describe("theoreticalByDay", () => {
     expect(byDay.get("2026-11-06")!.food.sales).toBe(199);
     expect(byDay.get("2026-11-06")!.beer).toEqual({ sales: 160, cogs: 24 });
     expect([...uncosted]).toEqual(["mystery"]);
+  });
+});
+
+describe("rollupKpis", () => {
+  const today = "2026-11-13";
+  const split = (foodSales: number, foodCogs: number, bevSales = 0, bevCogs = 0) => ({
+    food: { sales: foodSales, cogs: foodCogs },
+    beer: { sales: bevSales, cogs: bevCogs },
+    otherBev: { sales: 0, cogs: 0 },
+    retail: { sales: 0, cogs: 0 },
+  });
+  const days = [
+    { date: "2026-11-11", sales: 1000, cogs: 300, labor: 250, laborHours: 10, orders: null, split: split(600, 180, 400, 120), salesSynced: true },
+    { date: "2026-11-12", sales: 1000, cogs: 300, labor: 350, laborHours: 14, orders: null, split: split(600, 180, 400, 120), salesSynced: true },
+    { date: today, sales: 0, cogs: 0, labor: 353, laborHours: 12, orders: null, split: split(0, 0), salesSynced: false },
+  ];
+  it("leaves today out unless asked, so a half-finished day doesn't skew the week", () => {
+    expect(countsToward("2026-11-12", today, false)).toBe(true);
+    expect(countsToward(today, today, false)).toBe(false);
+    expect(countsToward(today, today, true)).toBe(true);
+    expect(countsToward("2026-11-14", today, true)).toBe(false);
+    const week = rollupKpis(days, today, false);
+    expect(week.counted).toEqual(["2026-11-11", "2026-11-12"]);
+    expect(week.partial).toBe(false);
+    expect(week.laborPct).toBeCloseTo(0.3);
+    const withToday = rollupKpis(days, today, true);
+    expect(withToday.partial).toBe(true);
+    expect(withToday.total.labor).toBeCloseTo(953);
+  });
+  it("defines food cost as % of food sales, separate from all-COGS %", () => {
+    const k = rollupKpis(days, today, false);
+    expect(k.foodPct).toBeCloseTo(0.3);
+    expect(k.beveragePct).toBeCloseTo(0.3);
+    expect(k.cogsPct).toBeCloseTo(0.3);
+    expect(k.primePct).toBeCloseTo(0.6);
   });
 });

@@ -73,7 +73,7 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
                     <div className="flex items-center gap-1">
                       <GridCell grid="ing" col="name" value={i.name} onSave={setIngredientField.bind(null, i.id, "name")} ariaLabel="Name" className="flex-1 font-medium" />
                       {!i.preferredProduct && <Badge tone="warn" className="hidden sm:inline-flex">No supplier</Badge>}
-                      <Link href={`/ingredients/${i.id}`} className="rounded-md p-1.5 text-muted hover:bg-surface-2 hover:text-ink" aria-label={`Open ${i.name}`}>
+                      <Link href={`/ingredients/${i.id}`} className="relative rounded-md p-1.5 text-muted after:absolute after:-inset-1.5 after:content-[''] hover:bg-surface-2 hover:text-ink" aria-label={`Open ${i.name}`}>
                         <ArrowUpRight className="size-4" />
                       </Link>
                     </div>

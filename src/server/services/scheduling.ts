@@ -192,6 +192,7 @@ function complianceFor(shifts: ShiftView[], employees: EmployeeView[], positions
       breakMinutes: s.breakMinutes,
       rate: s.employeeId ? rateFor(emps.get(s.employeeId), s.positionId, pos) : null,
       tipped: pos.get(s.positionId)?.tipped ?? false,
+      day: s.date,
     })),
     employees.map((e) => ({ id: e.id, name: e.name, isMinor: e.isMinor, maxHoursWeek: e.maxHoursWeek })),
     rules,

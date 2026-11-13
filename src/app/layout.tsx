@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
+import { env } from "@/server/env";
 
 export const metadata: Metadata = {
   title: { default: "Subversive Ops", template: "%s · Subversive Ops" },
@@ -9,6 +10,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
   icons: { apple: "/icons/apple-touch-icon.png" },
   appleWebApp: { capable: true, title: "Subversive Ops", statusBarStyle: "default" },
+  // Read by client components (date picker "Today") so they use the business date, not the browser's.
+  other: { "business-tz": env.BUSINESS_TIMEZONE },
 };
 
 export const viewport: Viewport = {

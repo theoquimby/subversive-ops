@@ -10,19 +10,30 @@ import { menuCosts } from "@/server/services/insights";
 import { db } from "@/server/db";
 import Link from "next/link";
 import { HelpTip, HelpZone } from "@/components/help";
+import { archivedLabel, baseName } from "./archive-name";
+import { RestoreButton } from "./restore-button";
 
 export const metadata = { title: "Menu costs" };
 
+const KIND_LABEL: Record<string, string> = { MENU: "Menu item", MODIFIER: "Add-on", PREP: "Prep recipe" };
+
 const TABS = [
-  { kind: "MENU", label: "Menu items" },
-  { kind: "MODIFIER", label: "Add-ons" },
-  { kind: "PREP", label: "Prep recipes" },
+  { kind: "MENU", label: "Menu items", short: "Menu" },
+  { kind: "MODIFIER", label: "Add-ons", short: "Add-ons" },
+  { kind: "PREP", label: "Prep recipes", short: "Prep" },
 ] as const;
 
 export default async function MenuPage({ searchParams }: { searchParams: Promise<{ kind?: string }> }) {
   await requireUser("MANAGER");
   const { kind = "MENU" } = await searchParams;
-  const [{ rows }, noLines, cls, targets] = await Promise.all([menuCosts(), db.recipe.findMany({ where: { lines: { none: {} } }, select: { id: true } }), classSettings(), costTargets()]);
+  const [{ rows }, noLines, cls, targets, archived] = await Promise.all([
+    menuCosts(),
+    db.recipe.findMany({ where: { lines: { none: {} } }, select: { id: true } }),
+    classSettings(),
+    costTargets(),
+    db.recipe.findMany({ where: { active: false }, select: { id: true, name: true, kind: true, category: true }, orderBy: { name: "asc" } }),
+  ]);
+  const isArchived = kind === "ARCHIVED";
   // Every category in use (menu items and add-ons), with the class it maps to.
   const categories = [...new Map(rows.filter((r) => r.kind !== "PREP").map((r) => [normalizeCategory(r.category), r.category])).values()]
     .sort((a, b) => a.localeCompare(b))
@@ -39,19 +50,52 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
         actions={
           <>
             <LinkButton href="/menu/draft-beer" data-tour="menu.draft-beer-link">Draft beer</LinkButton>
-            <LinkButton href={`/menu/new?kind=${kind}`} variant="primary">New recipe</LinkButton>
+            <LinkButton href={`/menu/new?kind=${isArchived ? "MENU" : kind}`} variant="primary">New recipe</LinkButton>
           </>
         }
       />
-      <HelpZone id="menu.tabs" tour="menu.tabs" className="mb-5 flex gap-1 border-b border-border">
+      <HelpZone id="menu.tabs" tour="menu.tabs" className="mb-5 flex gap-0.5 overflow-x-auto border-b border-border sm:gap-1">
         {TABS.map((t) => (
-          <Link key={t.kind} href={`/menu?kind=${t.kind}`} className={cx("-mb-px border-b-2 px-3 pb-2.5 text-sm", t.kind === kind ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink")}>
-            {t.label} <span className="num ml-1 text-muted">{rows.filter((r) => r.kind === t.kind).length}</span>
+          <Link key={t.kind} href={`/menu?kind=${t.kind}`} className={cx("-mb-px shrink-0 border-b-2 px-2 pb-2.5 text-sm whitespace-nowrap sm:px-3", t.kind === kind ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink")}>
+            <span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.label}</span> <span className="num ml-1 text-muted">{rows.filter((r) => r.kind === t.kind).length}</span>
           </Link>
         ))}
+        {(archived.length > 0 || isArchived) && (
+          <Link href="/menu?kind=ARCHIVED" className={cx("-mb-px ml-auto shrink-0 border-b-2 px-2 pb-2.5 text-sm whitespace-nowrap sm:px-3", isArchived ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink")}>
+            Archived <span className="num ml-1 text-muted">{archived.length}</span>
+          </Link>
+        )}
       </HelpZone>
 
-      {list.length === 0 ? (
+      {isArchived ? (
+        archived.length === 0 ? (
+          <EmptyState title="Nothing archived">Archived recipes show up here so you can bring them back.</EmptyState>
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <Th>Name</Th>
+                <Th className="hidden sm:table-cell">Type</Th>
+                <Th className="hidden sm:table-cell">Archived</Th>
+                <Th align="right"><span className="sr-only">Restore</span></Th>
+              </tr>
+            </thead>
+            <tbody>
+              {archived.map((r) => (
+                <Tr key={r.id}>
+                  <Td>
+                    <div className="font-medium">{baseName(r.name)}</div>
+                    <div className="text-xs text-muted sm:hidden">{KIND_LABEL[r.kind]}{archivedLabel(r.name) ? ` · archived ${archivedLabel(r.name)}` : ""}</div>
+                  </Td>
+                  <Td className="hidden text-muted sm:table-cell">{KIND_LABEL[r.kind]} · {r.category}</Td>
+                  <Td className="hidden text-muted sm:table-cell">{archivedLabel(r.name) ?? "—"}</Td>
+                  <Td align="right" className="py-2"><RestoreButton id={r.id} name={baseName(r.name)} /></Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+        )
+      ) : list.length === 0 ? (
         <EmptyState title="Nothing here yet" action={<LinkButton href={`/menu/new?kind=${kind}`}>Add one</LinkButton>}>
           {isPrep ? "Prep recipes are sauces, doughs and batches used inside menu items." : "Add a recipe to see its plate cost."}
         </EmptyState>
@@ -62,10 +106,10 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
             <tr>
               <Th>Name</Th>
               <Th className="hidden sm:table-cell">Category</Th>
-              {!isPrep && <Th align="right" className="w-28">Price</Th>}
-              <Th align="right">{isPrep ? "Batch cost" : "Cost"}</Th>
+              {!isPrep && <Th align="right" className="w-24 px-2 sm:w-28 sm:px-4">Price</Th>}
+              <Th align="right" className={isPrep ? undefined : "hidden sm:table-cell"}>{isPrep ? "Batch cost" : "Cost"}</Th>
               <Th align="right" className="hidden md:table-cell"><span className="inline-flex items-center gap-1">30 days <HelpTip id="menu.list.change" /></span></Th>
-              {!isPrep && <Th align="right"><span className="inline-flex items-center gap-1">Food cost / target <HelpTip id="menu.list.target" /></span></Th>}
+              {!isPrep && <Th align="right" className="pr-4 pl-2 sm:pl-4"><span className="inline-flex items-center gap-1"><span className="sm:hidden">Food cost</span><span className="hidden sm:inline">Food cost / target</span> <HelpTip id="menu.list.target" /></span></Th>}
             </tr>
           </thead>
           <tbody>
@@ -74,7 +118,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
               const over = r.foodCostPct != null && r.foodCostPct > r.target;
               return (
                 <Tr key={r.id}>
-                  <Td>
+                  <Td className="pr-2 sm:pr-4">
                     <Link href={`/menu/${r.id}`} data-tour="menu.recipe-link" className="font-medium hover:underline">{r.name}</Link>
                     {needsIngredients.has(r.id) ? (
                       <Badge tone="warn" className="ml-2">Needs ingredients</Badge>
@@ -84,20 +128,21 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
                   </Td>
                   <Td className="hidden text-muted sm:table-cell">{r.category}{!isPrep && r.cls !== "food" && <Badge className="ml-2">{classLabel(r.cls)}</Badge>}</Td>
                   {!isPrep && (
-                    <td className="border-b border-border px-2 py-1 [tr:last-child_&]:border-b-0">
+                    <td className="border-b border-border px-1 py-1 sm:px-2 [tr:last-child_&]:border-b-0">
                       <GridCell grid="menu" col="price" type="number" prefix="$" decimals={2} value={r.menuPrice} onSave={setRecipeField.bind(null, r.id, "menuPrice")} ariaLabel={`${r.name} price`} />
                     </td>
                   )}
-                  <Td align="right">{money(r.cost)}</Td>
+                  <Td align="right" className={isPrep ? undefined : "hidden sm:table-cell"}>{money(r.cost)}</Td>
                   <Td align="right" className={cx("hidden md:table-cell", change == null || Math.abs(change) < 0.001 ? "text-muted" : change > 0 ? "text-bad" : "text-good")}>
                     {change == null || Math.abs(change) < 0.001 ? "—" : signedPct(change)}
                   </Td>
                   {!isPrep && (
-                    <td className="border-b border-border px-2 py-1 [tr:last-child_&]:border-b-0">
-                      <div className="flex items-center justify-end gap-1">
+                    <td className="border-b border-border py-1 pr-4 pl-2 sm:px-2 [tr:last-child_&]:border-b-0">
+                      <div className="flex items-center justify-end gap-1 whitespace-nowrap">
                         <span className={cx("num text-sm font-medium", over ? "text-bad" : "text-ink")}>{pct(r.foodCostPct)}</span>
-                        <span className="text-xs text-muted">of</span>
-                        <GridCell grid="menu" col="target" type="number" suffix="%" value={Math.round(r.target * 100)} onSave={setRecipeField.bind(null, r.id, "targetFoodCostPct")} ariaLabel={`${r.name} target food cost`} className="w-16" />
+                        <span className="text-xs whitespace-nowrap text-muted sm:hidden">/ {pct(r.target, 0)}</span>
+                        <span className="hidden text-xs text-muted sm:inline">of</span>
+                        <GridCell grid="menu" col="target" type="number" suffix="%" value={Math.round(r.target * 100)} onSave={setRecipeField.bind(null, r.id, "targetFoodCostPct")} ariaLabel={`${r.name} target food cost`} className="hidden w-16 sm:block" />
                       </div>
                     </td>
                   )}
@@ -109,7 +154,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
         </HelpZone>
       )}
 
-      {!isPrep && categories.length > 0 && (
+      {!isPrep && !isArchived && categories.length > 0 && (
         <HelpZone id="menu.classes" tour="menu.classes" className="mt-10">
           <Section
             title={<span className="inline-flex items-center gap-1.5">Food and drink <HelpTip id="menu.classes" /></span>}

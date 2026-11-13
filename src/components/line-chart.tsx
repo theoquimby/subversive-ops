@@ -14,12 +14,15 @@ export function LineChart({
   valueFormat = "money",
   height = 180,
   ariaLabel,
+  domain,
 }: {
   points: { x: string; y: number | null }[];
   /** Server components can't pass functions to client components, so formats are named. */
   valueFormat?: keyof typeof FORMATS;
   height?: number;
   ariaLabel: string;
+  /** Fixed y-axis range (e.g. [1, 5] for star ratings); default fits the data. */
+  domain?: [number, number];
 }) {
   const id = useId();
   const format = FORMATS[valueFormat];
@@ -27,7 +30,8 @@ export function LineChart({
   const [hover, setHover] = useState<number | null>(null);
   // Render at the container's real pixel width so text stays 11px at any size.
   const ref = useRef<HTMLDivElement>(null);
-  const [W, setW] = useState(640);
+  // Start small so the first render never stretches its container; the observer sizes it.
+  const [W, setW] = useState(320);
   useEffect(() => {
     if (!ref.current) return;
     const ro = new ResizeObserver(([e]) => setW(Math.max(280, Math.round(e.contentRect.width))));
@@ -46,12 +50,13 @@ export function LineChart({
     const span = max - min || Math.max(Math.abs(max) * 0.1, 0.01);
     min = Math.max(0, min - span * 0.25);
     max = max + span * 0.25;
+    if (domain) [min, max] = domain;
     const scaleX = (i: number) => pad.left + (i / Math.max(1, points.length - 1)) * (W - pad.left - pad.right);
     const scaleY = (v: number) => pad.top + (1 - (v - min) / (max - min)) * (H - pad.top - pad.bottom);
     const path = valid.map((p, k) => `${k ? "L" : "M"}${scaleX(p.i).toFixed(1)},${scaleY(p.y).toFixed(1)}`).join(" ");
     const ticks = [0, 0.5, 1].map((t) => min + (max - min) * t);
     return { path, scaleX, scaleY, ticks, valid };
-  }, [points, W, H, pad.left, pad.right, pad.top, pad.bottom]);
+  }, [points, W, H, pad.left, pad.right, pad.top, pad.bottom, domain]);
 
   if (valid.length < 2) return <div ref={ref} className="grid h-24 place-items-center text-sm text-muted">Not enough price history yet.</div>;
 
@@ -59,7 +64,7 @@ export function LineChart({
   const step = (W - pad.left - pad.right) / Math.max(1, points.length - 1);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative w-full min-w-0" ref={ref}>
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block" role="img" aria-label={ariaLabel} onMouseLeave={() => setHover(null)}>
         {ticks.map((t) => (
           <g key={t}>

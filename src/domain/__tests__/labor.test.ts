@@ -37,6 +37,55 @@ describe("checkCompliance", () => {
   });
 });
 
+describe("checkCompliance: same-day shifts (QA 2026-11-13)", () => {
+  const emps = [{ id: "a", name: "Ann", isMinor: false, maxHoursWeek: null }, { id: "sam", name: "Sam Whit", isMinor: true, maxHoursWeek: null }];
+  const hour = (d: Date) => d.getUTCHours();
+  it("does not apply the rest rule to back-to-back or split shifts on one business day", () => {
+    const v = checkCompliance(
+      [
+        { id: "lunch", employeeId: "a", start: at(10, 11), end: at(10, 15), breakMinutes: 0, day: "2026-11-10" },
+        { id: "back", employeeId: "a", start: at(10, 15), end: at(10, 19), breakMinutes: 0, day: "2026-11-10" }, // 0h gap
+        { id: "split", employeeId: "a", start: at(10, 20), end: at(10, 23), breakMinutes: 0, day: "2026-11-10" }, // 1h gap
+      ],
+      emps, R, hour,
+    );
+    expect(v.filter((x) => x.rule === "rest")).toEqual([]);
+  });
+  it("still flags a clopen across business days", () => {
+    const v = checkCompliance(
+      [
+        { id: "close", employeeId: "a", start: at(10, 17), end: at(10, 23), breakMinutes: 0, day: "2026-11-10" },
+        { id: "open", employeeId: "a", start: at(11, 7), end: at(11, 12), breakMinutes: 0, day: "2026-11-11" },
+      ],
+      emps, R, hour,
+    );
+    expect(v.map((x) => `${x.shiftId}:${x.rule}`)).toContain("open:rest");
+  });
+  it("sums a minor's hours per business day (Sam 11a–5p + 5p–10p = 11h)", () => {
+    const v = checkCompliance(
+      [
+        { id: "s1", employeeId: "sam", start: at(14, 11), end: at(14, 17), breakMinutes: 0, day: "2026-11-14" },
+        { id: "s2", employeeId: "sam", start: at(14, 17), end: at(14, 22), breakMinutes: 0, day: "2026-11-14" },
+      ],
+      emps, R, hour,
+    );
+    const minor = v.filter((x) => x.rule === "minor-hours");
+    expect(minor).toHaveLength(1);
+    expect(minor[0].shiftId).toBe("s2");
+    expect(minor[0].message).toContain("11h");
+  });
+  it("does not add a minor's hours across different days", () => {
+    const v = checkCompliance(
+      [
+        { id: "d1", employeeId: "sam", start: at(14, 11), end: at(14, 17), breakMinutes: 0, day: "2026-11-14" },
+        { id: "d2", employeeId: "sam", start: at(15, 11), end: at(15, 17), breakMinutes: 0, day: "2026-11-15" },
+      ],
+      emps, R, hour,
+    );
+    expect(v.some((x) => x.rule === "minor-hours")).toBe(false);
+  });
+});
+
 describe("scheduling", () => {
   const open = Array.from({ length: 24 }, (_, h) => h >= 16 && h < 21);
   const sales = Array.from({ length: 24 }, (_, h) => (h === 18 || h === 19 ? 900 : h >= 16 && h < 21 ? 300 : 0));

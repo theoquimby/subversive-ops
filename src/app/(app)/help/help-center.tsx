@@ -27,7 +27,8 @@ export function HelpCenter({ userId, role, initialQuery, autoTour }: { userId: s
   useEffect(() => {
     if (!autoTour) return;
     window.history.replaceState(null, "", "/help");
-    start(autoTour);
+    // Only tours this role can take (staff never get dropped into manager pages).
+    if (tours.some((t) => t.id === autoTour)) start(autoTour);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoTour]);
 
@@ -171,7 +172,7 @@ function AreaGrid({ areas, byArea, expanded, setExpanded, muted }: { areas: type
               ))}
             </ul>
             {list.length > 6 && (
-              <button type="button" onClick={() => setExpanded((s) => ({ ...s, [a.id]: !open }))} className="mt-1 text-[0.8rem] text-muted hover:text-ink">
+              <button type="button" onClick={() => setExpanded((s) => ({ ...s, [a.id]: !open }))} className="relative mt-1 text-[0.8rem] text-muted after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:text-ink">
                 {open ? "Show fewer" : `Show all ${list.length}`}
               </button>
             )}

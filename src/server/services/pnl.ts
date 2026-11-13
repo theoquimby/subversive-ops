@@ -1,16 +1,15 @@
 import "server-only";
-import { CostingContext } from "@/domain/costing";
 import { addDays, dateRange, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
 import { backtest } from "@/domain/forecastAccuracy";
-import { addInputs, mondayOf, PnlInput, projectClose, proratedBudget, SoldLine, summarize, theoreticalByDay } from "@/domain/pnl";
-import { addSplits, ClassSplit, emptySplit, groupSplit, GroupSplit } from "@/domain/revenueClass";
-import { blockCost, blockHours, laborByHour, localMinutes, zonedTime } from "@/domain/timecards";
+import { mondayOf, projectClose, proratedBudget, summarize } from "@/domain/pnl";
+import type { GroupSplit } from "@/domain/revenueClass";
+import { laborByHour, localMinutes, zonedTime } from "@/domain/timecards";
 import { db, num } from "../db";
 import { env } from "../env";
 import { laborByDay } from "./budgets";
-import { buildContext, CostingSnapshot, loadCostingSnapshot, safeCost } from "./costing";
 import { dailySalesForecast, dailySalesHistory, hourlySalesForecast } from "./forecasting";
-import { classSettings, costTargets, recipeClasses } from "./insights";
+import { costTargets } from "./insights";
+import { dailyKpis, periodFrom } from "./kpis";
 import { loadTimecards } from "./labor";
 import { getLaborRules } from "./labor-rules";
 import { getAdjustments } from "./planning";
@@ -20,73 +19,6 @@ import { lastCountPeriod, varianceReport } from "./variance";
 
 const tz = () => env.BUSINESS_TIMEZONE;
 const dateWhere = (from: ISODate, toExclusive: ISODate) => ({ gte: parseISODate(from), lt: parseISODate(toExclusive) });
-
-/**
- * Item-level sales for [from, to): servings and net sales per recipe per day
- * (for food/beverage splits and theoretical cost), plus each day's non-ignored
- * item total (used when a day has no order-level hourly rows).
- */
-async function itemSales(from: ISODate, toExclusive: ISODate) {
-  const [rows, mappings] = await Promise.all([
-    db.dailySale.findMany({ where: { date: dateWhere(from, toExclusive) }, select: { date: true, squareId: true, qty: true, netSales: true } }),
-    db.squareMapping.findMany({ select: { squareId: true, recipeId: true, ignored: true } }),
-  ]);
-  const map = new Map(mappings.map((m) => [m.squareId, m]));
-  const sold: SoldLine[] = [];
-  const itemTotal = new Map<ISODate, number>();
-  for (const r of rows) {
-    const m = map.get(r.squareId);
-    if (m?.ignored) continue;
-    const date = toISODate(r.date);
-    itemTotal.set(date, (itemTotal.get(date) ?? 0) + r.netSales.toNumber());
-    if (m?.recipeId) sold.push({ date, recipeId: m.recipeId, qty: r.qty.toNumber(), sales: r.netSales.toNumber() });
-  }
-  return { sold, itemTotal };
-}
-
-/**
- * Net sales (ignored Square items left out) and orders per business date:
- * order totals where the hourly sync has run, else the sum of item sales.
- */
-async function salesByDay(from: ISODate, toExclusive: ISODate, itemTotal: Map<ISODate, number>) {
-  const [orders, net] = await Promise.all([
-    db.hourlySale.groupBy({ by: ["date"], where: { date: dateWhere(from, toExclusive) }, _sum: { orders: true } }),
-    dailyNetSalesExcludingIgnored(from, toExclusive),
-  ]);
-  const out = new Map<ISODate, { sales: number; orders: number | null }>();
-  for (const [date, sales] of itemTotal) out.set(date, { sales, orders: null });
-  const ordersBy = new Map(orders.map((o) => [toISODate(o.date), o._sum.orders ?? 0]));
-  for (const [date, sales] of net) out.set(date, { sales: Math.max(0, sales), orders: ordersBy.get(date) ?? 0 });
-  return out;
-}
-
-/**
- * Recipe cost as of a date, so past days are costed at the prices that
- * applied then rather than today's. One context per day, cached.
- */
-export function asOfCoster(snap: CostingSnapshot) {
-  const ctxs = new Map<ISODate, CostingContext>();
-  const memo = new Map<string, { cost: number; incomplete: boolean } | null>();
-  return (recipeId: string, date: ISODate) => {
-    const key = `${date}|${recipeId}`;
-    if (memo.has(key)) return memo.get(key)!;
-    let ctx = ctxs.get(date);
-    if (!ctx) ctxs.set(date, (ctx = buildContext(snap, date)));
-    const res = safeCost(ctx, recipeId);
-    const out = "error" in res ? null : { cost: res.totalCost, incomplete: res.incomplete };
-    memo.set(key, out);
-    return out;
-  };
-}
-
-/** Theoretical cost of goods per day and revenue class, at as-of-date recipe costs. */
-export async function theoreticalSplit(from: ISODate, toExclusive: ISODate, snap?: CostingSnapshot) {
-  const [s, settings, items] = await Promise.all([snap ?? loadCostingSnapshot(), classSettings(), itemSales(from, toExclusive)]);
-  const classes = recipeClasses(s, settings);
-  const names = new Map(s.recipes.map((r) => [r.id, r.name]));
-  const { byDay, uncosted } = theoreticalByDay(items.sold, asOfCoster(s), (id) => classes.get(id) ?? "food");
-  return { byDay, uncosted: [...uncosted].map((id) => names.get(id) ?? "Recipe").sort(), itemTotal: items.itemTotal };
-}
 
 /**
  * Forecast sales per day. Past days use the forecast as it would have been
@@ -130,6 +62,10 @@ async function forecastByDay(from: ISODate, toExclusive: ISODate): Promise<Map<I
 export interface PnlDay extends ReturnType<typeof summarize> {
   date: ISODate;
   future: boolean;
+  /** Today, still in progress. */
+  isToday: boolean;
+  /** Square sales have arrived for the day. */
+  salesSynced: boolean;
   /** Forecast sales for the day (as it stood the evening before, for past days). */
   forecast: number | null;
   /** Scheduled labor cost (shifts, with burden). */
@@ -137,56 +73,51 @@ export interface PnlDay extends ReturnType<typeof summarize> {
   split: GroupSplit;
 }
 
-export async function pnlReport(from: ISODate, toExclusive: ISODate, now = new Date()) {
+/**
+ * P&L for [from, toExclusive). Totals come from the shared period KPIs
+ * (`./kpis`): today counts only when `includeToday` — pass true for the
+ * "Today" view; otherwise today shows as an in-progress row and the totals
+ * cover finished days.
+ */
+export async function pnlReport(from: ISODate, toExclusive: ISODate, now = new Date(), opts: { includeToday?: boolean } = {}) {
   const today = businessToday();
-  const [theo, cards, rules, budgets, history, forecast, scheduled, targets] = await Promise.all([
-    theoreticalSplit(from, toExclusive),
-    loadTimecards(from, toExclusive),
-    getLaborRules(),
+  const includeToday = opts.includeToday ?? false;
+  const [daily, budgets, history, forecast, scheduled, targets] = await Promise.all([
+    dailyKpis(from, toExclusive, { now }),
     db.budget.findMany({ where: { weekStart: dateWhere(mondayOf(from), toExclusive) } }),
     dailyNetSalesExcludingIgnored(addDays(today, -56), today),
     forecastByDay(from, toExclusive),
     laborByDay(from, toExclusive, "shifts"),
     costTargets(),
   ]);
-  const sales = await salesByDay(from, toExclusive, theo.itemTotal);
+  const kpis = periodFrom(daily, from, toExclusive, includeToday);
 
-  const laborDay = new Map<ISODate, { cost: number; hours: number }>();
-  let missingRates = 0;
-  for (const c of cards) {
-    const b = { start: c.clockIn, end: c.clockOut, breakMinutes: c.breakMinutes, rate: c.rate };
-    if (c.rate == null) missingRates++;
-    const cur = laborDay.get(c.date) ?? { cost: 0, hours: 0 };
-    cur.cost += blockCost(b, rules.employerBurdenPct, now);
-    cur.hours += blockHours(b, now);
-    laborDay.set(c.date, cur);
-  }
-
-  let splitTotal: ClassSplit = emptySplit();
-  const days: PnlDay[] = dateRange(from, toExclusive).map((date) => {
-    const s = sales.get(date);
-    const l = laborDay.get(date);
-    const split = theo.byDay.get(date) ?? emptySplit();
-    splitTotal = addSplits(splitTotal, split);
-    const g = groupSplit(split, s?.sales ?? 0);
-    const input: PnlInput = { sales: s?.sales ?? 0, cogs: g.total.cogs, labor: l?.cost ?? 0, laborHours: l?.hours ?? 0, orders: s?.orders ?? null };
-    return { date, future: date > today, forecast: forecast.get(date) ?? null, scheduledLabor: scheduled.get(date)?.cost ?? null, split: g, ...summarize(input) };
-  });
-  const total = summarize(addInputs(days));
-  const split = groupSplit(splitTotal, total.sales);
+  const days: PnlDay[] = kpis.days.map((d) => ({
+    date: d.date,
+    future: d.state === "future",
+    isToday: d.state === "today",
+    salesSynced: d.salesSynced,
+    forecast: forecast.get(d.date) ?? null,
+    scheduledLabor: scheduled.get(d.date)?.cost ?? null,
+    split: d.group,
+    ...d.summary,
+  }));
+  const counted = new Set(kpis.counted);
+  const total = kpis.total;
+  const split = kpis.split;
   // Forecast and schedule comparisons only over finished days (today is still partial).
   const elapsed = days.filter((d) => d.date < today);
   const forecastToDate = elapsed.some((d) => d.forecast != null) ? elapsed.reduce((s, d) => s + (d.forecast ?? 0), 0) : null;
   const scheduledToDate = elapsed.some((d) => d.scheduledLabor != null) ? elapsed.reduce((s, d) => s + (d.scheduledLabor ?? 0), 0) : null;
 
-  // Budget: each week's sales target prorated by how much of a typical week the days in range carry.
+  // Budget: each week's sales target prorated by how much of a typical week the counted days carry.
   const weights = [0, 0, 0, 0, 0, 0, 0];
   for (const [date, s] of history) weights[weekday(date)] += Math.max(0, s);
   const byWeek = new Map(budgets.map((b) => [toISODate(b.weekStart), b]));
   const weeks = new Map<ISODate, ISODate[]>();
-  for (const d of days) weeks.set(mondayOf(d.date), [...(weeks.get(mondayOf(d.date)) ?? []), d.date]);
+  for (const d of days) if (counted.has(d.date)) weeks.set(mondayOf(d.date), [...(weeks.get(mondayOf(d.date)) ?? []), d.date]);
   let budget: { sales: number | null; foodCostPct: number | null; laborPct: number | null; weeks: number } | null = null;
-  if ([...weeks.keys()].every((w) => byWeek.has(w))) {
+  if (weeks.size && [...weeks.keys()].every((w) => byWeek.has(w))) {
     const list = [...weeks].map(([w, ds]) => ({ b: byWeek.get(w)!, ds }));
     const allSales = list.every((x) => x.b.sales != null);
     const avg = (xs: (number | null)[]) => {
@@ -205,6 +136,8 @@ export async function pnlReport(from: ISODate, toExclusive: ISODate, now = new D
     from,
     toExclusive,
     days,
+    /** Shared KPIs (same numbers as Budgets and the Overview). */
+    kpis,
     total,
     split,
     targets,
@@ -213,10 +146,10 @@ export async function pnlReport(from: ISODate, toExclusive: ISODate, now = new D
     laborToDate: elapsed.reduce((s, d) => s + d.labor, 0),
     scheduledToDate,
     budget,
-    burdenPct: rules.employerBurdenPct,
-    uncosted: theo.uncosted,
-    missingRates,
-    openCards: cards.filter((c) => !c.clockOut).length,
+    burdenPct: kpis.burdenPct,
+    uncosted: kpis.uncosted,
+    missingRates: kpis.missingRates,
+    openCards: kpis.openCards,
     hasHourly: days.some((d) => d.orders != null),
   };
 }

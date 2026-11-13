@@ -2,6 +2,7 @@ import { GridCell } from "@/components/grid";
 import { cx, Dot, PageHeader, Section, Stat, Table, Td, Th } from "@/components/ui";
 import { rag, Rag } from "@/domain/budgets";
 import { addDays } from "@/domain/dates";
+import { KPI_LABELS } from "@/domain/pnl";
 import { money, pct, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { budgetGrid, BudgetRow } from "@/server/services/budgets";
@@ -33,14 +34,14 @@ export default async function BudgetsPage() {
         <Stat
           label="This week, sales"
           value={money(current.sales_actual, { whole: true })}
-          hint={current.sales ? `of ${money(current.sales, { whole: true })} target · on pace for ${money(current.sales_forecast, { whole: true })}` : "No target set"}
+          hint={current.sales ? `to yesterday · of ${money(current.sales, { whole: true })} target · on pace for ${money(current.sales_forecast, { whole: true })}` : "To yesterday · no target set"}
           tone={current.status.sales === "none" ? undefined : tone(current.status.sales)}
         />
-        <Stat label="Food cost, this week" value={pct(current.foodCostPct_actual)} hint={current.foodCostPct ? `Target ${pct(current.foodCostPct, 0)} · theoretical` : "No target set"} tone={current.status.foodCostPct === "none" ? undefined : tone(current.status.foodCostPct)} />
+        <Stat label={`${KPI_LABELS.food}, this week`} value={pct(current.foodCostPct_actual)} hint={`${KPI_LABELS.foodHint}${current.foodCostPct ? ` · target ${pct(current.foodCostPct, 0)}` : " · no target set"}`} tone={current.status.foodCostPct === "none" ? undefined : tone(current.status.foodCostPct)} />
         <Stat
-          label="Labor, this week"
+          label={`${KPI_LABELS.labor}, this week`}
           value={pct(current.laborPct_actual ?? current.laborPct_scheduled)}
-          hint={current.laborPct ? `Target ${pct(current.laborPct, 0)} · ${current.laborPct_actual != null ? "from timecards" : current.laborPct_scheduled != null ? "scheduled" : "no timecards yet"}` : "No target set"}
+          hint={`% of net sales · ${current.laborPct_actual != null ? "timecards to yesterday" : current.laborPct_scheduled != null ? "scheduled" : "no timecards yet"}${current.laborPct ? ` · target ${pct(current.laborPct, 0)}` : " · no target set"}`}
           tone={current.status.laborPct === "none" ? undefined : tone(current.status.laborPct)}
         />
         <Stat label="Sales target hit" value={past.length ? `${hit} of ${past.length}` : "—"} hint="Last 6 finished weeks" tone={past.length ? (hit >= past.length / 2 ? "good" : "warn") : undefined} />
@@ -63,7 +64,7 @@ export default async function BudgetsPage() {
             ))}
           </tbody>
         </Table>
-        <p className="mt-3 text-xs text-muted">Food cost is theoretical (recipes × items sold). Labor uses timecards for past days and scheduled shifts ahead, with employer taxes added. Sales targets for the current week are compared pro-rata.</p>
+        <p className="mt-3 text-xs text-muted">Same definitions as the P&amp;L: net sales are Square sales with ignored items left out. Food cost is theoretical (items sold × each day&apos;s recipe cost) as a % of food sales. Labor is timecards × pay rate plus employer taxes, as a % of net sales; weeks ahead use scheduled shifts. The current week counts finished days only, and its sales target is compared pro-rata.</p>
       </Section>
     </>
   );
@@ -86,12 +87,12 @@ function WeekRow({ r }: { r: BudgetRow }) {
         </div>
       </Td>
       <Td align="right" className="px-2! sm:px-4!">
-        <Cell grid="budget" col="sales" week={r.weekStart} field="sales" value={r.sales} prefix="$" label="Sales target" />
+        <Cell grid="budget" col="sales" week={r.weekStart} field="sales" value={r.sales == null ? null : r.sales.toLocaleString("en-US", { maximumFractionDigits: 2 })} prefix="$" label="Sales target" />
         <Sub value={salesSub == null ? null : money(salesSub, { whole: true })} label={r.when === "future" ? "forecast" : r.when === "current" ? "so far" : "actual"} rag={r.when === "future" ? "none" : r.status.sales} />
       </Td>
       <Td align="right" className="px-2! sm:px-4!">
         <Cell grid="budget" col="food" week={r.weekStart} field="foodCostPct" value={pct100(r.foodCostPct)} suffix="%" label="Food cost target" />
-        <Sub value={r.foodCostPct_actual == null ? null : pct(r.foodCostPct_actual)} label="theo." rag={r.status.foodCostPct} />
+        <Sub value={r.foodCostPct_actual == null ? null : pct(r.foodCostPct_actual)} label="of food sales" rag={r.status.foodCostPct} />
       </Td>
       <Td align="right" className="px-2! sm:px-4!">
         <Cell grid="budget" col="labor" week={r.weekStart} field="laborPct" value={pct100(r.laborPct)} suffix="%" label="Labor target" />
@@ -104,7 +105,7 @@ function WeekRow({ r }: { r: BudgetRow }) {
   );
 }
 
-function Cell({ grid, col, week, field, value, prefix, suffix, label }: { grid: string; col: string; week: string; field: "sales" | "foodCostPct" | "laborPct"; value: number | null; prefix?: string; suffix?: string; label: string }) {
+function Cell({ grid, col, week, field, value, prefix, suffix, label }: { grid: string; col: string; week: string; field: "sales" | "foodCostPct" | "laborPct"; value: number | string | null; prefix?: string; suffix?: string; label: string }) {
   return (
     <GridCell
       grid={grid}
@@ -116,7 +117,7 @@ function Cell({ grid, col, week, field, value, prefix, suffix, label }: { grid: 
       placeholder="—"
       onSave={setTarget.bind(null, week, field)}
       ariaLabel={`${label}, week of ${week}`}
-      className={cx("ml-auto", field === "sales" ? "w-[5.5rem] sm:w-24" : "w-14 sm:w-20")}
+      className={cx("ml-auto", field === "sales" ? "w-24 sm:w-28" : "w-14 sm:w-20")}
     />
   );
 }

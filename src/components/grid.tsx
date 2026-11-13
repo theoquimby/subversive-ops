@@ -4,6 +4,8 @@
  * Spreadsheet-style editable cells.
  *
  *  - Click and type; the value saves on blur / Enter (no Save buttons).
+ *  - A rejected value stays in the cell with the reason underneath, so it can
+ *    be corrected (Esc puts back the last saved value).
  *  - Enter / ↓ moves to the same column in the next row, ↑ the row above,
  *    Tab / Shift+Tab across (native). Esc reverts.
  *  - Pasting several lines (e.g. a column copied from Excel / Google Sheets)
@@ -13,9 +15,9 @@
  * giving its cells the same `grid` name and a `col` name.
  */
 
-import clsx from "clsx";
+import { cn } from "@/lib/cn";
 import { Check } from "lucide-react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { Select } from "./select";
 
 type SaveResult = void | { error?: string } | undefined;
@@ -56,27 +58,45 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
   const [error, setError] = useState<string | null>(null);
   const [, start] = useTransition();
   const committed = useRef(initial);
+  const saving = useRef(false);
+  const selectOnFocus = useRef(false);
   const ref = useRef<HTMLInputElement>(null);
+  const errId = useId();
 
-  // Server data changed (e.g. after another save revalidated the page).
+  // Server data changed (e.g. after another save revalidated the page). Never
+  // clobber a value being typed, saved, or waiting to be corrected.
   useEffect(() => {
-    if (!focused) {
+    if (!focused && !saving.current && !error) {
       setV(initial);
       committed.current = initial;
     }
-  }, [initial, focused]);
+  }, [initial, focused, error]);
+
+  // Focusing can swap the formatted value ("6.50") for the raw one ("6.5"),
+  // which resets the selection; re-select in the same commit, before any key.
+  useLayoutEffect(() => {
+    if (focused && selectOnFocus.current) {
+      selectOnFocus.current = false;
+      ref.current?.select();
+    }
+  }, [focused]);
 
   const commit = (next: string) => {
-    if (next === committed.current) return;
+    if (next === committed.current && !error) return;
+    if (next === committed.current) { setError(null); setState("idle"); return; }
     const prev = committed.current;
     committed.current = next;
+    saving.current = true;
     start(async () => {
       const res = await onSave(next);
+      saving.current = false;
       if (res && res.error) {
         committed.current = prev;
-        setV(prev);
         setError(res.error);
         setState("error");
+        // Keep the rejected text for correction; bring focus back unless the user is already elsewhere.
+        const el = ref.current;
+        if (el && (document.activeElement === document.body || document.activeElement === el)) { el.focus(); el.select(); }
       } else {
         setError(null);
         setState("saved");
@@ -101,25 +121,28 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
   const shown = !focused && decimals != null && v !== "" && Number.isFinite(Number(v)) ? Number(v).toFixed(decimals) : v;
 
   return (
-    <div className={clsx("relative", className)} title={error ?? undefined}>
+    <div className={cn("relative", className)}>
+      <div className="relative">
       {prefix && <span className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-sm text-muted">{prefix}</span>}
       <input
         ref={ref}
         data-grid={grid}
         data-col={col}
         aria-label={ariaLabel}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errId : undefined}
         value={shown}
         placeholder={placeholder}
         inputMode={type === "number" ? "decimal" : undefined}
         enterKeyHint="next"
-        onChange={(e) => setV(e.target.value)}
-        onFocus={(e) => { setFocused(true); requestAnimationFrame(() => e.target.select()); }}
+        onChange={(e) => { selectOnFocus.current = false; setV(e.target.value); }}
+        onFocus={(e) => { e.target.select(); selectOnFocus.current = true; setFocused(true); }}
         onBlur={() => { setFocused(false); commit(v.trim()); }}
         onKeyDown={(e) => {
           const el = e.currentTarget;
           if (e.key === "Enter" || e.key === "ArrowDown") { e.preventDefault(); commit(v.trim()); move(el, e.shiftKey ? -1 : 1); }
           else if (e.key === "ArrowUp") { e.preventDefault(); commit(v.trim()); move(el, -1); }
-          else if (e.key === "Escape") { setV(committed.current); el.blur(); }
+          else if (e.key === "Escape") { setV(committed.current); setError(null); setState("idle"); el.blur(); }
         }}
         onPaste={(e) => {
           const text = e.clipboardData.getData("text/plain");
@@ -134,18 +157,20 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
             cell?.dispatchEvent(new CustomEvent("grid:set", { detail: val }));
           });
         }}
-        className={clsx(
+        className={cn(
           "h-10 w-full rounded-md border border-transparent bg-transparent text-base text-ink transition-colors sm:h-8 sm:text-sm",
           "hover:border-border focus:border-ink-2 focus:bg-surface focus:outline-none",
           type === "number" && "num",
           align === "right" ? "text-right" : "text-left",
           prefix ? "pl-5" : "pl-2",
           suffix ? "pr-7" : "pr-2",
-          state === "error" && "border-bad/60",
+          state === "error" && "border-bad hover:border-bad",
         )}
       />
       {suffix && <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted">{suffix}</span>}
       {state === "saved" && <Check className="pointer-events-none absolute top-1/2 -right-4 size-3 -translate-y-1/2 text-good" strokeWidth={3} />}
+      </div>
+      <div id={errId} aria-live="polite" className={cn("text-left text-xs leading-snug font-normal text-bad", error ? "mt-0.5 px-2" : "sr-only")}>{error}</div>
     </div>
   );
 }
@@ -153,25 +178,29 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
 /** A select that saves the moment it changes. */
 export function GridSelect({ value, options, onSave, ariaLabel, className }: { value: string; options: { value: string; label: string; group?: string }[]; onSave: (v: string) => Promise<SaveResult>; ariaLabel: string; className?: string }) {
   const [v, setV] = useState(value);
+  const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   useEffect(() => setV(value), [value]);
   return (
+    <>
     <Select
       variant="cell"
       aria-label={ariaLabel}
       value={v}
       options={options}
       disabled={pending}
-      className={clsx(pending && "opacity-60", className)}
+      className={cn(pending && "opacity-60", className)}
       onChange={(e) => {
         const next = e.target.value;
         const prev = v;
         setV(next);
         start(async () => {
           const res = await onSave(next);
-          if (res && res.error) setV(prev);
+          if (res && res.error) { setV(prev); setError(res.error); } else setError(null);
         });
       }}
     />
+    <div aria-live="polite" className={error ? "mt-0.5 px-2 text-xs text-bad" : "sr-only"}>{error}</div>
+    </>
   );
 }

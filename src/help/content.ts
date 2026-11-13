@@ -9,6 +9,7 @@ import { basics } from "./areas/basics";
 import { menu, ingredients, overview, prices } from "./areas/costing";
 import { counts, importing, ordering, sales, settings, variance, waste } from "./areas/operations";
 import { upcoming } from "./areas/upcoming";
+import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
 
 export type { HelpArea, HelpAreaId, HelpEntry, Audience } from "./types";
@@ -63,6 +64,28 @@ export const getHelp = (id: string): HelpEntry | undefined => BY_ID.get(id);
 export const getArea = (id: HelpAreaId): HelpArea | undefined => AREA_BY_ID.get(id);
 
 export const canSee = (e: HelpEntry, role: "MANAGER" | "STAFF") => role === "MANAGER" || (e.audience ?? "manager") !== "manager";
+
+/** Pages staff can open (mirrors STAFF_PATHS in src/middleware.ts). */
+const STAFF_ROUTES = ["/my", "/count", "/waste", "/help"];
+
+/**
+ * Whether an in-app link in help content leads somewhere this role can go:
+ * staff never get links to manager pages, manager-only articles or manager tours
+ * (they'd just bounce back to /my).
+ */
+export function canFollowHelpLink(href: string, role: "MANAGER" | "STAFF"): boolean {
+  if (role === "MANAGER") return true;
+  const url = new URL(href, "http://x");
+  if (!STAFF_ROUTES.some((p) => url.pathname === p || url.pathname.startsWith(`${p}/`))) return false;
+  const article = url.pathname.match(/^\/help\/(.+)$/);
+  if (article) {
+    const e = getHelp(decodeURIComponent(article[1]));
+    if (!e || !canSee(e, role)) return false;
+  }
+  const tour = url.searchParams.get("tour");
+  if (tour && getTour(tour)?.audience !== "all") return false;
+  return true;
+}
 
 /** Entries a role may read, in registry order. */
 export const helpFor = (role: "MANAGER" | "STAFF") => HELP.filter((e) => canSee(e, role));

@@ -18,11 +18,11 @@ export function PeriodPicker({ start, prev, next, label }: { start: string; prev
   const go = (d: string) => router.push(`/labor?start=${d}`);
   return (
     <div className="flex items-center gap-1">
-      <Button className="size-10 px-0 sm:size-9" aria-label="Previous pay period" onClick={() => go(prev)}><ChevronLeft className="size-4" /></Button>
+      <Button variant="secondary" className="size-11 shrink-0 px-0 sm:size-10" aria-label="Previous pay period" onClick={() => go(prev)}><ChevronLeft className="size-5" /></Button>
       <div className="w-56">
         <DatePicker value={start} onChange={(e) => go(e.target.value)} aria-label={`Pay period ${label}`} />
       </div>
-      <Button className="size-10 px-0 sm:size-9" aria-label="Next pay period" onClick={() => go(next)}><ChevronRight className="size-4" /></Button>
+      <Button variant="secondary" className="size-11 shrink-0 px-0 sm:size-10" aria-label="Next pay period" onClick={() => go(next)}><ChevronRight className="size-5" /></Button>
     </div>
   );
 }

@@ -173,7 +173,7 @@ export function NewInvoice({ suppliers, orders, today, canRead, initialSupplierI
                 onChange={(e) => { setOrderId(e.target.value); setOrderTouched(true); }}
                 disabled={!supplierId}
                 aria-label="Order"
-                options={[{ value: "", label: "No order" }, ...supplierOrders.map((o) => ({ value: o.id, label: `Delivery ${shortDate(o.deliveryDate)}`, hint: `${o.status === "RECEIVED" ? "Received" : "Sent"} · ${o.lineCount} items${o.invoiced ? " · invoiced" : ""}` }))]}
+                options={[{ value: "", label: "No order" }, ...supplierOrders.map((o) => ({ value: o.id, label: `Delivery ${shortDate(o.deliveryDate)}`, hint: `${o.status === "RECEIVED" ? "Received" : "Sent"} · ${o.lineCount} item${o.lineCount === 1 ? "" : "s"}${o.invoiced ? " · invoiced" : ""}` }))]}
               />
             </Field>
             <Field label="Invoice number">

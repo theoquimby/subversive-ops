@@ -5,7 +5,8 @@ import { BaseUnit, CustomConversion, standardUnit, STANDARD_UNITS_BY_BASE, toBas
 import { money, pct } from "@/lib/format";
 import { Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useConfirm } from "@/components/dialog";
 import { parseQuickLine, type QuickItem } from "@/domain/quickAdd";
 import { archiveRecipe, saveRecipe } from "../actions";
 import { HelpTip, HelpZone } from "@/components/help";
@@ -47,6 +48,58 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const dirty = JSON.stringify(r) !== JSON.stringify(initial);
+  const confirm = useConfirm();
+  const leaving = useRef(false);
+
+  // Warn before losing unsaved edits: tab close/reload, and in-app link clicks (sidebar, back link…).
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (leaving.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    const onClick = (e: MouseEvent) => {
+      if (leaving.current || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return;
+      const url = new URL(a.href, location.href);
+      if (url.origin !== location.origin) return;
+      if (url.pathname === location.pathname && url.search === location.search) return; // same page / hash link
+      e.preventDefault();
+      e.stopPropagation();
+      void confirm({ title: "Leave without saving?", body: "Your changes to this recipe will be lost.", confirmLabel: "Leave", danger: true }).then((ok) => {
+        if (!ok) return;
+        leaving.current = true;
+        router.push(url.pathname + url.search + url.hash);
+      });
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [dirty, confirm, router]);
+
+  const archive = async () => {
+    if (!r.id) return;
+    const ok = await confirm({
+      title: `Archive ${initial.name || "this recipe"}?`,
+      body: "It leaves the menu and stops counting toward costs. You can restore it any time from Menu costs → Archived.",
+      confirmLabel: "Archive",
+      danger: true,
+    });
+    if (!ok) return;
+    start(async () => {
+      leaving.current = true;
+      const res = await archiveRecipe(r.id!);
+      if (res?.error) {
+        leaving.current = false;
+        setError(res.error);
+      }
+    });
+  };
 
   const ingById = useMemo(() => new Map(catalog.ingredients.map((i) => [i.id, i])), [catalog]);
   const recById = useMemo(() => new Map(catalog.recipes.map((x) => [x.id, x])), [catalog]);
@@ -159,7 +212,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
         <Card className="lg:col-span-2" data-tour="menu.lines">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold">{isPrep ? "Ingredients per batch" : "Ingredients per serving"} <HelpTip id="menu.editor.lines" /></h2>
-            <span className="text-xs text-muted">{r.lines.length} lines</span>
+            <span className="text-xs text-muted">{r.lines.length} line{r.lines.length === 1 ? "" : "s"}</span>
           </div>
           <div className="divide-y divide-border">
             {r.lines.map((l, idx) => {
@@ -184,7 +237,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
                     {units && !units.includes(l.unit) && <option value={l.unit}>{l.unit}</option>}
                   </Select>
                   <div className={cx("num text-right text-sm", c.cost == null && "text-warn")}>{c.cost != null ? money(c.cost) : c.error ?? "—"}</div>
-                  <button type="button" onClick={() => setR((cur) => ({ ...cur, lines: cur.lines.filter((x) => x.key !== l.key) }))} className="rounded-md p-1.5 text-muted hover:bg-surface-2 hover:text-ink" aria-label="Remove line">
+                  <button type="button" onClick={() => setR((cur) => ({ ...cur, lines: cur.lines.filter((x) => x.key !== l.key) }))} className="relative rounded-md p-1.5 text-muted after:absolute after:-inset-1.5 after:content-[''] hover:bg-surface-2 hover:text-ink" aria-label="Remove line">
                     <X className="size-4" />
                   </button>
                 </div>
@@ -251,7 +304,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
           )}
           <Field label="Notes"><Input value={r.notes ?? ""} onChange={(e) => update({ notes: e.target.value || null })} placeholder="Plating, portioning…" /></Field>
           {r.id && (
-            <button type="button" className="text-xs text-muted hover:text-bad" onClick={() => start(async () => { const res = await archiveRecipe(r.id!); if (res?.error) setError(res.error); })}>
+            <button type="button" className="-mx-2 -my-2 rounded-md px-2 py-2 text-xs text-muted hover:text-bad disabled:opacity-50" disabled={pending} onClick={archive}>
               Archive recipe
             </button>
           )}

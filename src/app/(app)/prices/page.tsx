@@ -40,6 +40,26 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
     return `/prices${p.size ? `?${p}` : ""}`;
   };
 
+  const ingredientCell = (p: (typeof products)[number], phone: boolean) =>
+    p.ingredient ? (
+      <Link href={`/ingredients/${p.ingredient.id}`} className={phone ? "text-ink-2 underline decoration-border-strong underline-offset-2" : "hover:underline"}>{p.ingredient.name}</Link>
+    ) : (
+      <div className={phone ? "flex flex-wrap items-center gap-1" : "flex items-center gap-1.5"}>
+        <GridSelect
+          value=""
+          options={[{ value: "", label: "Link to ingredient…" }, ...ingredients.map((i) => ({ value: i.id, label: i.name }))]}
+          onSave={linkProductToIngredient.bind(null, p.id)}
+          ariaLabel={`Link ${p.description}`}
+          className={phone ? "w-full min-w-0 border-border text-warn" : "max-w-48 min-w-0 border-border text-warn"}
+        />
+        <form action={linkProduct.bind(null, p.id)} className="shrink-0">
+          <input type="hidden" name="ingredientId" value="__new" />
+          <input type="hidden" name="newBase" value="g" />
+          <Button size="sm" variant="ghost" className="h-10 sm:h-8" title="Create a new ingredient from this product">+ New</Button>
+        </form>
+      </div>
+    );
+
   return (
     <>
       <PageHeader
@@ -54,12 +74,12 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
       />
 
       <HelpZone id="prices.filters" tour="prices.filters" className="mb-5 flex flex-wrap items-center gap-2">
-        <Link href={qs({ supplier: undefined })} className={cx("rounded-full px-3 py-1 text-sm", !supplierId ? "bg-primary text-primary-ink" : "text-ink-2 hover:bg-surface-2")}>All</Link>
+        <Link href={qs({ supplier: undefined })} className={cx("relative rounded-full px-3 py-1 text-sm after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']", !supplierId ? "bg-primary text-primary-ink" : "text-ink-2 hover:bg-surface-2")}>All</Link>
         {suppliers.map((s) => (
-          <Link key={s.id} href={qs({ supplier: s.id })} className={cx("rounded-full px-3 py-1 text-sm", supplierId === s.id ? "bg-primary text-primary-ink" : "text-ink-2 hover:bg-surface-2")}>{s.name}</Link>
+          <Link key={s.id} href={qs({ supplier: s.id })} className={cx("relative rounded-full px-3 py-1 text-sm after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']", supplierId === s.id ? "bg-primary text-primary-ink" : "text-ink-2 hover:bg-surface-2")}>{s.name}</Link>
         ))}
         <span className="mx-1 h-4 w-px bg-border" />
-        <Link href={qs({ filter: filter === "unlinked" ? undefined : "unlinked" })} className={cx("rounded-full px-3 py-1 text-sm", filter === "unlinked" ? "bg-warn-bg text-warn" : "text-ink-2 hover:bg-surface-2")}>
+        <Link href={qs({ filter: filter === "unlinked" ? undefined : "unlinked" })} className={cx("relative rounded-full px-3 py-1 text-sm after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']", filter === "unlinked" ? "bg-warn-bg text-warn" : "text-ink-2 hover:bg-surface-2")}>
           Not linked {unlinkedCount > 0 && <span className="num ml-1">{unlinkedCount}</span>}
         </Link>
         <form className="ml-auto w-full sm:w-56">
@@ -77,7 +97,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
         <HelpZone id="prices.list">
         <Table>
           <thead>
-            <tr><Th>Item</Th><Th className="hidden lg:table-cell">Pack</Th><Th><span className="inline-flex items-center gap-1">Ingredient <HelpTip id="prices.link" /></span></Th><Th align="right"><span className="inline-flex items-center gap-1">Price <HelpTip id="prices.list.price" /></span></Th><Th align="right" className="hidden sm:table-cell">vs 30 days ago</Th></tr>
+            <tr><Th className="pr-2 sm:pr-4">Item</Th><Th className="hidden lg:table-cell">Pack</Th><Th className="hidden sm:table-cell"><span className="inline-flex items-center gap-1">Ingredient <HelpTip id="prices.link" /></span></Th><Th align="right" className="pr-4 pl-2 sm:pl-4"><span className="inline-flex items-center gap-1">Price <HelpTip id="prices.list.price" /></span></Th><Th align="right" className="hidden sm:table-cell">vs 30 days ago</Th></tr>
           </thead>
           <tbody>
             {products.map((p) => {
@@ -88,34 +108,26 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
               const last = hist?.filter((h) => h.date <= today).at(-1);
               return (
                 <Tr key={p.id}>
-                  <Td>
-                    <div className="font-medium">{p.description}</div>
-                    <div className="text-xs text-muted">{!supplierId && `${p.supplier.name} · `}#{p.sku}</div>
+                  <Td className="pr-2 sm:pr-4">
+                    <div className="font-medium break-words">{p.description}</div>
+                    <div className="text-xs text-muted">{!supplierId && `${p.supplier.name} · `}#{p.sku}<span className="sm:hidden">{p.packText ? ` · ${p.packText}` : ""}</span></div>
+                    {/* Phone: the ingredient column is hidden, so show the link (or the link picker) under the item. */}
+                    <div className="mt-1.5 text-xs sm:hidden">{ingredientCell(p, true)}</div>
                   </Td>
                   <Td className="hidden text-muted lg:table-cell">{p.packText ?? "—"}</Td>
-                  <Td>
-                    {p.ingredient ? (
-                      <Link href={`/ingredients/${p.ingredient.id}`} className="hover:underline">{p.ingredient.name}</Link>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <GridSelect
-                          value=""
-                          options={[{ value: "", label: "Link to ingredient…" }, ...ingredients.map((i) => ({ value: i.id, label: i.name }))]}
-                          onSave={linkProductToIngredient.bind(null, p.id)}
-                          ariaLabel={`Link ${p.description}`}
-                          className="max-w-48 border-border text-warn"
-                        />
-                        <form action={linkProduct.bind(null, p.id)}>
-                          <input type="hidden" name="ingredientId" value="__new" />
-                          <input type="hidden" name="newBase" value="g" />
-                          <Button size="sm" variant="ghost" title="Create a new ingredient from this product">+ New</Button>
-                        </form>
+                  <Td className="hidden sm:table-cell">{ingredientCell(p, false)}</Td>
+                  <td className="border-b border-border py-1 pr-4 pl-1 align-middle sm:px-2 [tr:last-child_&]:border-b-0">
+                    {/* Unit sits beside the cell (not as a GridCell suffix) so long units never overlap the price. */}
+                    <div className="flex items-center justify-end gap-1.5">
+                      <GridCell grid="prices" col="price" type="number" prefix="$" decimals={2} value={now} onSave={setProductPrice.bind(null, p.id)} ariaLabel={`${p.description} price per ${p.purchaseUnit}`} className="w-[5.5rem] shrink-0 sm:w-24" />
+                      <span className="w-12 shrink-0 truncate text-left text-xs text-muted sm:w-16" title={p.purchaseUnit}>/ {p.purchaseUnit}</span>
+                    </div>
+                    {(last || (change != null && Math.abs(change) >= 0.0005)) && (
+                      <div className="pr-1 text-right text-xs text-muted">
+                        {change != null && Math.abs(change) >= 0.0005 && <span className={cx("num sm:hidden", change > 0 ? "text-bad" : "text-good")}>{signedPct(change)} · </span>}
+                        {last && <span className="whitespace-nowrap"><span className="hidden sm:inline">since </span>{shortDate(last.date)}</span>}
                       </div>
                     )}
-                  </Td>
-                  <td className="border-b border-border px-2 py-1 [tr:last-child_&]:border-b-0">
-                    <GridCell grid="prices" col="price" type="number" prefix="$" decimals={2} value={now} onSave={setProductPrice.bind(null, p.id)} ariaLabel={`${p.description} price`} suffix={`/${p.purchaseUnit.slice(0, 4)}`} className="ml-auto w-32" />
-                    {last && <div className="pr-2 text-right text-xs text-muted">since {shortDate(last.date)}</div>}
                   </td>
                   <Td align="right" className="hidden sm:table-cell">
                     {change == null || Math.abs(change) < 0.0005 ? <span className="text-muted">—</span> : <Badge tone={change > 0 ? "bad" : "good"}>{signedPct(change)}</Badge>}

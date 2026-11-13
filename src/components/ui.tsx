@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { cn } from "@/lib/cn";
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 
@@ -10,7 +11,7 @@ export function PageHeader({ title, description, actions, back }: { title: React
   return (
     <header className="mb-8">
       {back && (
-        <Link href={back.href} className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-ink">
+        <Link href={back.href} className="relative mb-3 inline-flex items-center gap-1 text-sm text-muted after:absolute after:-inset-x-2 after:-inset-y-2.5 after:content-[''] hover:text-ink">
           ← {back.label}
         </Link>
       )}
@@ -27,7 +28,7 @@ export function PageHeader({ title, description, actions, back }: { title: React
 
 export function Section({ title, description, actions, children, className }: { title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={clsx("mb-10", className)}>
+    <section className={cn("mb-10", className)}>
       {(title || actions) && (
         <div className="mb-3 flex items-end justify-between gap-4">
           <div>
@@ -44,7 +45,7 @@ export function Section({ title, description, actions, children, className }: { 
 
 export function Card({ className, children, ...rest }: ComponentProps<"div">) {
   return (
-    <div className={clsx("rounded-xl border border-border bg-surface", className)} {...rest}>
+    <div className={cn("rounded-xl border border-border bg-surface", className)} {...rest}>
       {children}
     </div>
   );
@@ -54,7 +55,7 @@ export function Stat({ label, value, hint, tone }: { label: ReactNode; value: Re
   return (
     <Card className="p-5">
       <div className="text-[0.8rem] font-medium text-muted">{label}</div>
-      <div className={clsx("num mt-2 text-[1.75rem] font-semibold tracking-tight", tone && toneText[tone])}>{value}</div>
+      <div className={cn("num mt-2 text-[1.75rem] font-semibold tracking-tight", tone && toneText[tone])}>{value}</div>
       {hint && <div className="mt-1 text-[0.8rem] text-muted">{hint}</div>}
     </Card>
   );
@@ -82,11 +83,11 @@ const toneBadge: Record<Tone, string> = {
 };
 
 export function Badge({ tone = "neutral", children, className }: { tone?: Tone; children: ReactNode; className?: string }) {
-  return <span className={clsx("inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium whitespace-nowrap", toneBadge[tone], className)}>{children}</span>;
+  return <span className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium whitespace-nowrap", toneBadge[tone], className)}>{children}</span>;
 }
 
 export function Dot({ tone }: { tone: Tone }) {
-  return <span className={clsx("inline-block size-1.5 rounded-full", { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted" }[tone])} />;
+  return <span className={cn("inline-block size-1.5 rounded-full", { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted" }[tone])} />;
 }
 
 // ---- Buttons ------------------------------------------------------------------
@@ -102,14 +103,14 @@ const buttonVariant: Record<Variant, string> = {
 const buttonSize = { sm: "h-8 px-2.5", md: "h-9 px-3.5", lg: "h-11 px-5 text-[0.95rem]" };
 
 export function Button({ variant = "secondary", size = "md", className, ...rest }: ComponentProps<"button"> & { variant?: Variant; size?: keyof typeof buttonSize }) {
-  return <button className={clsx(buttonBase, buttonVariant[variant], buttonSize[size], className)} {...rest} />;
+  return <button className={cn(buttonBase, buttonVariant[variant], buttonSize[size], className)} {...rest} />;
 }
 
 export { DatePicker } from "./date-picker";
 export { Combobox } from "./combobox";
 
 export function LinkButton({ variant = "secondary", size = "md", className, ...rest }: ComponentProps<typeof Link> & { variant?: Variant; size?: keyof typeof buttonSize }) {
-  return <Link className={clsx(buttonBase, buttonVariant[variant], buttonSize[size], className)} {...rest} />;
+  return <Link className={cn(buttonBase, buttonVariant[variant], buttonSize[size], className)} {...rest} />;
 }
 
 // ---- Forms --------------------------------------------------------------------
@@ -117,18 +118,18 @@ export function LinkButton({ variant = "secondary", size = "md", className, ...r
 const control = "h-10 w-full rounded-lg border border-border-strong bg-surface px-3 text-base sm:h-9 sm:text-sm text-ink placeholder:text-muted/70 focus:border-ink-2 focus:outline-none";
 
 export function Input({ className, ...rest }: ComponentProps<"input">) {
-  return <input className={clsx(control, className)} {...rest} />;
+  return <input className={cn(control, className)} {...rest} />;
 }
 
 export { Select } from "./select";
 
 export function Textarea({ className, ...rest }: ComponentProps<"textarea">) {
-  return <textarea className={clsx(control, "h-auto min-h-20 py-2", className)} {...rest} />;
+  return <textarea className={cn(control, "h-auto min-h-20 py-2", className)} {...rest} />;
 }
 
 export function Field({ label, hint, children, className }: { label: ReactNode; hint?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <label className={clsx("block", className)}>
+    <label className={cn("block", className)}>
       <span className="mb-1.5 block text-[0.8rem] font-medium text-ink-2">{label}</span>
       {children}
       {hint && <span className="mt-1 block text-xs text-muted">{hint}</span>}
@@ -140,7 +141,7 @@ export function Field({ label, hint, children, className }: { label: ReactNode; 
 
 export function Table({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <Card className={clsx("overflow-x-auto", className)}>
+    <Card className={cn("overflow-x-auto", className)}>
       <table className="w-full border-collapse text-sm">{children}</table>
     </Card>
   );
@@ -148,7 +149,7 @@ export function Table({ children, className }: { children: ReactNode; className?
 
 export function Th({ children, align = "left", className }: { children?: ReactNode; align?: "left" | "right" | "center"; className?: string }) {
   return (
-    <th className={clsx("border-b border-border px-4 py-2.5 text-[0.75rem] font-medium whitespace-nowrap text-muted", { left: "text-left", right: "text-right", center: "text-center" }[align], className)}>
+    <th className={cn("border-b border-border px-4 py-2.5 text-[0.75rem] font-medium whitespace-nowrap text-muted", { left: "text-left", right: "text-right", center: "text-center" }[align], className)}>
       {children}
     </th>
   );
@@ -156,12 +157,12 @@ export function Th({ children, align = "left", className }: { children?: ReactNo
 
 export function Td({ children, align = "left", className, ...rest }: ComponentProps<"td"> & { align?: "left" | "right" | "center" }) {
   return (
-    <td className={clsx("border-b border-border px-4 py-3 align-middle [tr:last-child_&]:border-b-0", { left: "text-left", right: "num text-right", center: "text-center" }[align], className)} {...rest}>
+    <td className={cn("border-b border-border px-4 py-3 align-middle [tr:last-child_&]:border-b-0", { left: "text-left", right: "num text-right", center: "text-center" }[align], className)} {...rest}>
       {children}
     </td>
   );
 }
 
 export function Tr({ children, className, ...rest }: ComponentProps<"tr">) {
-  return <tr className={clsx("transition-colors hover:bg-surface-2/60", className)} {...rest}>{children}</tr>;
+  return <tr className={cn("transition-colors hover:bg-surface-2/60", className)} {...rest}>{children}</tr>;
 }

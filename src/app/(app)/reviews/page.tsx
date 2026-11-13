@@ -13,6 +13,8 @@ import Link from "next/link";
 import { saveSetting } from "./actions";
 import { ImportActions, ReplyBox } from "./review-ui";
 
+const RATING_AXIS: [number, number] = [1, 5];
+
 export const metadata = { title: "Reviews" };
 
 const FILTERS = [
@@ -57,7 +59,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
       <PageHeader
         title="Reviews"
         description={`What guests are saying, lined up against what happened on the floor and in the kitchen that day.${settings.googleConfigured && settings.placeId ? ` Google checked ${relativeTime(lastSync)}, and every morning.` : ""}`}
-        actions={<ImportActions googleReady={settings.googleConfigured && Boolean(settings.placeId)} googleHint={!settings.googleConfigured ? "Add GOOGLE_PLACES_API_KEY to turn on Google import" : "Add your Google Place ID at the bottom of this page"} />}
+        actions={<ImportActions googleReady={settings.googleConfigured && Boolean(settings.placeId)} googleHint={!settings.googleConfigured ? "Google import needs a Google Maps API key set up on the server — ask whoever manages your hosting" : "Add your Google Place ID at the bottom of this page"} />}
       />
 
       {reviews.length === 0 ? (
@@ -111,7 +113,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
           <div className="grid grid-cols-1 gap-x-8 lg:grid-cols-5">
             <Section className="min-w-0 lg:col-span-3" title="Rating trend" description="Rolling average of the last 5 reviews">
               <Card className="p-4">
-                {trend.length >= 2 ? <LineChart points={trend} valueFormat="number" ariaLabel="Average rating over time" height={200} /> : <div className="py-10 text-center text-sm text-muted">Add a few more reviews to see a trend.</div>}
+                {trend.length >= 2 ? <LineChart points={trend} valueFormat="number" ariaLabel="Average rating over time" height={200} domain={RATING_AXIS} /> : <div className="py-10 text-center text-sm text-muted">Add a few more reviews to see a trend.</div>}
               </Card>
             </Section>
             <Section className="min-w-0 lg:col-span-2" title="Themes" description="Last 90 days · what guests mention most">
@@ -140,17 +142,10 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
           <Section
             title="Reviews"
             description={settings.claude ? "Themes and reply drafts by Claude, in your voice. Edit before posting." : "Themes from keywords and simple reply drafts. Add the Claude API key for written-for-you replies."}
-            actions={
-              <div className="-mr-1 flex gap-1 overflow-x-auto">
-                {FILTERS.map((f) => (
-                  <Link key={f.key} href={`/reviews?show=${f.key}`} scroll={false} className={cx("flex h-10 items-center rounded-lg px-3 text-sm whitespace-nowrap sm:h-8", show === f.key ? "bg-surface-2 font-medium text-ink" : "text-muted hover:text-ink")}>
-                    {f.label}
-                    {f.key === "open" && open.length > 0 && <span className="num ml-1.5 text-xs text-muted">{open.length}</span>}
-                  </Link>
-                ))}
-              </div>
-            }
+            actions={<FilterTabs show={show} openCount={open.length} className="hidden sm:flex" />}
           >
+            {/* On a phone the tabs get their own full-width row instead of squeezing beside the title. */}
+            <FilterTabs show={show} openCount={open.length} className="mb-3 flex flex-wrap sm:hidden" />
             {listed.length === 0 ? (
               <EmptyState title={show === "open" ? "All caught up" : "Nothing here"}>{show === "open" ? "Every critical review has a reply." : "No reviews match this filter."}</EmptyState>
             ) : (
@@ -169,7 +164,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
           <div className="grid gap-1 px-4 py-3 sm:grid-cols-[14rem_1fr] sm:items-center sm:gap-4">
             <div>
               <div className="text-sm font-medium">Google Place ID</div>
-              <div className="text-xs text-muted">{settings.googleConfigured ? "Find it with Google's Place ID finder" : "Google import also needs GOOGLE_PLACES_API_KEY"}</div>
+              <div className="text-xs text-muted">{settings.googleConfigured ? "Find it with Google's Place ID finder" : "Google import also needs a Google Maps API key, added on the server by whoever manages your hosting"}</div>
             </div>
             <GridCell grid="review-settings" col="v" value={settings.placeId} onSave={saveSetting.bind(null, "placeId")} placeholder="ChIJ…" ariaLabel="Google Place ID" className="border-b border-border sm:border-0" />
           </div>
@@ -277,5 +272,24 @@ function Metric({ label, value, note, tone }: { label: string; value: string; no
         {note && <span className={cx("num shrink-0 text-xs font-medium", tone === "bad" ? "text-bad" : tone === "warn" ? "text-warn" : "text-muted")}>{note}</span>}
       </div>
     </div>
+  );
+}
+
+function FilterTabs({ show, openCount, className }: { show: string; openCount: number; className?: string }) {
+  return (
+    <nav aria-label="Filter reviews" className={cx("gap-0.5 rounded-lg border border-border bg-surface p-0.5", className)}>
+      {FILTERS.map((f) => (
+        <Link
+          key={f.key}
+          href={`/reviews?show=${f.key}`}
+          scroll={false}
+          aria-current={show === f.key ? "page" : undefined}
+          className={cx("flex h-10 flex-auto items-center justify-center rounded-md px-3 text-sm whitespace-nowrap sm:h-8 sm:px-3", show === f.key ? "bg-primary font-medium text-primary-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink")}
+        >
+          {f.label}
+          {f.key === "open" && openCount > 0 && <span className={cx("num ml-1.5 text-xs", show === f.key ? "opacity-80" : "text-muted")}>{openCount}</span>}
+        </Link>
+      ))}
+    </nav>
   );
 }

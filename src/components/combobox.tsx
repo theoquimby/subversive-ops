@@ -2,7 +2,7 @@
 
 /** Free-text input with app-styled suggestions (replaces <datalist>). */
 
-import clsx from "clsx";
+import { cn } from "@/lib/cn";
 import { useState } from "react";
 import { fuzzyFilter } from "@/domain/search";
 
@@ -29,12 +29,12 @@ export function Combobox({ name, defaultValue = "", suggestions, placeholder, cl
           else if (e.key === "Enter") { e.preventDefault(); setV(list[active]); setOpen(false); }
           else if (e.key === "Escape") setOpen(false);
         }}
-        className={clsx("h-10 w-full rounded-lg border border-border-strong bg-surface px-3 text-base sm:h-9 sm:text-sm text-ink placeholder:text-muted/70 focus:border-ink-2 focus:outline-none", className)}
+        className={cn("h-10 w-full rounded-lg border border-border-strong bg-surface px-3 text-base sm:h-9 sm:text-sm text-ink placeholder:text-muted/70 focus:border-ink-2 focus:outline-none", className)}
       />
       {open && list.length > 0 && (
         <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-xl">
           {list.map((s, i) => (
-            <div key={s} onMouseDown={(e) => { e.preventDefault(); setV(s); setOpen(false); }} onMouseMove={() => setActive(i)} className={clsx("cursor-pointer rounded-lg px-2.5 py-1.5 text-sm", i === active && "bg-surface-2")}>{s}</div>
+            <div key={s} onMouseDown={(e) => { e.preventDefault(); setV(s); setOpen(false); }} onMouseMove={() => setActive(i)} className={cn("cursor-pointer rounded-lg px-2.5 py-1.5 text-sm", i === active && "bg-surface-2")}>{s}</div>
           ))}
         </div>
       )}

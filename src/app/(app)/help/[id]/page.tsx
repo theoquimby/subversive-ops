@@ -1,5 +1,5 @@
 import { Badge, Card, LinkButton } from "@/components/ui";
-import { canSee, getArea, getHelp, helpFor, relatedOf } from "@/help/content";
+import { canFollowHelpLink, canSee, getArea, getHelp, helpFor, relatedOf } from "@/help/content";
 import { HelpMarkdown } from "@/help/markdown";
 import { getTour } from "@/help/tours";
 import { requireUser } from "@/server/auth";
@@ -51,7 +51,7 @@ export default async function HelpArticlePage({ params }: { params: Promise<{ id
 
         {entry.article && (
           <div className="max-w-[38rem] border-t border-border pt-8">
-            <HelpMarkdown source={entry.article} />
+            <HelpMarkdown source={entry.article} canLink={(href) => canFollowHelpLink(href, me.role)} />
           </div>
         )}
 

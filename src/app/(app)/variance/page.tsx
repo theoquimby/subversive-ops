@@ -1,6 +1,6 @@
 import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import type { BaseUnit } from "@/domain/units";
-import { dayDate, money, pct, qty, signedPct } from "@/lib/format";
+import { dayDate, money, pct, qty, shortDate, signedPct } from "@/lib/format";
 import { DISPLAY_UNIT } from "@/lib/units-display";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
@@ -89,7 +89,7 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
         description={`${dayDate(r.from)} → ${dayDate(r.to)} · ${r.days} days between counts`}
       />
       <div className="-mt-4 mb-8" data-tour="variance.period">
-        <PeriodPicker points={points.map((p) => ({ id: p.id, label: `${dayDate(p.date)} · ${p.area} · ${p.lines} items` }))} start={start.id} end={end.id} group={group} />
+        <PeriodPicker points={points.map((p) => ({ id: p.id, label: `${shortDate(p.date)} · ${p.area}`, hint: `${dayDate(p.date)} · ${p.lines} items` }))} start={start.id} end={end.id} group={group} />
       </div>
 
       <HelpZone id="variance.page" tour="variance.stats" className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">

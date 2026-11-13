@@ -10,7 +10,7 @@ import { autoUpdate, flip, offset, shift as shiftMw, useFloating } from "@floati
 import { Copy, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { deleteShift, duplicateShift, updateShift } from "./actions";
+import { createShift, deleteShift, duplicateShift, updateShift } from "./actions";
 
 const TIMES = timeOptions(5 * 60, 27 * 60, 15);
 const BREAKS = [0, 15, 30, 45, 60].map((m) => ({ value: String(m), label: m ? `${m} min unpaid` : "No break" }));
@@ -25,9 +25,11 @@ interface Props {
   timeOff: Record<string, string[]>;
   onClose: () => void;
   onToast: (msg: string) => void;
+  /** New shift: edits stay local and nothing is created until Save. */
+  isNew?: boolean;
 }
 
-export function ShiftEditor({ shift, anchor, employees, positions, issues, hoursByEmployee, timeOff, onClose, onToast }: Props) {
+export function ShiftEditor({ shift, anchor, employees, positions, issues, hoursByEmployee, timeOff, onClose, onToast, isNew = false }: Props) {
   const [draft, setDraft] = useState(shift);
   const [error, setError] = useState<string | null>(null);
   const [saving, start] = useTransition();
@@ -53,12 +55,25 @@ export function ShiftEditor({ shift, anchor, employees, positions, issues, hours
   const save = (next: ShiftView) => {
     setDraft(next);
     setError(null);
+    if (isNew) return;
     start(async () => {
       const r = await updateShift(shift.id, { employeeId: next.employeeId, positionId: next.positionId, date: next.date, startMin: next.startMin, endMin: next.endMin, breakMinutes: next.breakMinutes, notes: next.notes });
       if (r.error) setError(r.error);
       else {
         setSaved(true);
         setTimeout(() => setSaved(false), 1200);
+      }
+    });
+  };
+
+  const create = () => {
+    setError(null);
+    start(async () => {
+      const r = await createShift({ employeeId: draft.employeeId, positionId: draft.positionId, date: draft.date, startMin: draft.startMin, endMin: draft.endMin, breakMinutes: draft.breakMinutes, notes: draft.notes });
+      if (r.error) setError(r.error);
+      else {
+        onToast("Shift added as a draft");
+        onClose();
       }
     });
   };
@@ -97,7 +112,7 @@ export function ShiftEditor({ shift, anchor, employees, positions, issues, hours
           <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
             <span className="num">{hours.toFixed(hours % 1 ? 2 : 0)} paid hours</span>
             <span>·</span>
-            {draft.published ? <span>Published</span> : <span>Draft</span>}
+            {isNew ? <span>New shift</span> : draft.published ? <span>Published</span> : <span>Draft</span>}
             {saving ? <span>· Saving…</span> : saved ? <span className="text-good">· Saved</span> : null}
           </div>
         </div>
@@ -166,38 +181,49 @@ export function ShiftEditor({ shift, anchor, employees, positions, issues, hours
         </ul>
       )}
 
-      <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="max-sm:h-10"
-          onClick={() =>
-            start(async () => {
-              const next = addDays(draft.date, 1);
-              const r = await duplicateShift(shift.id, next);
-              if (r.error) setError(r.error);
-              else onToast(`Copied to ${dayDate(next)}`);
-            })
-          }
-        >
-          <Copy className="size-3.5" /> Copy to next day
-        </Button>
-        <Button
-          variant="danger"
-          size="sm"
-          className="max-sm:h-10"
-          onClick={async () => {
-            if (shift.published && !(await confirm({ title: "Delete a published shift?", body: "The team can already see it. They won't be notified automatically.", confirmLabel: "Delete", danger: true }))) return;
-            start(async () => {
-              await deleteShift(shift.id);
-              onToast("Shift deleted");
-              onClose();
-            });
-          }}
-        >
-          <Trash2 className="size-3.5" /> Delete
-        </Button>
-      </div>
+      {isNew ? (
+        <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+          <Button variant="ghost" size="sm" className="max-sm:h-10" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" className="max-sm:h-10" onClick={create} disabled={saving}>
+            {saving ? "Adding…" : "Add shift"}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="max-sm:h-10"
+            onClick={() =>
+              start(async () => {
+                const next = addDays(draft.date, 1);
+                const r = await duplicateShift(shift.id, next);
+                if (r.error) setError(r.error);
+                else onToast(`Copied to ${dayDate(next)}`);
+              })
+            }
+          >
+            <Copy className="size-3.5" /> Copy to next day
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            className="max-sm:h-10"
+            onClick={async () => {
+              if (shift.published && !(await confirm({ title: "Delete a published shift?", body: "The team can already see it. They won't be notified automatically.", confirmLabel: "Delete", danger: true }))) return;
+              start(async () => {
+                await deleteShift(shift.id);
+                onToast("Shift deleted");
+                onClose();
+              });
+            }}
+          >
+            <Trash2 className="size-3.5" /> Delete
+          </Button>
+        </div>
+      )}
     </div>
   );
 
@@ -205,12 +231,12 @@ export function ShiftEditor({ shift, anchor, employees, positions, issues, hours
     <>
       <div className={cx("fixed inset-0 z-40", phone && "bg-black/30")} onMouseDown={onClose} />
       {phone ? (
-        <div role="dialog" aria-label="Edit shift" className="fixed inset-x-0 bottom-0 z-50 max-h-[88dvh] overflow-y-auto rounded-t-2xl border border-border bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl">
+        <div role="dialog" aria-label={isNew ? "New shift" : "Edit shift"} className="fixed inset-x-0 bottom-0 z-50 max-h-[88dvh] overflow-y-auto rounded-t-2xl border border-border bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl">
           <div className="mx-auto -mt-1 mb-3 h-1 w-10 rounded-full bg-border-strong" />
           {body}
         </div>
       ) : (
-        <div ref={refs.setFloating} style={floatingStyles} role="dialog" aria-label="Edit shift" className="z-50 w-80 rounded-xl border border-border bg-surface p-4 shadow-2xl">
+        <div ref={refs.setFloating} style={floatingStyles} role="dialog" aria-label={isNew ? "New shift" : "Edit shift"} className="z-50 w-80 rounded-xl border border-border bg-surface p-4 shadow-2xl">
           {body}
         </div>
       )}

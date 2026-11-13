@@ -1,6 +1,6 @@
 import { refreshIfStale } from "@/server/services/square-sync";
 import { addDays } from "@/domain/dates";
-import { dayDate, money, pct, qty, relativeTime, shortDate, signedPct } from "@/lib/format";
+import { dayDate, money, pct, qty, shortDate, signedPct } from "@/lib/format";
 import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import type { Tone } from "@/components/ui";
 import { costTone } from "@/domain/pnl";
@@ -10,7 +10,8 @@ import { db } from "@/server/db";
 import { loadCostingSnapshot } from "@/server/services/costing";
 import { menuCosts, recentPriceMoves } from "@/server/services/insights";
 import { deliveryWindow } from "@/server/services/planning";
-import { businessToday, lastSquareSync } from "@/server/services/sales";
+import { businessToday } from "@/server/services/sales";
+import { squareSummary } from "@/server/services/square";
 import Link from "next/link";
 import { HelpTip, HelpZone } from "@/components/help";
 import { onboardingState } from "@/server/services/onboarding";
@@ -33,26 +34,31 @@ export default async function OverviewPage() {
   const today = businessToday();
   const snap = await loadCostingSnapshot();
   const now = new Date();
-  const [{ rows }, moves, week, live, suppliers, lastSync, ob] = await Promise.all([
+  const [{ rows }, moves, week, live, suppliers, square, ob] = await Promise.all([
     menuCosts(snap),
     recentPriceMoves(30, snap),
     pnlReport(addDays(today, -7), today, now),
     todaySoFar(now),
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    lastSquareSync(),
+    squareSummary(),
     onboardingState(),
   ]);
 
   const sold = rows.filter((r) => r.kind !== "PREP");
+  // "Items over target" is about what guests order, so add-ons (modifiers) don't count.
+  const menuItems = sold.filter((r) => r.kind === "MENU");
   const { split, targets, total: t, budget } = week;
-  const over = sold.filter((r) => r.foodCostPct != null && r.foodCostPct > r.target).sort((a, b) => b.foodCostPct! - b.target - (a.foodCostPct! - a.target));
+  const over = menuItems.filter((r) => r.foodCostPct != null && r.foodCostPct > r.target).sort((a, b) => b.foodCostPct! - b.target - (a.foodCostPct! - a.target));
   const ups = moves.filter((m) => m.changePct > 0);
   const vsForecast = live.projected != null && live.forecastDay ? live.projected / live.forecastDay - 1 : null;
   const pnlWeek = `/pnl?period=custom&from=${addDays(today, -7)}&to=${addDays(today, -1)}`;
 
   return (
     <>
-      <PageHeader title="Overview" description={`${dayDate(today)} · Square synced ${relativeTime(lastSync)}`} />
+      <PageHeader
+        title="Overview"
+        description={<>{dayDate(today)} · <Link href="/settings/square" className="underline-offset-2 hover:text-ink hover:underline">{square.text}</Link></>}
+      />
       {!ob.complete && !ob.dismissed && (
         <Card className="mb-8 flex flex-wrap items-center justify-between gap-3 p-4">
           <div>
@@ -101,7 +107,7 @@ export default async function OverviewPage() {
         <Stat label="Labor" value={pct(t.laborPct)} hint={`prime cost ${pct(t.primePct, 0)}${budget?.laborPct != null ? ` · target ${pct(budget.laborPct, 0)}` : ""}`} tone={budget?.laborPct != null ? costTone(t.laborPct, budget.laborPct) : undefined} />
       </HelpZone>
       <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={<span className="inline-flex items-center gap-1.5">Items over target <HelpTip id="overview.overTarget" /></span>} value={over.length} hint={`of ${sold.length} menu items`} tone={over.length ? "warn" : "good"} />
+        <Stat label={<span className="inline-flex items-center gap-1.5">Items over target <HelpTip id="overview.overTarget" /></span>} value={over.length} hint={`of ${menuItems.length} menu items`} tone={over.length ? "warn" : "good"} />
         <Stat label="Price increases" value={ups.length} hint="Last 30 days" tone={ups.length ? "warn" : undefined} />
         <div className="hidden lg:block">
           <Stat label="Profit before overhead" value={money(t.profit, { whole: true })} hint="last 7 days" tone={t.profit < 0 ? "bad" : undefined} />
@@ -118,7 +124,7 @@ export default async function OverviewPage() {
             <EmptyState title="No price changes">Import a distributor sheet to start tracking prices.</EmptyState>
           ) : (
             <Table>
-              <thead><tr><Th>Item</Th><Th align="right">Was</Th><Th align="right">Now</Th><Th align="right">Change</Th></tr></thead>
+              <thead><tr><Th>Item</Th><Th align="right" className="hidden sm:table-cell">Was</Th><Th align="right">Now</Th><Th align="right">Change</Th></tr></thead>
               <tbody>
                 {moves.slice(0, 7).map((m) => (
                   <Tr key={m.productId}>
@@ -126,7 +132,7 @@ export default async function OverviewPage() {
                       <div className="font-medium">{m.ingredient ?? m.description}</div>
                       <div className="text-xs text-muted">{m.supplier} · {shortDate(m.date)}</div>
                     </Td>
-                    <Td align="right" className="text-muted">{money(m.oldPrice)}</Td>
+                    <Td align="right" className="hidden text-muted sm:table-cell">{money(m.oldPrice)}</Td>
                     <Td align="right">{money(m.newPrice)}</Td>
                     <Td align="right"><Badge tone={m.changePct > 0 ? "bad" : "good"}>{signedPct(m.changePct)}</Badge></Td>
                   </Tr>

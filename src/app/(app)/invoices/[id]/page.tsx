@@ -1,7 +1,7 @@
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { toISODate } from "@/domain/dates";
 import { creditItems, creditRequestText, findDuplicate } from "@/domain/invoiceMatch";
-import { money, shortDate } from "@/lib/format";
+import { businessDateTime, money, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { db, num } from "@/server/db";
 import { env } from "@/server/env";
@@ -32,7 +32,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
     pendingPriceChanges(inv),
     loadHistory(id),
   ]);
-  const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: env.BUSINESS_TIMEZONE });
+  const when = (instant: string | Date) => businessDateTime(instant, env.BUSINESS_TIMEZONE);
   const standing = currentApproval(history);
   const events = history.map((e) => ({ ...e, when: when(e.at), statusLabel: e.status && e.status in STATUS_META ? STATUS_META[e.status as InvoiceStatus].label : undefined }));
 
@@ -112,7 +112,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
           ) : (
             <>
               Approved by <span className="font-medium text-ink">{inv.approvedBy}</span>
-              {inv.approvedAt && <> on {inv.approvedAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: env.BUSINESS_TIMEZONE })}</>}. Reopen it to make changes.
+              {inv.approvedAt && <> on {when(inv.approvedAt)}</>}. Reopen it to make changes.
             </>
           )}
         </Card>
@@ -120,6 +120,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <div className={hasImage ? "h-[24rem] sm:h-[32rem] xl:sticky xl:top-6 xl:h-[calc(100dvh-8rem)]" : "xl:sticky xl:top-6 xl:h-[calc(100dvh-8rem)]"}>
+          {/* Without a photo: a slim "Add photo" row below xl so the lines stay above the fold; the full drop area beside them on wide screens. */}
           <InvoiceViewer src={hasImage ? `/invoices/${inv.id}/image` : null} type={inv.imageType} invoiceId={inv.id} locked={locked} />
         </div>
 

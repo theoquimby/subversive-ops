@@ -10,7 +10,7 @@
  */
 
 import { autoUpdate, flip, offset, size, useFloating } from "@floating-ui/react";
-import clsx from "clsx";
+import { cn } from "@/lib/cn";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { Children, isValidElement, ReactElement, ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -163,7 +163,7 @@ export function Select({ value, defaultValue, onChange, options: given, children
     <div
       ref={refs.setFloating}
       style={phone ? undefined : floatingStyles}
-      className={clsx(
+      className={cn(
         "z-[60] flex flex-col overflow-hidden border border-border bg-surface text-sm shadow-xl",
         phone ? "fixed inset-x-0 bottom-0 max-h-[70dvh] rounded-t-2xl pb-[env(safe-area-inset-bottom)]" : "rounded-xl",
       )}
@@ -191,7 +191,7 @@ export function Select({ value, defaultValue, onChange, options: given, children
                 aria-disabled={o.disabled}
                 onMouseMove={() => setActive(i)}
                 onClick={() => commit(o)}
-                className={clsx(
+                className={cn(
                   "flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5",
                   phone ? "min-h-11" : "min-h-8",
                   i === active && "bg-surface-2",
@@ -225,7 +225,7 @@ export function Select({ value, defaultValue, onChange, options: given, children
         aria-label={rest["aria-label"]}
         onClick={() => setOpen((o) => !o)}
         onKeyDown={onKey}
-        className={clsx(
+        className={cn(
           "inline-flex w-full min-w-0 items-center justify-between gap-2 text-left text-sm transition-colors disabled:opacity-50",
           variant === "default"
             ? "h-9 rounded-lg border border-border-strong bg-surface px-3 hover:border-ink-2/40 focus-visible:border-ink-2"
@@ -234,8 +234,8 @@ export function Select({ value, defaultValue, onChange, options: given, children
           className,
         )}
       >
-        <span className={clsx("truncate", (!selected || selected.value === "") && "text-muted")}>{selected?.label ?? placeholder}</span>
-        <ChevronDown className={clsx("size-3.5 shrink-0 text-muted transition-transform", open && "rotate-180")} />
+        <span className={cn("truncate", (!selected || selected.value === "") && "text-muted")}>{selected?.label ?? placeholder}</span>
+        <ChevronDown className={cn("size-3.5 shrink-0 text-muted transition-transform", open && "rotate-180")} />
       </button>
       {name && <input type="hidden" name={name} value={current} />}
       {open && typeof document !== "undefined" && createPortal(

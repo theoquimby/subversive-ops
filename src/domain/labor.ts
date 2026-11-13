@@ -181,6 +181,8 @@ export interface ShiftLike {
   rate?: number | null;
   /** Tip-eligible position: the tipped cash wage applies instead of full minimum wage. */
   tipped?: boolean;
+  /** Business day (YYYY-MM-DD) the shift belongs to. Defaults to the UTC date of `start`. */
+  day?: string;
 }
 
 export interface EmployeeLike {
@@ -206,6 +208,8 @@ export function checkCompliance(shifts: ShiftLike[], employees: EmployeeLike[], 
   return applyRuleSettings(rawCompliance(shifts, employees, rules, localHour), rules);
 }
 
+const shiftDay = (s: ShiftLike) => s.day ?? s.start.toISOString().slice(0, 10);
+
 function rawCompliance(shifts: ShiftLike[], employees: EmployeeLike[], rules: LaborRules, localHour: (d: Date) => number): Violation[] {
   const v: Violation[] = [];
   const emp = new Map(employees.map((e) => [e.id, e]));
@@ -229,16 +233,27 @@ function rawCompliance(shifts: ShiftLike[], employees: EmployeeLike[], rules: La
     const e = emp.get(employeeId);
     list.sort((a, b) => a.start.getTime() - b.start.getTime());
     let weekHours = 0;
+    const dayHours = new Map<string, number>();
+    const minorDayFlagged = new Set<string>();
     for (let i = 0; i < list.length; i++) {
       const s = list[i];
+      const day = shiftDay(s);
       weekHours += paidHours(s);
       const prev = list[i - 1];
       if (prev) {
         if (s.start < prev.end) v.push({ shiftId: s.id, employeeId, level: "block", rule: "overlap", message: `${e?.name ?? "Employee"} is double-booked` });
-        else if ((s.start.getTime() - prev.end.getTime()) / H < rules.minRestHours) v.push({ shiftId: s.id, employeeId, level: "warn", rule: "rest", message: `Less than ${rules.minRestHours}h since last shift` });
+        // Rest applies between business days (close → open), not to split or back-to-back shifts on one day.
+        else if (shiftDay(prev) !== day && (s.start.getTime() - prev.end.getTime()) / H < rules.minRestHours) v.push({ shiftId: s.id, employeeId, level: "warn", rule: "rest", message: `Less than ${rules.minRestHours}h since last shift` });
       }
       if (e?.isMinor) {
-        if (paidHours(s) > rules.minorMaxDailyHours) v.push({ shiftId: s.id, employeeId, level: "block", rule: "minor-hours", message: `Minor scheduled over ${rules.minorMaxDailyHours}h` });
+        // Daily limit counts every shift on the same business day.
+        const total = (dayHours.get(day) ?? 0) + paidHours(s);
+        dayHours.set(day, total);
+        if (total > rules.minorMaxDailyHours + 1e-9 && !minorDayFlagged.has(day)) {
+          minorDayFlagged.add(day);
+          const h = Math.round(total * 10) / 10;
+          v.push({ shiftId: s.id, employeeId, level: "block", rule: "minor-hours", message: `Minor scheduled ${h}h this day, over ${rules.minorMaxDailyHours}h` });
+        }
         const endHour = localHour(s.end) + (s.end.getMinutes() > 0 ? s.end.getMinutes() / 60 : 0);
         if (endHour > rules.minorLatestHour || localHour(s.end) < 5) v.push({ shiftId: s.id, employeeId, level: "warn", rule: "minor-late", message: `Minor working past ${rules.minorLatestHour}:00 — check if it's a school night` });
       }

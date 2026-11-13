@@ -130,12 +130,12 @@ function ForecastCard({ b }: { b: WeeklyBrief }) {
       <div className="mt-6 grid grid-cols-7 items-end gap-1.5 sm:gap-3" aria-label="Forecast by day">
         {b.forecast.days.map((d) => (
           <div key={d.date} className="flex flex-col items-center gap-1.5">
-            <div className="num text-[11px] text-muted">{d.qty >= 1 ? `$${(d.qty / 1000).toFixed(1)}k` : ""}</div>
+            <div className="num text-[11px] text-muted">{d.closed || d.qty < 1 ? "Closed" : `$${(d.qty / 1000).toFixed(1)}k`}</div>
             <div className="flex h-24 w-full items-end">
               <div
                 className={cx("w-full rounded-md", d.closed || d.qty < 1 ? "bg-surface-2" : busiest.has(d.date) ? "bg-ink" : "bg-border-strong")}
                 style={{ height: `${d.qty < 1 ? 4 : Math.max(6, (d.qty / max) * 100)}%` }}
-                title={`${dayDate(d.date)}: ${money(d.qty, { whole: true })}`}
+                title={d.closed || d.qty < 1 ? `${dayDate(d.date)}: closed` : `${dayDate(d.date)}: ${money(d.qty, { whole: true })}`}
               />
             </div>
             <div className={cx("text-xs", busiest.has(d.date) ? "font-medium text-ink" : "text-muted")}>{DAY[weekday(d.date)]}</div>
@@ -251,7 +251,7 @@ function buildItems(b: WeeklyBrief): Item[] {
       action: go("/schedule", "Review & publish"),
     });
   } else {
-    items.push({ id: "schedule", icon: CalendarDays, title: "Schedule", status: `Published · ${s.published} shifts · ${Math.round(s.hours)} h${laborNote}${s.open ? ` · ${s.open} open` : ""}`, needsYou: s.open > 0, action: go("/schedule", s.open ? "Fill open shifts" : "Schedule", s.open > 0) });
+    items.push({ id: "schedule", icon: CalendarDays, title: "Schedule", status: `Published · ${s.published} shift${s.published === 1 ? "" : "s"} · ${Math.round(s.hours)} h${laborNote}${s.open ? ` · ${s.open} open` : ""}`, needsYou: s.open > 0, action: go("/schedule", s.open ? "Fill open shifts" : "Schedule", s.open > 0) });
   }
 
   // Requests

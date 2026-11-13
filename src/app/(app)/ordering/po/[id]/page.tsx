@@ -3,6 +3,7 @@ import { toISODate } from "@/domain/dates";
 import { dayDate, money } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { loadOrder, orderAsText } from "@/server/services/orders";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteDraft, receiveOrder } from "../../actions";
 import { CopyButton } from "./copy-button";
@@ -14,6 +15,9 @@ import { purchaseOrderSubject } from "@/server/email/templates/purchase-order";
 import { emailConfigured, type DeliveryEvent } from "@/server/integrations/email";
 import { emailForUser } from "@/server/services/notify";
 import { relativeTime } from "@/lib/format";
+import { db } from "@/server/db";
+import { businessToday } from "@/server/services/sales";
+import { currentPrices, linePrice, orderTotal } from "../../estimate";
 
 const DELIVERY: Partial<Record<DeliveryEvent, { label: string; tone: "good" | "warn" | "bad" | "neutral" }>> = {
   queued: { label: "Sending", tone: "neutral" },
@@ -35,10 +39,17 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const o = await loadOrder(id);
   if (!o) notFound();
-  const [delivery, myEmail] = await Promise.all([poDelivery(o.id), emailForUser(session.userId)]);
+  const [delivery, myEmail, invoices, prices] = await Promise.all([
+    poDelivery(o.id),
+    emailForUser(session.userId),
+    db.invoice.findMany({ where: { orderId: o.id }, select: { id: true, total: true, invoiceNumber: true } }),
+    currentPrices(o.lines.filter((l) => l.unitPrice == null).map((l) => l.supplierProductId), businessToday()),
+  ]);
   const sent = delivery.record;
   const status = delivery.status ? DELIVERY[delivery.status] : null;
-  const total = o.lines.reduce((s, l) => s + l.qty.toNumber() * (l.unitPrice?.toNumber() ?? 0), 0);
+  const priced = o.lines.map((l) => ({ supplierProductId: l.supplierProductId, qty: l.qty.toNumber(), unitPrice: l.unitPrice?.toNumber() ?? null }));
+  const estimate = orderTotal(priced, prices);
+  const invoiced = orderTotal(priced, prices, invoices.map((i) => i.total?.toNumber() ?? null));
   const text = orderAsText(o);
   const receiving = o.status !== "RECEIVED";
   const mailto = o.supplier.email ? `mailto:${o.supplier.email}?subject=${encodeURIComponent(`Order for ${toISODate(o.deliveryDate)}`)}&body=${encodeURIComponent(text)}` : null;
@@ -91,26 +102,52 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
       <form action={receiveOrder.bind(null, o.id)}>
         <Table>
           <thead>
-            <tr><Th>Item</Th><Th align="right">Ordered</Th>{o.status !== "DRAFT" && <Th align="right">Received</Th>}<Th align="right" className="hidden sm:table-cell">Unit price</Th><Th align="right">Total</Th></tr>
+            <tr><Th className="pr-2 sm:pr-4">Item</Th><Th align="right" className="px-2 sm:px-4">Ordered</Th>{o.status !== "DRAFT" && <Th align="right" className="px-2 sm:px-4">Received</Th>}<Th align="right" className="hidden sm:table-cell">Unit price</Th><Th align="right" className="pl-2 sm:pl-4">Total</Th></tr>
           </thead>
           <tbody>
-            {o.lines.map((l) => (
-              <Tr key={l.id}>
-                <Td><div className="font-medium">{l.product.ingredient?.name ?? l.product.description}</div><div className="text-xs text-muted">{l.product.description} · #{l.product.sku}</div></Td>
-                <Td align="right">{l.qty.toNumber()} <span className="text-muted">{l.product.purchaseUnit}</span>{l.suggestedQty.toNumber() !== l.qty.toNumber() && <div className="text-xs text-muted">suggested {l.suggestedQty.toNumber()}</div>}</Td>
-                {o.status !== "DRAFT" && (
-                  <Td align="right">
-                    {receiving ? <Input name={`received_${l.id}`} type="number" step="any" min={0} defaultValue={l.qty.toNumber()} className="num ml-auto h-8 w-20 text-right" aria-label="Received quantity" /> : l.receivedQty?.toNumber()}
+            {o.lines.map((l, idx) => {
+              const p = linePrice(priced[idx], prices);
+              return (
+                <Tr key={l.id}>
+                  <Td className="pr-2 sm:pr-4"><div className="font-medium break-words">{l.product.ingredient?.name ?? l.product.description}</div><div className="text-xs break-words text-muted">{l.product.description} · #{l.product.sku}</div></Td>
+                  <Td align="right" className="px-2 whitespace-nowrap sm:px-4">{l.qty.toNumber()} <span className="text-muted">{l.product.purchaseUnit}</span>{l.suggestedQty.toNumber() !== l.qty.toNumber() && <div className="text-xs text-muted">suggested {l.suggestedQty.toNumber()}</div>}</Td>
+                  {o.status !== "DRAFT" && (
+                    <Td align="right" className="px-2 sm:px-4">
+                      {receiving ? <Input name={`received_${l.id}`} type="number" step="any" min={0} defaultValue={l.qty.toNumber()} className="num ml-auto h-10 w-16 text-right sm:h-8 sm:w-20" aria-label={`Received quantity of ${l.product.description}`} /> : l.receivedQty?.toNumber()}
+                    </Td>
+                  )}
+                  <Td align="right" className="hidden sm:table-cell">
+                    {money(p.price)}
+                    {p.estimated && <div className="text-xs text-muted">current price</div>}
                   </Td>
-                )}
-                <Td align="right" className="hidden sm:table-cell">{money(l.unitPrice?.toNumber())}</Td>
-                <Td align="right">{money(l.qty.toNumber() * (l.unitPrice?.toNumber() ?? 0))}</Td>
-              </Tr>
-            ))}
+                  <Td align="right" className="pl-2 whitespace-nowrap sm:pl-4">
+                    {p.price == null ? <span className="text-muted">—</span> : money(l.qty.toNumber() * p.price)}
+                    {p.estimated && <div className="text-xs text-muted">est.</div>}
+                  </Td>
+                </Tr>
+              );
+            })}
           </tbody>
         </Table>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm"><span className="text-muted">Estimated total</span> <span className="num font-semibold">{money(total)}</span></div>
+          <div className="text-sm">
+            {invoiced.invoiced ? (
+              <>
+                <span className="text-muted">Invoiced total</span> <span className="num font-semibold">{money(invoiced.total)}</span>
+                {estimate.total != null && <span className="text-muted"> · ordered est. <span className="num">{money(estimate.total)}</span></span>}
+                <span className="text-muted"> · </span>
+                {invoices.map((i, k) => (
+                  <span key={i.id}>{k > 0 && ", "}<Link href={`/invoices/${i.id}`} className="text-ink-2 underline decoration-border-strong underline-offset-2 hover:text-ink">{i.invoiceNumber ? `invoice #${i.invoiceNumber}` : "invoice"}</Link></span>
+                ))}
+              </>
+            ) : (
+              <>
+                <span className="text-muted">Estimated total</span> <span className="num font-semibold">{money(estimate.total)}</span>
+                {estimate.estimated && <span className="text-muted"> · est. from current prices</span>}
+                {estimate.unpriced > 0 && <span className="text-warn"> · {estimate.unpriced} line{estimate.unpriced === 1 ? "" : "s"} without a price</span>}
+              </>
+            )}
+          </div>
           {o.status === "SENT" && <span className="flex items-center gap-2"><HelpTip id="ordering.po.receive" /><Button variant="primary">Check in delivery</Button></span>}
         </div>
       </form>

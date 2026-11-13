@@ -8,7 +8,7 @@ import { dayDate, money, pct, shortDate } from "@/lib/format";
 import type { ShiftView, WeekData, WeekIssue } from "@/server/services/scheduling";
 import { AlertTriangle, ChevronLeft, ChevronRight, CopyPlus, Eraser, Inbox, Plus, Send, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { clearDraftShifts, copyPreviousWeek, createShift, moveShift, publishSchedule } from "./actions";
+import { clearDraftShifts, copyPreviousWeek, moveShift, publishSchedule } from "./actions";
 import { DemandChart } from "./demand-chart";
 import { GeneratePanel } from "./generate-panel";
 import { ShiftEditor } from "./shift-editor";
@@ -16,6 +16,7 @@ import { ShiftEditor } from "./shift-editor";
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const fmtH = (h: number) => `${Number(h.toFixed(1))}h`;
 const OPEN = "open";
+const NEW_ID = "new";
 
 export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { data: WeekData; today: string; prevWeek: string; nextWeek: string; thisWeek: string }) {
   const { dates, positions, employees, issues, summary, timeOff, pendingTimeOff, opening } = data;
@@ -23,6 +24,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { d
   const [busy, start] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string; anchor: HTMLElement | null } | null>(null);
+  const [creating, setCreating] = useState<{ shift: ShiftView; anchor: HTMLElement | null } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [dayIdx, setDayIdx] = useState(() => Math.max(0, dates.indexOf(today)));
   const [moved, setMoved] = useState<Record<string, { employeeId: string | null; date: string }>>({});
@@ -62,21 +64,24 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { d
   const empName = useMemo(() => new Map(employees.map((e) => [e.id, e.name])), [employees]);
 
   const drafts = shifts.filter((s) => !s.published).length;
+  // Open shifts that can still be picked up; past days don't count.
+  const upcomingOpen = shifts.filter((s) => !s.employeeId && s.date >= today).length;
   const blocks = issues.filter((i) => i.level === "block");
   const pastWeek = dates[6] < today;
 
   // ---- actions ----
-  const quickAdd = (employeeId: string | null, date: string) => {
+  // Opens the editor in "new" mode; nothing is written until Save.
+  const quickAdd = (employeeId: string | null, date: string, anchor: HTMLElement | null = null) => {
     const emp = employees.find((e) => e.id === employeeId);
     const positionId = emp?.positionIds[0] ?? positions[0]?.id;
     if (!positionId) return showToast("Add a position on the Team page first.");
     const o = opening[weekday(date)];
     const startMin = o ? Math.max(0, o[0] - 1) * 60 : 16 * 60;
     const endMin = o ? Math.min(startMin + 6 * 60, (o[1] + 1) * 60) : 22 * 60;
-    start(async () => {
-      const r = await createShift({ employeeId, positionId, date, startMin, endMin: Math.max(endMin, startMin + 4 * 60), breakMinutes: 0, notes: null });
-      if (r.error) showToast(r.error);
-      else if (r.id) setEditing({ id: r.id, anchor: null });
+    setEditing(null);
+    setCreating({
+      shift: { id: NEW_ID, employeeId, positionId, date, startMin, endMin: Math.max(endMin, startMin + 4 * 60), breakMinutes: 0, notes: null, published: false },
+      anchor,
     });
   };
 
@@ -219,7 +224,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { d
         {!pastWeek && (
           <button
             type="button"
-            onClick={() => quickAdd(empId, date)}
+            onClick={(e) => quickAdd(empId, date, e.currentTarget)}
             aria-label={`Add shift ${emp?.name ?? "open"} ${dayDate(date)}`}
             className={cx(
               "flex flex-1 items-center justify-center rounded-md text-muted opacity-0 transition-opacity group-hover/cell:opacity-100 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100",
@@ -309,7 +314,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { d
           tone={data.laborTarget != null && summary.laborPct != null ? (summary.laborPct > data.laborTarget + 0.0005 ? "text-bad" : "text-good") : laborTone(summary.laborPct)}
           hint={data.laborTarget != null ? `budget ${pct(data.laborTarget)}` : "of forecast sales"}
         />
-        <Kpi label="Hours" value={<>{fmtH(summary.hours)}<span className="text-base font-normal text-muted"> / {fmtH(summary.requiredHours)}</span></>} hint={summary.openShifts ? `${summary.openShifts} open shift${summary.openShifts === 1 ? "" : "s"}` : "scheduled / needed"} />
+        <Kpi label="Hours" value={<>{fmtH(summary.hours)}<span className="text-base font-normal text-muted"> / {fmtH(summary.requiredHours)}</span></>} hint={upcomingOpen ? `${upcomingOpen} open shift${upcomingOpen === 1 ? "" : "s"} to fill` : "scheduled / needed"} />
       </div>
 
       {positions.length === 0 ? (
@@ -327,7 +332,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { d
               </div>
               {dates.map(dayHeader)}
 
-              <RowHead title="Open shifts" sub={`${shifts.filter((s) => !s.employeeId).length} to fill`} tone={shifts.some((s) => !s.employeeId) ? "warn" : undefined} />
+              <RowHead title="Open shifts" sub={upcomingOpen ? `${upcomingOpen} to fill` : pastWeek ? "past week" : "none to fill"} tone={upcomingOpen ? "warn" : undefined} />
               {dates.map((d) => cell(OPEN, d, null))}
 
               {rows.map((e) => {
@@ -431,7 +436,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { d
                   );
                 })}
                 {!pastWeek && (
-                  <Button className="h-11" variant="secondary" disabled={busy} onClick={() => quickAdd(null, day)}>
+                  <Button className="h-11" variant="secondary" disabled={busy} onClick={(e) => quickAdd(null, day, e.currentTarget)}>
                     <Plus className="size-4" /> Add shift
                   </Button>
                 )}
@@ -554,6 +559,21 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { d
           hoursByEmployee={hoursBy}
           timeOff={timeOff}
           onClose={() => setEditing(null)}
+          onToast={showToast}
+        />
+      )}
+      {creating && (
+        <ShiftEditor
+          key={`new-${creating.shift.date}-${creating.shift.employeeId ?? OPEN}`}
+          isNew
+          shift={creating.shift}
+          anchor={creating.anchor}
+          employees={employees}
+          positions={positions}
+          issues={[]}
+          hoursByEmployee={hoursBy}
+          timeOff={timeOff}
+          onClose={() => setCreating(null)}
           onToast={showToast}
         />
       )}

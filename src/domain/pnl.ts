@@ -4,7 +4,7 @@
  */
 
 import { addDays, ISODate, parseISODate, weekday } from "./dates";
-import { ClassSplit, emptySplit, RevenueClass } from "./revenueClass";
+import { addSplits, ClassSplit, emptySplit, GroupSplit, groupSplit, RevenueClass } from "./revenueClass";
 
 /** Same values as the UI Badge tones. */
 export type Tone = "good" | "warn" | "bad" | "neutral";
@@ -122,6 +122,74 @@ export function theoreticalByDay(
   }
   return { byDay, uncosted };
 }
+
+// ---- Period KPIs (one definition for P&L, Budgets and Overview) ------------------
+
+/** One business day's raw figures: net sales, theoretical COGS by class, labor from timecards. */
+export interface KpiDay extends PnlInput {
+  date: ISODate;
+  split: ClassSplit;
+  /** Square sales have arrived for this day (hourly or item rows). */
+  salesSynced: boolean;
+}
+
+/**
+ * Days that count toward a period's KPIs. Finished days always count; today
+ * only with `includeToday` (it is still in progress); future days never.
+ */
+export const countsToward = (date: ISODate, today: ISODate, includeToday: boolean) => date < today || (includeToday && date === today);
+
+export interface PeriodTotals {
+  /** Dates that were counted. */
+  counted: ISODate[];
+  /** Today is in the counted days, so the figures are partial. */
+  partial: boolean;
+  total: PnlSummary;
+  /** Food / beverage / other, each cost % of its own sales. */
+  split: GroupSplit;
+  /** Food cost % of food sales (the headline "food cost"). */
+  foodPct: number | null;
+  /** Beverage cost % of beverage sales. */
+  beveragePct: number | null;
+  /** All theoretical COGS % of net sales. */
+  cogsPct: number | null;
+  /** Labor (wages × (1 + burden)) % of net sales. */
+  laborPct: number | null;
+  /** (All COGS + labor) % of net sales. */
+  primePct: number | null;
+}
+
+/** Roll days up into period totals with the shared definitions above. */
+export function rollupKpis(days: KpiDay[], today: ISODate, includeToday: boolean): PeriodTotals {
+  const counted = days.filter((d) => countsToward(d.date, today, includeToday));
+  const total = summarize(addInputs(counted));
+  const split = groupSplit(counted.reduce((a, d) => addSplits(a, d.split), emptySplit()), total.sales);
+  return {
+    counted: counted.map((d) => d.date),
+    partial: counted.some((d) => d.date === today),
+    total,
+    split,
+    foodPct: split.food.pct,
+    beveragePct: split.beverage.pct,
+    cogsPct: total.foodPct,
+    laborPct: total.laborPct,
+    primePct: total.primePct,
+  };
+}
+
+/** Labels shared by every page that shows these KPIs. */
+export const KPI_LABELS = {
+  sales: "Net sales",
+  salesHint: "Square net sales, ignored items left out",
+  food: "Food cost",
+  foodHint: "% of food sales · theoretical",
+  beverage: "Beverage cost",
+  beverageHint: "% of beverage sales · theoretical",
+  labor: "Labor",
+  laborHint: "% of net sales · timecards incl. employer taxes",
+  prime: "Prime cost",
+  primeHint: "COGS + labor, % of net sales",
+} as const;
 
 /** Cost % against a target: at or under = good, up to 2 points over = warn, beyond = bad. */
 export function costTone(actual: number | null, target: number | null): Tone {

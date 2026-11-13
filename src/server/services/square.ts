@@ -5,6 +5,7 @@ import { db } from "../db";
 import { env, squareOAuthConfigured } from "../env";
 import { exchangeCode, fetchLocations, fetchMerchant, refreshAccessToken, revokeToken, SquareLocation } from "../integrations/square-auth";
 import { friendlySquareError, SquareClient, SquareEnvironment } from "../integrations/square-http";
+import { relativeTime } from "@/lib/format";
 
 /**
  * The Square connection: stored encrypted in Setting `square.connection`
@@ -173,6 +174,17 @@ export async function squareStatus(): Promise<SquareStatus> {
   };
 }
 
+/**
+ * One plain-English line about Square for page headers (Overview, Sales), so
+ * every page says the same thing. Pair it with a link to /settings/square.
+ */
+export async function squareSummary(): Promise<{ connected: boolean; lastSync: Date | null; text: string }> {
+  const [status, last] = await Promise.all([squareStatus(), db.setting.findUnique({ where: { key: "square.lastSync" } })]);
+  const lastSync = last ? new Date(last.value) : null;
+  if (!status.connected) return { connected: false, lastSync, text: "Square not connected" };
+  return { connected: true, lastSync, text: lastSync ? `Square synced ${relativeTime(lastSync)}` : "Square connected · first sync pending" };
+}
+
 async function saveNew(source: "oauth" | "token", environment: SquareEnvironment, accessToken: string, extra: { refreshToken?: string | null; expiresAt?: string | null }) {
   const c = { accessToken, environment };
   const [merchant, locations] = await Promise.all([fetchMerchant(c), fetchLocations(c)]);
@@ -233,7 +245,7 @@ export async function testSquareConnection() {
 
 export async function setSquareLocations(ids: string[]) {
   const s = await readStored();
-  if (!s) throw new Error(env.SQUARE_ACCESS_TOKEN ? "Locations come from SQUARE_LOCATION_ID while connected through environment variables." : "Connect Square first.");
+  if (!s) throw new Error(env.SQUARE_ACCESS_TOKEN ? "Locations are fixed in the hosting settings while Square is connected that way." : "Connect Square first.");
   const known = new Set(s.locations.map((l) => l.id));
   const picked = ids.filter((id) => known.has(id));
   if (!picked.length) throw new Error("Pick at least one location.");

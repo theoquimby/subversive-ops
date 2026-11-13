@@ -1,6 +1,8 @@
 import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { toISODate, WEEKDAYS } from "@/domain/dates";
-import { dayDate, money, shortDate } from "@/lib/format";
+import { businessDateOf, dayDate, money, shortDate } from "@/lib/format";
+import { env } from "@/server/env";
+import { currentPrices, orderTotal } from "./estimate";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { deliveryWindow, supplierCutoffs } from "@/server/services/planning";
@@ -25,9 +27,24 @@ export default async function OrderingPage() {
   const today = businessToday();
   const [suppliers, orders, cutoffs] = await Promise.all([
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" }, include: { _count: { select: { products: { where: { ingredientId: { not: null } } } } } } }),
-    db.purchaseOrder.findMany({ orderBy: { createdAt: "desc" }, take: 25, include: { supplier: { select: { name: true } }, lines: { select: { qty: true, unitPrice: true } } } }),
+    db.purchaseOrder.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 25,
+      include: { supplier: { select: { name: true } }, lines: { select: { qty: true, unitPrice: true, supplierProductId: true } }, invoices: { select: { total: true } } },
+    }),
     supplierCutoffs(),
   ]);
+  const prices = await currentPrices(orders.flatMap((o) => o.lines.filter((l) => l.unitPrice == null).map((l) => l.supplierProductId)), today);
+  const totals = new Map(
+    orders.map((o) => [
+      o.id,
+      orderTotal(
+        o.lines.map((l) => ({ supplierProductId: l.supplierProductId, qty: l.qty.toNumber(), unitPrice: l.unitPrice?.toNumber() ?? null })),
+        prices,
+        o.invoices.map((i) => i.total?.toNumber() ?? null),
+      ),
+    ]),
+  );
   const cutoffBy = new Map(cutoffs.map((c) => [c.supplierId, c]));
 
   return (
@@ -44,7 +61,7 @@ export default async function OrderingPage() {
                 <Card className="h-full p-4 transition-colors hover:border-border-strong">
                   <div className="text-sm font-medium">{s.name}</div>
                   <div className="mt-1 text-xs text-muted">
-                    {s.deliveryDays.length ? `Delivers ${s.deliveryDays.map((d) => WEEKDAYS[d]).join(", ")}` : "No delivery days set"} · {s._count.products} items
+                    {s.deliveryDays.length ? `Delivers ${s.deliveryDays.map((d) => WEEKDAYS[d]).join(", ")}` : "No delivery days set"} · {s._count.products} item{s._count.products === 1 ? "" : "s"}
                   </div>
                   <div className="mt-4 flex items-end justify-between">
                     <div>
@@ -74,8 +91,8 @@ export default async function OrderingPage() {
           <thead>
             <tr>
               <Th>Supplier</Th>
-              <Th className="w-28">Order by</Th>
-              <Th className="w-32"><span className="hidden sm:inline">Days before delivery</span><span className="sm:hidden">Days before</span></Th>
+              <Th className="w-24 px-2 sm:w-28 sm:px-4">Order by</Th>
+              <Th className="w-24 px-2 sm:w-32 sm:px-4"><span className="hidden sm:inline">Days before delivery</span><span className="sm:hidden">Days before</span></Th>
               <Th className="hidden w-36 sm:table-cell">Auto-draft</Th>
               <Th className="hidden md:table-cell">Next cutoff</Th>
             </tr>
@@ -114,17 +131,27 @@ export default async function OrderingPage() {
           <EmptyState title="No orders yet">Saved orders show up here so deliveries can be checked in.</EmptyState>
         ) : (
           <Table>
-            <thead><tr><Th>Supplier</Th><Th>Delivery</Th><Th>Status</Th><Th align="right">Lines</Th><Th align="right">Total</Th></tr></thead>
+            <thead><tr><Th className="pr-2 sm:pr-4">Supplier</Th><Th className="hidden sm:table-cell">Delivery</Th><Th className="px-2 sm:px-4">Status</Th><Th align="right" className="hidden sm:table-cell">Lines</Th><Th align="right" className="pl-2 sm:pl-4">Total</Th></tr></thead>
             <tbody>
-              {orders.map((o) => (
-                <Tr key={o.id}>
-                  <Td><Link href={`/ordering/po/${o.id}`} className="font-medium hover:underline">{o.supplier.name}</Link><div className="text-xs text-muted">{o.notes?.startsWith("Auto-drafted") ? "Auto-drafted" : "Created"} {shortDate(toISODate(o.createdAt))}</div></Td>
-                  <Td className="num">{dayDate(toISODate(o.deliveryDate))}</Td>
-                  <Td><Badge tone={STATUS[o.status].tone}>{STATUS[o.status].label}</Badge></Td>
-                  <Td align="right">{o.lines.length}</Td>
-                  <Td align="right">{money(o.lines.reduce((s, l) => s + l.qty.toNumber() * (l.unitPrice?.toNumber() ?? 0), 0))}</Td>
-                </Tr>
-              ))}
+              {orders.map((o) => {
+                const t = totals.get(o.id)!;
+                return (
+                  <Tr key={o.id}>
+                    <Td className="pr-2 sm:pr-4">
+                      <Link href={`/ordering/po/${o.id}`} className="font-medium hover:underline">{o.supplier.name}</Link>
+                      <div className="text-xs text-muted sm:hidden">For {dayDate(toISODate(o.deliveryDate))} · {o.lines.length} line{o.lines.length === 1 ? "" : "s"}</div>
+                      <div className="text-xs text-muted">{o.notes?.startsWith("Auto-drafted") ? "Auto-drafted" : "Created"} {shortDate(businessDateOf(o.createdAt, env.BUSINESS_TIMEZONE))}</div>
+                    </Td>
+                    <Td className="num hidden sm:table-cell">{dayDate(toISODate(o.deliveryDate))}</Td>
+                    <Td className="px-2 sm:px-4"><Badge tone={STATUS[o.status].tone}>{STATUS[o.status].label}</Badge></Td>
+                    <Td align="right" className="hidden sm:table-cell">{o.lines.length}</Td>
+                    <Td align="right" className="pl-2 whitespace-nowrap sm:pl-4">
+                      {money(t.total)}
+                      {t.total != null && (t.invoiced ? <div className="text-xs text-muted">invoiced</div> : t.estimated ? <div className="text-xs text-muted" title="Some lines priced from current supplier prices">est.</div> : null)}
+                    </Td>
+                  </Tr>
+                );
+              })}
             </tbody>
           </Table>
         )}

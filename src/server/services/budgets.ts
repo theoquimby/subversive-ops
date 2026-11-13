@@ -5,10 +5,10 @@ import { paidHours } from "@/domain/labor";
 import { Prisma } from "@prisma/client";
 import { db, num } from "../db";
 import { env } from "../env";
-import { buildContext, CostingSnapshot, loadCostingSnapshot, safeCost } from "./costing";
-import { dailySalesForecast, dailySalesHistory } from "./forecasting";
+import { dailySalesForecast } from "./forecasting";
+import { dailyKpis, periodFrom } from "./kpis";
 import { getLaborRules } from "./labor-rules";
-import { businessToday, salesByRecipe } from "./sales";
+import { businessToday } from "./sales";
 
 const tz = () => env.BUSINESS_TIMEZONE;
 const dec = (n: number | null, places = 2) => (n == null ? null : new Prisma.Decimal(n.toFixed(places)));
@@ -87,27 +87,6 @@ export async function laborByDay(from: ISODate, toExclusive: ISODate, source: "t
 
 const sumDays = <T,>(m: Map<ISODate, T>, dates: ISODate[], pick: (v: T) => number) => dates.reduce((s, d) => s + (m.has(d) ? pick(m.get(d)!) : 0), 0);
 
-// ---- Theoretical food cost ---------------------------------------------------------
-
-/** Theoretical food cost and menu-price sales of costed items sold in [from, to). */
-export async function theoreticalFoodCost(from: ISODate, toExclusive: ISODate, snap?: CostingSnapshot) {
-  const s = snap ?? (await loadCostingSnapshot());
-  const { byRecipe } = await salesByRecipe(from, toExclusive);
-  const ctx = buildContext(s, from);
-  let cost = 0;
-  let sales = 0;
-  for (const [recipeId, series] of byRecipe) {
-    const recipe = s.recipes.find((r) => r.id === recipeId);
-    const price = num(recipe?.menuPrice);
-    const res = safeCost(ctx, recipeId);
-    if (!recipe || price == null || "error" in res || !res.lines.some((l) => l.cost != null)) continue;
-    const q = [...series.values()].reduce((a, b) => a + b, 0);
-    cost += q * res.totalCost;
-    sales += q * price;
-  }
-  return { cost, sales };
-}
-
 // ---- The grid ------------------------------------------------------------------------
 
 export interface BudgetRow extends WeekTarget {
@@ -132,36 +111,34 @@ export async function budgetGrid(weeksBack = 6, weeksAhead = 8): Promise<{ rows:
   const to = addDays(weeks[weeks.length - 1], 7);
   const futureDates = dateRange(thisWeek, to);
 
-  const snap = await loadCostingSnapshot();
-  const [targets, history, forecast, worked, scheduled, foodCosts] = await Promise.all([
+  const [targets, daily, forecast, scheduled] = await Promise.all([
     loadTargets(from, to),
-    dailySalesHistory(from, today),
+    // Same KPIs as the P&L and Overview: net sales excl. ignored items, theoretical cost as of each day, labor from timecards.
+    dailyKpis(from, addDays(today, 1)),
     dailySalesForecast(futureDates),
-    laborByDay(from, today, "timecards"),
     laborByDay(thisWeek, to, "shifts"),
-    Promise.all(weeks.filter((w) => w <= today).map(async (w) => [w, await theoreticalFoodCost(w, w === thisWeek ? today : addDays(w, 7), snap)] as const)),
   ]);
   const fc = new Map(forecast.map((f) => [f.date, f.qty]));
-  const food = new Map(foodCosts);
+  const salesOn = new Map(daily.days.map((d) => [d.date, d.sales]));
 
   const rows = weeks.map((w): BudgetRow => {
     const days = dateRange(w, addDays(w, 7));
     const when = w === thisWeek ? "current" : w < thisWeek ? "past" : "future";
-    const pastDays = days.filter((d) => d < today);
     const t = targets.get(w) ?? { weekStart: w, sales: null, foodCostPct: null, laborPct: null };
-    const salesActual = when === "future" ? null : sumDays(history.sales, pastDays, (v) => v);
+    // Finished days only: today is still in progress (same rule as the P&L week view).
+    const k = when === "future" ? null : periodFrom(daily, w, addDays(w, 7), false);
+    const salesActual = k ? k.total.sales : null;
     const salesForecast = when === "past" ? null : (salesActual ?? 0) + days.filter((d) => d >= today).reduce((s, d) => s + (fc.get(d) ?? 0), 0);
-    const laborWorked = sumDays(worked, pastDays, (v) => v.cost);
-    const hasTimecards = pastDays.some((d) => worked.has(d));
-    const fcst = food.get(w);
+    const hasLabor = !!k && k.total.laborHours > 0;
     const actuals: WeekActuals = {
       sales: salesActual,
-      foodCost: fcst && fcst.sales > 0 ? fcst.cost : null,
-      foodSales: fcst && fcst.sales > 0 ? fcst.sales : null,
-      laborCost: hasTimecards ? laborWorked : null,
+      foodCost: k && k.split.food.sales > 0 ? k.split.food.cogs : null,
+      foodSales: k && k.split.food.sales > 0 ? k.split.food.sales : null,
+      laborCost: hasLabor ? k!.total.labor : null,
     };
     // Share of the week's expected sales already behind us (for pro-rating the sales target).
-    const expected = days.reduce((s, d) => s + (d < today ? history.sales.get(d) ?? 0 : fc.get(d) ?? 0), 0);
+    const pastDays = days.filter((d) => d < today);
+    const expected = days.reduce((s, d) => s + (d < today ? salesOn.get(d) ?? 0 : fc.get(d) ?? 0), 0);
     const elapsed = when === "past" ? 1 : when === "future" ? 0 : expected > 0 ? (salesActual ?? 0) / expected : pastDays.length / 7;
     const status = weekStatus(t, actuals, elapsed);
     const schedCost = sumDays(scheduled, days, (v) => v.cost);

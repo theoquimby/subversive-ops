@@ -2,7 +2,7 @@
 
 import { FileDrop } from "@/components/file-drop";
 import { Card, cx } from "@/components/ui";
-import { ExternalLink, ImageOff, Loader2, Maximize, Minus, Plus } from "lucide-react";
+import { Camera, ExternalLink, ImageOff, Loader2, Maximize, Minus, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { attachFile } from "../actions";
@@ -150,8 +150,48 @@ function Placeholder({ invoiceId, locked }: { invoiceId: string; locked: boolean
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const upload = (f: File | null) => {
+    if (!f) return;
+    setError(null);
+    start(async () => {
+      const ready = await prepareUpload(f);
+      if ("error" in ready) return setError(ready.error);
+      const fd = new FormData();
+      fd.set("file", ready);
+      const res = await attachFile(invoiceId, fd);
+      if (res?.error) setError(res.error);
+      else router.refresh();
+    });
+  };
   return (
-    <Card className="flex h-full flex-col items-center justify-center gap-4 border-dashed px-6 py-10 text-center">
+    <>
+      {/* Phone / tablet: one slim row instead of a tall empty frame. */}
+      <Card className="flex items-center gap-3 px-3 py-2 xl:hidden">
+        <ImageOff className="size-4 shrink-0 text-muted" />
+        <div className="min-w-0 flex-1 text-sm">
+          <span className="font-medium">No photo</span>
+          <span className="text-muted"> · entered by hand</span>
+          {error && <div className="text-xs text-bad">{error}</div>}
+        </div>
+        {!locked && (
+          pending ? (
+            <span className="flex h-10 items-center gap-2 text-sm text-muted"><Loader2 className="size-4 animate-spin" />Uploading…</span>
+          ) : (
+            <label className="relative inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium hover:bg-surface-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink">
+              <Camera className="size-4" />Add photo
+              <input type="file" accept="image/*,application/pdf" className="sr-only" onChange={(e) => { upload(e.target.files?.[0] ?? null); e.target.value = ""; }} />
+            </label>
+          )
+        )}
+      </Card>
+      <PlaceholderFull locked={locked} pending={pending} error={error} upload={upload} />
+    </>
+  );
+}
+
+function PlaceholderFull({ locked, pending, error, upload }: { locked: boolean; pending: boolean; error: string | null; upload: (f: File | null) => void }) {
+  return (
+    <Card className="hidden h-full flex-col items-center justify-center gap-4 border-dashed px-6 py-10 text-center xl:flex">
       <span className="grid size-12 place-items-center rounded-xl bg-surface-2 text-muted"><ImageOff className="size-5" /></span>
       <div>
         <div className="text-sm font-medium">No photo of this invoice</div>
@@ -165,19 +205,7 @@ function Placeholder({ invoiceId, locked }: { invoiceId: string; locked: boolean
             <FileDrop
               accept="image/*,application/pdf"
               hint="Photo or PDF, up to 8 MB"
-              onFile={(f) => {
-                if (!f) return;
-                setError(null);
-                start(async () => {
-                  const ready = await prepareUpload(f);
-                  if ("error" in ready) return setError(ready.error);
-                  const fd = new FormData();
-                  fd.set("file", ready);
-                  const res = await attachFile(invoiceId, fd);
-                  if (res?.error) setError(res.error);
-                  else router.refresh();
-                });
-              }}
+              onFile={upload}
             />
           )}
           {error && <div className="mt-2 text-sm text-bad">{error}</div>}

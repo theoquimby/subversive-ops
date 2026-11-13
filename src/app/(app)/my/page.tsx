@@ -54,7 +54,13 @@ export default async function MyPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title="My shifts" description={`Hi ${me.name.split(" ")[0]}. Your schedule, open shifts you can pick up, time off and sick leave, and when you can work.`} />
+      <PageHeader
+        title="My shifts"
+        description={<>
+          Hi {me.name.split(" ")[0]}. Your schedule, open shifts you can pick up, time off and sick leave, and when you can work.
+          {session.name !== me.name && <span className="mt-1 block text-xs text-muted">Signed in as {session.name}</span>}
+        </>}
+      />
       <div className="mb-10 empty:hidden">
         <AnnouncementsFeed items={notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() }))} />
       </div>

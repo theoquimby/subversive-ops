@@ -6,6 +6,9 @@ import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { shortDate } from "@/lib/format";
+import { businessToday } from "@/server/services/sales";
+import { archivedName, baseName } from "./archive-name";
 
 const lineSchema = z.object({
   ingredientId: z.string().nullable(),
@@ -71,7 +74,27 @@ export async function archiveRecipe(id: string) {
   await requireUser("MANAGER");
   const usedIn = await db.recipeLine.count({ where: { subRecipeId: id, recipe: { active: true } } });
   if (usedIn > 0) return { error: `Used in ${usedIn} other recipe${usedIn > 1 ? "s" : ""} — remove it there first.` };
-  await db.recipe.update({ where: { id }, data: { active: false, name: `${(await db.recipe.findUniqueOrThrow({ where: { id } })).name} (archived ${Date.now()})` } });
+  const recipe = await db.recipe.findUniqueOrThrow({ where: { id } });
+  if (!recipe.active) return { error: "Already archived." };
+  // Names are unique across active and archived recipes, so park the old name under a readable suffix.
+  const label = shortDate(businessToday());
+  let name = archivedName(recipe.name, label);
+  for (let n = 2; await db.recipe.findUnique({ where: { name }, select: { id: true } }); n++) name = archivedName(recipe.name, label, n);
+  await db.recipe.update({ where: { id }, data: { active: false, name } });
   revalidatePath("/menu");
-  redirect("/menu");
+  redirect(`/menu?kind=${recipe.kind}`);
+}
+
+export async function restoreRecipe(id: string): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const recipe = await db.recipe.findUnique({ where: { id } });
+  if (!recipe) return { error: "That recipe no longer exists." };
+  if (recipe.active) return {};
+  const name = baseName(recipe.name);
+  const clash = await db.recipe.findUnique({ where: { name }, select: { id: true } });
+  if (clash && clash.id !== id) return { error: `There's already a recipe called "${name}". Rename it first, then restore this one.` };
+  await db.recipe.update({ where: { id }, data: { active: true, name } });
+  revalidatePath("/menu");
+  revalidatePath("/");
+  return {};
 }

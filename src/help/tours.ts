@@ -26,6 +26,11 @@ export interface TourStep {
   ifMissing?: "center" | "skip";
   /** Help article for "Learn more". */
   helpId?: string;
+  /**
+   * Copy for the phone/tablet layout (bottom tabs, no sidebar, usually no
+   * keyboard), used below the `lg` breakpoint instead of `title` / `body`.
+   */
+  touch?: { title?: string; body?: string };
 }
 
 export interface Tour {
@@ -47,13 +52,13 @@ export const TOURS: Tour[] = [
     minutes: 1,
     steps: [
       { route: "/", title: "Welcome to Subversive Ops", body: "A one-minute look around. Use → or Next to move on, ← to go back, Esc to stop any time." },
-      { route: "/", selector: "aside nav, nav", title: "Everything lives here", body: "Menu costs, prices, ordering, counts and the rest. On a phone it's the row of tabs at the top.", placement: "right" },
+      { route: "/", selector: "aside nav, nav", title: "Everything lives here", body: "Menu costs, prices, ordering, counts and the rest, grouped in the sidebar.", placement: "right", touch: { body: "The tabs along the bottom are the pages you'll use most. More has everything else: menu costs, prices, counts, settings and the rest." } },
       { route: "/", target: "overview.stats", title: "The week at a glance", body: "Food cost for what sold in the last 7 days, net sales from Square, items over target, and price increases. Green is good, red needs a look.", helpId: "overview.foodCost" },
       { route: "/", target: "overview.price-changes", title: "Price moves", body: "The biggest supplier price changes in the last 30 days. Every recipe using them has already been recosted.", helpId: "overview.priceChanges" },
       { route: "/", target: "overview.over-target", title: "Over target", body: "Menu items whose food cost % is above target. Tap one to open its recipe and see the price that would hit target.", helpId: "overview.overTarget" },
       { route: "/", target: "overview.deliveries", title: "Next deliveries", body: "When each supplier comes next. Tap one to get a suggested order built from your forecast and last count.", helpId: "overview.deliveries" },
-      { title: "Jump anywhere with ⌘K", body: "Press ⌘K (Ctrl+K) or / to search any recipe, ingredient or supplier, or start a task like \"Import a price sheet\".", helpId: "app.commandBar" },
-      { title: "Help is always one key away", body: "Press ? to turn on help mode, then point at anything to see what it does. The help center has every article and more tours.", helpId: "app.helpMode" },
+      { title: "Jump anywhere with ⌘K", body: "Press ⌘K (Ctrl+K) or / to search any recipe, ingredient or supplier, or start a task like \"Import a price sheet\".", helpId: "app.commandBar", touch: { title: "Search finds anything", body: "Tap the magnifying glass at the top to find any recipe, ingredient or supplier, or start a task like \"Import a price sheet\"." } },
+      { title: "Help is always one key away", body: "Press ? to turn on help mode, then point at anything to see what it does. The help center has every article and more tours.", helpId: "app.helpMode", touch: { title: "Help is always one tap away", body: "Tap the ? at the top for help mode, then tap anything to see what it does. The help center (under More) has every article and more tours." } },
     ],
   },
   {

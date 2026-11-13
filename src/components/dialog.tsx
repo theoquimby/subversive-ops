@@ -18,11 +18,13 @@ export const useConfirm = () => useContext(Ctx);
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<(ConfirmOptions & { resolve: (v: boolean) => void }) | null>(null);
   const okRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const confirm = useCallback((o: ConfirmOptions) => new Promise<boolean>((resolve) => setState({ ...o, resolve })), []);
   const close = (v: boolean) => { state?.resolve(v); setState(null); };
   useEffect(() => {
     if (!state) return;
-    okRef.current?.focus();
+    // Destructive dialogs start on Cancel so a stray Enter can't delete anything.
+    (state.danger ? cancelRef : okRef).current?.focus();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close(false);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -37,7 +39,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             <div className="text-base font-semibold">{state.title}</div>
             {state.body && <div className="mt-1.5 text-sm text-muted">{state.body}</div>}
             <div className="mt-5 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => close(false)}>Cancel</Button>
+              <Button ref={cancelRef} variant="ghost" onClick={() => close(false)}>Cancel</Button>
               <Button ref={okRef} variant={state.danger ? "danger" : "primary"} className={state.danger ? "bg-bad text-white hover:bg-bad/90 hover:text-white" : ""} onClick={() => close(true)}>{state.confirmLabel ?? "Confirm"}</Button>
             </div>
           </div>

@@ -30,7 +30,7 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
             {open.map((c) => (
               <Link key={c.id} href={`/count/${c.id}`} className="flex items-center justify-between px-4 py-4 hover:bg-surface-2/60">
                 <div>
-                  <div className="font-medium">{c.area ?? "All"}</div>
+                  <div className="font-medium">{!c.area || c.area === "All" ? "Everything" : c.area}</div>
                   <div className="text-xs text-muted">Started by {c.user?.name ?? "someone"} · {c._count.lines} counted</div>
                 </div>
                 <span className="text-sm text-ink-2">Continue →</span>
@@ -60,7 +60,7 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
           <Card className="divide-y divide-border">
             {recent.map((c) => (
               <div key={c.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                <div>{c.area ?? "All"} <span className="text-muted">· {c.user?.name ?? "—"}</span></div>
+                <div>{!c.area || c.area === "All" ? "Everything" : c.area} <span className="text-muted">· {c.user?.name ?? "—"}</span></div>
                 <div className="flex items-center gap-2 text-muted"><Badge>{c._count.lines} items</Badge>{relativeTime(c.takenAt)}</div>
               </div>
             ))}

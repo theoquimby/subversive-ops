@@ -2,7 +2,7 @@ import { refreshIfStale } from "@/server/services/square-sync";
 import { Badge, Card, cx, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import { HelpTip, HelpZone } from "@/components/help";
 import { addDays } from "@/domain/dates";
-import { costTone, gapTone, PERIODS, PeriodKind, periodRange, salesTone, Tone } from "@/domain/pnl";
+import { costTone, gapTone, KPI_LABELS, PERIODS, PeriodKind, periodRange, salesTone, Tone } from "@/domain/pnl";
 import { dayDate, money, pct, qty, shortDate, signedPct } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { actualFromCounts, hourlyDay, pnlReport } from "@/server/services/pnl";
@@ -25,8 +25,15 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
   const period = (PERIODS.some((p) => p.kind === sp.period) ? sp.period : "week") as PeriodKind;
   const { from, toExclusive } = periodRange(period, today, { from: sp.from, to: sp.to });
   const now = new Date();
-  const [report, counts] = await Promise.all([pnlReport(from, toExclusive, now), actualFromCounts()]);
-  const { total: t, budget, split, targets } = report;
+  // Today is still in progress: it only counts toward the totals when "Today" is picked.
+  const includeToday = period === "today";
+  const [report, counts] = await Promise.all([pnlReport(from, toExclusive, now, { includeToday }), actualFromCounts()]);
+  const { total: t, budget, split, targets, kpis } = report;
+  const todayRow = report.days.find((d) => d.isToday);
+  // "Today" with no Square sales yet: show the sync state instead of $0 and red ratios.
+  const salesPending = includeToday && !!todayRow && !todayRow.salesSynced;
+  const nothingCounted = kpis.counted.length === 0;
+  const foodTarget = budget?.foodCostPct ?? targets.food;
 
   const past = report.days.filter((d) => !d.future);
   const lastWithSales = [...past].reverse().find((d) => d.sales > 0)?.date;
@@ -41,8 +48,10 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
   };
   const rangeLabel = from === addDays(toExclusive, -1) ? dayDate(from) : `${shortDate(from)} – ${shortDate(addDays(toExclusive, -1))}`;
   const multiDay = report.days.length > 1;
+  const countedLabel = kpis.counted.length === 0 ? "finished days (none yet)" : kpis.counted.length === 1 ? dayDate(kpis.counted[0]) + (kpis.partial ? " so far" : "") : `${shortDate(kpis.counted[0])} – ${shortDate(kpis.counted[kpis.counted.length - 1])}`;
   const vsForecast = ratio(report.salesToDate, report.forecastToDate);
   const totalTarget = budget?.foodCostPct ?? null;
+  const muted = (v: string) => <span className="text-base font-medium text-muted">{v}</span>;
 
   const splitRows = [
     { key: "food", label: "Food", line: split.food, target: targets.food, actual: counts?.food ?? null },
@@ -61,34 +70,47 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
         <PeriodSwitch period={period} from={from} to={addDays(toExclusive, -1)} />
       </div>
 
+      {kpis.todayExcluded && (
+        <p className="-mt-3 mb-4 text-sm text-muted">
+          Totals cover finished days{nothingCounted ? " — none yet this period" : ` (${shortDate(kpis.counted[0])} – ${shortDate(kpis.counted[kpis.counted.length - 1])})`}. Today is still in progress. <Link href="/pnl?period=today" className="underline">See today so far</Link>
+        </p>
+      )}
       <HelpZone id="pnl.page" tour="pnl.stats" className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
-          label="Net sales"
-          value={money(t.sales, { whole: true })}
+          label={KPI_LABELS.sales}
+          value={salesPending ? muted("Sales sync pending") : nothingCounted ? "—" : money(t.sales, { whole: true })}
           hint={
-            t.sales === 0 && !report.days.some((d) => d.future === false && d.date < today) ? (
+            salesPending ? (
+              "Today's sales arrive with the next Square sync"
+            ) : t.sales === 0 && !report.days.some((d) => d.future === false && d.date < today) ? (
               "Sales arrive with the Square sync"
             ) : (
               <span className="inline-flex flex-wrap items-center gap-1.5">
                 {budget?.sales != null && <Badge tone={salesTone(t.sales, budget.sales)}>{pct(budget.sales > 0 ? t.sales / budget.sales : null, 0)} of budget</Badge>}
                 {vsForecast != null && <Badge tone={salesTone(report.salesToDate, report.forecastToDate)}>{signedPct(vsForecast, 0)} vs forecast</Badge>}
-                {budget?.sales == null && vsForecast == null && rangeLabel}
+                {budget?.sales == null && vsForecast == null && (kpis.partial ? "so far today" : rangeLabel)}
               </span>
             )
           }
         />
         <Stat
-          label={<span className="inline-flex items-center gap-1.5">Cost of goods <HelpTip id="pnl.split" /></span>}
-          value={pct(t.foodPct)}
-          hint={<span className="inline-flex flex-wrap items-center gap-1.5">{money(t.cogs, { whole: true })}{totalTarget != null && <Badge tone={costTone(t.foodPct, totalTarget)}>target {pct(totalTarget, 0)}</Badge>}<span>food {pct(split.food.pct, 0)} · bev {pct(split.beverage.pct, 0)}</span></span>}
-        />
-        <Stat
-          label="Labor"
-          value={pct(t.laborPct)}
+          label={<span className="inline-flex items-center gap-1.5">{KPI_LABELS.food} <HelpTip id="pnl.split" /></span>}
+          value={salesPending ? "—" : pct(kpis.foodPct)}
           hint={
             <span className="inline-flex flex-wrap items-center gap-1.5">
-              {money(t.labor, { whole: true })}
-              {budget?.laborPct != null && <Badge tone={costTone(t.laborPct, budget.laborPct)}>target {pct(budget.laborPct, 0)}</Badge>}
+              <span>{KPI_LABELS.foodHint}</span>
+              {!salesPending && kpis.foodPct != null && <Badge tone={kpis.partial ? "neutral" : costTone(kpis.foodPct, foodTarget)}>target {pct(foodTarget, 0)}</Badge>}
+              {kpis.beveragePct != null && <span>bev {pct(kpis.beveragePct, 0)} of bev sales</span>}
+            </span>
+          }
+        />
+        <Stat
+          label={KPI_LABELS.labor}
+          value={salesPending ? "—" : pct(kpis.laborPct)}
+          hint={
+            <span className="inline-flex flex-wrap items-center gap-1.5">
+              <span>{salesPending ? `${money(t.labor, { whole: true })} so far` : `${money(t.labor, { whole: true })} · % of net sales`}</span>
+              {!salesPending && budget?.laborPct != null && kpis.laborPct != null && <Badge tone={kpis.partial ? "neutral" : costTone(kpis.laborPct, budget.laborPct)}>target {pct(budget.laborPct, 0)}</Badge>}
               {report.scheduledToDate != null && report.scheduledToDate > 0 && (
                 <span className={report.laborToDate > report.scheduledToDate * 1.05 ? "text-warn" : undefined}>
                   {money(report.laborToDate, { whole: true })} vs {money(report.scheduledToDate, { whole: true })} scheduled{period === "week" || period === "month" ? " to yesterday" : ""}
@@ -98,16 +120,26 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
           }
         />
         <Stat
-          label={<span className="inline-flex items-center gap-1.5">Prime cost <HelpTip id="pnl.prime" /></span>}
-          value={pct(t.primePct)}
-          hint={<span className="inline-flex flex-wrap items-center gap-1.5">{money(t.primeCost, { whole: true })}{totalTarget != null && budget?.laborPct != null && <Badge tone={costTone(t.primePct, totalTarget + budget.laborPct)}>target {pct(totalTarget + budget.laborPct, 0)}</Badge>}</span>}
+          label={<span className="inline-flex items-center gap-1.5">{KPI_LABELS.prime} <HelpTip id="pnl.prime" /></span>}
+          value={salesPending ? "—" : pct(kpis.primePct)}
+          hint={
+            <span className="inline-flex flex-wrap items-center gap-1.5">
+              {money(t.primeCost, { whole: true })}{kpis.cogsPct != null ? ` · COGS ${pct(kpis.cogsPct, 0)} + labor` : " · COGS + labor"}
+              {!salesPending && !kpis.partial && totalTarget != null && budget?.laborPct != null && <Badge tone={costTone(kpis.primePct, totalTarget + budget.laborPct)}>target {pct(totalTarget + budget.laborPct, 0)}</Badge>}
+            </span>
+          }
         />
       </HelpZone>
       <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Profit before overhead" value={money(t.profit, { whole: true })} tone={t.profit < 0 ? "bad" : undefined} hint={t.sales > 0 ? `${pct(t.profit / t.sales)} of sales` : "no sales yet"} />
+        <Stat
+          label="Profit before overhead"
+          value={salesPending ? "—" : money(t.profit, { whole: true })}
+          tone={!salesPending && !kpis.partial && t.profit < 0 ? "bad" : undefined}
+          hint={salesPending ? "waiting for today's sales" : t.sales > 0 ? `${pct(t.profit / t.sales)} of sales${kpis.partial ? " so far" : ""}` : "no sales yet"}
+        />
         <Stat label="Labor hours" value={qty(t.laborHours, 1)} hint={report.openCards ? `${report.openCards} on the clock now` : `incl. ${Math.round(report.burdenPct * 100)}% burden in cost`} />
-        <Stat label={<span className="inline-flex items-center gap-1.5">Sales per labor hour <HelpTip id="pnl.splh" /></span>} value={money(t.salesPerLaborHour, { whole: true })} />
-        <Stat label="Orders per labor hour" value={t.ordersPerLaborHour == null ? "—" : qty(t.ordersPerLaborHour, 1)} hint={report.hasHourly ? `${qty(t.orders ?? 0, 0)} orders` : "needs Square order sync"} />
+        <Stat label={<span className="inline-flex items-center gap-1.5">Sales per labor hour <HelpTip id="pnl.splh" /></span>} value={salesPending ? "—" : money(t.salesPerLaborHour, { whole: true })} />
+        <Stat label="Orders per labor hour" value={salesPending || t.ordersPerLaborHour == null ? "—" : qty(t.ordersPerLaborHour, 1)} hint={report.hasHourly ? `${qty(t.orders ?? 0, 0)} orders` : "needs Square order sync"} />
       </div>
       <div className="mb-10 space-y-1 text-sm text-muted">
         {!budget && <p>No budget set for {multiDay ? "these weeks" : "this week"}. Targets show here once one is. <Link href="/budgets" className="underline">Budgets</Link></p>}
@@ -119,19 +151,19 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
       <HelpZone id="pnl.split" tour="pnl.split">
         <Section
           title="Food and beverage"
-          description={counts ? `Theoretical for ${rangeLabel}. Actual is from your last two counts (${shortDate(counts.from)} → ${shortDate(counts.to)}).` : `Theoretical for ${rangeLabel}. Count twice to see actual next to it.`}
+          description={counts ? `Theoretical for ${countedLabel}. Each line's cost % is of its own sales. Actual is from your last two counts (${shortDate(counts.from)} → ${shortDate(counts.to)}).` : `Theoretical for ${countedLabel}. Each line's cost % is of its own sales. Count twice to see actual next to it.`}
           actions={<LinkButton href="/variance" variant="ghost" size="sm">Margin gap →</LinkButton>}
         >
           <Table>
             <thead>
               <tr>
-                <Th />
-                <Th align="right">Sales</Th>
-                <Th align="right" className="hidden sm:table-cell">Mix</Th>
-                <Th align="right" className="hidden md:table-cell">Cost</Th>
-                <Th align="right">Cost %</Th>
-                <Th align="right" className="hidden sm:table-cell">Target</Th>
-                <Th align="right"><span className="inline-flex items-center gap-1">Actual <HelpTip id="pnl.actual" /></span></Th>
+                <Th className="px-2! sm:px-4!" />
+                <Th align="right" className="px-2! sm:px-4!">Sales</Th>
+                <Th align="right" className="px-2! sm:px-4! hidden sm:table-cell">Mix</Th>
+                <Th align="right" className="px-2! sm:px-4! hidden md:table-cell">Cost</Th>
+                <Th align="right" className="px-2! sm:px-4!">Cost %</Th>
+                <Th align="right" className="px-2! sm:px-4! hidden sm:table-cell">Target</Th>
+                <Th align="right" className="pr-4! pl-2! sm:px-4!"><span className="inline-flex items-center gap-1">Actual <HelpTip id="pnl.actual" /></span></Th>
               </tr>
             </thead>
             <tbody>
@@ -139,13 +171,13 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
                 const tone = r.target != null ? costTone(r.line.pct, r.target) : "neutral";
                 return (
                   <Tr key={r.key} className={cx(r.muted && "text-muted")}>
-                    <Td className={cx("whitespace-nowrap", r.sub ? "pl-7 text-muted" : "font-medium")}>{r.label}</Td>
-                    <Td align="right">{money(r.line.sales, { whole: true })}</Td>
-                    <Td align="right" className="hidden text-muted sm:table-cell">{pct(r.line.mix, 0)}</Td>
-                    <Td align="right" className="hidden md:table-cell">{r.muted ? "—" : money(r.line.cogs, { whole: true })}</Td>
-                    <Td align="right">{r.muted ? "—" : r.target != null && r.line.pct != null && !r.sub ? <Badge tone={tone}>{pct(r.line.pct)}</Badge> : pct(r.line.pct)}</Td>
-                    <Td align="right" className="hidden text-muted sm:table-cell">{r.target != null && !r.sub ? pct(r.target, 0) : ""}</Td>
-                    <Td align="right">
+                    <Td className={cx("px-2! sm:whitespace-nowrap sm:px-4!", r.sub ? "pl-5! text-muted sm:pl-7!" : "font-medium")}>{r.label}</Td>
+                    <Td align="right" className="px-2! sm:px-4!">{money(r.line.sales, { whole: true })}</Td>
+                    <Td align="right" className="px-2! sm:px-4! hidden text-muted sm:table-cell">{pct(r.line.mix, 0)}</Td>
+                    <Td align="right" className="px-2! sm:px-4! hidden md:table-cell">{r.muted ? "—" : money(r.line.cogs, { whole: true })}</Td>
+                    <Td align="right" className="px-2! sm:px-4!">{r.muted ? "—" : r.target != null && r.line.pct != null && !r.sub ? <Badge tone={tone}>{pct(r.line.pct)}</Badge> : pct(r.line.pct)}</Td>
+                    <Td align="right" className="px-2! sm:px-4! hidden text-muted sm:table-cell">{r.target != null && !r.sub ? pct(r.target, 0) : ""}</Td>
+                    <Td align="right" className="px-2! sm:px-4!">
                       {r.actual && r.actual.actualPct != null ? (
                         <span className="inline-flex items-center justify-end gap-1.5">
                           <Badge tone={gapTone(r.actual.actualPct, r.actual.theoreticalPct)}>{pct(r.actual.actualPct)}</Badge>
@@ -157,12 +189,12 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
                 );
               })}
               <Tr className="font-medium">
-                <Td>Total</Td>
-                <Td align="right">{money(split.total.sales, { whole: true })}</Td>
-                <Td align="right" className="hidden sm:table-cell" />
-                <Td align="right" className="hidden md:table-cell">{money(split.total.cogs, { whole: true })}</Td>
-                <Td align="right">{totalTarget != null && split.total.pct != null ? <Badge tone={costTone(split.total.pct, totalTarget)}>{pct(split.total.pct)}</Badge> : pct(split.total.pct)}</Td>
-                <Td align="right" className="hidden text-muted sm:table-cell">{totalTarget != null ? pct(totalTarget, 0) : ""}</Td>
+                <Td className="px-2! sm:px-4!">Total</Td>
+                <Td align="right" className="px-2! sm:px-4!">{money(split.total.sales, { whole: true })}</Td>
+                <Td align="right" className="px-2! sm:px-4! hidden sm:table-cell" />
+                <Td align="right" className="px-2! sm:px-4! hidden md:table-cell">{money(split.total.cogs, { whole: true })}</Td>
+                <Td align="right" className="px-2! sm:px-4!">{totalTarget != null && split.total.pct != null ? <Badge tone={costTone(split.total.pct, totalTarget)}>{pct(split.total.pct)}</Badge> : pct(split.total.pct)}</Td>
+                <Td align="right" className="px-2! sm:px-4! hidden text-muted sm:table-cell">{totalTarget != null ? pct(totalTarget, 0) : ""}</Td>
                 <Td />
               </Tr>
             </tbody>
@@ -201,26 +233,31 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
                   <Th>Day</Th>
                   <Th align="right">Sales</Th>
                   <Th align="right" className="hidden sm:table-cell"><span className="inline-flex items-center gap-1">Forecast <HelpTip id="pnl.forecast" /></span></Th>
-                  <Th align="right" className="hidden md:table-cell">Food %</Th>
-                  <Th align="right" className="hidden md:table-cell">Bev %</Th>
+                  <Th align="right" className="hidden md:table-cell">Food cost %</Th>
+                  <Th align="right" className="hidden md:table-cell">Bev cost %</Th>
                   <Th align="right" className="hidden lg:table-cell">Labor</Th>
                   <Th align="right" className="hidden xl:table-cell">Scheduled</Th>
                   <Th align="right">Labor %</Th>
                   <Th align="right" className="hidden lg:table-cell">Prime %</Th>
                   <Th align="right" className="hidden sm:table-cell">Profit</Th>
-                  <Th align="right" className="hidden xl:table-cell">SPLH</Th>
-                  <Th align="right" className="hidden xl:table-cell">Orders/LH</Th>
+                  <Th align="right" className="hidden 2xl:table-cell">SPLH</Th>
+                  <Th align="right" className="hidden 2xl:table-cell">Orders/LH</Th>
                 </tr>
               </thead>
               <tbody>
                 {report.days.map((d) => {
-                  const empty = d.sales === 0 && d.labor === 0;
+                  const empty = d.sales === 0 && d.labor === 0 && !d.isToday;
                   const off = ratio(d.sales, d.forecast);
+                  // Today is in progress: no red/amber, and no ratios until sales sync.
+                  const live = d.isToday;
+                  const pending = live && !d.salesSynced;
+                  const tt = (t: Tone) => (live ? "" : toneText[t]);
                   return (
                     <Tr key={d.date} className={cx(d.date === day && "bg-surface-2/70", (d.future || empty) && "text-muted")}>
-                      <Td className="whitespace-nowrap">
-                        <Link href={query({ day: d.date })} scroll={false} className="font-medium hover:underline">{dayDate(d.date)}</Link>
-                        {d.date === today && <Badge className="ml-2" tone="neutral">Today</Badge>}
+                      <Td className="sm:whitespace-nowrap">
+                        <Link href={query({ day: d.date })} scroll={false} className="relative whitespace-nowrap after:absolute after:content-[''] after:-inset-x-2 after:-inset-y-3 font-medium hover:underline">{dayDate(d.date)}</Link>
+                        {live && <Badge className="ml-2 hidden sm:inline-flex" tone="neutral">Today · in progress</Badge>}
+                        {live && <span className="block text-xs text-muted sm:hidden">Today · in progress</span>}
                       </Td>
                       {d.future || empty ? (
                         <>
@@ -230,24 +267,24 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
                         </>
                       ) : (
                         <>
-                          <Td align="right">{money(d.sales, { whole: true })}</Td>
+                          <Td align="right" className={cx(live && "text-muted")}>{pending ? <span className="text-xs whitespace-nowrap">Sync pending</span> : money(d.sales, { whole: true })}</Td>
                           <Td align="right" className="hidden sm:table-cell">
                             {d.forecast == null ? "—" : (
                               <span className="inline-flex items-center justify-end gap-1.5">
                                 <span className="text-muted">{money(d.forecast, { whole: true })}</span>
-                                {off != null && d.date < today && <Badge tone={salesTone(d.sales, d.forecast)}>{signedPct(off, 0)}</Badge>}
+                                {off != null && !live && d.date < today && <Badge tone={salesTone(d.sales, d.forecast)}>{signedPct(off, 0)}</Badge>}
                               </span>
                             )}
                           </Td>
-                          <Td align="right" className={cx("hidden md:table-cell", toneText[costTone(d.split.food.pct, targets.food)])}>{pct(d.split.food.pct)}</Td>
-                          <Td align="right" className={cx("hidden md:table-cell", toneText[costTone(d.split.beverage.pct, targets.beverage)])}>{pct(d.split.beverage.pct)}</Td>
+                          <Td align="right" className={cx("hidden md:table-cell", tt(costTone(d.split.food.pct, targets.food)))}>{pending ? "—" : pct(d.split.food.pct)}</Td>
+                          <Td align="right" className={cx("hidden md:table-cell", tt(costTone(d.split.beverage.pct, targets.beverage)))}>{pending ? "—" : pct(d.split.beverage.pct)}</Td>
                           <Td align="right" className="hidden lg:table-cell">{money(d.labor, { whole: true })}</Td>
                           <Td align="right" className={cx("hidden xl:table-cell", d.scheduledLabor != null && d.labor > d.scheduledLabor * 1.1 ? "text-warn" : "text-muted")}>{d.scheduledLabor != null ? money(d.scheduledLabor, { whole: true }) : "—"}</Td>
-                          <Td align="right" className={budget?.laborPct != null ? toneText[costTone(d.laborPct, budget.laborPct)] : ""}>{pct(d.laborPct)}</Td>
-                          <Td align="right" className="hidden lg:table-cell">{pct(d.primePct)}</Td>
-                          <Td align="right" className={cx("hidden sm:table-cell", d.profit < 0 && "text-bad")}>{money(d.profit, { whole: true })}</Td>
-                          <Td align="right" className="hidden xl:table-cell">{money(d.salesPerLaborHour, { whole: true })}</Td>
-                          <Td align="right" className="hidden xl:table-cell">{d.ordersPerLaborHour == null ? "—" : qty(d.ordersPerLaborHour, 1)}</Td>
+                          <Td align="right" className={budget?.laborPct != null ? tt(costTone(d.laborPct, budget.laborPct)) : ""}>{pending ? "—" : pct(d.laborPct)}</Td>
+                          <Td align="right" className="hidden lg:table-cell">{pending ? "—" : pct(d.primePct)}</Td>
+                          <Td align="right" className={cx("hidden sm:table-cell", !live && d.profit < 0 && "text-bad", live && "text-muted")}>{pending ? "—" : money(d.profit, { whole: true })}</Td>
+                          <Td align="right" className="hidden 2xl:table-cell">{pending ? "—" : money(d.salesPerLaborHour, { whole: true })}</Td>
+                          <Td align="right" className="hidden 2xl:table-cell">{d.ordersPerLaborHour == null ? "—" : qty(d.ordersPerLaborHour, 1)}</Td>
                         </>
                       )}
                     </Tr>

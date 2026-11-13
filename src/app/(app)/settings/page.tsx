@@ -69,7 +69,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </Card>
       </Link>
 
-      <Section title="Team" description="Staff sign in with their name and PIN and only see counts and waste.">
+      <Section title="Team" description="Staff sign in with their name and PIN. They see their shifts, counts, waste and help.">
         <Card className="divide-y divide-border">
           {users.map((u) => (
             <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -80,7 +80,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               </div>
               <div className="flex items-center gap-2">
                 <form action={resetPin.bind(null, u.id)} className="flex items-center gap-1.5">
-                  <Input name="pin" inputMode="numeric" pattern="\d{4,8}" placeholder="New PIN" className="h-8 w-28" aria-label={`New PIN for ${u.name}`} required />
+                  <Input name="pin" inputMode="numeric" pattern="\d{4,8}" placeholder="New PIN" className="h-10 sm:h-8 w-28" aria-label={`New PIN for ${u.name}`} required />
                   <Button size="sm">Reset PIN</Button>
                 </form>
                 {u.id !== me.userId && (

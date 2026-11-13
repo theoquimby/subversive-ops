@@ -7,7 +7,10 @@ import type { ReactNode } from "react";
  * Deliberately small: help content is ours, not user input.
  */
 
-function inline(text: string, key = 0): ReactNode[] {
+/** Decides whether an internal link is shown as a link (e.g. staff can't open manager pages). */
+type LinkFilter = (href: string) => boolean;
+
+function inline(text: string, key = 0, canLink: LinkFilter = () => true): ReactNode[] {
   const out: ReactNode[] = [];
   const re = /(\*\*([^*]+)\*\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))/g;
   let last = 0;
@@ -21,7 +24,9 @@ function inline(text: string, key = 0): ReactNode[] {
     else if (m[6]) {
       const href = m[7];
       out.push(
-        href.startsWith("/") ? (
+        href.startsWith("/") && !canLink(href) ? (
+          <span key={k} className="font-medium text-ink">{m[6]}</span>
+        ) : href.startsWith("/") ? (
           <Link key={k} href={href} className="font-medium text-ink underline decoration-border-strong underline-offset-[3px] hover:decoration-ink">{m[6]}</Link>
         ) : (
           <a key={k} href={href} className="font-medium text-ink underline decoration-border-strong underline-offset-[3px] hover:decoration-ink" rel="noreferrer" target="_blank">{m[6]}</a>
@@ -34,7 +39,7 @@ function inline(text: string, key = 0): ReactNode[] {
   return out;
 }
 
-export function HelpMarkdown({ source }: { source: string }) {
+export function HelpMarkdown({ source, canLink }: { source: string; canLink?: LinkFilter }) {
   const blocks = source.trim().split(/\n\s*\n/);
   return (
     <div className="space-y-4 text-[0.975rem] leading-[1.7] text-ink-2">
@@ -44,8 +49,8 @@ export function HelpMarkdown({ source }: { source: string }) {
           const [head, ...rest] = lines;
           return (
             <div key={b} className="space-y-4 pt-3">
-              <h3 className="text-[1.02rem] font-semibold tracking-tight text-ink">{inline(head.slice(4), b)}</h3>
-              {rest.length > 0 && <HelpMarkdown source={rest.join("\n")} />}
+              <h3 className="text-[1.02rem] font-semibold tracking-tight text-ink">{inline(head.slice(4), b, canLink)}</h3>
+              {rest.length > 0 && <HelpMarkdown source={rest.join("\n")} canLink={canLink} />}
             </div>
           );
         }
@@ -53,7 +58,7 @@ export function HelpMarkdown({ source }: { source: string }) {
           return (
             <ul key={b} className="space-y-1.5 pl-1">
               {lines.map((l, i) => (
-                <li key={i} className="flex gap-3"><span aria-hidden className="mt-[0.7em] size-1 shrink-0 rounded-full bg-muted" /><span>{inline(l.slice(2), b * 100 + i)}</span></li>
+                <li key={i} className="flex gap-3"><span aria-hidden className="mt-[0.7em] size-1 shrink-0 rounded-full bg-muted" /><span>{inline(l.slice(2), b * 100 + i, canLink)}</span></li>
               ))}
             </ul>
           );
@@ -64,13 +69,13 @@ export function HelpMarkdown({ source }: { source: string }) {
               {lines.map((l, i) => (
                 <li key={i} className="flex gap-3">
                   <span className="num mt-[0.2em] grid size-5 shrink-0 place-items-center rounded-full bg-surface-2 text-[0.7rem] font-semibold text-ink">{i + 1}</span>
-                  <span>{inline(l.replace(/^\d+\. /, ""), b * 100 + i)}</span>
+                  <span>{inline(l.replace(/^\d+\. /, ""), b * 100 + i, canLink)}</span>
                 </li>
               ))}
             </ol>
           );
         }
-        return <p key={b}>{inline(lines.join(" "), b)}</p>;
+        return <p key={b}>{inline(lines.join(" "), b, canLink)}</p>;
       })}
     </div>
   );

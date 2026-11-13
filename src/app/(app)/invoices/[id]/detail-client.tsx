@@ -92,7 +92,7 @@ export function LinesGrid({ invoiceId, locked, lines, products, hasOrder }: { in
     e.stopPropagation();
     start(async () => {
       const res = await addLines(invoiceId, text);
-      setNote(res && "error" in res ? res.error ?? null : `Added ${res?.added ?? 0} lines from the paste.`);
+      setNote(res && "error" in res ? res.error ?? null : `Added ${res?.added ?? 0} line${res?.added === 1 ? "" : "s"} from the paste.`);
       router.refresh();
     });
   };

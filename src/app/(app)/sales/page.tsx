@@ -4,6 +4,7 @@ import { dayDate, money, qty, relativeTime, shortDate, signedPct } from "@/lib/f
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { isSquareConnected } from "@/server/services/square";
+import Link from "next/link";
 import { refreshIfStale } from "@/server/services/square-sync";
 import { forecastItems } from "@/server/services/planning";
 import { businessToday, lastSquareSync, squareCatalogMeta } from "@/server/services/sales";
@@ -117,7 +118,9 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Sales & forecast"
-        description={connected ? `Square synced ${relativeTime(lastSync)} · keeps itself up to date through the day` : "Square isn't connected yet — connect it to bring in sales."}
+        description={connected
+          ? <><Link href="/settings/square" className="underline-offset-2 hover:text-ink hover:underline">{lastSync ? `Square synced ${relativeTime(lastSync)}` : "Square connected · first sync pending"}</Link> · keeps itself up to date through the day</>
+          : <>Square not connected. <Link href="/settings/square" className="font-medium text-ink underline-offset-2 hover:underline">Connect it</Link> to bring in sales.</>}
         actions={<SyncButtons configured={connected} />}
       />
 
@@ -126,8 +129,8 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
         <Stat label="Next 4 weeks" value={money(next28, { whole: true })} hint="forecast sales" />
         <Stat
           label="Forecast accuracy"
-          value={accuracy.mape == null ? "—" : `${Math.round(accuracy.mape * 100)}%`}
-          hint={accuracy.mape == null ? "needs a few weeks of sales" : "average daily miss, last 4 weeks"}
+          value={accuracy.mape == null ? "—" : `${Math.max(0, Math.round((1 - accuracy.mape) * 100))}%`}
+          hint={accuracy.mape == null ? "needs a few weeks of sales" : `average daily miss ${Math.round(accuracy.mape * 100)}%, last 4 weeks`}
           tone={accuracy.mape == null ? undefined : accuracy.mape <= 0.15 ? "good" : accuracy.mape <= 0.3 ? "warn" : "bad"}
         />
         <Stat label="Bias" value={accuracy.bias == null ? "—" : signedPct(accuracy.bias, 0)} hint={accuracy.bias == null ? "" : accuracy.bias > 0.02 ? "we forecast a little high" : accuracy.bias < -0.02 ? "we forecast a little low" : "no lean either way"} />

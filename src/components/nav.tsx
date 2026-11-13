@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BookOpen, ChevronRight, CircleHelp, Home, MoreHorizontal, X, CalendarCheck, CalendarDays, CalendarRange, HandCoins, Carrot, ChartLine, ClipboardList, Clock, FileCheck, FileUp, LayoutGrid, LogOut, MessageSquareText, Receipt, Scale, Search, Settings, ShoppingCart, Sunrise, Target, Trash2, TrendingUp, Users } from "lucide-react";
 import { openCommandPalette } from "./command-palette";
 import { HelpButton } from "./help";
@@ -71,7 +71,7 @@ export function Nav({ role, name, logout }: { role: SessionRole; name: string; l
           Search or jump to…
           <kbd className="ml-auto rounded border border-border px-1 text-[10px]">⌘K</kbd>
         </button>
-        <nav className="scroll-quiet mt-3 -mx-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pb-2">
+        <SidebarScroll>
           {groups.map((g, gi) => (
             <div key={gi} className="flex flex-col gap-px">
               {g.title && <div className="px-2.5 pt-1 pb-1 text-[11px] font-medium text-muted">{g.title}</div>}
@@ -90,7 +90,7 @@ export function Nav({ role, name, logout }: { role: SessionRole; name: string; l
               ))}
             </div>
           ))}
-        </nav>
+        </SidebarScroll>
         <HelpButton className="mb-2" />
         <div className="flex items-center justify-between border-t border-border px-2.5 pt-4">
           <div className="min-w-0">
@@ -108,6 +108,30 @@ export function Nav({ role, name, logout }: { role: SessionRole; name: string; l
       {/* Mobile: slim top bar + bottom tab bar + "More" sheet */}
       <MobileNav role={role} name={name} groups={groups} logout={logout} pathname={pathname} />
     </>
+  );
+}
+
+/** Scrollable page list with a soft fade at the bottom while more items are below the fold. */
+function SidebarScroll({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", check); ro.disconnect(); };
+  }, []);
+  return (
+    <div className="relative mt-3 -mx-1 flex min-h-0 flex-1 flex-col">
+      <nav ref={ref} aria-label="Pages" className="scroll-quiet flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pb-2">
+        {children}
+      </nav>
+      <div aria-hidden className={clsx("pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent transition-opacity duration-200", more ? "opacity-100" : "opacity-0")} />
+    </div>
   );
 }
 
@@ -131,11 +155,12 @@ const MANAGER_TABS: NavItem[] = [
   { href: "/count", label: "Count", icon: ClipboardList },
   { href: "/schedule", label: "Schedule", icon: CalendarRange },
 ];
+// Staff have three pages, so they all get a tab; More holds help and sign out
+// (no repeated page tiles).
 const STAFF_TABS: NavItem[] = [
   { href: "/my", label: "My shifts", icon: CalendarCheck },
   { href: "/count", label: "Count", icon: ClipboardList },
   { href: "/waste", label: "Waste", icon: Trash2 },
-  { href: "/help", label: "Help", icon: CircleHelp },
 ];
 
 function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole; name: string; groups: Group[]; logout: () => Promise<void>; pathname: string }) {
@@ -175,7 +200,7 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
 
       {/* Bottom tab bar */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Main">
-        <div className="grid h-[3.75rem] grid-cols-5">
+        <div className={clsx("grid h-[3.75rem]", tabs.length === 3 ? "grid-cols-4" : "grid-cols-5")}>
           {tabs.map(({ href, label, icon: Icon }) => {
             const active = isActive(pathname, href);
             return (
@@ -187,7 +212,7 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
               </Link>
             );
           })}
-          <button onClick={() => setOpen(true)} aria-expanded={open} className={clsx("flex flex-col items-center justify-center gap-1 text-[11px] font-medium", !inTabs || open ? "text-ink" : "text-muted")}>
+          <button onClick={() => setOpen(true)} aria-expanded={open} aria-haspopup="dialog" className={clsx("flex flex-col items-center justify-center gap-1 text-[11px] font-medium", !inTabs || open ? "text-ink" : "text-muted")}>
             <span className={clsx("grid h-7 w-12 place-items-center rounded-full", (!inTabs || open) && "bg-surface-2")}>
               <MoreHorizontal className="size-[1.2rem]" strokeWidth={1.9} />
             </span>
@@ -197,12 +222,12 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
       </nav>
 
       {/* More sheet */}
-      <div className={clsx("fixed inset-0 z-50 lg:hidden", open ? "pointer-events-auto" : "pointer-events-none")} aria-hidden={!open}>
+      <div className={clsx("fixed inset-0 z-50 lg:hidden", open ? "pointer-events-auto" : "pointer-events-none")} aria-hidden={!open} inert={!open}>
         <div className={clsx("absolute inset-0 bg-black/35 transition-opacity duration-300", open ? "opacity-100" : "opacity-0")} onClick={() => setOpen(false)} />
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="All pages"
+          aria-label={role === "MANAGER" ? "All pages" : "More"}
           className={clsx(
             "absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-[1.75rem] bg-bg shadow-2xl transition-transform duration-300 ease-[cubic-bezier(.32,.72,0,1)] motion-reduce:transition-none",
             open ? "translate-y-0" : "translate-y-full",
@@ -220,7 +245,7 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-            {groups.map((g, gi) => (
+            {role === "MANAGER" && groups.map((g, gi) => (
               <section key={gi} className="mb-5">
                 {g.title && <h3 className="mb-2 px-1 text-[11px] font-semibold tracking-wide text-muted uppercase">{g.title}</h3>}
                 <div className="grid grid-cols-3 gap-2">
