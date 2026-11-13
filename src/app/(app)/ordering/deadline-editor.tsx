@@ -2,7 +2,7 @@
 
 import { Button, cx, Select } from "@/components/ui";
 import type { CutoffRule } from "@/domain/ordering";
-import { CalendarClock, X } from "lucide-react";
+import { CalendarClock, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
@@ -32,7 +32,8 @@ function fallback(rule: CutoffRule, wd: number) {
  * "Edit" on a supplier card: tick the days the truck comes, and for each one
  * pick when the order has to be in — "Friday delivery → order by Wednesday 5pm".
  */
-export function DeadlineEditor({ supplierId, name, deliveryDays, rule }: { supplierId: string; name: string; deliveryDays: number[]; rule: CutoffRule }) {
+/** `learned`: what invoices and past orders suggest; offered as a one-tap fill (still saved with Save). */
+export function DeadlineEditor({ supplierId, name, deliveryDays, rule, learned }: { supplierId: string; name: string; deliveryDays: number[]; rule: CutoffRule; learned?: { days?: number[]; perDay?: Record<number, { day: number; time: string }>; note: string } }) {
   const [open, setOpen] = useState(false);
   const [days, setDays] = useState<number[]>(deliveryDays);
   const [per, setPer] = useState<Record<number, { day: number; time: string }>>(() =>
@@ -43,6 +44,18 @@ export function DeadlineEditor({ supplierId, name, deliveryDays, rule }: { suppl
   const [pending, start] = useTransition();
   const router = useRouter();
 
+  const [usedLearned, setUsedLearned] = useState(false);
+  const fillLearned = () => {
+    if (!learned) return;
+    const next = learned.days ?? days;
+    setDays(next);
+    setPer((cur) => {
+      const out = { ...cur };
+      for (const wd of next) out[wd] = learned.perDay?.[wd] ? { day: learned.perDay[wd].day, time: learned.perDay[wd].time } : cur[wd] ?? fallback(rule, wd);
+      return out;
+    });
+    setUsedLearned(true);
+  };
   const toggle = (wd: number) => {
     setDays((cur) => (cur.includes(wd) ? cur.filter((d) => d !== wd) : [...cur, wd]));
     setPer((cur) => (cur[wd] ? cur : { ...cur, [wd]: fallback(rule, wd) }));
@@ -72,6 +85,17 @@ export function DeadlineEditor({ supplierId, name, deliveryDays, rule }: { suppl
                 </div>
                 <Button variant="ghost" size="sm" className="size-10 shrink-0 p-0" onClick={() => setOpen(false)} aria-label="Close"><X className="size-4" /></Button>
               </div>
+
+              {learned && (
+                <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-border-strong bg-surface p-3 text-sm">
+                  <Sparkles aria-hidden className="mt-0.5 size-4 shrink-0 text-ink-2" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-ink">{learned.note}</div>
+                    <div className="text-xs text-muted">{usedLearned ? "Filled in below. Check it, then Save." : "Fills in the days and deadlines below; nothing changes until you press Save."}</div>
+                  </div>
+                  {!usedLearned && <Button size="sm" variant="primary" className="h-10 shrink-0 sm:h-8" onClick={fillLearned}>Use these</Button>}
+                </div>
+              )}
 
               <div className="text-[0.8rem] font-medium text-ink-2">Delivers on</div>
               <div className="mt-1.5 flex flex-wrap gap-1.5" role="group" aria-label="Delivery days">

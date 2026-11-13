@@ -5,13 +5,14 @@ import { db } from "@/server/db";
 import { loadDemoData } from "./actions";
 import { SettingsIndex } from "./settings-index";
 import { settingsSummary } from "./summary";
+import { pendingSuggestions } from "@/server/services/learned";
 
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
   await requireUser("MANAGER");
   const { welcome } = await searchParams;
-  const [ingredients, recipes, { values }] = await Promise.all([db.ingredient.count(), db.recipe.count(), settingsSummary()]);
+  const [ingredients, recipes, { values }, learned] = await Promise.all([db.ingredient.count(), db.recipe.count(), settingsSummary(), pendingSuggestions()]);
   const empty = ingredients === 0 && recipes === 0;
 
   return (
@@ -29,7 +30,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </Card></HelpZone>
       )}
 
-      <SettingsIndex values={values} />
+      <SettingsIndex values={values} suggestions={learned.counts} />
     </div>
   );
 }

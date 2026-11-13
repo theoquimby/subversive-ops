@@ -11,6 +11,9 @@ import Link from "next/link";
 import { HelpTip, HelpZone } from "@/components/help";
 import { DeadlineEditor } from "./deadline-editor";
 import { deadlineFor } from "@/domain/ordering";
+import { pendingSuggestions } from "@/server/services/learned";
+import { SupplierSuggestionLine } from "../settings/learned-cards";
+import { coverageLabel, weekdaysLabel } from "@/domain/learned";
 
 const hm = (t: string) => {
   const h = Number(t.slice(0, 2));
@@ -26,7 +29,7 @@ const STATUS = { DRAFT: { label: "Draft", tone: "neutral" }, SENT: { label: "Sen
 export default async function OrderingPage() {
   await requireUser("MANAGER");
   const today = businessToday();
-  const [suppliers, orders, cutoffs] = await Promise.all([
+  const [suppliers, orders, cutoffs, learned] = await Promise.all([
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" }, include: { _count: { select: { products: { where: { ingredientId: { not: null } } } } } } }),
     db.purchaseOrder.findMany({
       orderBy: { createdAt: "desc" },
@@ -34,6 +37,7 @@ export default async function OrderingPage() {
       include: { supplier: { select: { name: true } }, lines: { select: { qty: true, unitPrice: true, supplierProductId: true } }, invoices: { select: { total: true } } },
     }),
     supplierCutoffs(),
+    pendingSuggestions(),
   ]);
   const prices = await currentPrices(orders.flatMap((o) => o.lines.filter((l) => l.unitPrice == null).map((l) => l.supplierProductId)), today);
   const totals = new Map(
@@ -47,6 +51,14 @@ export default async function OrderingPage() {
     ]),
   );
   const cutoffBy = new Map(cutoffs.map((c) => [c.supplierId, c]));
+  const learnedBy = new Map(learned.suppliers.map((x) => [x.id, x]));
+  /** What the deadline editor offers to fill in: "Invoices say Tue, Fri". */
+  const hint = (id: string) => {
+    const l = learnedBy.get(id);
+    if (!l?.days && !l?.deadlines) return undefined;
+    const note = [l.days && `${l.days.sources.includes("invoice") ? "Invoices say" : "Past orders say"} ${weekdaysLabel(l.days.days)} (${coverageLabel(l.days)}).`, l.deadlines && "Past orders suggest these deadlines."].filter(Boolean).join(" ");
+    return { days: l.days?.days, perDay: l.deadlines?.perDay, note };
+  };
 
   return (
     <>
@@ -81,8 +93,9 @@ export default async function OrderingPage() {
                         </>
                       ) : s.deliveryDays.length ? "No deadline coming up" : "Set delivery days and deadlines"}
                     </span>
-                    {c && <DeadlineEditor supplierId={s.id} name={s.name} deliveryDays={s.deliveryDays} rule={c.rule} />}
+                    {c && <DeadlineEditor supplierId={s.id} name={s.name} deliveryDays={s.deliveryDays} rule={c.rule} learned={hint(s.id)} />}
                   </div>
+                  {learnedBy.get(s.id) && <SupplierSuggestionLine s={learnedBy.get(s.id)!} />}
                 </Card>
               </div>
             );
@@ -144,7 +157,7 @@ export default async function OrderingPage() {
                       <span className="text-muted">—</span>
                     )}
                   </Td>
-                  <Td align="right"><DeadlineEditor supplierId={s.id} name={s.name} deliveryDays={s.deliveryDays} rule={c.rule} /></Td>
+                  <Td align="right"><DeadlineEditor supplierId={s.id} name={s.name} deliveryDays={s.deliveryDays} rule={c.rule} learned={hint(s.id)} /></Td>
                 </Tr>
               );
             })}

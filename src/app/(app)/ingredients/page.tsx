@@ -13,6 +13,8 @@ import { db } from "@/server/db";
 import { businessToday } from "@/server/services/sales";
 import Link from "next/link";
 import { HelpZone } from "@/components/help";
+import { pendingSuggestions } from "@/server/services/learned";
+import { LearnedStockSuggestions } from "../settings/learned-cards";
 
 export const metadata = { title: "Ingredients" };
 
@@ -20,13 +22,14 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
   await requireUser("MANAGER");
   const { q = "", show } = await searchParams;
   const showArchived = show === "archived";
-  const [snap, ingredients, stock, pars, archived, areas] = await Promise.all([
+  const [snap, ingredients, stock, pars, archived, areas, learned] = await Promise.all([
     loadCostingSnapshot(),
     loadCountableIngredients(),
     estimatedOnHandAll(),
     loadPars(),
     db.ingredient.findMany({ where: { active: false }, select: { id: true, name: true, category: true }, orderBy: { name: "asc" } }),
     storageAreas(),
+    pendingSuggestions(),
   ]);
   const today = businessToday();
   const ctx = buildContext(snap, today);
@@ -115,7 +118,10 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
           </Table></HelpZone>
         )
       ) : (
-        <IngredientsTable rows={rows} areas={areas} />
+        <>
+          <LearnedStockSuggestions pars={learned.pars} buffers={learned.buffers} />
+          <IngredientsTable rows={rows} areas={areas} />
+        </>
       )}
     </>
   );

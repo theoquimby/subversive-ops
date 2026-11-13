@@ -78,3 +78,32 @@ export async function fetchLocations(c: { accessToken: string; environment: Squa
   const r = await squareCall<{ locations?: { id: string; name?: string; status?: string; timezone?: string }[] }>(c, "/locations");
   return (r.locations ?? []).map((l) => ({ id: l.id, name: l.name || l.id, active: l.status !== "INACTIVE", timezone: l.timezone ?? null }));
 }
+
+/**
+ * What a location says about the business (GET /v2/locations): hours, address
+ * and coordinates. `business_hours.periods[]` holds day_of_week (SUN…SAT) and
+ * start/end_local_time ("16:00:00"); every field is optional.
+ */
+export interface SquareLocationProfile {
+  id: string;
+  name: string;
+  active: boolean;
+  type: string | null;
+  periods: { day_of_week?: string; start_local_time?: string; end_local_time?: string }[] | null;
+  address: { address_line_1?: string; locality?: string; administrative_district_level_1?: string; postal_code?: string } | null;
+  coordinates: { latitude: number; longitude: number } | null;
+}
+
+export async function fetchLocationProfiles(c: { accessToken: string; environment: SquareEnvironment }): Promise<SquareLocationProfile[]> {
+  type Raw = { id: string; name?: string; status?: string; type?: string; business_hours?: { periods?: SquareLocationProfile["periods"] }; address?: SquareLocationProfile["address"]; coordinates?: { latitude?: number; longitude?: number } };
+  const r = await squareCall<{ locations?: Raw[] }>(c, "/locations", { signal: AbortSignal.timeout(10_000) });
+  return (r.locations ?? []).map((l) => ({
+    id: l.id,
+    name: l.name || l.id,
+    active: l.status !== "INACTIVE",
+    type: l.type ?? null,
+    periods: l.business_hours?.periods?.length ? l.business_hours.periods : null,
+    address: l.address ?? null,
+    coordinates: typeof l.coordinates?.latitude === "number" && typeof l.coordinates?.longitude === "number" ? { latitude: l.coordinates.latitude, longitude: l.coordinates.longitude } : null,
+  }));
+}

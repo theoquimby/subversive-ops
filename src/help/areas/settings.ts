@@ -201,4 +201,60 @@ export const settingsPages: HelpEntry[] = [
     title: "Help & about",
     body: "The help center, guided tours and a short list of what's connected, so you can see at a glance whether everything is running.",
   },
+  {
+    id: "settings.learned",
+    area: "settings",
+    route: "/settings",
+    title: "Suggestions from your data",
+    body: "Each night the app compares a few settings with what actually happens: opening hours with sales by hour and Square, delivery days with invoices, minimums with what you buy. If they differ you get a suggestion. Nothing changes until you tap Use these.",
+    article: `Settings that learn never change by themselves. A suggestion shows on the page where that setting lives, and a badge on Settings marks the row.
+
+- **Use these** saves it the same way as changing it by hand.
+- **Not now** hides that exact suggestion. If the data later says something different, you'll see the new one.
+- Suggestions refresh every night.
+
+### Where they come from
+- **Opening hours:** the last 12 weeks of sales by hour, and the hours set on your Square location.
+- **Weather location:** your Square location's map pin, or the town in your delivery address.
+- **Delivery days and deadlines:** invoice dates, received orders, and when orders were sent.
+- **Minimum on hand:** how fast you buy things no recipe uses.`,
+    related: ["settings.learned.hours", "settings.learned.suppliers", "settings.learned.weather", "ingredients.learned"],
+    keywords: ["suggestion", "learn", "automatic", "badge", "suggested"],
+  },
+  {
+    id: "settings.learned.hours",
+    area: "settings",
+    route: "/settings/business",
+    title: "Suggested hours",
+    body: "From the last 12 weeks of sales by hour, plus the hours on your Square location. A day counts as closed when it rarely sells, tabs settled just after close don't stretch the hours, and only days that differ are listed. Use these saves them; Not now hides it.",
+    related: ["settings.business.hours", "settings.learned"],
+    keywords: ["hours", "square", "sales", "closed", "suggested"],
+  },
+  {
+    id: "settings.learned.weather",
+    area: "settings",
+    route: "/settings/business",
+    title: "Suggested weather location",
+    body: "Your Square location's map pin (or the town in your delivery address) is a few km from where the forecast reads weather. Use it to switch; Not now keeps what you have.",
+    related: ["settings.business.weather", "settings.learned"],
+    keywords: ["weather", "square", "location", "town"],
+  },
+  {
+    id: "settings.learned.suppliers",
+    area: "settings",
+    route: "/settings/suppliers",
+    title: "Suggested delivery days",
+    body: "Worked out from invoice dates and received orders: the weekdays most deliveries land on, and how many it's based on. Deadlines come from when orders were sent and still arrived. Set it saves them; Not now hides it.",
+    related: ["settings.suppliers", "ordering.cutoffs", "settings.learned"],
+    keywords: ["delivery days", "invoices", "deadline", "lead time", "suggested"],
+  },
+  {
+    id: "ingredients.learned",
+    area: "ingredients",
+    route: "/ingredients",
+    title: "Suggested minimums",
+    body: "For things no recipe uses: enough to last the longest wait between deliveries at the rate you've bought them, in whole packs. Only shown where no minimum is set. Buffers come from the order-size model on Insights when it has sized orders.",
+    related: ["ingredients.minOnHand", "settings.learned"],
+    keywords: ["par", "minimum", "suggested", "buffer"],
+  },
 ];

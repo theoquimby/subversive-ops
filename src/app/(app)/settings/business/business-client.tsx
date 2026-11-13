@@ -7,7 +7,7 @@ import { useConfirm } from "@/components/dialog";
 import { DAY_NAMES, describeWeek, hourLabel, monthDayLabel, seasonProblem, WEEK_ORDER, type SeasonalHours, type WeekHours } from "@/domain/openingHours";
 import { cn } from "@/lib/cn";
 import { MapPin, Plus, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { AutoInput, SaveStatus } from "../controls";
 import { deleteSeason, saveContact, saveHours, saveSeason, saveWeatherLocation, searchTown } from "../setting-actions";
 
@@ -78,6 +78,9 @@ function useStatus() {
 
 export function HoursEditor({ initial }: { initial: WeekHours }) {
   const [hours, setHours] = useState(initial);
+  // A suggestion applied elsewhere on the page changes what's saved: show it.
+  const saved = JSON.stringify(initial);
+  useEffect(() => setHours(JSON.parse(saved) as WeekHours), [saved]);
   const { status, error, run } = useStatus();
   return (
     <>
@@ -188,6 +191,11 @@ export function WeatherLocationEditor({ initial }: { initial: { lat: number; lon
   const [label, setLabel] = useState(initial.label);
   const [searching, startSearch] = useTransition();
   const { status, error, run } = useStatus();
+  const savedLoc = JSON.stringify(initial);
+  useEffect(() => {
+    const l = JSON.parse(savedLoc) as { lat: number; lon: number; label: string };
+    setLoc(l); setLat(String(l.lat)); setLon(String(l.lon)); setLabel(l.label);
+  }, [savedLoc]);
 
   const pick = (l: { lat: number; lon: number; label: string }) => run(() => saveWeatherLocation(l), () => { setLoc(l); setLat(String(l.lat)); setLon(String(l.lon)); setLabel(l.label); setResults(null); setQ(""); });
   const find = () => startSearch(async () => {
