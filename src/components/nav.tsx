@@ -70,7 +70,7 @@ export function Nav({ role, name, logout }: { role: SessionRole; name: string; l
           Search or jump to…
           <kbd className="ml-auto rounded border border-border px-1 text-[10px]">⌘K</kbd>
         </button>
-        <nav className="mt-3 -mx-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pb-2">
+        <nav className="scroll-quiet mt-3 -mx-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pb-2">
           {groups.map((g, gi) => (
             <div key={gi} className="flex flex-col gap-px">
               {g.title && <div className="px-2.5 pt-1 pb-1 text-[11px] font-medium text-muted">{g.title}</div>}
