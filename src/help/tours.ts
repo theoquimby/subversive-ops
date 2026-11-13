@@ -45,6 +45,25 @@ export interface Tour {
 
 export const TOURS: Tour[] = [
   {
+    id: "insights",
+    title: "The Insights Lab",
+    description: "One thing to do at a time, how the numbers connect, and what each tile tells you.",
+    audience: "manager",
+    minutes: 2,
+    steps: [
+      { route: "/insights", title: "Your numbers, one thing at a time", body: "The Lab reads your Square sales, timecards and costs every night and turns them into specific moves, each with the dollars and the reason." },
+      { route: "/insights", target: "insights.hero", title: "Today's one thing", body: "The best move right now. Read it top to bottom: what's happening, why we think so, what to do, what you'd gain.", helpId: "insights.hero", placement: "bottom" },
+      { route: "/insights", target: "insights.do-it", title: "Decide, then the next one comes", body: "Do it when you've done it (we'll track the result), Remind me later for two weeks, or Not for us — you'll see fewer like it.", helpId: "insights.hero", ifMissing: "skip" },
+      { route: "/insights", target: "insights.queue", title: "Up next", body: "Everything else, one card per root cause, rated with dots for money, certainty and effort.", helpId: "insights.rating", ifMissing: "skip" },
+      { route: "/insights", target: "insights.sort", title: "Look at it your way", body: "Sort by money saved, money earned, easiest first or most certain — or pick one area like Staffing.", helpId: "insights.queue", ifMissing: "skip" },
+      { route: "/insights", target: "insights.range", title: "How much history", body: "Every model learns from this much history. Three years shows the shape of your year; change it and everything is worked out again.", helpId: "insights.range" },
+      { route: "/insights", target: "insights.flow", title: "How it all connects", body: "Guests bring sales; food, drink and wages come off; the rest is yours.", helpId: "insights.story", ifMissing: "skip" },
+      { route: "/insights", target: "insights.whatif", title: "Try it", body: "Pull a lever — 2% on prices, one fewer wage hour a day — and watch the chain and your profit move.", helpId: "insights.whatif", ifMissing: "skip", placement: "top" },
+      { route: "/insights", target: "insights.lab", title: "The Lab", body: "One question per tile. Open “Show me how” for the evidence. Locked tiles list exactly what unlocks them, with a button that goes there.", helpId: "insights.lab", placement: "top" },
+      { route: "/insights", target: "insights.track", title: "Your track record", body: "What you've done and what it was worth — with a before-and-after for price changes.", helpId: "insights.track", ifMissing: "skip", placement: "top" },
+    ],
+  },
+  {
     id: "overview",
     title: "Overview",
     description: "The dashboard, where everything lives, and how to get help.",
@@ -179,6 +198,7 @@ export function tourForPath(pathname: string): Tour | undefined {
     [/^\/ordering/, "ordering"],
     [/^\/(count|waste)/, "counting"],
     [/^\/ingredients/, "ingredients"],
+    [/^\/insights/, "insights"],
   ];
   const hit = map.find(([re]) => re.test(pathname));
   return hit ? getTour(hit[1]) : undefined;

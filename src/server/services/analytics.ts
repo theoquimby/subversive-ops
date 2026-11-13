@@ -2,7 +2,9 @@ import "server-only";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { after } from "next/server";
-import { allFindings, AnalyticsRun, emptyFeedState, FeedState, FeedVerdict, FixedCosts, Insight, markFeed, markSeen, MODEL_IDS, ModelId, Opportunity, parseFeedState, rankFeed, Ranked, runAge } from "@/domain/analytics";
+import { allFindings, AnalyticsRun, emptyFeedState, FeedState, FeedVerdict, FixedCosts, Insight, markFeed, markSeen, MODEL_IDS, ModelId, Opportunity, parseFeedState, runAge } from "@/domain/analytics";
+import { buildActions, completeThrough, DEFAULT_RANGE, type LabAction, type LabFinding, parseRange, RANGE_PRESETS, rangeFrom, type RangePreset } from "@/domain/lab";
+import { blockCost, blockHours } from "@/domain/timecards";
 import { addDays, businessDate, dateRange, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
 import { isWet } from "@/domain/forecast";
 import { groupOf } from "@/domain/revenueClass";
@@ -14,9 +16,9 @@ import { dailySalesForecast, forecastAccuracy, weatherMap } from "./forecasting"
 import { classSettings, recipeClasses } from "./insights";
 import { dailyKpis } from "./kpis";
 import { loadTimecards } from "./labor";
-import { getLaborRules } from "./labor-rules";
+import { getLaborRules, getOpeningHours } from "./labor-rules";
 import { buildOrderPlan, estimatedOnHandAll, forecastItems, getAdjustments, usagePerServing } from "./planning";
-import { businessToday, salesByRecipe } from "./sales";
+import { businessToday, dailyNetSalesExcludingIgnored, lastSquareSync, salesByRecipe, squareCatalogMeta } from "./sales";
 import { loadWeek } from "./scheduling";
 import { lastCountPeriod, varianceReport } from "./variance";
 
@@ -32,17 +34,27 @@ import { lastCountPeriod, varianceReport } from "./variance";
  *   analytics.fixedCosts  rent, utilities, insurance, other (Insights page form)
  *   analytics.feedState   Done / Not useful / Snooze, what's been shown, learned weights
  *
+ *   analytics.range       which stretch of history every model uses ("3y" by default; Insights Lab picks it)
+ *
+ * The range covers daily totals and weekly item sales (so 3–4 years teach
+ * seasons and price responses); hourly detail is the last 26 weeks (schedules
+ * change) and item-by-day detail the last 120 days. Today, and a day whose
+ * last sync ran before closing, are left out. The payload stays ~1 MB.
+ *
  * Recomputed nightly by /api/cron/daily-ops and on demand ("Refresh").
  * ANALYTICS_URL + ANALYTICS_SECRET point at the service; without them, in
  * development, `python3 analytics/cli.py` runs the same code locally
  * (ANALYTICS_PYTHON picks the interpreter, e.g. a venv with requirements.txt).
  */
 
-const HISTORY_DAYS = 120;
+/** Item-by-day and full daily KPI detail (food cost, waste…) cover this many days; the rest of the range is daily totals. */
+const DETAIL_DAYS = 120;
+const HOURLY_WEEKS = 26;
+const MAX_ITEMS = 150;
 const FUTURE_DAYS = 14;
 const tz = () => process.env.BUSINESS_TIMEZONE || "America/New_York";
 
-const KEY = { meta: "analytics.meta", status: "analytics.status", feed: "analytics.feed", fixed: "analytics.fixedCosts", state: "analytics.feedState" } as const;
+const KEY = { meta: "analytics.meta", status: "analytics.status", feed: "analytics.feed", fixed: "analytics.fixedCosts", state: "analytics.feedState", range: "analytics.range" } as const;
 const modelKey = (m: ModelId) => `analytics.${m}`;
 
 async function readJSON<T>(key: string): Promise<T | null> {
@@ -70,28 +82,54 @@ export async function saveFixedCosts(f: FixedCosts) {
   await writeJSON(KEY.fixed, f);
 }
 
+// ---- Settings: data range ------------------------------------------------------------------
+
+export async function getRange(): Promise<RangePreset> {
+  const s = await db.setting.findUnique({ where: { key: KEY.range } });
+  return s ? parseRange(s.value) : DEFAULT_RANGE;
+}
+
+export async function saveRange(preset: RangePreset) {
+  if (!RANGE_PRESETS.some((p) => p.id === preset)) throw new Error("Unknown range");
+  await writeJSON(KEY.range, { preset });
+}
+
+/** The first business date with Square sales (the oldest history there is). */
+async function firstSaleDate(): Promise<ISODate | null> {
+  const r = await db.hourlySale.findFirst({ orderBy: { date: "asc" }, where: { netSales: { gt: 0 } }, select: { date: true } });
+  return r ? toISODate(r.date) : null;
+}
+
 // ---- Gathering ----------------------------------------------------------------------------
 
 const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 
 /** Everything the models need, as plain JSON. No credentials, no personal data beyond first names on the schedule. */
-export async function gatherPayload(today = businessToday()) {
-  const from = addDays(today, -HISTORY_DAYS);
+export async function gatherPayload(today = businessToday(), opts: { range?: RangePreset } = {}) {
+  const [preset, firstSale, lastSync] = await Promise.all([opts.range ? Promise.resolve(opts.range) : getRange(), firstSaleDate(), lastSquareSync()]);
+  const from = rangeFrom(preset, today, firstSale);
+  // Today is in progress; a day whose last sync ran before ~3am hasn't seen closing either.
+  const through = completeThrough(today, lastSync ? businessDate(new Date(lastSync.getTime() - 3 * 3_600_000), tz()) : null);
+  const end = addDays(through, 1);
+  const detailFrom = from > addDays(end, -DETAIL_DAYS) ? from : addDays(end, -DETAIL_DAYS);
+  const hourFrom = from > addDays(end, -7 * HOURLY_WEEKS) ? from : addDays(end, -7 * HOURLY_WEEKS);
   const futureEnd = addDays(today, FUTURE_DAYS);
   const futureDates = dateRange(today, futureEnd);
   const snap = await loadCostingSnapshot();
   const ctx = buildContext(snap, today);
-  const [kpis, events, weather, manual, futureF, accuracy, cls, rules, fixedCosts, state] = await Promise.all([
-    dailyKpis(from, today, { snap }),
+  const [kpis, events, weather, manual, futureF, accuracy, cls, rules, fixedCosts, state, openingHours, older] = await Promise.all([
+    dailyKpis(detailFrom, end, { snap }),
     db.event.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(addDays(today, 45)) } } }),
     weatherMap(from, futureEnd),
     getAdjustments(),
     dailySalesForecast(futureDates).catch((e) => (console.error("analytics: forecast failed", e), [])),
-    forecastAccuracy(28).catch(() => ({ rows: [] as { date: ISODate; forecast: number; actual: number; open: boolean }[] })),
+    forecastAccuracy(84).catch(() => ({ rows: [] as { date: ISODate; forecast: number; actual: number; open: boolean }[] })),
     classSettings(),
     getLaborRules(),
     getFixedCosts(),
     getFeedState(),
+    getOpeningHours(),
+    olderDays(from, detailFrom),
   ]);
   const classes = recipeClasses(snap, cls);
 
@@ -108,7 +146,7 @@ export async function gatherPayload(today = businessToday()) {
   }
 
   // Waste per business day at today's cost
-  const wasteRows = await db.wasteLog.findMany({ where: { loggedAt: { gte: zonedTime(from, 0, tz()) } }, select: { ingredientId: true, qtyBase: true, loggedAt: true, sourceRecipe: { select: { name: true } }, ingredient: { select: { name: true } } } });
+  const wasteRows = await db.wasteLog.findMany({ where: { loggedAt: { gte: zonedTime(detailFrom, 0, tz()) } }, select: { ingredientId: true, qtyBase: true, loggedAt: true, sourceRecipe: { select: { name: true } }, ingredient: { select: { name: true } } } });
   const wasteBy = new Map<ISODate, number>();
   const wasteItems = new Map<string, number>();
   for (const w of wasteRows) {
@@ -120,28 +158,33 @@ export async function gatherPayload(today = businessToday()) {
   }
   const firstWaste = [...wasteBy.keys()].sort()[0] ?? null;
 
-  const days = kpis.days.map((d) => {
-    const ev = evBy.get(d.date);
-    const w = weather.get(d.date);
+  const dayRow = (date: ISODate, x: { sales: number; orders: number | null; labor: number; laborHours: number; cogs: number; foodSales: number; synced: boolean }) => {
+    const ev = evBy.get(date);
+    const w = weather.get(date);
     return {
-      date: d.date,
-      open: d.sales > 0 && !ev?.closure,
-      sales: round(d.sales),
-      orders: d.orders,
-      labor: round(d.labor),
-      laborHours: round(d.laborHours),
-      cogs: round(d.cogs),
-      foodSales: round(d.group.food.sales),
-      waste: round(wasteBy.get(d.date) ?? 0),
-      wasteLogged: firstWaste != null && d.date >= firstWaste,
+      date,
+      open: x.sales > 0 && !ev?.closure,
+      sales: round(x.sales),
+      orders: x.orders ?? 0,
+      labor: round(x.labor),
+      laborHours: round(x.laborHours),
+      cogs: round(x.cogs),
+      foodSales: round(x.foodSales),
+      waste: round(wasteBy.get(date) ?? 0),
+      wasteLogged: firstWaste != null && date >= firstWaste,
       eventMult: ev ? (ev.closure ? 0 : ev.mult) : 1,
       eventKinds: ev?.kinds ?? [],
       eventTitles: ev?.titles ?? [],
       wet: w ? isWet(w) : false,
       hasWeather: !!w,
       tempMaxC: w?.tempMaxC ?? null,
+      synced: x.synced,
     };
-  });
+  };
+  const days = [
+    ...older.map((o) => dayRow(o.date, { ...o, cogs: 0, foodSales: 0 })),
+    ...kpis.days.map((d) => dayRow(d.date, { sales: d.sales, orders: d.orders, labor: d.labor, laborHours: d.laborHours, cogs: d.cogs, foodSales: d.group.food.sales, synced: d.salesSynced })),
+  ];
 
   const future = futureF.map((f) => {
     const ev = evBy.get(f.date);
@@ -159,25 +202,49 @@ export async function gatherPayload(today = businessToday()) {
   });
   const futureEvents = [...evBy].filter(([d]) => d >= futureEnd).map(([date, e]) => ({ date, eventKinds: e.kinds }));
 
-  // Items: daily qty and sales per menu recipe
-  const [{ byRecipe }, saleRows, mappings] = await Promise.all([
-    salesByRecipe(from, today),
-    db.dailySale.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(today) } }, select: { date: true, squareId: true, qty: true, netSales: true } }),
-    db.squareMapping.findMany({ where: { recipeId: { not: null }, ignored: false }, select: { squareId: true, recipeId: true } }),
+  // Items: weekly qty and sales over the whole range (price responses need years), daily for the last 120 days.
+  // Square items linked to a recipe come with plate costs; the best sellers not linked yet come as Square items
+  // (no cost — the models use a typical one and say so), so price findings work before setup is finished.
+  const [{ byRecipe }, saleRows, mappings, catalog, weeklyRows] = await Promise.all([
+    salesByRecipe(detailFrom, end),
+    db.dailySale.findMany({ where: { date: { gte: parseISODate(detailFrom), lt: parseISODate(end) } }, select: { date: true, squareId: true, name: true, qty: true, netSales: true } }),
+    db.squareMapping.findMany({ select: { squareId: true, recipeId: true, ignored: true } }),
+    squareCatalogMeta(),
+    db.$queryRaw<{ squareId: string; week: Date; qty: number; sales: number }[]>`
+      SELECT "squareId", date_trunc('week', date)::date AS week, SUM(qty)::float AS qty, SUM("netSales")::float AS sales
+      FROM "DailySale" WHERE date >= ${parseISODate(from)} AND date < ${parseISODate(end)}
+      GROUP BY 1, 2`,
   ]);
-  const recipeOf = new Map(mappings.map((m) => [m.squareId, m.recipeId!]));
+  const mapOf = new Map(mappings.map((m) => [m.squareId, m]));
+  const keyOf = (squareId: string) => {
+    const m = mapOf.get(squareId);
+    if (m?.ignored) return null;
+    return m?.recipeId ?? `sq:${squareId}`;
+  };
+  const add = (store: Map<string, Record<string, [number, number]>>, id: string, k: string, q: number, v: number) => {
+    const m = store.get(id) ?? {};
+    const cur = m[k] ?? [0, 0];
+    m[k] = [round(cur[0] + q, 3), round(cur[1] + v)];
+    store.set(id, m);
+  };
   const daily = new Map<string, Record<ISODate, [number, number]>>();
+  const weekly = new Map<string, Record<ISODate, [number, number]>>();
+  const names = new Map<string, string>();
   for (const r of saleRows) {
-    const id = recipeOf.get(r.squareId);
+    const id = keyOf(r.squareId);
     if (!id) continue;
-    const m = daily.get(id) ?? {};
-    const d = toISODate(r.date);
-    const cur = m[d] ?? [0, 0];
-    m[d] = [cur[0] + r.qty.toNumber(), round(cur[1] + r.netSales.toNumber())];
-    daily.set(id, m);
+    add(daily, id, toISODate(r.date), r.qty.toNumber(), r.netSales.toNumber());
+    if (id.startsWith("sq:")) names.set(id, r.name);
   }
-  const items = snap.recipes
-    .filter((r) => r.kind !== "PREP" && daily.has(r.id))
+  const totals = new Map<string, number>();
+  for (const r of weeklyRows) {
+    const id = keyOf(r.squareId);
+    if (!id) continue;
+    add(weekly, id, toISODate(r.week), Number(r.qty), Number(r.sales));
+    totals.set(id, (totals.get(id) ?? 0) + Number(r.sales));
+  }
+  const linked = snap.recipes
+    .filter((r) => r.kind !== "PREP" && (daily.has(r.id) || weekly.has(r.id)))
     .map((r) => {
       const c = safeCost(ctx, r.id);
       return {
@@ -189,19 +256,44 @@ export async function gatherPayload(today = businessToday()) {
         price: num(r.menuPrice),
         unitCost: "error" in c ? null : round(c.totalCost, 4),
         costIncomplete: "error" in c ? true : c.incomplete,
-        daily: daily.get(r.id)!,
+        linked: true,
+        daily: daily.get(r.id) ?? {},
+        weekly: weekly.get(r.id) ?? {},
       };
     });
+  const unlinked = [...totals]
+    .filter(([id, total]) => id.startsWith("sq:") && total > 0)
+    .sort((x, y) => y[1] - x[1])
+    .slice(0, Math.max(0, MAX_ITEMS - linked.length))
+    .map(([id]) => {
+      const sq = id.slice(3);
+      const meta = catalog[sq];
+      const category = meta?.category ?? null;
+      return {
+        id,
+        name: names.get(id) ?? meta?.baseName ?? "Square item",
+        kind: "MENU",
+        category,
+        group: /beer|draft|tap|cider|wine|seltzer|cocktail|drink|bev|soda|slushy/i.test(`${category ?? ""} ${names.get(id) ?? ""}`) ? "beverage" : "food",
+        price: meta?.price ?? null,
+        unitCost: null,
+        costIncomplete: true,
+        linked: false,
+        daily: daily.get(id) ?? {},
+        weekly: weekly.get(id) ?? {},
+      };
+    });
+  const items = [...linked, ...unlinked];
 
-  // Hourly sales + labor per clock hour
-  const [hourRows, cards] = await Promise.all([db.hourlySale.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(today) } } }), loadTimecards(from, today)]);
+  // Hourly sales + labor per clock hour (last 26 weeks)
+  const [hourRows, cards] = await Promise.all([db.hourlySale.findMany({ where: { date: { gte: parseISODate(hourFrom), lt: parseISODate(end) } } }), loadTimecards(hourFrom, end)]);
   const cardsBy = new Map<ISODate, typeof cards>();
   for (const c of cards) cardsBy.set(c.date, [...(cardsBy.get(c.date) ?? []), c]);
   const salesByHour = new Map<string, { sales: number; orders: number }>();
   for (const h of hourRows) salesByHour.set(`${toISODate(h.date)}|${h.hour}`, { sales: h.netSales.toNumber(), orders: h.orders });
   const now = new Date();
   const hourly: { date: ISODate; hour: number; sales: number; orders: number; laborHours: number; laborCost: number }[] = [];
-  for (const date of dateRange(from, today)) {
+  for (const date of dateRange(hourFrom, end)) {
     const cs = cardsBy.get(date) ?? [];
     const lab = laborByHour(cs.map((c) => ({ start: c.clockIn, end: c.clockOut, breakMinutes: c.breakMinutes, rate: c.rate })), zonedTime(date, 0, tz()), rules.employerBurdenPct, now);
     for (let h = 0; h < 24; h++) {
@@ -356,6 +448,8 @@ export async function gatherPayload(today = businessToday()) {
 
   return {
     asOf: today,
+    window: { preset, from, through, firstSale },
+    openingHours,
     days,
     future,
     futureEvents,
@@ -380,9 +474,31 @@ export async function gatherPayload(today = businessToday()) {
 
 export type AnalyticsPayload = Awaited<ReturnType<typeof gatherPayload>>;
 
+/** Daily totals before the detailed window: net sales and orders from Square, wages from timecards. */
+async function olderDays(from: ISODate, toExclusive: ISODate) {
+  if (from >= toExclusive) return [];
+  const [net, orders, cards, rules] = await Promise.all([
+    dailyNetSalesExcludingIgnored(from, toExclusive),
+    db.hourlySale.groupBy({ by: ["date"], where: { date: { gte: parseISODate(from), lt: parseISODate(toExclusive) } }, _sum: { orders: true } }),
+    loadTimecards(from, toExclusive),
+    getLaborRules(),
+  ]);
+  const now = new Date();
+  const labor = new Map<ISODate, { cost: number; hours: number }>();
+  for (const c of cards) {
+    const b = { start: c.clockIn, end: c.clockOut, breakMinutes: c.breakMinutes, rate: c.rate };
+    const cur = labor.get(c.date) ?? { cost: 0, hours: 0 };
+    cur.cost += blockCost(b, rules.employerBurdenPct, now);
+    cur.hours += blockHours(b, now);
+    labor.set(c.date, cur);
+  }
+  const ord = new Map(orders.map((o) => [toISODate(o.date), o._sum.orders ?? 0]));
+  return dateRange(from, toExclusive).map((date) => ({ date, sales: Math.max(0, net.get(date) ?? 0), orders: ord.get(date) ?? 0, labor: labor.get(date)?.cost ?? 0, laborHours: labor.get(date)?.hours ?? 0, synced: net.has(date) }));
+}
+
 // ---- Running ------------------------------------------------------------------------------
 
-type RawRun = Omit<AnalyticsRun, "source" | "seconds"> & { seconds?: number };
+type RawRun = Omit<AnalyticsRun, "source" | "seconds"> & { seconds?: number; data?: Record<string, unknown> };
 
 async function callService(payload: AnalyticsPayload, models?: ModelId[]): Promise<{ run: RawRun; source: AnalyticsRun["source"] }> {
   const body = JSON.stringify({ models: models ?? null, data: payload });
@@ -438,7 +554,7 @@ export async function refreshAnalytics(opts: { models?: ModelId[] } = {}): Promi
     const payload = await gatherPayload();
     const { run, source } = await callService(payload, opts.models);
     const seconds = (Date.now() - started) / 1000;
-    const meta = { version: run.version, computedAt: run.computedAt, timings: run.timings, source, seconds, serviceSeconds: run.seconds ?? null };
+    const meta = { version: run.version, computedAt: run.computedAt, timings: run.timings, source, seconds, serviceSeconds: run.seconds ?? null, window: payload.window, data: run.data ?? null, bytes: JSON.stringify(payload).length };
     await Promise.all([
       ...MODEL_IDS.filter((m) => run.results[m]).map((m) => writeJSON(modelKey(m), run.results[m])),
       run.results.feed ? writeJSON(KEY.feed, run.results.feed) : Promise.resolve(),
@@ -468,7 +584,7 @@ export async function loadRun(): Promise<AnalyticsRun | null> {
       return undefined;
     }
   };
-  const meta = parse<{ version: string; computedAt: string; timings: Record<string, number>; source: AnalyticsRun["source"]; seconds: number }>(KEY.meta);
+  const meta = parse<{ version: string; computedAt: string; timings: Record<string, number>; source: AnalyticsRun["source"]; seconds: number; window?: AnalyticsRun["window"]; data?: AnalyticsRun["data"] }>(KEY.meta);
   if (!meta) return null;
   const results: AnalyticsRun["results"] = {};
   for (const m of MODEL_IDS) {
@@ -506,19 +622,30 @@ export async function getFeedState(): Promise<FeedState> {
   return s ? parseFeedState(s.value) : emptyFeedState();
 }
 
-export async function markFinding(item: Pick<Opportunity, "key" | "kind" | "title" | "subject" | "monthly">, verdict: FeedVerdict | "undo", snoozeDays = 14) {
-  const state = await getFeedState();
-  await writeJSON(KEY.state, markFeed(state, item, verdict, businessToday(), snoozeDays));
+export async function markFinding(item: Pick<Opportunity, "key" | "kind" | "title" | "subject" | "monthly"> & { parts?: string[] }, verdict: FeedVerdict | "undo", snoozeDays = 14) {
+  let state = await getFeedState();
+  const today = businessToday();
+  state = markFeed(state, item, verdict, today, snoozeDays);
+  // A merged action marks every finding it was built from, so none of them comes back alone.
+  for (const k of item.parts ?? []) {
+    if (k === item.key) continue;
+    const marks = { ...state.marks };
+    if (verdict === "undo") delete marks[k];
+    else marks[k] = { ...state.marks[item.key], kind: item.kind };
+    state = { ...state, marks };
+  }
+  await writeJSON(KEY.state, state);
 }
 
 /**
- * The ranked feed. `remember` records what was shown (once a week per finding)
- * so it fades next time — pass it only where Max actually sees the feed.
+ * The ranked action list: findings merged by root cause, rated and ranked
+ * (see buildActions). `remember` records what was shown (once a week per
+ * finding) so it fades next time — pass it only where Max actually sees it.
  */
-export async function insightFeed(opts: { limit?: number; remember?: boolean; run?: AnalyticsRun | null; novelty?: boolean } = {}): Promise<{ items: Ranked[]; run: AnalyticsRun | null; state: FeedState }> {
+export async function insightFeed(opts: { limit?: number; remember?: boolean; run?: AnalyticsRun | null; novelty?: boolean } = {}): Promise<{ items: LabAction[]; run: AnalyticsRun | null; state: FeedState }> {
   const [run, state] = await Promise.all([opts.run !== undefined ? Promise.resolve(opts.run) : loadRun(), getFeedState()]);
   const today = businessToday();
-  const ranked = rankFeed(allFindings(run), state, today, { novelty: opts.novelty ?? true });
+  const ranked = buildActions(allFindings(run) as LabFinding[], state, today, { novelty: opts.novelty ?? true });
   const items = ranked.slice(0, opts.limit ?? 20);
   if (opts.remember && items.length) {
     const top = items.slice(0, Math.min(items.length, 5));
@@ -556,8 +683,8 @@ export async function forecastRanges(): Promise<{ days: RangeDay[]; model: strin
   const d = r.details as { days?: RangeDay[]; model?: string; mape?: number | null; tsMape?: number | null };
   const today = businessToday();
   const days = (d.days ?? []).filter((x) => x.date >= today);
-  const p = (n: number | null | undefined) => (n == null ? "—" : `${(n * 100).toFixed(1)}%`);
-  const compare = d.tsMape != null ? `Typical miss ${p(d.mape)} (${d.model}) vs ${p(d.tsMape)} for the main forecast.` : `Typical miss ${p(d.mape)}.`;
+  const p = (n: number | null | undefined) => (n == null ? "—" : `${Math.round(n * 100)}%`);
+  const compare = d.mape == null ? "" : d.tsMape != null ? `Lately within about ${p(Math.min(d.mape, d.tsMape))} on a typical day.` : `Lately within about ${p(d.mape)} on a typical day.`;
   return { days, model: d.model ?? "", compare };
 }
 
@@ -566,4 +693,56 @@ export async function forecastRangeFor(date: ISODate): Promise<RangeDay | null> 
   const f = await forecastRanges();
   const d = f?.days.find((x) => x.date === date);
   return d && !d.closed ? d : null;
+}
+
+// ---- What unlocks each model ----------------------------------------------------------------
+
+export interface SetupStep {
+  label: string;
+  done: boolean;
+  /** "12 of 60" */
+  progress?: string;
+  href: string;
+  cta: string;
+}
+
+/** For the Lab tiles that need data: exactly what to do, how far along it is, and where. */
+export async function labSetup(): Promise<Record<"menu" | "orders" | "waste" | "costs" | "events" | "fixed" | "timecards", SetupStep[]>> {
+  const since = parseISODate(addDays(businessToday(), -90));
+  const [top, recipes, pricedIngredients, ingredients, counts, packs, waste, events, fixed, cards, invoices] = await Promise.all([
+    db.dailySale.groupBy({ by: ["squareId"], where: { date: { gte: since } }, _sum: { netSales: true }, orderBy: { _sum: { netSales: "desc" } }, take: 60 }),
+    db.recipe.count({ where: { kind: { not: "PREP" } } }),
+    db.ingredient.count({ where: { OR: [{ preferredProductId: { not: null } }, { products: { some: {} } }] } }),
+    db.ingredient.count(),
+    db.stockCount.count({ where: { completed: true } }),
+    db.supplierProduct.count({ where: { active: true, packQtyBase: { gt: 0 } } }),
+    db.wasteLog.count({ where: { loggedAt: { gte: since } } }),
+    db.event.count(),
+    getFixedCosts(),
+    db.timecard.count({ where: { clockIn: { gte: since } } }),
+    db.invoice.count(),
+  ]);
+  const ids = top.map((t) => t.squareId);
+  const linkedTop = ids.length ? await db.squareMapping.count({ where: { squareId: { in: ids }, OR: [{ recipeId: { not: null } }, { ignored: true }] } }) : 0;
+  const of = (a: number, b: number) => `${a} of ${b}`;
+  return {
+    menu: [
+      { label: "Build recipes for what you sell", done: recipes >= 3, progress: `${recipes} so far`, href: "/menu", cta: "Menu costs" },
+      { label: "Link your best-selling Square items to recipes", done: ids.length > 0 && linkedTop >= Math.min(ids.length, 20), progress: of(linkedTop, ids.length), href: "/sales/square-menu", cta: "Menu from Square" },
+      { label: "Give ingredients a supplier price", done: ingredients > 0 && pricedIngredients >= ingredients * 0.8, progress: of(pricedIngredients, ingredients), href: "/ingredients", cta: "Ingredients" },
+    ],
+    orders: [
+      { label: "Add supplier products with pack sizes", done: packs > 0, progress: `${packs} so far`, href: "/prices", cta: "Prices" },
+      { label: "Do a stock count", done: counts > 0, progress: `${counts} done`, href: "/count", cta: "Count" },
+      { label: "Link Square items to recipes (to know what each sale uses)", done: linkedTop >= Math.min(ids.length, 20) && ids.length > 0, progress: of(linkedTop, ids.length), href: "/sales/square-menu", cta: "Menu from Square" },
+    ],
+    waste: [{ label: "Log waste for two weeks", done: waste >= 14, progress: `${waste} in 90 days`, href: "/waste", cta: "Log waste" }],
+    costs: [
+      { label: "Bring in supplier prices or invoices", done: packs > 0 || invoices > 0, progress: `${packs} products, ${invoices} invoices`, href: "/prices", cta: "Prices" },
+      { label: "Do two stock counts", done: counts >= 2, progress: `${counts} done`, href: "/count", cta: "Count" },
+    ],
+    events: [{ label: "Add game nights, music and festivals", done: events > 0, progress: `${events} so far`, href: "/events", cta: "Events" }],
+    fixed: [{ label: "Enter rent, utilities and insurance", done: !!fixed && Object.values(fixed).some((v) => (v ?? 0) > 0), href: "/insights#lab-story", cta: "Add them" }],
+    timecards: [{ label: "Clock in and out on Square", done: cards >= 20, progress: `${cards} timecards in 90 days`, href: "/labor", cta: "Timecards" }],
+  };
 }

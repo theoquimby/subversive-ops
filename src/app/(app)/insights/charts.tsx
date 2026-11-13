@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { cx } from "@/components/ui";
 import type { Chart } from "@/domain/analytics";
+import { WeekVisual } from "./visuals";
 import { money, shortDate } from "@/lib/format";
 
 /**
@@ -34,6 +36,9 @@ function Tip({ x, y, w, children }: { x: number; y: number; w: number; children:
 
 const whole = (n: number) => money(n, { whole: true });
 
+/** Plain names for the menu boxes (the classic names mean nothing to most owners). */
+export const MENU_CLASS: Record<string, string> = { Star: "Star", Workhorse: "Crowd-pleaser", Puzzle: "Hidden gem", Dog: "Rethink" };
+
 // ---- Menu matrix -----------------------------------------------------------------------
 
 export function QuadrantChart({ chart }: { chart: Extract<Chart, { type: "quadrant" }> }) {
@@ -65,10 +70,10 @@ export function QuadrantChart({ chart }: { chart: Extract<Chart, { type: "quadra
         <line x1={sx(1)} x2={sx(1)} y1={pad.t} y2={H - pad.b} stroke="var(--border-strong)" />
         <line x1={pad.l} x2={w - pad.r} y1={sy(0)} y2={sy(0)} stroke="var(--border-strong)" />
         {[
-          ["Puzzles", pad.l + 2, pad.t + 10, "start"],
+          ["Hidden gems", pad.l + 2, pad.t + 10, "start"],
           ["Stars", w - pad.r - 2, pad.t + 10, "end"],
-          ["Dogs", pad.l + 2, H - pad.b - 6, "start"],
-          ["Workhorses", w - pad.r - 2, H - pad.b - 6, "end"],
+          ["Rethink", pad.l + 2, H - pad.b - 6, "start"],
+          ["Crowd-pleasers", w - pad.r - 2, H - pad.b - 6, "end"],
         ].map(([t, x, y, a]) => (
           <text key={t as string} x={x as number} y={y as number} textAnchor={a as "start" | "end"} className="fill-muted text-[11px]">{t}</text>
         ))}
@@ -84,7 +89,7 @@ export function QuadrantChart({ chart }: { chart: Extract<Chart, { type: "quadra
       {h && (
         <Tip x={sx(h.x)} y={sy(h.y)} w={w}>
           <div className="font-medium text-ink">{h.label}</div>
-          <div className="text-muted">{h.cls} · {h.x.toFixed(1)}× the popularity cut-off · margin {h.y >= 0 ? "+" : "−"}${Math.abs(h.y).toFixed(2)} vs average</div>
+          <div className="text-muted">{MENU_CLASS[h.cls] ?? h.cls} · sells {h.x.toFixed(1)}× a fair share · earns {h.y >= 0 ? "+" : "−"}${Math.abs(h.y).toFixed(2)} vs average</div>
         </Tip>
       )}
     </div>
@@ -235,8 +240,49 @@ export function HeatmapChart({ chart }: { chart: Extract<Chart, { type: "heatmap
   );
 }
 
+// ---- Seasons ------------------------------------------------------------------------------
+
+export function SeasonsChart({ chart }: { chart: Extract<Chart, { type: "seasons" }> }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const max = Math.max(1.2, ...chart.index.map((v) => v ?? 0));
+  const thisYear = chart.years.at(-1);
+  const h = hover == null ? null : hover;
+  return (
+    <figure className="min-w-0">
+      <div className="relative flex h-28 items-end gap-1" role="img" aria-label="Each month as a share of a typical month" onMouseLeave={() => setHover(null)}>
+        <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-border-strong" style={{ bottom: `${(1 / max) * 100}%` }} aria-hidden />
+        {chart.months.map((m, i) => {
+          const v = chart.index[i];
+          return (
+            <button key={m} type="button" onMouseEnter={() => setHover(i)} onFocus={() => setHover(i)} onClick={() => setHover(i)} className="flex h-full min-w-0 flex-1 flex-col justify-end" aria-label={`${m}: ${v == null ? "no data" : `${Math.round(v * 100)}% of a typical month`}`}>
+              <span className={cx("block w-full rounded-t-[4px] transition-opacity", v != null && v < 0.85 ? "bg-ink/30" : "bg-ink/75")} style={{ height: `${v == null ? 2 : Math.max(3, (v / max) * 100)}%`, opacity: hover == null || hover === i ? 1 : 0.55 }} />
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-1 flex gap-1">
+        {chart.months.map((m) => (
+          <span key={m} className="min-w-0 flex-1 text-center text-[10px] text-muted">{m[0]}</span>
+        ))}
+      </div>
+      <figcaption className="mt-2 min-h-[1.25rem] text-xs text-muted">
+        {h != null ? (
+          <>
+            <span className="font-medium text-ink">{chart.months[h]}</span>: <span className="num">{chart.index[h] == null ? "—" : `${Math.round((chart.index[h] ?? 0) * 100)}%`}</span> of a typical month
+            {thisYear?.values[h] != null && <> · {thisYear.year}: <span className="num">{whole(thisYear.values[h]!)}</span> a day</>}
+          </>
+        ) : (
+          "Each month against a typical one (dashed line). Fainter bars are the quiet months."
+        )}
+      </figcaption>
+    </figure>
+  );
+}
+
 export function InsightChart({ chart }: { chart: Chart | null }) {
   if (!chart) return null;
+  if (chart.type === "seasons") return <SeasonsChart chart={chart} />;
+  if (chart.type === "week") return <WeekVisual rows={chart.rows} />;
   if (chart.type === "quadrant") return <QuadrantChart chart={chart} />;
   if (chart.type === "band") return <BandChart chart={chart} />;
   if (chart.type === "bars") return chart.rows.length ? <BarsChart chart={chart} /> : null;
@@ -245,7 +291,7 @@ export function InsightChart({ chart }: { chart: Chart | null }) {
     return (
       <ul className="flex flex-col gap-1.5 text-sm">
         {chart.rows.map((r) => (
-          <li key={`${r.date}${r.metric}`} className="flex gap-2"><span className="num w-14 shrink-0 text-muted">{shortDate(r.date)}</span><span className="text-ink-2">{r.text}</span></li>
+          <li key={`${r.date}${r.metric}`} className="flex gap-2"><span className="num w-14 shrink-0 text-muted">{shortDate(r.date)}</span><span className="text-ink-2">{r.text.replace(/^[A-Z][a-z]+day [A-Z][a-z]{2} \d{1,2}: /, "")}</span></li>
         ))}
       </ul>
     );

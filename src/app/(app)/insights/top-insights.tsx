@@ -2,25 +2,24 @@ import Link from "next/link";
 import { HelpZone } from "@/components/help";
 import { Section } from "@/components/ui";
 import { insightFeed } from "@/server/services/analytics";
-import { FeedList } from "./client";
-import { toRow } from "./rows";
+import { CompactHero } from "./deck";
+import { toDeck } from "./deck-data";
 
 /**
- * The top findings from the insight feed, for the Overview (and anywhere else):
- * `<TopInsights />` — renders nothing until the first analytics run exists.
- * Manager-only data; mount it on manager pages.
+ * Today's one thing from the Insights Lab, for the Overview (and anywhere
+ * else): `<TopInsights />` — one action, compact, with Do it / Later.
+ * Renders nothing until the first analytics run exists. Manager-only data.
  */
-export async function TopInsights({ limit = 3, title = "3 things worth your attention" }: { limit?: number; title?: string }) {
+export async function TopInsights({ limit = 8, title = "Today's one thing" }: { limit?: number; title?: string }) {
   const { items } = await insightFeed({ limit }).catch(() => ({ items: [] }));
   if (!items.length) return null;
   return (
     <HelpZone id="insights.overview">
       <Section
         title={title}
-        description="From Insights — ranked by dollars a month, how sure we are and whether you've seen it before."
-        actions={<Link href="/insights" className="relative text-sm text-muted transition-colors hover:text-ink after:absolute after:-inset-2 after:content-['']">All insights →</Link>}
+        actions={<Link href="/insights" className="relative text-sm text-muted transition-colors hover:text-ink after:absolute after:-inset-2 after:content-['']">Insights Lab →</Link>}
       >
-        <FeedList items={items.map(toRow)} numbered compact />
+        <CompactHero actions={items.map(toDeck)} />
       </Section>
     </HelpZone>
   );

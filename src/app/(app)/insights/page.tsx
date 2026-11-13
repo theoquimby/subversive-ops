@@ -1,130 +1,156 @@
 import { HelpTip, HelpZone } from "@/components/help";
-import { Badge, Card, EmptyState, PageHeader, Section, type Tone } from "@/components/ui";
-import { allFindings, MODEL_IDS, rankFeed, type Insight, type ModelId, type PriceFit } from "@/domain/analytics";
-import { money, relativeTime } from "@/lib/format";
+import { EmptyState, PageHeader, Section } from "@/components/ui";
+import { allFindings, type PriceFit } from "@/domain/analytics";
+import { daysBetween } from "@/domain/dates";
+import { priceResults, trackRecord, type ProfitBase } from "@/domain/lab";
+import { money, relativeTime, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
-import { analyticsStatus, getFixedCosts, insightFeed, refreshIfStale } from "@/server/services/analytics";
-import { businessToday } from "@/server/services/sales";
-import { InsightChart } from "./charts";
-import { FeedList, FixedCostsForm, HowWeKnow, PriceSlider, RefreshButton } from "./client";
-import { toRow } from "./rows";
+import { analyticsStatus, getFixedCosts, getRange, insightFeed, labSetup, refreshIfStale } from "@/server/services/analytics";
+import { FixedCostsForm, PriceSlider } from "./client";
+import { ActionDeck } from "./deck";
+import { toDeck } from "./deck-data";
+import { LabTile, TILES, UpdatedNote } from "./lab-tiles";
+import { RangeControl, RefreshLink } from "./range";
+import { ProfitStory } from "./story";
 
-export const metadata = { title: "Insights" };
+export const metadata = { title: "Insights Lab" };
 
-const ORDER: ModelId[] = ["menu", "price", "forecast", "orders", "staffing", "drivers", "anomalies"];
-const HELP: Record<ModelId, string> = { menu: "insights.menu", price: "insights.price", forecast: "insights.forecast", orders: "insights.orders", anomalies: "insights.anomalies", drivers: "insights.drivers", staffing: "insights.staffing" };
-const confTone = (l: Insight["confidence"]["level"]): Tone => (l === "high" ? "good" : l === "medium" ? "neutral" : "warn");
+const whole = (n: number) => money(n, { whole: true });
 
+/** "3 years (Nov 2023 – Nov 12, 2026)" */
+function spanLabel(from: string, through: string) {
+  const days = daysBetween(from, through) + 1;
+  const years = days / 365.25;
+  const len = years >= 1.9 ? `${Math.round(years * 2) / 2} years` : years >= 0.95 ? "12 months" : `${Math.round(days / 30.4)} months`;
+  const y = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+  return `${len} · ${y(from)} – ${y(through)}`;
+}
 
 export default async function InsightsPage() {
   await requireUser("MANAGER");
-  const [{ items: feed, run, state }, status, fixed] = await Promise.all([insightFeed({ limit: 30, remember: true }), analyticsStatus(), getFixedCosts()]);
+  const [{ items, run, state }, status, fixed, preset, setup] = await Promise.all([insightFeed({ limit: 30, remember: true }), analyticsStatus(), getFixedCosts(), getRange(), labSetup()]);
   await refreshIfStale(run);
+  const header = (span: string | null) => (
+    <PageHeader
+      help="insights.page"
+      title="Insights Lab"
+      description="Your numbers, turned into one thing to do at a time — with the dollars, the reason and how sure we are."
+      actions={<RangeControl preset={preset} span={span} />}
+    />
+  );
 
   if (!run) {
     return (
       <>
-        <PageHeader help="insights.page" title="Insights" description="What your numbers say you should do — each one worked out from your own sales, costs and timecards." actions={<RefreshButton />} />
-        <EmptyState title="Insights update overnight">
-          {status.error ? `The last try didn't finish (${status.error}). ` : ""}The first set is worked out after the nightly sync, or press Refresh to work them out now (takes a few seconds).
+        {header(null)}
+        <EmptyState title="Insights update overnight" action={<RefreshLink />}>
+          {status.error ? `The last try didn't finish (${status.error}). ` : ""}The first set is worked out after the nightly sync, or work it out now — it takes a few seconds.
         </EmptyState>
       </>
     );
   }
 
-  const top = rankFeed(allFindings(run), state, businessToday(), { novelty: false }).slice(0, 5);
-  const topKeys = new Set(top.map((t) => t.key));
-  const more = feed.filter((f) => !topKeys.has(f.key)).slice(0, 8);
-  const total = top.reduce((s, t) => s + t.monthly, 0);
+  const r = run.results;
+  const findings = allFindings(run);
+  const span = run.window ? spanLabel(run.data?.from ?? run.window.from, run.window.through) : null;
+  const actions = items.map(toDeck);
+
+  // How it connects: a month of the business, and the levers (drivers model).
+  const dd = r.drivers?.status === "ok" ? (r.drivers.details as { base?: ProfitBase & { costMeasured?: boolean }; levers?: { key: string; label: string; monthly: number }[]; month?: { sales: number; cogs: number; labor: number; laborHours: number; waste: number; openDays: number }; elasticity?: number; laborSplit?: { fixed: number; variable: number }; fixedTotal?: number }) : null;
+  const base: (ProfitBase & { costMeasured?: boolean }) | null = dd?.base ?? (dd?.month ? { ...dd.month, guests: 0, elasticity: dd.elasticity ?? -0.8, fixed: dd.fixedTotal ?? 0, costMeasured: true } : null);
+  const fixedTotal = (fixed?.rent ?? 0) + (fixed?.utilities ?? 0) + (fixed?.insurance ?? 0) + (fixed?.other ?? 0);
+  const fits = r.price?.status === "ok" ? ((r.price.details.items as PriceFit[] | undefined) ?? []).filter((f) => f.unitCost != null).slice(0, 40) : [];
+
+  const track = trackRecord(state, findings);
+  const priceNews = priceResults(findings).filter((p) => p.good).slice(0, 4);
+  const age = daysBetween(run.computedAt.slice(0, 10), new Date().toISOString().slice(0, 10));
 
   return (
     <>
-      <PageHeader
-        help="insights.page"
-        title="Insights"
-        description="What your numbers say you should do, in dollars a month. Each one shows how sure we are and how we worked it out."
-        actions={
-          <>
-            <span className="text-xs text-muted">Updated {relativeTime(new Date(run.computedAt))}{status.error ? " · last refresh failed, showing the previous one" : ""}</span>
-            <RefreshButton />
-          </>
-        }
-      />
+      {header(span)}
 
-      <Section help="insights.top" title={<span className="inline-flex items-center gap-1">Top 5 opportunities <HelpTip id="insights.top" /></span>} description={top.length ? `Together worth about ${money(total, { whole: true })} a month. Mark each Done, Later or Not useful — it learns what you care about.` : undefined}>
-        {top.length ? <FeedList items={top.map(toRow)} numbered /> : <EmptyState title="Nothing worth chasing right now">Everything we checked is in line. New findings show up here as they appear.</EmptyState>}
-      </Section>
+      <HelpZone id="insights.hero">
+        <ActionDeck actions={actions} />
+      </HelpZone>
 
-      {more.length > 0 && (
-        <Section help="insights.feed" title={<span className="inline-flex items-center gap-1">Worth knowing <HelpTip id="insights.feed" /></span>} description="Other things the numbers turned up, newest and most surprising first. Things you've already seen fade unless they change.">
-          <FeedList items={more.map(toRow)} />
+      {base && base.sales > 0 && (
+        <Section
+          help="insights.story"
+          className="scroll-mt-20"
+          title={<span id="lab-story" className="inline-flex items-center gap-1">How it all connects <HelpTip id="insights.story" /></span>}
+          description="A month of the business as a chain: guests bring sales, food, drink and wages come off, the rest is yours."
+        >
+          <ProfitStory base={{ ...base, fixed: fixedTotal }} levers={(dd?.levers ?? []).filter((l) => l.monthly >= 1)} costMeasured={base.costMeasured ?? true} fixedSet={fixedTotal > 0} />
+          {dd?.month && dd.laborSplit && (
+            <HelpZone id="insights.fixedCosts" className="mt-4">
+              <FixedCostsForm
+                initial={{ rent: fixed?.rent ?? null, utilities: fixed?.utilities ?? null, insurance: fixed?.insurance ?? null, other: fixed?.other ?? null }}
+                be={dd.month.sales > 0 ? { laborFixedDaily: dd.laborSplit.fixed, laborVariable: dd.laborSplit.variable, cogsPct: base.cogs / base.sales, wastePct: dd.month.waste / dd.month.sales, openDaysPerMonth: dd.month.openDays, avgDaily: dd.month.sales / dd.month.openDays } : null}
+              />
+            </HelpZone>
+          )}
         </Section>
       )}
 
-      <Section title="The models" description="One card per question. The number at the top is the answer; the chart and “How we worked this out” are the evidence.">
-        <div className="grid items-stretch gap-4 lg:grid-cols-2">
-          {ORDER.filter((m) => MODEL_IDS.includes(m)).map((m) => {
-            const r = run.results[m];
-            return (
-              <HelpZone key={m} id={HELP[m]} className="h-full min-w-0">
-                <ModelCard id={m} r={r} fixed={fixed} />
-              </HelpZone>
-            );
-          })}
+      <Section help="insights.lab" title={<span className="inline-flex items-center gap-1">The Lab <HelpTip id="insights.lab" /></span>} description="One question per tile. The big line is the answer; “Show me how” is the evidence.">
+        <div className="grid items-stretch gap-4 lg:grid-cols-2" data-tour="insights.lab">
+          {TILES.map((t) => (
+            <LabTile key={t.id} spec={{ ...t, setup: t.id === "menu" ? setup.menu : t.id === "orders" ? setup.orders : t.id === "staffing" || t.id === "week" ? setup.timecards : undefined }} r={r[t.id]} />
+          ))}
+        </div>
+        {fits.length > 0 && (
+          <HelpZone id="insights.price" className="mt-4">
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <div className="mb-2 text-sm font-medium text-ink">Try a price on any item</div>
+              <PriceSlider fits={fits} />
+            </div>
+          </HelpZone>
+        )}
+      </Section>
+
+      <Section help="insights.track" title={<span className="inline-flex items-center gap-1">Your track record <HelpTip id="insights.track" /></span>} description={track.items.length ? `${track.items.length} done, expected to be worth about ${whole(track.monthly)} a month together.` : "What you've acted on, and what it was worth, shows up here."}>
+        <div data-tour="insights.track" className="grid gap-3 lg:grid-cols-2">
+          <div className="rounded-xl border border-border bg-surface">
+            {track.items.length ? (
+              <ul className="divide-y divide-border">
+                {track.items.slice(0, 8).map((t) => (
+                  <li key={t.key} className="flex items-start justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-ink">{t.title}</div>
+                      <div className="mt-0.5 text-xs text-muted">Done {shortDate(t.at)}{t.measured ? ` · ${t.measured}` : " · we'll measure what it changes"}</div>
+                    </div>
+                    {t.monthly > 0 && <span className="num shrink-0 text-sm text-ink">{whole(t.monthly)}<span className="text-xs text-muted">/mo</span></span>}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-4 py-6 text-sm text-muted">Nothing marked done yet. Press <span className="font-medium text-ink-2">Do it</span> on today&apos;s one thing and it lands here, with a before-and-after once there&apos;s enough data.</p>
+            )}
+          </div>
+          <div className="rounded-xl border border-border bg-surface">
+            <div className="border-b border-border px-4 py-2.5 text-xs font-medium text-muted">Price changes that worked</div>
+            {priceNews.length ? (
+              <ul className="divide-y divide-border">
+                {priceNews.map((p) => (
+                  <li key={p.key} className="px-4 py-3 text-sm text-ink">{p.title}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-4 py-6 text-sm text-muted">When you change a price in Square, we compare the weeks before and after here — allowing for how busy the place was.</p>
+            )}
+          </div>
         </div>
       </Section>
-      <p className="text-xs text-muted">
-        Worked out {run.source === "service" ? "by the analytics service" : "on this machine"} in {run.seconds != null ? `${Math.round(run.seconds)}s` : "—"}. Models: menu engineering (Kasavana–Smith), log-log price response with category priors, SARIMAX and Holt-Winters forecasts, newsvendor order sizing, robust z-scores and STL, OLS labor split, hour-of-week sales per labor hour.
-      </p>
-    </>
-  );
-}
 
-function ModelCard({ id, r, fixed }: { id: ModelId; r: Insight | undefined; fixed: Awaited<ReturnType<typeof getFixedCosts>> }) {
-  if (!r) {
-    return (
-      <Card id={id} className="flex h-full flex-col p-5">
-        <div className="text-[0.95rem] font-semibold text-ink">{id}</div>
-        <p className="mt-2 text-sm text-muted">Insights update overnight.</p>
-      </Card>
-    );
-  }
-  const thin = r.status !== "ok";
-  const details = r.details as Record<string, unknown>;
-  let extra: React.ReactNode = null;
-  if (id === "price" && !thin) {
-    const fits = (details.items as PriceFit[] | undefined)?.filter((f) => f.unitCost != null) ?? [];
-    extra = fits.length ? <PriceSlider fits={fits} /> : null;
-  }
-  if (id === "drivers" && !thin) {
-    const m = details.month as { sales: number; cogs: number; waste: number; openDays: number } | undefined;
-    const split = details.laborSplit as { fixed: number; variable: number } | undefined;
-    extra = (
-      <HelpZone id="insights.fixedCosts">
-        <FixedCostsForm
-          initial={{ rent: fixed?.rent ?? null, utilities: fixed?.utilities ?? null, insurance: fixed?.insurance ?? null, other: fixed?.other ?? null }}
-          be={m && split && m.sales > 0 ? { laborFixedDaily: split.fixed, laborVariable: split.variable, cogsPct: m.cogs / m.sales, wastePct: m.waste / m.sales, openDaysPerMonth: m.openDays, avgDaily: m.sales / m.openDays } : null}
-        />
-      </HelpZone>
-    );
-  }
-  return (
-    <Card id={id} className="flex h-full scroll-mt-20 flex-col p-5">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="text-[0.8rem] font-medium text-muted">{r.title}</h3>
-        <Badge tone={thin ? "warn" : confTone(r.confidence.level)} className="max-w-[60%] truncate">{thin ? "Needs more data" : r.confidence.note}</Badge>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+        <UpdatedNote>
+          Worked out {relativeTime(new Date(run.computedAt))}
+          {run.data ? ` from ${run.data.openDays.toLocaleString("en-US")} open days` : ""}
+          {run.data?.strayDays ? ` (${run.data.strayDays} closed days with a stray sale left out)` : ""}
+          {status.error ? " · the last update didn't finish, showing the one before" : age > 1 ? " · updates every night" : ""}
+        </UpdatedNote>
+        <RefreshLink />
       </div>
-      <p className={thin ? "mt-2 text-[1.05rem] font-medium text-ink-2" : "mt-2 text-[1.15rem] leading-snug font-semibold tracking-tight text-ink"}>{r.headline}</p>
-      <p className="mt-1.5 text-sm text-ink-2">{r.action}</p>
-      {!thin && r.chart && (
-        <div className="mt-4 min-w-0">
-          <InsightChart chart={r.chart} />
-        </div>
-      )}
-      {extra && <div className="mt-4">{extra}</div>}
-      <div className="mt-auto">
-        <HowWeKnow how={r.how} inputs={r.inputs} />
-      </div>
-    </Card>
+    </>
   );
 }

@@ -111,12 +111,22 @@ app (Next.js) ──gather numbers (no DB access from Python)──▶ POST /api
      └──── cache in Setting rows analytics.<model>, analytics.feed ◀┘
 ```
 
-- `src/server/services/analytics.ts` gathers ~120 days of sales, labor, costs,
-  events, weather, orders, prices, counts and reviews; posts them; caches the
+- `src/server/services/analytics.ts` gathers the history Max picks on the Insights
+  Lab (`analytics.range`: 1, 2, 3 or 4 years or all — default 3 years): daily
+  totals and weekly item sales over the whole range, item-by-day and full KPI
+  detail for the last 120 days, hourly sales and labor for the last 26 weeks,
+  plus costs, events, weather, orders, prices, counts and reviews (~1 MB for
+  3 years, well under the function's 4.5 MB body limit). Today, and a day whose
+  last sync ran before closing, are left out. It posts them and caches the
   results (`analytics.meta`, `analytics.<model>`, `analytics.feed`,
-  `analytics.status`). Pages only read the cache. Done / Later / Not useful and
+  `analytics.status`). Pages only read the cache. Do it / Later / Not for us and
   what's been shown live in `analytics.feedState`; fixed costs in
   `analytics.fixedCosts`.
+- The Python side cleans the history once (`subops/common.prepare`): closed days
+  with a stray sale aren't open days, closed weekdays aren't forecast, and only
+  service hours are judged (setup before opening and cleanup after close are
+  expected labor). `src/domain/lab.ts` merges findings with the same root cause
+  into one action, rates it 1–5 (money, certainty, effort) and powers the what-if.
 - Recomputed nightly at the end of `/api/cron/daily-ops`, on page views when
   older than 36 h, and by **Refresh** on /insights. If the service is
   unreachable the previous results stay and pages say "Insights update overnight".

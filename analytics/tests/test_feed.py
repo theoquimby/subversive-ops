@@ -8,8 +8,20 @@ def kinds(xs):
     return [x["kind"] for x in xs]
 
 
+def test_open_hours_never_judges_setup_hours():
+    """Max: 'obviously we lose money when we're not open but have staff setting up'. A first hour
+    with staff and only a stray sale reads as setup when no opening hours are set — never 'open later'."""
+    data = make_data()
+    out = feed.open_hours(data, {})
+    assert not any(o["subject"] == "0.16" for o in out)
+    from subops.common import open_windows
+    assert open_windows(data)[0][0] == 17  # Monday service starts at 5pm; 4pm is setup
+
+
 def test_open_hours_flags_dead_monday_opening():
     data = make_data()
+    # Opening hours set in the app (JS weekday keys, 0 = Sunday): Monday opens at 4pm, so that hour is service.
+    data["openingHours"] = {str(k): [16, 23] for k in (0, 1, 3, 4, 5, 6)}
     out = feed.open_hours(data, {})
     assert any(o["subject"] == "0.16" for o in out), [o["title"] for o in out]
     o = next(o for o in out if o["subject"] == "0.16")

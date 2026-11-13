@@ -19,10 +19,15 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-from .common import DAYS_PER_MONTH, WEEKDAYS, WEEKS_PER_MONTH, add_days, d, exact_money, inp, money, open_days, open_days_per_month, opportunity, pct, weekday
-from .staffing import hour_label
+from .common import in_service, open_windows, DAYS_PER_MONTH, WEEKDAYS, WEEKS_PER_MONTH, add_days, cost_note, cost_share, d, daypart, exact_money, hour_label, hours_span, inp, money, open_days, open_days_per_month, opportunity, pct, plural, slot_key, story, weekday
+from .staffing import recent_hourly
 
 FOOD_INFLATION = 0.03  # US food-away-from-home CPI has run ~3–4%/yr; we use the low end.
+
+
+def nice_date(iso_date: str) -> str:
+    x = d(iso_date)
+    return f"{x.strftime('%b')} {x.day}" + (f", {x.year}" if (d(iso_date).year != __import__('datetime').date.today().year) else "")
 
 
 def _f(o: dict, one_off: float | None = None) -> dict:
@@ -32,46 +37,70 @@ def _f(o: dict, one_off: float | None = None) -> dict:
 
 
 def _cogs_pct(data: dict) -> float:
-    rows = open_days(data.get("days", []))[-56:]
-    s = sum(x["sales"] for x in rows)
-    c = sum(float(x.get("cogs") or 0) for x in rows)
-    return c / s if s else 0.3
+    return cost_share(data)[0]
 
 
 # ---- 1. Is each hour worth being open? -------------------------------------------
 
 def open_hours(data: dict, ctx: dict) -> list[dict]:
-    """Edge hours (first/last selling hour of a weekday) whose labor costs more than the margin they bring."""
-    hourly = data.get("hourly", [])
+    """Edge hours (first/last selling hour of a weekday) whose wages cost more than the margin they bring."""
+    hourly = recent_hourly(data)
     if not hourly:
         return []
-    cogs = _cogs_pct(data)
-    by: dict[tuple[int, int], list[tuple[float, float]]] = defaultdict(list)
+    cogs, measured = cost_share(data)
+    windows = open_windows(data, hourly)
+    by: dict[tuple[int, int], list[tuple[float, float, float]]] = defaultdict(list)
     dates_by_wd: dict[int, set] = defaultdict(set)
     for r in hourly:
+        wd_r, h_r = weekday(r["date"]), int(r["hour"])
+        dates_by_wd[wd_r].add(r["date"])
+        # Setup before opening and cleanup after close are expected labor, never "an hour that loses money".
+        if windows and not in_service(windows, wd_r, h_r):
+            continue
         if (r.get("sales") or 0) > 0 or (r.get("laborCost") or 0) > 0:
-            by[(weekday(r["date"]), int(r["hour"]))].append((float(r.get("sales") or 0), float(r.get("laborCost") or 0)))
-            dates_by_wd[weekday(r["date"])].add(r["date"])
+            by[(wd_r, h_r)].append((float(r.get("sales") or 0), float(r.get("laborCost") or 0), float(r.get("orders") or 0)))
     out = []
     shift_share = 0.3  # cautious: 30% of that hour's guests would come in the next hour instead
     for wd in range(7):
-        hours = sorted({h for (w, h), v in by.items() if w == wd and np.mean([s for s, _ in v]) > 0})
         weeks = len(dates_by_wd[wd])
+        # A selling hour: it has sales in at least half the weeks (one early regular doesn't make 9am an opening hour).
+        hours = sorted({h for (w, h), v in by.items() if w == wd and sum(1 for s, _, _ in v if s > 0) >= max(3, weeks * 0.5)})
         if len(hours) < 3 or weeks < 3:
             continue
+        day_typical = float(np.median([sum(s for s, _, _ in by[(wd, x)]) / weeks for x in hours]))
         for h, edge in ((hours[0], "open"), (hours[-1], "close")):
             v = by[(wd, h)]
-            sales = sum(s for s, _ in v) / weeks
-            labor = sum(c for _, c in v) / weeks
+            sales = sum(s for s, _, _ in v) / weeks
+            if sales >= 0.35 * day_typical:
+                continue  # a real selling hour — not worth trimming the day for
+            labor = sum(c for _, c, _ in v) / weeks
+            guests = sum(o for _, _, o in v) / weeks
             margin = sales * (1 - cogs)
             saving = labor - margin * (1 - shift_share)
-            losing_weeks = sum(1 for s, c in v if c > s * (1 - cogs))
+            losing_weeks = sum(1 for s, c, _ in v if c > s * (1 - cogs))
             if saving > 15 and losing_weeks / max(1, len(v)) >= 0.6:
-                when = f"{WEEKDAYS[wd]}s {hour_label(h)}–{hour_label((h + 1) % 24)}"
-                act = f"Open at {hour_label(h + 1)} on {WEEKDAYS[wd]}s" if edge == "open" else f"Close at {hour_label(h)} on {WEEKDAYS[wd]}s (last call earlier)"
-                out.append(opportunity(f"feed.hours.{wd}.{h}", "feed.hours", "feed", f"{when} loses ~{money(saving)}/week — {act[0].lower() + act[1:]}", act + ", or run that hour with one fewer person.", saving * WEEKS_PER_MONTH, saving * WEEKS_PER_MONTH * 0.5, (labor - margin * 0.9) * WEEKS_PER_MONTH, min(0.7, 0.3 + 0.05 * weeks),
-                                       [f"Over {weeks} weeks, that hour averaged {money(sales)} in sales ({money(margin)} after food cost at {pct(cogs)}) and {money(labor)} in labor. It lost money in {losing_weeks} of {len(v)} weeks.", "We assume 30% of those guests would just come an hour later, so the saving is cautious."],
-                                       [inp("Sales in the hour (avg)", money(sales)), inp("Labor in the hour (avg)", money(labor)), inp("Food cost %", pct(cogs)), inp("Weeks", weeks)], href="/schedule", subject=f"{wd}.{h}"))
+                when = f"{WEEKDAYS[wd]}s {hour_label(h)}–{hour_label(h + 1)}"
+                act = f"Open at {hour_label(h + 1)} on {WEEKDAYS[wd]}s" if edge == "open" else f"Close at {hour_label(h)} on {WEEKDAYS[wd]}s (last call a little earlier)"
+                monthly = saving * WEEKS_PER_MONTH
+                grp = slot_key(wd, h)
+                part = daypart(h)
+                out.append(opportunity(
+                    f"feed.hours.{wd}.{h}", "feed.hours", "feed",
+                    f"The {hour_label(h)} hour on {WEEKDAYS[wd]}s costs more than it brings in" if edge == "open" else f"The last hour on {WEEKDAYS[wd]}s costs more than it brings in",
+                    act + ", or run that hour with one fewer person.",
+                    monthly, monthly * 0.5, (labor - margin * 0.9) * WEEKS_PER_MONTH, min(0.7, 0.3 + 0.02 * weeks),
+                    [f"Over the last {weeks} {WEEKDAYS[wd]}s, {when} averaged {money(sales)} in sales ({money(margin)} after a {cost_note(measured, cogs)}) and {money(labor)} in wages. It lost money in {losing_weeks} of {len(v)} weeks.", "We assume 30% of those guests would simply come an hour later, so the saving is cautious."],
+                    [inp("Sales in the hour (avg)", money(sales)), inp("Guests (orders) in the hour", f"{guests:.0f}"), inp("Wages in the hour (avg)", money(labor)), inp("Food & drink cost", pct(cogs) + ("" if measured else " (typical)")), inp("Weeks", weeks)],
+                    href="/schedule", subject=f"{wd}.{h}",
+                    area="hours", effort="easy", vector="save", group=grp,
+                    story=story(
+                        f"On {WEEKDAYS[wd]}s, {when} brings in about {money(sales)} ({guests:.0f} {'order' if round(guests) == 1 else 'orders'}) and costs {money(labor)} in wages.",
+                        f"After food and drink costs that hour keeps about {money(margin)}, so it lost money in {losing_weeks} of the last {len(v)} {WEEKDAYS[wd]}s. We assume a third of those guests would just come later.",
+                        act + " — or keep the hours and run it with one fewer person.",
+                        f"About {money(monthly)} a month.",
+                    ),
+                    visual={"type": "compare", "unit": "money", "rows": [{"label": "Sales", "value": round(sales)}, {"label": "Kept after food & drink", "value": round(margin)}, {"label": "Wages", "value": round(labor), "tone": "bad"}]},
+                ))
     return out
 
 
@@ -417,19 +446,29 @@ def follow_through(data: dict, ctx: dict) -> list[dict]:
     out = []
     seen = set()
     opm = open_days_per_month(data.get("days", []))
+    # Only changes the daily history can judge (it covers the last ~4 months), latest per item.
+    first_daily = min((k for i in items.values() for k in (i.get("daily") or {})), default=as_of)
+    latest: dict[str, tuple[str, str, str]] = {}
     for iid, start, what in tracked:
+        if start < add_days(first_daily, 28) or start > as_of:
+            continue
+        if iid not in latest or start > latest[iid][1]:
+            latest[iid] = (iid, start, what)
+    for iid, start, what in latest.values():
         if (iid, start) in seen or iid not in items:
             continue
         seen.add((iid, start))
+        if sum(v[0] for k, v in (items[iid].get("daily") or {}).items() if k >= add_days(start, -28)) < 30:
+            continue  # too few sold to tell anything
         it = items[iid]
         daily = it.get("daily") or {}
         before = [(k, v) for k, v in daily.items() if add_days(start, -28) <= k < start]
         after = [(k, v) for k, v in daily.items() if start <= k < as_of]
         if len(after) < 12 or len(before) < 12:
-            if len(after) < 12 and (d(as_of) - d(start)).days >= 0:
-                out.append(opportunity(f"feed.follow.wait.{iid}.{start}", "feed.follow", "feed", f"Tracking {what} — results in {max(1, 14 - len(after))} more open days", "Nothing to do; we'll report the before/after.", 5.0, 0, 10, 0.2, ["We need two weeks after a change to compare fairly."], href="/insights", subject=iid))
+            if len(after) < 12 and 0 <= (d(as_of) - d(start)).days <= 21:
+                out.append(opportunity(f"feed.follow.wait.{iid}.{start}", "feed.follow.wait", "feed", f"Tracking {what} — results in {plural(max(1, 14 - len(after)), 'more open day')}", "Nothing to do; we'll report the before and after.", 5.0, 0, 10, 0.2, ["We need two weeks after a change to compare fairly."], href="/insights", subject=iid, area="menu", effort="easy", vector="info"))
             continue
-        cost = float(it.get("unitCost") or 0)
+        cost = float(it["unitCost"]) if it.get("unitCost") is not None else float(it.get("price") or 0) * cost_share(data)[0]
         tb = np.mean([traffic.get(k, np.nan) for k, _ in before])
         ta = np.mean([traffic.get(k, np.nan) for k, _ in after])
         adj = tb / ta if tb and ta and np.isfinite(tb) and np.isfinite(ta) else 1.0
@@ -442,12 +481,38 @@ def follow_through(data: dict, ctx: dict) -> list[dict]:
         qa_adj, pa_adj = qa * adj, pa * adj
         gain = (pa_adj - pb) * opm
         vol = qa_adj / qb - 1 if qb else 0
-        title = f"Since {what} on {start}: {'+' if gain >= 0 else '−'}{money(abs(gain))}/month, volume {'steady' if abs(vol) < 0.05 else f'{vol * 100:+.0f}%'}"
-        out.append(opportunity(f"feed.follow.{iid}.{start}", "feed.follow", "feed", title, "Keep it." if gain >= 0 else "Consider rolling it back.", abs(gain), abs(gain) * 0.5, abs(gain) * 1.3, 0.5, [f"28 days before vs {len(after)} open days after, per open day, with the 'after' scaled by store traffic (order count) so a busier month doesn't get the credit."], [inp("Profit/day before", money(pb, True)), inp("Profit/day after (traffic-adjusted)", money(pa_adj, True)), inp("Volume change", f"{vol * 100:+.0f}%")], href="/insights#price", subject=iid))
+        when = nice_date(start)
+        title = f"Since {what} on {when}: {'+' if gain >= 0 else '−'}{money(abs(gain))} a month, {'the same number sold' if abs(vol) < 0.05 else f'{abs(vol) * 100:.0f}% {"more" if vol > 0 else "fewer"} sold'}"
+        out.append(opportunity(f"feed.follow.{iid}.{start}", "feed.follow", "feed", title, "Keep it." if gain >= 0 else "Consider rolling it back.", abs(gain), abs(gain) * 0.5, abs(gain) * 1.3, 0.5, [f"28 days before vs {len(after)} open days after, per open day, with the 'after' scaled by store traffic (order count) so a busier month doesn't get the credit."], [inp("Profit/day before", money(pb, True)), inp("Profit/day after (traffic-adjusted)", money(pa_adj, True)), inp("Volume change", f"{vol * 100:+.0f}%")], href="/insights#lab-price", subject=iid,
+                               area="menu", effort="easy", vector="info" if gain > -60 else "earn", story=story(f"On {when} you started {what}.", f"Per open day, the 28 days before vs the {len(after)} days after — with the after scaled to store traffic so a busier month doesn't get the credit — profit on it is {'up' if gain >= 0 else 'down'} {money(abs(gain))} a month and {'the same number sold' if abs(vol) < 0.05 else f'{abs(vol) * 100:.0f}% {"more" if vol > 0 else "fewer"} sold'}.", "Keep it." if gain >= 0 else "Consider putting the price back.", f"{'+' if gain >= 0 else '−'}{money(abs(gain))} a month so far."), visual={"type": "compare", "unit": "money", "rows": [{"label": "Profit a day before", "value": round(pb, 2)}, {"label": "After", "value": round(pa_adj, 2), "tone": "good" if gain >= 0 else "bad"}]}))
     return out
 
 
 FINDERS = [open_hours, event_roi, price_creep, leaks, pour_yield, mix_shift, labor_week, inventory_cash, weather, reviews_ops, follow_through]
+
+
+def merge_slots(items: list[dict], ctx: dict) -> list[dict]:
+    """One root cause, one action: when an hour that loses money and an over-staffed stretch are the
+    same part of the same day, write a single lead that tells both halves (the app shows only the lead)."""
+    staff = [o for o in (ctx.get("staffing") or {}).get("opportunities", []) if o.get("group")]
+    out = []
+    for h in [o for o in items if o.get("kind") == "feed.hours" and o.get("group")]:
+        s = next((o for o in staff if o["group"] == h["group"]), None)
+        if not s:
+            continue
+        monthly = max(h["monthly"], s["monthly"])
+        hs, ss = h.get("story") or {}, s.get("story") or {}
+        out.append(opportunity(
+            f"lab.{h['group']}", "lab.slot", "feed",
+            s["title"].replace("has more people on than it needs", "is quiet but fully staffed"),
+            s["action"],
+            monthly, min(h["low"], s["low"]), max(h["high"], s["high"]), max(h["confidence"], s["confidence"]),
+            (s.get("how") or []) + (h.get("how") or []), (s.get("inputs") or []) + (h.get("inputs") or []),
+            href="/schedule", subject=h["group"], area="staffing", effort="easy", vector="save", group=h["group"], lead=True,
+            story={"now": (hs.get("now", "") + " " + ss.get("now", "")).strip(), "why": ss.get("why", ""), "todo": ss.get("todo", "") + " If that hour stays this quiet: " + hs.get("todo", ""), "gain": f"About {money(monthly)} a month — we count the bigger of the two fixes, not both."},
+            visual=s.get("visual"),
+        ))
+    return out
 
 
 def run(data: dict, ctx: dict) -> dict:
@@ -457,4 +522,8 @@ def run(data: dict, ctx: dict) -> dict:
             items.extend(f(data, ctx))
         except Exception as e:  # one finder failing never blocks the feed
             errors.append(f"{f.__name__}: {e}")
+    try:
+        items.extend(merge_slots(items, ctx))
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"merge_slots: {e}")
     return {"items": items, "errors": errors, "finders": [f.__name__ for f in FINDERS]}

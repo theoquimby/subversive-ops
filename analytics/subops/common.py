@@ -82,16 +82,29 @@ def round_to(x: float, step: float) -> float:
 
 
 def weeks_label(n_days: int) -> str:
+    """Plain-English span: "12 days", "9 weeks", "8 months", "3 years"."""
     w = n_days / 7
     if w < 2:
-        return f"{n_days} days"
-    return f"{round(w)} weeks"
+        return f"{n_days} day{'s' if n_days != 1 else ''}"
+    if w < 17:
+        return f"{round(w)} weeks"
+    months = n_days / 30.4
+    if months < 23.5:
+        return f"{round(months)} months"
+    years = n_days / 365.25
+    return f"{round(years * 2) / 2:g} years"
+
+
+def plural(n: float, one: str, many: str | None = None) -> str:
+    """'1 person', '2 people', '1 extra shift', '3 extra shifts'."""
+    k = round(n)
+    return f"{k} {one if k == 1 else (many or one + 's')}"
 
 
 def confidence(n_days: int, extra_penalty: float = 0.0, label_days: int | None = None) -> dict:
     """Confidence from how much history a model saw, minus a model-specific penalty (0..1)."""
     w = n_days / 7
-    base = 0.25 if w < 4 else 0.45 if w < 8 else 0.6 if w < 16 else 0.75 if w < 52 else 0.85
+    base = 0.25 if w < 4 else 0.45 if w < 8 else 0.6 if w < 16 else 0.75 if w < 52 else 0.82
     score = max(0.05, min(0.95, base - extra_penalty))
     level = "low" if score < 0.4 else "medium" if score < 0.65 else "high"
     word = {"low": "rough", "medium": "fair", "high": "solid"}[level]
@@ -124,10 +137,20 @@ def thin(id: str, title: str, headline: str, action: str, how: list[str], note: 
     return insight(id, title, status="thin", headline=headline, action=action, how=how, confidence={"level": "low", "score": 0.1, "note": note})
 
 
-def opportunity(key: str, kind: str, model: str, title: str, action: str, monthly: float, low: float | None = None, high: float | None = None, conf: float = 0.5, how: list[str] | None = None, inputs: list[dict] | None = None, href: str | None = None, subject: str | None = None) -> dict:
+def story(now: str, why: str, todo: str, gain: str) -> dict:
+    """The four beats every action is told in: what's happening → why we think so → what to do → what you'd gain."""
+    return {"now": now, "why": why, "todo": todo, "gain": gain}
+
+
+def opportunity(key: str, kind: str, model: str, title: str, action: str, monthly: float, low: float | None = None, high: float | None = None, conf: float = 0.5, how: list[str] | None = None, inputs: list[dict] | None = None, href: str | None = None, subject: str | None = None, *, area: str | None = None, effort: str | None = None, vector: str | None = None, story: dict | None = None, visual: dict | None = None, group: str | None = None, lead: bool | None = None) -> dict:
+    """A finding. Optional extras (the app has defaults per kind when they're missing):
+    area: staffing | menu | ordering | hours | costs; effort: easy | medium | hard;
+    vector: save | earn | info; story: see story(); visual: a small chart spec;
+    group: root cause — findings sharing a group are one action in the app; lead: the one to show."""
     lo = monthly if low is None else low
     hi = monthly if high is None else high
-    return {
+    extra = {k: v for k, v in {"area": area, "effort": effort, "vector": vector, "story": story, "visual": visual, "group": group, "lead": lead}.items() if v is not None}
+    return {**extra,
         "key": key,
         "kind": kind,
         "model": model,
@@ -192,3 +215,142 @@ def open_days_per_month(days: list[dict]) -> float:
     span = (d(max(x["date"] for x in days)) - d(min(x["date"] for x in od))).days + 1
     n_open = len(od)
     return DAYS_PER_MONTH * n_open / max(1, span) if n_open else 26.0
+
+
+# ---- Data preparation (run once by the engine before any model) ------------------------
+
+ASSUMED_COST_SHARE = 0.30  # food + drink cost when plate costs aren't set up yet (typical taproom with a kitchen)
+
+
+def _median(v: list[float]) -> float:
+    return float(np.median(v)) if v else 0.0
+
+
+def prepare(data: dict) -> dict:
+    """Clean the daily series in place so every model sees the same, sane history.
+
+    - A day with a few stray sales (a refund, a test order, a private tasting on a
+      closed day) isn't an open day: under 15% of a normal day around it → closed.
+    - Weekdays that were closed most weeks lately (or aren't in the opening hours)
+      are closed going forward, so the forecast doesn't invent a Tuesday.
+    - Hourly rows on those days are dropped (their labor is prep, not service).
+    Returns a summary the models and the app can show.
+    """
+    days = sorted(data.get("days") or [], key=lambda x: x["date"])
+    data["days"] = days
+    opened = [x for x in days if x.get("open") and (x.get("sales") or 0) > 0]
+    stray: list[str] = []
+    if len(opened) >= 14:
+        idx = {x["date"]: i for i, x in enumerate(opened)}
+        for x in opened:
+            i = idx[x["date"]]
+            around = [y["sales"] for y in opened[max(0, i - 30) : i + 31] if y is not x]
+            ref = _median(around)
+            if ref > 0 and x["sales"] < max(40.0, 0.15 * ref):
+                x["open"] = False
+                x["stray"] = True
+                stray.append(x["date"])
+    stray_set = set(stray)
+    if stray_set and data.get("hourly"):
+        data["hourly"] = [r for r in data["hourly"] if r["date"] not in stray_set]
+    # Closed weekdays: from the opening hours when set (JS weekday keys, 0 = Sunday), else the last 8 weeks.
+    closed: set[int] = set()
+    oh = data.get("openingHours") or {}
+    if oh:
+        open_js = {int(k) for k, v in oh.items() if v}
+        closed = {wd for wd in range(7) if (wd + 1) % 7 not in open_js}
+    end = data.get("asOf") or (days[-1]["date"] if days else None)
+    recent = [x for x in days if x["date"] >= add_days(end, -56)] if end else []
+    by_wd: dict[int, list[bool]] = {}
+    for x in recent:
+        by_wd.setdefault(weekday(x["date"]), []).append(bool(x.get("open")))
+    for wd, v in by_wd.items():
+        if len(v) >= 4 and sum(v) / len(v) < 0.4:
+            closed.add(wd)
+    data["closedWeekdays"] = sorted(closed)
+    od = [x for x in days if x.get("open") and (x.get("sales") or 0) > 0]
+    span = (d(od[-1]["date"]) - d(od[0]["date"])).days + 1 if od else 0
+    summary = {"from": od[0]["date"] if od else None, "to": od[-1]["date"] if od else None, "openDays": len(od), "spanDays": span, "strayDays": len(stray), "closedWeekdays": sorted(closed)}
+    data["_prep"] = summary
+    return summary
+
+
+def cost_share(data: dict, recent_days: int = 56) -> tuple[float, bool]:
+    """Food + drink cost as a share of sales: measured when plate costs cover the sales, else assumed (30%)."""
+    rows = open_days(data.get("days", []))[-recent_days:]
+    s = sum(x["sales"] for x in rows)
+    c = sum(float(x.get("cogs") or 0) for x in rows)
+    if s > 0 and c / s >= 0.08:
+        return c / s, True
+    return ASSUMED_COST_SHARE, False
+
+
+def cost_note(measured: bool, share: float) -> str:
+    return f"food and drink cost of {pct(share)}" + ("" if measured else " (a typical figure — link Square items to recipes to use yours)")
+
+
+def hour_label(h: int) -> str:
+    s = "am" if h % 24 < 12 else "pm"
+    hh = h % 12 or 12
+    return f"{hh}{s}"
+
+
+DAYPARTS = [(0, 11, "early morning"), (11, 13, "late morning"), (13, 16, "afternoon"), (16, 18, "early evening"), (18, 21, "evening"), (21, 24, "late night")]
+
+
+def daypart(h: int) -> str:
+    return next(name for a, b, name in DAYPARTS if a <= h < b)
+
+
+def slot_key(wd: int, h: int) -> str:
+    return f"slot.{wd}.{daypart(h).replace(' ', '-')}"
+
+
+def hours_span(hours: list[int]) -> str:
+    """[11, 12] → '11am–1pm'."""
+    hs = sorted(hours)
+    return f"{hour_label(hs[0])}–{hour_label(hs[-1] + 1)}"
+
+
+def open_windows(data: dict, hourly: list[dict] | None = None) -> dict[int, tuple[int, int]]:
+    """Service hours per weekday (Mon=0) as [open, close) clock hours.
+
+    The opening hours set in the app win. Otherwise they're read from sales: an
+    hour is open if it sells in at least half the weeks and brings in at least
+    15% of a typical selling hour that day — so a setup hour with a stray $12
+    sale, or cleanup after close, is never mistaken for service. Labor before
+    open and after close is expected (setup, cleanup) and never judged."""
+    oh = data.get("openingHours") or {}
+    out: dict[int, tuple[int, int]] = {}
+    for k, v in oh.items():
+        try:
+            a, b = int(v[0]), int(v[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if b > a:
+            out[(int(k) + 6) % 7] = (a, b)
+    if out:
+        return out
+    rows = hourly if hourly is not None else data.get("hourly") or []
+    sales: dict[tuple[int, int], list[float]] = {}
+    weeks: dict[int, set] = {}
+    for r in rows:
+        wd = weekday(r["date"])
+        weeks.setdefault(wd, set()).add(r["date"])
+        if (r.get("sales") or 0) > 0:
+            sales.setdefault((wd, int(r["hour"])), []).append(float(r["sales"]))
+    for wd, dates in weeks.items():
+        n = len(dates)
+        avg = {h: sum(v) / n for (w, h), v in sales.items() if w == wd and len(v) >= max(2, n * 0.5)}
+        if not avg:
+            continue
+        typical = _median(list(avg.values()))
+        hs = sorted(h for h, a in avg.items() if a >= 0.15 * typical)
+        if hs:
+            out[wd] = (hs[0], hs[-1] + 1)
+    return out
+
+
+def in_service(windows: dict[int, tuple[int, int]], wd: int, h: int) -> bool:
+    w = windows.get(wd)
+    return bool(w) and w[0] <= h < w[1]

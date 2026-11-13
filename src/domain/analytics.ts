@@ -7,8 +7,8 @@
 
 import { addDays, daysBetween, ISODate } from "./dates";
 
-export type ModelId = "menu" | "price" | "forecast" | "orders" | "anomalies" | "drivers" | "staffing";
-export const MODEL_IDS: ModelId[] = ["menu", "price", "forecast", "orders", "anomalies", "drivers", "staffing"];
+export type ModelId = "menu" | "price" | "forecast" | "orders" | "anomalies" | "drivers" | "staffing" | "seasons" | "week";
+export const MODEL_IDS: ModelId[] = ["menu", "price", "forecast", "orders", "anomalies", "drivers", "staffing", "seasons", "week"];
 
 export interface Confidence {
   level: "low" | "medium" | "high";
@@ -50,7 +50,9 @@ export type Chart =
   | { type: "bars"; unit: "money"; rows: { label: string; value: number; low?: number; high?: number }[] }
   | { type: "band"; rows: { date: ISODate; mid: number; low: number; high: number; closed: boolean }[]; history: { date: ISODate; actual: number; forecast: number }[] }
   | { type: "heatmap"; rows: string[]; cols: string[]; cells: { r: number; c: number; splh: number; sales: number; people: number; flag: "over" | "under" | null }[]; splh: number }
-  | { type: "list"; rows: { date: ISODate; metric: string; z: number; text: string }[] };
+  | { type: "list"; rows: { date: ISODate; metric: string; z: number; text: string }[] }
+  | { type: "seasons"; months: string[]; index: (number | null)[]; years: { year: number; values: (number | null)[] }[] }
+  | { type: "week"; rows: { label: string; value: number; sales?: number; labor?: number; cogs?: number; flag?: boolean }[] };
 
 export interface Insight {
   id: ModelId;
@@ -82,6 +84,10 @@ export interface AnalyticsRun {
   /** Where it ran: the Vercel Python service or python3 on this machine. */
   source: "service" | "local";
   seconds: number | null;
+  /** The history it used (Insights Lab range) — absent on runs from before the Lab. */
+  window?: { preset: string; from: ISODate; through: ISODate; firstSale: ISODate | null };
+  /** What the models saw after cleaning: open days, stray days dropped, closed weekdays. */
+  data?: { from: ISODate | null; to: ISODate | null; openDays: number; spanDays: number; strayDays: number; closedWeekdays: number[] } | null;
 }
 
 // ---- Price what-if (the slider) -----------------------------------------------------

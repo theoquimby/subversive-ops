@@ -42,7 +42,7 @@ export const AREAS: HelpArea[] = [
   { id: "invoices", title: "Invoices", description: "Snap, match, approve, request credits, send to QuickBooks or export for Xero." },
   { id: "reviews", title: "Reviews", description: "Themes, reply drafts, what to fix this month." },
   { id: "brief", title: "Weekly brief", description: "Next week in a page, with one-tap actions." },
-  { id: "insights", title: "Insights", description: "What the numbers say to do: menu, prices, forecast ranges, orders, staffing, break-even and the insight feed." },
+  { id: "insights", title: "Insights", description: "The Insights Lab: one thing to do at a time, how your numbers connect, and a tile for every question." },
   { id: "training", title: "Training & certificates", description: "ATAP, ServSafe and other certificates, expiry reminders and onboarding checklists." },
 ];
 

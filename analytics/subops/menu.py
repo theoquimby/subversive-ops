@@ -16,6 +16,8 @@ import math
 from . import price as price_model
 from .common import add_days, confidence, exact_money, inp, insight, money, open_days_per_month, opportunity, pct
 
+PLAIN = {"Star": "Star", "Workhorse": "Crowd-pleaser", "Puzzle": "Hidden gem", "Dog": "Rethink"}
+
 ACTIONS = {
     "Star": "Keep it exactly as it is and keep it where guests see it first.",
     "Workhorse": "Guests love it but it earns too little — raise the price a little or trim the plate cost.",
@@ -106,7 +108,7 @@ def run(data: dict, price_result: dict | None = None) -> dict:
     a90 = analyse(data, elastic, 90)
     rows = a30["rows"]
     if len(rows) < 3:
-        return insight("menu", "Menu engineering", status="thin", headline="Needs at least 3 costed menu items with sales.", action="Link Square items to recipes and price their ingredients.", how=["Menu engineering compares items against each other, so it needs a few costed items with sales."], details={"badCost": a30["badCost"]})
+        return insight("menu", "Menu", status="thin", headline="Needs at least 3 costed menu items with sales.", action="Link Square items to recipes and price their ingredients.", how=["Menu engineering compares items against each other, so it needs a few costed items with sales."], details={"badCost": a30["badCost"]})
     cls90 = {r["id"]: r.get("cls") for r in a90["rows"]}
     opps = []
     for r in rows:
@@ -121,8 +123,8 @@ def run(data: dict, price_result: dict | None = None) -> dict:
                 r["move"] = {"kind": "reprice", **bp}
                 title = f"Reprice the {r['name']} to {price_str(bp['price'])} → about +{money(bp['gain'])}/month"
                 opps.append(opportunity(f"menu.reprice.{r['id']}", "menu.reprice", "menu", title, f"Change the {r['name']} from ${r['listPrice']:.2f} to ${bp['price']:.2f} in Square. Expect ~{(1 - bp['qty'] / r['qtyMonth']) * 100:.0f}% fewer sold; it still pays.", bp["gain"], bp["cautious"], bp["high"], 0.55 if e["source"] == "measured" else 0.4,
-                                        [f"{r['name']} is a {r['cls']}: {pct(r['mix'])} of {r['group']} items sold (cut-off {pct(r['popCut'])}) with a ${r['cm']:.2f} margin (average ${r['avgCm']:.2f}).", f"At ${bp['price']:.2f}, with an elasticity of {e['elasticity']:.2f} ({e['source']}), you'd sell about {bp['qty']:.0f} a month instead of {r['qtyMonth']:.0f} and keep {money(bp['gain'])} more. The low end assumes guests are more price-sensitive than we think."],
-                                        [inp("Sold, last 30 days", f"{r['qty']:.0f}"), inp("Average price", f"${r['price']:.2f}"), inp("Plate cost", f"${r['cost']:.2f}"), inp("Margin", f"${r['cm']:.2f}"), inp("Elasticity", f"{e['elasticity']:.2f} ({e['source']})")], subject=r["id"]))
+                                        [f"{r['name']} is a {PLAIN[r['cls']].lower()}: {pct(r['mix'])} of {r['group']} items sold (cut-off {pct(r['popCut'])}) with a ${r['cm']:.2f} margin (average ${r['avgCm']:.2f}).", f"At ${bp['price']:.2f}, allowing for how guests react to price ({'measured from your own price changes' if e['source'] == 'measured' else 'typical for this kind of item'}), you'd sell about {bp['qty']:.0f} a month instead of {r['qtyMonth']:.0f} and keep {money(bp['gain'])} more. The low end assumes guests are more price-sensitive than we think."],
+                                        [inp("Sold, last 30 days", f"{r['qty']:.0f}"), inp("Average price", f"${r['price']:.2f}"), inp("Plate cost", f"${r['cost']:.2f}"), inp("Margin", f"${r['cm']:.2f}"), inp("How guests react to price", "measured" if e["source"] == "measured" else "typical")], subject=r["id"]))
         elif r["cls"] == "Puzzle":
             target_qty = r["popCut"] * sum(x["qty"] for x in rows if x["group"] == r["group"] or len(a30["groups"]) == 1)
             extra_month = max(0.0, (target_qty - r["qty"])) / max(1, a30["openDays"]) * open_days_per_month(data.get("days", []))
@@ -144,13 +146,13 @@ def run(data: dict, price_result: dict | None = None) -> dict:
         action = top["action"]
         monthly, rng = top["monthly"], [top["low"], top["high"]]
     else:
-        headline = f"{counts['Star']} stars, {counts['Workhorse']} workhorses, {counts['Puzzle']} puzzles, {counts['Dog']} dogs — no clear money move"
+        headline = f"{counts['Star']} stars, {counts['Workhorse']} crowd-pleasers, {counts['Puzzle']} hidden gems, {counts['Dog']} to rethink — no clear money move"
         action = "Nothing to change this month."
         monthly, rng = None, None
     how = [
         "We looked at the last 30 days of Square sales and today's plate costs for every menu item.",
         "Popularity: an item is popular if it sells at least 70% of an even share (with N items in a group, that's 70% × 1/N of what the group sells). Margin: an item is high-margin if its price minus plate cost beats the group's volume-weighted average.",
-        "Stars (popular + high margin): leave alone. Workhorses (popular + low margin): small price rise. Puzzles (high margin, few sold): promote. Dogs: rework or drop.",
+        "Stars (popular, earn well): leave alone. Crowd-pleasers (popular, earn little): a small price rise. Hidden gems (earn well, few sold): promote them. Rethink (few sold, earn little): rework or drop.",
         "Price moves are on a 50¢ grid, at most +12%, and are picked assuming guests are a bit more price-sensitive than our best estimate — so the number is cautious.",
     ]
     if a30["small"]:
@@ -158,11 +160,11 @@ def run(data: dict, price_result: dict | None = None) -> dict:
     if a30["badCost"]:
         how.append("Left out because the plate cost looks wrong or incomplete: " + ", ".join(f"{b['name']} (cost {exact_money(b['cost'])})" for b in a30["badCost"]) + ". Fix the ingredient prices and they'll come back.")
     if shifted:
-        how.append("Over 90 days some items sit in a different box: " + ", ".join(f"{r['name']} ({r['cls90']} → {r['cls']})" for r in shifted) + ".")
-    inputs = [inp(r["name"], f"{r['cls']}: {r['qty']:.0f} sold ({pct(r['mix'])}), ${r['price']:.2f} − ${r['cost']:.2f} = ${r['cm']:.2f} margin") for r in sorted(rows, key=lambda x: -x["qty"])]
+        how.append("Over 90 days some items sit in a different box: " + ", ".join(f"{r['name']} ({PLAIN[r['cls90']]} → {PLAIN[r['cls']]})" for r in shifted) + ".")
+    inputs = [inp(r["name"], f"{PLAIN[r['cls']]}: {r['qty']:.0f} sold ({pct(r['mix'])}), ${r['price']:.2f} − ${r['cost']:.2f} = ${r['cm']:.2f} margin") for r in sorted(rows, key=lambda x: -x["qty"])]
     return insight(
         "menu",
-        "Menu engineering",
+        "Menu",
         headline=headline,
         action=action,
         monthly=monthly,

@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 import statsmodels.api as sm
 
-from .common import DAYS_PER_MONTH, add_days, confidence, inp, insight, money, open_days_per_month, pct
+from .common import DAYS_PER_MONTH, add_days, confidence, cost_share, inp, insight, money, open_days_per_month, pct
 
 
 def lever_values(m: dict, elasticity: float) -> list[dict]:
@@ -29,7 +29,7 @@ def lever_values(m: dict, elasticity: float) -> list[dict]:
     q = 1.01**elasticity
     price = s * (1.01 * q - 1) - c * (q - 1)
     return [
-        {"key": "price", "label": "+1% on menu prices", "monthly": price, "how": f"Sales {money(s)} × (1.01 × 1.01^{elasticity:.2f} − 1) minus the change in cost of goods; elasticity {elasticity:.2f} is the sales-weighted price response."},
+        {"key": "price", "label": "1% higher prices", "monthly": price, "how": f"Sales {money(s)} × (1.01 × 1.01^{elasticity:.2f} − 1) minus the change in cost of goods; elasticity {elasticity:.2f} is the sales-weighted price response."},
         {"key": "labor", "label": "1 fewer labor hour a day", "monthly": rate * m["openDays"], "how": f"{money(rate, True)} an hour (with employer taxes) × {m['openDays']:.0f} open days a month."},
         {"key": "waste", "label": "10% less waste", "monthly": 0.1 * w, "how": f"10% of {money(w)} of logged waste a month at cost."},
         {"key": "covers", "label": "5% more guests", "monthly": 0.05 * (s - c), "how": f"5% of sales minus food cost ({money(s)} − {money(c)}), assuming the same team handles them."},
@@ -70,7 +70,10 @@ def run(data: dict, price_result: dict | None = None) -> dict:
     tot = {k: sum(float(x.get(k) or 0) for x in recent) for k in ("sales", "cogs", "labor", "laborHours", "foodSales")}
     waste_days = [x for x in data.get("days", []) if x.get("wasteLogged")]
     waste_daily = (sum(float(x.get("waste") or 0) for x in waste_days) / len(waste_days)) if waste_days else 0.0
-    m = {"sales": tot["sales"] * scale, "cogs": tot["cogs"] * scale, "labor": tot["labor"] * scale, "laborHours": tot["laborHours"] * scale, "waste": waste_daily * opm, "openDays": opm}
+    share, measured = cost_share(data)
+    cogs_month = tot["cogs"] * scale if measured else tot["sales"] * scale * share
+    orders = sum(float(x.get("orders") or 0) for x in recent)
+    m = {"sales": tot["sales"] * scale, "cogs": cogs_month, "labor": tot["labor"] * scale, "laborHours": tot["laborHours"] * scale, "waste": waste_daily * opm, "openDays": opm, "guests": orders * scale, "costMeasured": measured}
     fits = (price_result or {}).get("details", {}).get("items", [])
     w = sum(f["qtyMonth"] * f["price"] for f in fits)
     e = sum(f["elasticity"] * f["qtyMonth"] * f["price"] for f in fits) / w if w else -0.8
@@ -89,22 +92,22 @@ def run(data: dict, price_result: dict | None = None) -> dict:
         rng = f" ({money(be['dailyLow'])}–{money(be['dailyHigh'])})" if be["dailyHigh"] > be["dailyLow"] * 1.05 else ""
         headline = f"You break even at about {money(be['daily'])} a day{rng}; you're averaging {money(avg_daily)} ({'+' if cushion >= 0 else ''}{round(cushion * 100)}%)"
     else:
-        headline = f"Biggest lever: {top['label'].lower()} → about {money(top['monthly'])}/month"
-    action = f"Focus on {top['label'].lower()} — it's worth {money(top['monthly'])}/month, more than {levers[1]['label'].lower()} ({money(levers[1]['monthly'])})."
+        headline = f"{top['label']} would be worth about {money(top['monthly'])} a month — your biggest lever"
+    action = f"That's more than {levers[1]['label'].lower()} ({money(levers[1]['monthly'])}) or {levers[2]['label'].lower()} ({money(levers[2]['monthly'])})."
     if not fixed_total:
-        action += " Add rent, utilities and insurance below to see your break-even."
+        action += " Add rent, utilities and insurance to see your break-even."
     how = [
-        f"A month here is the last 28 days scaled to 30.4 days: sales {money(m['sales'])}, cost of goods {money(m['cogs'])} ({pct(m['cogs'] / m['sales'])}), labor {money(m['labor'])} ({pct(m['labor'] / m['sales'])}), waste {money(m['waste'])}.",
+        f"A month here is the last 28 days scaled to a full month: sales {money(m['sales'])}, food and drink cost {money(m['cogs'])} ({pct(m['cogs'] / m['sales'])}{'' if measured else ', a typical figure until plate costs are set up'}), wages {money(m['labor'])} ({pct(m['labor'] / m['sales'])}), waste {money(m['waste'])}.",
         *[f"{l['label']}: {l['how']}" for l in levers],
     ]
     if split["fitted"]:
-        how.append(f"Break-even: a regression of daily labor on daily sales says labor is about {money(split['fixed'])} a day no matter what, plus {pct(split['variable'])} of each extra dollar (fits {pct(split['r2'])} of day-to-day changes). With food cost {pct(m['cogs'] / m['sales'])} and waste {pct(m['waste'] / m['sales'], 1)}, each extra dollar of sales leaves {pct(be['margin'] if be else 1 - m['cogs'] / m['sales'] - split['variable'])} to cover fixed costs.")
-    inputs = [inp("Sales / month", money(m["sales"])), inp("Cost of goods / month", money(m["cogs"])), inp("Labor / month", money(m["labor"])), inp("Labor hours / month", f"{m['laborHours']:.0f}"), inp("Waste / month", money(m["waste"])), inp("Open days / month", f"{opm:.1f}"), inp("Price response", f"{e:.2f}"), inp("Fixed costs / month", money(fixed_total) if fixed_total else "not entered")]
+        how.append(f"Break-even: looking at every open day, wages are about {money(split['fixed'])} a day no matter what, plus {pct(split['variable'])} of each extra dollar of sales. With food cost {pct(m['cogs'] / m['sales'])} and waste {pct(m['waste'] / m['sales'], 1)}, each extra dollar of sales leaves {pct(be['margin'] if be else 1 - m['cogs'] / m['sales'] - split['variable'])} to cover fixed costs.")
+    inputs = [inp("Sales / month", money(m["sales"])), inp("Cost of goods / month", money(m["cogs"])), inp("Labor / month", money(m["labor"])), inp("Labor hours / month", f"{m['laborHours']:.0f}"), inp("Waste / month", money(m["waste"])), inp("Open days / month", f"{opm:.1f}"), inp("Guests' price sensitivity", f"{abs(e):.2f}"), inp("Fixed costs / month", money(fixed_total) if fixed_total else "not entered")]
     # Levers are what-ifs, not findings, so they don't go in the ranked list (the other models turn them into specific moves).
     opps: list[dict] = []
     return insight(
         "drivers",
-        "Profit drivers & break-even",
+        "What moves your profit",
         headline=headline,
         action=action,
         monthly=top["monthly"],
@@ -112,6 +115,6 @@ def run(data: dict, price_result: dict | None = None) -> dict:
         how=how,
         inputs=inputs,
         chart={"type": "bars", "unit": "money", "rows": [{"label": l["label"], "value": round(l["monthly"], 0)} for l in levers]},
-        details={"levers": levers, "month": m, "profitBeforeFixed": profit_before_fixed, "profitAfterFixed": profit_before_fixed - fixed_total if fixed_total else None, "fixedTotal": fixed_total, "breakEven": be, "laborSplit": split, "elasticity": e},
+        details={"base": {"sales": m["sales"], "cogs": m["cogs"], "labor": m["labor"], "laborHours": m["laborHours"], "waste": m["waste"], "openDays": opm, "guests": m["guests"], "elasticity": e, "costMeasured": measured, "fixed": fixed_total}, "levers": levers, "month": m, "profitBeforeFixed": profit_before_fixed, "profitAfterFixed": profit_before_fixed - fixed_total if fixed_total else None, "fixedTotal": fixed_total, "breakEven": be, "laborSplit": split, "elasticity": e},
         opportunities=opps,
     )

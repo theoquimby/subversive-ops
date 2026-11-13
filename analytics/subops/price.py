@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-from .common import confidence, exact_money, inp, insight, money, open_days_per_month, opportunity, shrink, weekday
+from .common import confidence, exact_money, inp, insight, money, open_days_per_month, opportunity, shrink, story, weekday
 
 # Typical own-price elasticities for full-service restaurant items (mean, sd).
 # Food-away-from-home studies put the aggregate near −0.8; single items are more
@@ -44,6 +44,47 @@ def prior_for(category: str, group: str | None = None) -> tuple[str, float, floa
     if group == "beverage":
         return ("drink", *PRIORS["drink"])
     return ("other", *PRIORS["other"])
+
+
+# Typical cost as a share of price when plate costs aren't set up yet (own beer poured is cheap; food ~30%).
+TYPICAL_COST = {"beer": 0.22, "drink": 0.24, "main": 0.32, "side": 0.28, "snack": 0.28, "add-on": 0.25, "other": 0.30}
+
+
+def assumed_cost(item: dict, price: float) -> float:
+    cat = prior_for(item.get("category", ""), item.get("group"))[0]
+    return price * TYPICAL_COST.get(cat, 0.3)
+
+
+def fit_weekly(item: dict, traffic_week: dict[str, float]) -> dict | None:
+    """Elasticity from weekly sales over the whole range (years of history): log(qty) ~ log(list price)
+    + log(store orders that week) + trend + quarter. Weekly totals are far less noisy than days."""
+    weekly = item.get("weekly") or {}
+    rows = sorted((k, v[0], v[1]) for k, v in weekly.items() if v[0] and v[0] > 0 and v[1] > 0)
+    if len(rows) < 26:
+        return None
+    df = pd.DataFrame(rows, columns=["week", "qty", "sales"])
+    df["price"] = df["sales"] / df["qty"]
+    df["list"] = (df["price"] / 0.25).round() * 0.25
+    df.index = pd.to_datetime(df["week"])
+    changes = price_changes(df["list"], min_step=0.04, min_days=4)
+    if not changes:
+        return {"changes": [], "fit": None}
+    df["lq"] = np.log(df["qty"])
+    df["lp"] = np.log(df["list"])
+    df["t"] = (df.index - df.index[0]).days / 365.25
+    X = pd.get_dummies(df.index.quarter, prefix="q", drop_first=True).astype(float)
+    X.index = df.index
+    X["lp"] = df["lp"]
+    X["t"] = df["t"]
+    tr = np.array([traffic_week.get(k, np.nan) for k in df["week"]], dtype=float)
+    if np.isfinite(tr).mean() > 0.8 and np.nanmin(tr) > 0:
+        X["ltraffic"] = np.log(np.where(np.isfinite(tr), tr, np.nanmedian(tr)))
+    X = sm.add_constant(X, has_constant="add")
+    try:
+        m = sm.OLS(df["lq"], X).fit(cov_type="HC1")
+        return {"changes": changes, "fit": {"raw": float(m.params["lp"]), "se": float(m.bse["lp"]), "n": int(len(df)), "weekly": True}}
+    except Exception:  # noqa: BLE001
+        return {"changes": changes, "fit": None}
 
 
 def list_prices(daily: pd.DataFrame) -> pd.Series:
@@ -75,11 +116,18 @@ def price_changes(lp: pd.Series, min_step: float = 0.02, min_days: int = 10) -> 
     return out
 
 
-def fit_item(item: dict, traffic: dict[str, float]) -> dict:
+def fit_item(item: dict, traffic: dict[str, float], traffic_week: dict[str, float] | None = None) -> dict:
     """Elasticity for one item: measured (shrunk) when its price changed, else the category prior."""
     cat, pm, psd = prior_for(item.get("category", ""), item.get("group"))
-    rows = [(k, v[0], v[1]) for k, v in (item.get("daily") or {}).items() if v[0] and v[0] > 0]
     res = {"id": item["id"], "name": item["name"], "category": cat, "prior": pm, "priorSd": psd, "elasticity": pm, "sd": psd, "source": "typical", "changes": [], "fit": None}
+    wk = fit_weekly(item, traffic_week or {}) if item.get("weekly") else None
+    if wk is not None:
+        res["changes"] = [{**c, "date": c["date"]} for c in wk["changes"]]
+        if wk["fit"]:
+            mean, sd = shrink(wk["fit"]["raw"], wk["fit"]["se"], pm, psd)
+            res.update({"elasticity": float(np.clip(mean, -3.0, -0.05)), "sd": sd, "source": "measured", "fit": wk["fit"]})
+        return res
+    rows = [(k, v[0], v[1]) for k, v in (item.get("daily") or {}).items() if v[0] and v[0] > 0]
     if len(rows) < 14:
         return res
     df = pd.DataFrame(rows, columns=["date", "qty", "sales"]).assign(date=lambda x: pd.to_datetime(x["date"])).set_index("date").sort_index()
@@ -126,21 +174,41 @@ def what_if(price: float, cost: float | None, qty_month: float, elasticity: floa
 
 
 def run(data: dict) -> dict:
+    for i in data.get("items", []):
+        if not (i.get("price") or 0) > 0:
+            # No list price from the catalog: use what it sold for over the last few weeks.
+            src = sorted((i.get("daily") or {}).items())[-28:] or sorted((i.get("weekly") or {}).items())[-4:]
+            q = sum(v[0] for _, v in src)
+            if q > 0:
+                i["price"] = round(sum(v[1] for _, v in src) / q * 4) / 4
     items = [i for i in data.get("items", []) if i.get("kind") in ("MENU", "MODIFIER") and (i.get("price") or 0) > 0]
     traffic = {x["date"]: x.get("orders") for x in data.get("days", []) if x.get("orders")}
+    traffic_week: dict[str, float] = {}
+    for dt, o in traffic.items():
+        wk = (pd.Timestamp(dt) - pd.Timedelta(days=pd.Timestamp(dt).weekday())).date().isoformat()
+        traffic_week[wk] = traffic_week.get(wk, 0.0) + float(o)
     n_days = len([x for x in data.get("days", []) if x.get("open")])
     if not items:
-        return insight("price", "Price response", status="none", headline="No priced menu items with sales yet.", action="Link Square items to recipes on Sales → Menu from Square.", how=["Needs menu items with a price and some sales."])
+        return insight("price", "Prices", status="none", headline="No priced menu items with sales yet.", action="Link Square items to recipes on Sales → Menu from Square.", how=["Needs menu items with a price and some sales."])
     fits, suspect = [], []
     opm = open_days_per_month(data.get("days", []))
     for it in items:
-        f = fit_item(it, traffic)
-        recent = sorted((it.get("daily") or {}).items())[-28:]
-        qty28 = sum(v[0] for _, v in recent)
-        open28 = max(1, len(recent))
-        qty_month = qty28 / open28 * opm
+        f = fit_item(it, traffic, traffic_week)
+        daily = it.get("daily") or {}
+        if daily:
+            cutoff = sorted(traffic)[-28] if len(traffic) >= 28 else ""
+            qty28 = sum(v[0] for k, v in daily.items() if k >= cutoff)
+            open28 = max(1, len([k for k in traffic if k >= cutoff]))
+            qty_month = qty28 / open28 * opm
+        else:
+            wks = sorted((it.get("weekly") or {}).items())[-4:]
+            qty_month = sum(v[0] for _, v in wks) / max(1, len(wks)) * 4.33
         cost = it.get("unitCost")
-        if cost is not None and (it.get("costIncomplete") or cost >= 0.9 * it["price"]):
+        f["costAssumed"] = False
+        if cost is None and it.get("linked") is False:
+            cost = assumed_cost(it, it["price"])
+            f["costAssumed"] = True
+        elif cost is not None and (it.get("costIncomplete") or cost >= 0.9 * it["price"]):
             suspect.append(it["name"])
             continue  # a wrong plate cost (e.g. a typo'd ingredient price) would make any price rise look great
         w = what_if(it["price"], cost, qty_month, f["elasticity"], 1.0)
@@ -149,8 +217,8 @@ def run(data: dict) -> dict:
         fits.append({**f, "price": it["price"], "unitCost": cost, "qtyMonth": qty_month, "plusOne": w["profit"], "plusOneLow": lo["profit"], "plusOneHigh": hi["profit"], "qtyLossPct": 1 - w["qty"] / qty_month if qty_month else 0})
     # Lead with the move that pays even if guests are more price-sensitive than we think.
     if not fits:
-        return insight("price", "Price response", status="thin", headline="Plate costs need fixing before prices can be tested.", action="Check ingredient prices for: " + ", ".join(suspect), how=[])
-    fits.sort(key=lambda f: (-(f["plusOneLow"] > 0), -f["plusOne"]))
+        return insight("price", "Prices", status="thin", headline="Plate costs need fixing before prices can be tested.", action="Check ingredient prices for: " + ", ".join(suspect), how=[])
+    fits.sort(key=lambda f: (-(f["plusOneLow"] > 0), -f["plusOneLow"], -f["plusOne"]))
     measured = [f for f in fits if f["source"] == "measured"]
     best = fits[0]
     weeks = n_days
@@ -160,23 +228,43 @@ def run(data: dict) -> dict:
         conf = confidence(weeks, 0.3)
         conf["note"] = f"{conf['note'].split(' — ')[0].replace('Based on ', '')}, no price changes yet — rough"
     name = best["name"]
-    headline = f"+$1 on the {name} → about {money(best['plusOne'])}/month more profit (likely {money(best['plusOneLow'])} to {money(best['plusOneHigh'])})"
-    action = f"Test +$1 on the {name} for 3 weeks; we'll measure what it really did." if best["plusOne"] > 0 else "Prices look about right — no +$1 move clearly pays."
+    sens = lambda e: "barely notice" if e > -0.5 else "notice a little" if e > -1.0 else "notice"
+    headline = f"+$1 on the {name} → about {money(best['plusOne'])} a month more profit (likely {money(best['plusOneLow'])}–{money(best['plusOneHigh'])})" if best["plusOne"] > 0 else "No single $1 price rise clearly pays right now"
+    action = f"Raise the {name} to {exact_money(best['price'] + 1)} and leave it for 3 weeks — we'll measure what it really did." if best["plusOne"] > 0 else "Prices look about right."
+    assumed = [f for f in fits if f.get("costAssumed")]
     how = [
-        "For each item we asked: if the price goes up, how many fewer do you sell? That's the price response (economists call it elasticity: −0.8 means +10% price → about 8% fewer sold).",
-        (f"{len(measured)} item(s) had a real price change in your Square history, so we measured them with a regression of daily quantity on price, controlling for weekday, store traffic (order count) and trend, then blended the result with typical figures so one noisy month can't swing it." if measured else "You haven't changed a menu price in the history we have (one-off discounts don't count), so we use typical figures for restaurant items in each category — mains about −0.9, sides −0.7, beer −0.8. Change one price and leave it for 3+ weeks, and this switches to your own guests' behaviour."),
-        "Then: new volume = today's volume × (new price ÷ old price)^elasticity, and profit = volume × (price − plate cost). The range uses the uncertainty in the elasticity (80% band).",
+        "For each item we asked: if the price goes up $1, how many fewer would you sell, and what's left after its cost?",
+        (f"{len(measured)} of these items have had a real price change in your Square history, so we measured how your guests reacted — week by week, allowing for how busy the place was and the time of year — and blended that with typical figures so one noisy stretch can't swing it." if measured else "You haven't changed these prices in the history we have (one-off discounts don't count), so we use how guests typically react for that kind of item. Change one price and leave it for 3 weeks, and this switches to your own guests."),
+        "The likely range allows for guests being more (or less) price-sensitive than our best guess. The low end is what we'd plan on.",
     ]
+    if assumed:
+        how.append(f"Plate costs aren't set up for {len(assumed)} of these items yet, so we used a typical cost for that kind of item (beer about 22% of the price, food about 30%). Link them to recipes for your real numbers.")
     if suspect:
         how.append("Left out because the plate cost looks wrong (90%+ of the price, or incomplete): " + ", ".join(suspect) + ".")
-    inputs = [inp(f["name"], f"{exact_money(f['price'])}, plate {exact_money(f['unitCost'])}, ~{f['qtyMonth']:.0f}/month, elasticity {f['elasticity']:.2f} ({f['source']})") for f in fits]
+    inputs = [inp(f["name"], f"{exact_money(f['price'])}, ~{f['qtyMonth']:.0f} a month, guests {sens(f['elasticity'])} a price rise ({'measured' if f['source'] == 'measured' else 'typical'})") for f in fits[:12]]
     opps = []
-    for f in fits[:3]:
-        if f["plusOne"] > 25 and f["plusOneLow"] > 0:
-            opps.append(opportunity(f"price.plus1.{f['id']}", "price.test", "price", f"+$1 on the {f['name']} → ≈ {money(f['plusOne'])}/month", f"Raise the {f['name']} to {exact_money(f['price'] + 1)} for 3 weeks and watch volume.", f["plusOne"], f["plusOneLow"], f["plusOneHigh"], conf["score"] * (1 if f["source"] == "measured" else 0.7), how[:1], [inp("Price now", exact_money(f["price"])), inp("Plate cost", exact_money(f["unitCost"])), inp("Sold per month", f"{f['qtyMonth']:.0f}"), inp("Elasticity", f"{f['elasticity']:.2f} ({f['source']})")], subject=f["id"]))
+    for f in sorted(fits, key=lambda f: -f["plusOneLow"])[:3]:
+        if f["plusOne"] > 40 and f["plusOneLow"] > 0:
+            loss = f["qtyLossPct"]
+            visual = {"type": "compare", "unit": "money", "rows": [{"label": f"Profit a month at {exact_money(f['price'])}", "value": round(f["qtyMonth"] * (f["price"] - (f["unitCost"] or 0)))}, {"label": f"At {exact_money(f['price'] + 1)}", "value": round(f["qtyMonth"] * (f["price"] - (f["unitCost"] or 0)) + f["plusOne"]), "tone": "good"}]}
+            opps.append(opportunity(
+                f"price.plus1.{f['id']}", "price.test", "price",
+                f"Try $1 more on the {f['name']}",
+                f"Raise the {f['name']} to {exact_money(f['price'] + 1)} in Square for 3 weeks and watch how many sell.",
+                f["plusOne"], f["plusOneLow"], f["plusOneHigh"], conf["score"] * (1 if f["source"] == "measured" else 0.7) * (0.8 if f.get("costAssumed") else 1),
+                how[:2], [inp("Price now", exact_money(f["price"])), inp("Cost" + (" (typical)" if f.get("costAssumed") else ""), exact_money(f["unitCost"])), inp("Sold per month", f"{f['qtyMonth']:.0f}"), inp("How guests react", f"{sens(f['elasticity'])} ({'measured' if f['source'] == 'measured' else 'typical'})")],
+                href="/insights#lab-price", subject=f["id"], area="menu", effort="easy", vector="earn",
+                story=story(
+                    f"The {f['name']} sells about {f['qtyMonth']:.0f} a month at {exact_money(f['price'])}.",
+                    (f"When its price changed before, your guests {sens(f['elasticity'])} it." if f["source"] == "measured" else f"Guests usually {sens(f['elasticity'])} $1 on an item like this.") + f" We expect about {loss * 100:.0f}% fewer sold — and each one still earns $1 more.",
+                    f"Change it to {exact_money(f['price'] + 1)} in Square and leave it for 3 weeks. We'll show you what it really did.",
+                    f"About {money(f['plusOne'])} a month (we'd plan on {money(f['plusOneLow'])}).",
+                ),
+                visual=visual,
+            ))
     return insight(
         "price",
-        "Price response",
+        "Prices",
         headline=headline,
         action=action,
         monthly=best["plusOne"] if best["plusOne"] > 0 else None,
@@ -184,8 +272,8 @@ def run(data: dict) -> dict:
         confidence=conf,
         how=how,
         inputs=inputs,
-        chart={"type": "bars", "unit": "money", "rows": [{"label": f["name"], "value": round(f["plusOne"], 0), "low": round(f["plusOneLow"], 0), "high": round(f["plusOneHigh"], 0)} for f in sorted(fits, key=lambda f: -f["plusOne"])[:6]]},
-        details={"items": [{k: f[k] for k in ("id", "name", "price", "unitCost", "qtyMonth", "elasticity", "sd", "source", "changes", "plusOne", "plusOneLow", "plusOneHigh")} for f in fits]},
+        chart={"type": "bars", "unit": "money", "rows": [{"label": f["name"], "value": round(f["plusOne"], 0), "low": round(f["plusOneLow"], 0), "high": round(f["plusOneHigh"], 0)} for f in sorted(fits, key=lambda f: -f["plusOneLow"])[:6]]},
+        details={"items": [{k: f.get(k) for k in ("id", "name", "price", "unitCost", "qtyMonth", "elasticity", "sd", "source", "changes", "plusOne", "plusOneLow", "plusOneHigh", "costAssumed")} for f in fits]},
         opportunities=opps,
     )
 
