@@ -9,7 +9,8 @@
  * support; on phones the list opens as a bottom sheet.
  */
 
-import { autoUpdate, flip, offset, size, useFloating } from "@floating-ui/react";
+import { autoUpdate, flip, offset, size, useFloating, useTransitionStyles } from "@floating-ui/react";
+import { popoverTransition, sheetTransition, useReducedMotion } from "./motion";
 import { cn } from "@/lib/cn";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { Children, isValidElement, ReactElement, ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -87,9 +88,11 @@ export function Select({ value, defaultValue, onChange, options: given, children
   const searchRef = useRef<HTMLInputElement>(null);
   const showSearch = searchable ?? options.length > 8;
 
-  const { refs, floatingStyles } = useFloating({
+  const { refs, floatingStyles, context } = useFloating({
     open,
     placement: "bottom-start",
+    // top/left positioning leaves `transform` free for the enter/exit scale.
+    transform: false,
     whileElementsMounted: autoUpdate,
     middleware: [
       offset(4),
@@ -102,6 +105,10 @@ export function Select({ value, defaultValue, onChange, options: given, children
       }),
     ],
   });
+
+  // Menu: scale .96→1 + fade from the trigger edge. Phone sheet: slides up.
+  const reduced = useReducedMotion();
+  const { isMounted, styles: motion } = useTransitionStyles(context, phone ? sheetTransition(reduced) : popoverTransition(reduced));
 
   const filtered = useMemo(() => (query ? fuzzyFilter(options, query, (o) => `${o.label} ${o.group ?? ""}`, 200) : options), [options, query]);
 
@@ -117,7 +124,7 @@ export function Select({ value, defaultValue, onChange, options: given, children
   useEffect(() => {
     if (!open) return;
     setActive(Math.max(0, filtered.findIndex((o) => o.value === current)));
-    requestAnimationFrame(() => (showSearch ? searchRef.current?.focus() : null));
+    requestAnimationFrame(() => (showSearch ? searchRef.current?.focus({ preventScroll: true }) : null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -162,9 +169,10 @@ export function Select({ value, defaultValue, onChange, options: given, children
   const list = (
     <div
       ref={refs.setFloating}
-      style={phone ? undefined : floatingStyles}
+      style={phone ? motion : { ...floatingStyles, ...motion }}
       className={cn(
         "z-[60] flex flex-col overflow-hidden border border-border bg-surface text-sm shadow-xl",
+        !open && "pointer-events-none",
         phone ? "fixed inset-x-0 bottom-0 max-h-[70dvh] rounded-t-2xl pb-[env(safe-area-inset-bottom)]" : "rounded-xl",
       )}
       onKeyDown={onKey}
@@ -192,7 +200,7 @@ export function Select({ value, defaultValue, onChange, options: given, children
                 onMouseMove={() => setActive(i)}
                 onClick={() => commit(o)}
                 className={cn(
-                  "flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5",
+                  "flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 transition-colors duration-75",
                   phone ? "min-h-11" : "min-h-8",
                   i === active && "bg-surface-2",
                   o.disabled && "cursor-default opacity-40",
@@ -226,7 +234,7 @@ export function Select({ value, defaultValue, onChange, options: given, children
         onClick={() => setOpen((o) => !o)}
         onKeyDown={onKey}
         className={cn(
-          "inline-flex w-full min-w-0 items-center justify-between gap-2 text-left text-sm transition-colors disabled:opacity-50",
+          "inline-flex w-full min-w-0 items-center justify-between gap-2 text-left text-sm transition-[color,background-color,border-color,opacity,outline-color,outline-offset] duration-120 ease-motion disabled:opacity-50",
           variant === "default"
             ? "h-9 rounded-lg border border-border-strong bg-surface px-3 hover:border-ink-2/40 focus-visible:border-ink-2"
             : "h-10 rounded-md border border-transparent bg-transparent px-2 hover:border-border focus-visible:border-ink-2 sm:h-8",
@@ -235,12 +243,12 @@ export function Select({ value, defaultValue, onChange, options: given, children
         )}
       >
         <span className={cn("truncate", (!selected || selected.value === "") && "text-muted")}>{selected?.label ?? placeholder}</span>
-        <ChevronDown className={cn("size-3.5 shrink-0 text-muted transition-transform", open && "rotate-180")} />
+        <ChevronDown className={cn("size-3.5 shrink-0 text-muted transition-transform duration-180 ease-motion", open && "rotate-180")} />
       </button>
       {name && <input type="hidden" name={name} value={current} />}
-      {open && typeof document !== "undefined" && createPortal(
+      {isMounted && typeof document !== "undefined" && createPortal(
         <>
-          {phone && <div className="fixed inset-0 z-[59] bg-black/30" onClick={() => { setOpen(false); setQuery(""); }} />}
+          {phone && <div className={cn("fixed inset-0 z-[59] bg-black/30", open ? "animate-fade-in" : "pointer-events-none animate-fade-out")} onClick={() => { setOpen(false); setQuery(""); }} />}
           {list}
         </>,
         document.body,

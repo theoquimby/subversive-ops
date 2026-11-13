@@ -2,6 +2,8 @@ import { CommandPalette, type Command } from "@/components/command-palette";
 import { ConfirmProvider } from "@/components/dialog";
 import { Nav } from "@/components/nav";
 import { HelpProvider } from "@/components/help";
+import { AreaScope } from "@/components/area";
+import { RouteProgress } from "@/components/route-progress";
 import { onboardingState } from "@/server/services/onboarding";
 import { headers } from "next/headers";
 import { logout, requireUser } from "@/server/auth";
@@ -102,14 +104,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const commands = session.role === "MANAGER" ? await managerCommands() : STAFF_COMMANDS;
   return (
     <ConfirmProvider>
-    <div className="min-h-dvh">
+    <AreaScope className="min-h-dvh">
+      <RouteProgress />
       <Nav role={session.role} name={session.name} logout={signOut} />
       <CommandPalette commands={commands} />
       <HelpProvider userId={session.userId} />
       <main className="pb-[var(--tabbar)] lg:pl-60 lg:pb-0">
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 lg:py-12">{children}</div>
       </main>
-    </div>
+    </AreaScope>
     </ConfirmProvider>
   );
 }

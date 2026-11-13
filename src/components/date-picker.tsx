@@ -10,7 +10,8 @@
  * "Today" is the business date (see businessTodayClient), not the browser's.
  */
 
-import { autoUpdate, flip, offset, useFloating } from "@floating-ui/react";
+import { autoUpdate, flip, offset, useFloating, useTransitionStyles } from "@floating-ui/react";
+import { popoverTransition, useReducedMotion } from "./motion";
 import { cn } from "@/lib/cn";
 import { businessTodayClient } from "@/lib/business-today";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
@@ -43,9 +44,12 @@ export function DatePicker({ value, defaultValue, onChange, name, className, min
   const [focus, setFocus] = useState<string>(current || "");
   const btn = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
-  const { refs, floatingStyles } = useFloating({ open, placement: "bottom-start", whileElementsMounted: autoUpdate, middleware: [offset(4), flip({ padding: 8 })] });
+  // transform:false → positioned with top/left so `transform` is free for the scale-in.
+  const { refs, floatingStyles, context } = useFloating({ open, placement: "bottom-start", transform: false, whileElementsMounted: autoUpdate, middleware: [offset(4), flip({ padding: 8 })] });
+  const reduced = useReducedMotion();
+  const { isMounted, styles: motion } = useTransitionStyles(context, popoverTransition(reduced));
 
-  const today = open ? todayProp ?? businessTodayClient() : "";
+  const today = isMounted ? todayProp ?? businessTodayClient() : "";
   const clamp = (d: string) => (min && d < min ? min : max && d > max ? max : d);
 
   const openAt = () => { moveFocus.current = true; setFocus(clamp(current || todayProp || businessTodayClient())); setOpen(true); };
@@ -66,7 +70,8 @@ export function DatePicker({ value, defaultValue, onChange, name, className, min
   const moveFocus = useRef(true);
   useEffect(() => {
     if (!open || !moveFocus.current) return;
-    refs.floating.current?.querySelector<HTMLButtonElement>(`[data-date="${focus}"]`)?.focus();
+    // preventScroll: the popover is still at 0,0 until floating-ui places it, so a plain focus() would jump the page.
+    refs.floating.current?.querySelector<HTMLButtonElement>(`[data-date="${focus}"]`)?.focus({ preventScroll: true });
   }, [open, focus, refs.floating]);
   const shiftMonth = (n: number) => { moveFocus.current = false; setFocus(clamp(addMonths(focus, n))); };
 
@@ -127,20 +132,20 @@ export function DatePicker({ value, defaultValue, onChange, name, className, min
           if (e.key === "Escape" && open) { e.preventDefault(); close(); }
           else if (e.key === "ArrowDown" && !open) { e.preventDefault(); openAt(); }
         }}
-        className={cn("inline-flex h-9 w-full items-center gap-2 rounded-lg border border-border-strong bg-surface px-3 text-left text-sm hover:border-ink-2/40", open && "border-ink-2", className)}
+        className={cn("inline-flex h-9 w-full items-center gap-2 rounded-lg border border-border-strong bg-surface px-3 text-left text-sm transition-[border-color,background-color,outline-color,outline-offset] duration-120 ease-motion hover:border-ink-2/40", open && "border-ink-2", className)}
       >
         <CalendarDays className="size-4 shrink-0 text-muted" strokeWidth={1.75} />
         <span className={cn("truncate", !current && "text-muted")}>{current ? fmt.format(parse(current)) : "Pick a date"}</span>
       </button>
       {name && <input type="hidden" name={name} value={current} />}
-      {open && createPortal(
+      {isMounted && createPortal(
         <div
           ref={refs.setFloating}
-          style={floatingStyles}
+          style={{ ...floatingStyles, ...motion }}
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className="z-[60] w-72 rounded-xl border border-border bg-surface p-3 shadow-xl"
+          className={cn("z-[60] w-72 rounded-xl border border-border bg-surface p-3 shadow-xl", !open && "pointer-events-none")}
           onKeyDown={onDialogKey}
         >
           <div className="mb-2 flex items-center justify-between">
@@ -152,7 +157,8 @@ export function DatePicker({ value, defaultValue, onChange, name, className, min
             <thead>
               <tr>{["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => <th key={d} scope="col" abbr={d} className="py-1 text-[11px] font-normal text-muted">{d[0]}</th>)}</tr>
             </thead>
-            <tbody>
+            {/* Keyed by month: a new month crossfades in (120ms) instead of the numbers jumping in place. */}
+            <tbody key={`${vy}-${vm}`} className="animate-[fade-in_120ms_var(--motion-out)]">
               {weeks.map((w, wi) => (
                 <tr key={wi}>
                   {w.map((d, di) => {
@@ -171,7 +177,7 @@ export function DatePicker({ value, defaultValue, onChange, name, className, min
                           aria-label={longFmt.format(parse(v))}
                           onClick={() => pick(v)}
                           className={cn(
-                            "num h-9 w-full rounded-lg text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+                            "num h-9 w-full rounded-lg text-sm transition-colors duration-120 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
                             v === current ? "bg-primary text-primary-ink" : "hover:bg-surface-2",
                             v === today && v !== current && "font-semibold underline decoration-2 underline-offset-4",
                             disabled && "cursor-default opacity-30 hover:bg-transparent",

@@ -5,6 +5,7 @@ import type { ComponentProps, ReactNode } from "react";
 
 export { clsx as cx };
 import { HelpZone } from "./help";
+import { AreaIcon } from "./area";
 
 /** Wrap in a help-mode zone when a help id is given (see src/help/README.md). */
 const withHelp = (help: string | undefined, node: ReactNode, className?: string) => (help ? <HelpZone id={help} className={className}>{node}</HelpZone> : node);
@@ -15,13 +16,16 @@ export function PageHeader({ title, description, actions, back, help }: { title:
   return withHelp(help, (
     <header className="mb-8">
       {back && (
-        <Link href={back.href} className="relative mb-3 inline-flex items-center gap-1 text-sm text-muted after:absolute after:-inset-x-2 after:-inset-y-2.5 after:content-[''] hover:text-ink">
+        <Link href={back.href} className="relative mb-3 inline-flex items-center gap-1 text-sm text-muted transition-colors duration-120 after:absolute after:-inset-x-2 after:-inset-y-2.5 after:content-[''] hover:text-ink">
           ← {back.label}
         </Link>
       )}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-[1.65rem] font-semibold tracking-tight text-ink">{title}</h1>
+          <div className="flex min-w-0 items-center gap-3">
+            <AreaIcon />
+            <h1 className="min-w-0 text-[1.65rem] font-semibold tracking-tight text-ink">{title}</h1>
+          </div>
           {description && <p className="mt-1.5 max-w-2xl text-[0.95rem] text-muted">{description}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -47,19 +51,21 @@ export function Section({ title, description, actions, children, className, help
   ), cn("mb-10 [&>section]:mb-0", className));
 }
 
+/** A surface. Inside a link it lifts slightly on hover and gives on press (see globals.css [data-card]). */
 export function Card({ className, children, ...rest }: ComponentProps<"div">) {
   return (
-    <div className={cn("rounded-xl border border-border bg-surface", className)} {...rest}>
+    <div data-card="" className={cn("rounded-xl border border-border bg-surface", className)} {...rest}>
       {children}
     </div>
   );
 }
 
-export function Stat({ label, value, hint, tone, help }: { label: ReactNode; value: ReactNode; hint?: ReactNode; tone?: Tone; help?: string }) {
+/** A number tile. `accent` (on by default) draws a faint top edge in the page's area hue. Values render as-is, no count-up. */
+export function Stat({ label, value, hint, tone, help, accent = true }: { label: ReactNode; value: ReactNode; hint?: ReactNode; tone?: Tone; help?: string; accent?: boolean }) {
   return withHelp(help, (
-    <Card className="p-5">
+    <Card className={cn("p-5", accent && "relative overflow-hidden before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-gradient-to-r before:from-area/55 before:via-area/15 before:via-45% before:to-transparent before:content-['']")}>
       <div className="text-[0.8rem] font-medium text-muted">{label}</div>
-      <div className={cn("num mt-2 text-[1.75rem] font-semibold tracking-tight", tone && toneText[tone])}>{value}</div>
+      <div className={cn("num mt-2 text-[1.75rem] font-semibold tracking-tight transition-colors duration-180", tone && toneText[tone])}>{value}</div>
       {hint && <div className="mt-1 text-[0.8rem] text-muted">{hint}</div>}
     </Card>
   ));
@@ -87,17 +93,18 @@ const toneBadge: Record<Tone, string> = {
 };
 
 export function Badge({ tone = "neutral", children, className }: { tone?: Tone; children: ReactNode; className?: string }) {
-  return <span className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium whitespace-nowrap", toneBadge[tone], className)}>{children}</span>;
+  return <span className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium whitespace-nowrap transition-colors duration-180 ease-motion", toneBadge[tone], className)}>{children}</span>;
 }
 
 export function Dot({ tone }: { tone: Tone }) {
-  return <span className={cn("inline-block size-1.5 rounded-full", { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted" }[tone])} />;
+  return <span className={cn("inline-block size-1.5 rounded-full transition-colors duration-180", { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted" }[tone])} />;
 }
 
 // ---- Buttons ------------------------------------------------------------------
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
-const buttonBase = "inline-flex items-center justify-center gap-1.5 rounded-lg text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 whitespace-nowrap";
+// Press: a 2% give on :active (transform only), colors ease in 120ms.
+const buttonBase = "inline-flex items-center justify-center gap-1.5 rounded-lg text-sm font-medium transition-[color,background-color,border-color,opacity,transform,box-shadow,outline-color,outline-offset] duration-120 ease-motion active:scale-[0.98] active:duration-75 disabled:pointer-events-none disabled:opacity-50 whitespace-nowrap select-none";
 const buttonVariant: Record<Variant, string> = {
   primary: "bg-primary text-primary-ink hover:opacity-90",
   secondary: "border border-border-strong bg-surface text-ink hover:bg-surface-2",
@@ -119,7 +126,7 @@ export function LinkButton({ variant = "secondary", size = "md", className, ...r
 
 // ---- Forms --------------------------------------------------------------------
 
-const control = "h-10 w-full rounded-lg border border-border-strong bg-surface px-3 text-base sm:h-9 sm:text-sm text-ink placeholder:text-muted/70 focus:border-ink-2 focus:outline-none";
+const control = "h-10 w-full rounded-lg border border-border-strong bg-surface px-3 text-base sm:h-9 sm:text-sm text-ink placeholder:text-muted/70 transition-[border-color,box-shadow] duration-120 ease-motion hover:border-ink-2/40 focus:border-ink-2 focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--ink)_7%,transparent)] focus:outline-none";
 
 export function Input({ className, ...rest }: ComponentProps<"input">) {
   return <input className={cn(control, className)} {...rest} />;
@@ -168,5 +175,5 @@ export function Td({ children, align = "left", className, ...rest }: ComponentPr
 }
 
 export function Tr({ children, className, ...rest }: ComponentProps<"tr">) {
-  return <tr className={cn("transition-colors hover:bg-surface-2/60", className)} {...rest}>{children}</tr>;
+  return <tr className={cn("transition-colors duration-120 hover:bg-surface-2/60", className)} {...rest}>{children}</tr>;
 }

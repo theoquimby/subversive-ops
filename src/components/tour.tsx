@@ -465,7 +465,7 @@ function TourOverlay({ tour, state }: { tour: Tour; state: Active }) {
           style={!docked && !centered ? floatingStyles : undefined}
           className={clsx(
             "z-[71] rounded-2xl border border-border bg-surface p-4 text-ink shadow-2xl outline-none sm:p-5",
-            !reduced && "animate-[tour-pop_220ms_cubic-bezier(.2,.8,.2,1)]",
+            !reduced && "animate-[tour-pop_240ms_var(--motion-out)_both]",
             centered && "fixed top-1/2 left-1/2 w-[min(26rem,calc(100vw-24px))] -translate-x-1/2 -translate-y-1/2",
             docked && !centered && (phone ? clsx("fixed inset-x-3", dockTop ? "top-3" : "bottom-[max(0.75rem,env(safe-area-inset-bottom))]") : "fixed right-6 bottom-6 w-[22rem]"),
             !docked && !centered && "w-[22rem] max-w-[calc(100vw-24px)]",
@@ -474,7 +474,7 @@ function TourOverlay({ tour, state }: { tour: Tour; state: Active }) {
           <div className="mb-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-1.5" aria-hidden>
               {tour.steps.map((_, i) => (
-                <span key={i} className={clsx("h-1.5 rounded-full transition-all", i === state.index ? "w-4 bg-ink" : i < state.index ? "w-1.5 bg-ink-2/60" : "w-1.5 bg-border-strong")} />
+                <span key={i} className={clsx("h-1.5 rounded-full transition-[width,background-color] duration-260 ease-motion", i === state.index ? "w-4 bg-ink" : i < state.index ? "w-1.5 bg-ink-2/60" : "w-1.5 bg-border-strong")} />
               ))}
             </div>
             <div className="flex items-center gap-2">
@@ -497,16 +497,16 @@ function TourOverlay({ tour, state }: { tour: Tour; state: Active }) {
             </div>
             <div className="flex items-center gap-2">
               {state.index > 0 && (
-                <button type="button" onClick={() => go(-1)} className="inline-flex h-9 items-center rounded-lg border border-border-strong px-3 text-sm font-medium hover:bg-surface-2">Back</button>
+                <button type="button" onClick={() => go(-1)} className="inline-flex h-9 items-center rounded-lg border border-border-strong px-3 text-sm font-medium transition-[background-color,transform] duration-120 hover:bg-surface-2 active:scale-[0.98]">Back</button>
               )}
-              <button ref={nextRef} type="button" onClick={() => go(1)} className="inline-flex h-9 items-center rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-ink hover:opacity-90">
+              <button ref={nextRef} type="button" onClick={() => go(1)} className="inline-flex h-9 items-center rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-ink transition-[opacity,transform] duration-120 hover:opacity-90 active:scale-[0.98]">
                 {last ? "Done" : "Next"}
               </button>
             </div>
           </div>
         </div>
       )}
-      <style>{`@keyframes tour-fade{from{opacity:0}to{opacity:1}}@keyframes tour-pop{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}`}</style>
+      <style>{`@keyframes tour-fade{from{opacity:0}to{opacity:1}}@keyframes tour-pop{from{opacity:0;transform:translateY(6px) scale(.97)}to{opacity:1;transform:none}}`}</style>
     </div>,
     document.body,
   );

@@ -30,8 +30,10 @@ import {
   useHover,
   useInteractions,
   useRole,
+  useTransitionStyles,
   type Placement,
 } from "@floating-ui/react";
+import { popoverTransition, useReducedMotion } from "./motion";
 import clsx from "clsx";
 import { BookOpen, CircleHelp, MousePointerClick, Route as RouteIcon } from "lucide-react";
 import Link from "next/link";
@@ -135,7 +137,7 @@ function HelpRuntime() {
       {on && (
         <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--tabbar)+0.75rem)] z-[65] flex flex-col items-center gap-2 px-3 lg:bottom-4">
           {aboutOpen && pageHelp.length > 0 && (
-            <div className="pointer-events-auto max-h-[50dvh] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-surface p-3.5 shadow-xl">
+            <div className="pointer-events-auto max-h-[50dvh] w-full max-w-md origin-bottom animate-scale-in overflow-y-auto rounded-xl border border-border bg-surface p-3.5 shadow-xl">
               {pageHelp.slice(0, 4).map((e, i) => (
                 <div key={e.id} className={i ? "mt-3 border-t border-border pt-3" : ""}>
                   <HelpCard entry={e} onNavigate={() => setHelpMode(false)} />
@@ -143,7 +145,7 @@ function HelpRuntime() {
               ))}
             </div>
           )}
-          <div role="status" className="pointer-events-auto flex items-center gap-2 rounded-full border border-border bg-ink py-1.5 pr-1.5 pl-4 text-sm text-bg shadow-xl">
+          <div role="status" className="pointer-events-auto flex animate-rise-in items-center gap-2 rounded-full border border-border bg-ink py-1.5 pr-1.5 pl-4 text-sm text-bg shadow-xl">
             <MousePointerClick className="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
             <span>
               {zoneCount === 0 ? "Help mode" : <><span className="hidden sm:inline">Help mode — point at any outlined section</span><span className="sm:hidden">Tap any outlined section</span></>}
@@ -234,9 +236,12 @@ export function HelpTip({ id, placement = "top", className, label }: { id: strin
     open,
     onOpenChange: setOpen,
     placement,
+    transform: false,
     whileElementsMounted: autoUpdate,
     middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 }), arrow({ element: arrowRef })],
   });
+  const reduced = useReducedMotion();
+  const { isMounted, styles: motion } = useTransitionStyles(context, popoverTransition(reduced));
   const hover = useHover(context, { mouseOnly: true, delay: { open: 120, close: 80 }, handleClose: safePolygon() });
   const focus = useFocus(context);
   const click = useClick(context, { ignoreMouse: true });
@@ -266,9 +271,9 @@ export function HelpTip({ id, placement = "top", className, label }: { id: strin
       >
         <CircleHelp className="size-4" strokeWidth={1.75} />
       </button>
-      {open && (
+      {isMounted && (
         <FloatingPortal>
-          <div ref={refs.setFloating} style={floatingStyles} className={popoverClass} {...getFloatingProps()}>
+          <div ref={refs.setFloating} style={{ ...floatingStyles, ...motion }} className={popoverClass} {...getFloatingProps()}>
             <FloatingArrow ref={arrowRef} context={context} className="fill-surface [&>path:first-of-type]:stroke-border" strokeWidth={1} />
             <HelpCard entry={entry} onNavigate={() => setOpen(false)} />
           </div>
@@ -295,9 +300,12 @@ export function HelpZone({ id, tour, className, children }: { id: string; tour?:
     open: active,
     onOpenChange: (o) => setMode({ zone: o ? key : null }),
     placement: "top-start",
+    transform: false,
     whileElementsMounted: autoUpdate,
     middleware: [offset(10), flip({ padding: 8, fallbackPlacements: ["bottom-start", "top-end", "bottom-end"] }), shift({ padding: 8, crossAxis: true })],
   });
+  const reduced = useReducedMotion();
+  const { isMounted, styles: motion } = useTransitionStyles(context, popoverTransition(reduced));
   const dismiss = useDismiss(context, { enabled: active, outsidePress: (e) => !(e.target as Element)?.closest?.("[data-help-zone]") });
   const { getFloatingProps } = useInteractions([dismiss]);
 
@@ -327,9 +335,9 @@ export function HelpZone({ id, tour, className, children }: { id: string; tour?:
       } : undefined}
     >
       {children}
-      {active && entry && (
+      {isMounted && entry && (
         <FloatingPortal>
-          <div ref={refs.setFloating} id={`${key}-help`} role="tooltip" style={floatingStyles} className={popoverClass} {...getFloatingProps()}>
+          <div ref={refs.setFloating} id={`${key}-help`} role="tooltip" style={{ ...floatingStyles, ...motion }} className={clsx(popoverClass, !active && "pointer-events-none")} {...getFloatingProps()}>
             <HelpCard entry={entry} onNavigate={() => setHelpMode(false)} />
           </div>
         </FloatingPortal>
@@ -347,14 +355,16 @@ export function HelpButton({ className, compact }: { className?: string; compact
   const { start } = useTour();
   const on = useHelpMode();
   const [open, setOpen] = useState(false);
-  const { refs, floatingStyles, context } = useFloating({ open, onOpenChange: setOpen, placement: "bottom-start", whileElementsMounted: autoUpdate, middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })] });
+  const { refs, floatingStyles, context } = useFloating({ open, onOpenChange: setOpen, placement: "bottom-start", transform: false, whileElementsMounted: autoUpdate, middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })] });
+  const reduced = useReducedMotion();
+  const { isMounted, styles: motion } = useTransitionStyles(context, popoverTransition(reduced));
   const click = useClick(context);
   const dismiss = useDismiss(context);
   const role = useRole(context, { role: "menu" });
   const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role]);
   useEffect(() => ensureRuntime(), []);
 
-  const item = "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-ink-2 hover:bg-surface-2 hover:text-ink";
+  const item = "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-ink-2 transition-colors duration-75 hover:bg-surface-2 hover:text-ink";
   return (
     <>
       <button
@@ -367,9 +377,9 @@ export function HelpButton({ className, compact }: { className?: string; compact
         <CircleHelp className={compact ? "size-5" : "size-4 opacity-80"} strokeWidth={1.75} />
         {!compact && "Help"}
       </button>
-      {open && (
+      {isMounted && (
         <FloatingPortal>
-          <div ref={refs.setFloating} style={floatingStyles} className="z-[66] w-64 rounded-xl border border-border bg-surface p-1.5 shadow-xl" {...getFloatingProps()}>
+          <div ref={refs.setFloating} style={{ ...floatingStyles, ...motion }} className="z-[66] w-64 rounded-xl border border-border bg-surface p-1.5 shadow-xl" {...getFloatingProps()}>
             <button type="button" role="menuitem" className={item} onClick={() => { toggleHelpMode(); setOpen(false); }}>
               <MousePointerClick className="size-4" strokeWidth={1.75} />
               <span className="flex-1">{on ? "Turn off help mode" : "Help mode"}</span>

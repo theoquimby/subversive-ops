@@ -22,6 +22,24 @@
   --bad: #b42318;
   --bad-bg: #fcebea;
   --focus: #6b8afd;
+
+  /*
+   * Area hues: one per nav group. They tint icons, small chips, indicators and
+   * soft backgrounds only - never body text, never status (good/warn/bad).
+   * Validated as a categorical set (dataviz validate_palette, adjacent pairs
+   * in nav order) against #fff here and #1a1a18 in dark. Setup is a neutral slate.
+   */
+  --area-today: #0891a8;
+  --area-food: #d06e16;
+  --area-people: #3a6a17;
+  --area-numbers: #2563eb;
+  --area-floor: #d9467a;
+  --area-assist: #b05fe0;
+  --area-setup: #64748b;
+  --area: var(--area-today);
+  /* Two-series charts (P&L sales vs labor, schedule staffed vs needed). */
+  --series-1: #2563eb;
+  --series-2: #d9467a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -42,6 +60,15 @@
     --warn-bg: #2a2114;
     --bad: #f07a6e;
     --bad-bg: #2c1715;
+    --area-today: #1497ad;
+    --area-food: #d9772c;
+    --area-people: #4a7a2c;
+    --area-numbers: #3d76ea;
+    --area-floor: #de5a88;
+    --area-assist: #b06cdf;
+    --area-setup: #94a3b8;
+    --series-1: #3d76ea;
+    --series-2: #de5a88;
   }
 }
 
@@ -63,6 +90,9 @@
   --color-bad: var(--bad);
   --color-bad-bg: var(--bad-bg);
   --color-focus: var(--focus);
+  --color-area: var(--area);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
@@ -83,6 +113,23 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Focus rings ease in (color + a 2px settle) instead of snapping on. Only the
+   color/offset are primed, so nothing draws until :focus-visible. In the base
+   layer so any Tailwind transition-* utility still wins. */
+@layer base {
+  a,
+  button,
+  summary,
+  [tabindex],
+  [role="option"],
+  [role="menuitem"] {
+    outline-color: transparent;
+    outline-offset: 4px;
+    transition-property: color, background-color, border-color, outline-color, outline-offset, box-shadow, opacity, transform;
+    transition-duration: var(--dur-fast);
+    transition-timing-function: var(--motion-out);
+  }
+}
 :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
@@ -152,4 +199,170 @@ input[type="number"] {
   :root {
     --tabbar: 0px;
   }
+}
+
+/* ---- Motion ------------------------------------------------------------------
+ * Fast and quiet: things arrive with a short fade + a few px of travel and leave
+ * a little quicker than they came. Only transform/opacity (and colors) animate.
+ *   fast 120ms  hovers, presses, focus, small exits
+ *   base 180ms  popovers, menus, dialogs
+ *   slow 260ms  page enter, sheets, sliding indicators
+ * Easings: --motion-out for most things, --motion-sheet (iOS-like) for sheets
+ * and anything that slides a long way, --motion-in-out for loops.
+ */
+:root {
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 260ms;
+  --motion-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@theme {
+  --ease-motion: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-motion-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-fade-in: fade-in var(--dur-base) var(--motion-out) both;
+  --animate-fade-out: fade-out var(--dur-fast) var(--motion-in-out) both;
+  --animate-rise-in: rise-in var(--dur-slow) var(--motion-out) both;
+  --animate-scale-in: scale-in var(--dur-base) var(--motion-out) both;
+  --animate-scale-out: scale-out var(--dur-fast) var(--motion-in-out) both;
+  --animate-sheet-in: sheet-in var(--dur-slow) var(--motion-sheet) both;
+  --animate-sheet-out: sheet-out 200ms var(--motion-sheet) both;
+  --animate-shake: shake 280ms var(--motion-in-out) 1;
+  --animate-saved: saved-flash 900ms var(--motion-out) 1;
+  --animate-pop: pop 220ms var(--motion-out) both;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+/* Set --origin on the element (e.g. "top left") to grow from the trigger. */
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+}
+@keyframes scale-out {
+  to { opacity: 0; transform: scale(0.97); }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+@keyframes dialog-out {
+  to { opacity: 0; transform: translateY(4px) scale(0.98); }
+}
+@keyframes sheet-in {
+  from { transform: translateY(100%); }
+}
+@keyframes sheet-out {
+  to { transform: translateY(100%); }
+}
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+@keyframes shake {
+  20% { transform: translateX(-3px); }
+  45% { transform: translateX(3px); }
+  70% { transform: translateX(-2px); }
+  90% { transform: translateX(1px); }
+}
+@keyframes saved-flash {
+  from { background-color: color-mix(in oklab, var(--good) 16%, transparent); }
+}
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.6); }
+}
+
+@layer components {
+/* Cards that are links lift a little on hover and give on press. */
+a > [data-card],
+a[class*="rounded-xl"][class*="border"] {
+  transition: border-color var(--dur-base) var(--motion-out), box-shadow var(--dur-base) var(--motion-out), transform var(--dur-fast) var(--motion-out);
+}
+@media (hover: hover) {
+  a:hover > [data-card],
+  a[class*="rounded-xl"][class*="border"]:hover {
+    border-color: var(--border-strong);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 6px 16px -8px rgb(0 0 0 / 0.14);
+  }
+}
+a:active > [data-card],
+a[class*="rounded-xl"][class*="border"]:active {
+  transform: scale(0.995);
+}
+
+/* Dialogs: backdrop fades, panel rises a touch and settles. */
+.dialog-backdrop { animation: fade-in var(--dur-base) var(--motion-out) both; }
+.dialog-backdrop[data-closing] { animation: fade-out 140ms var(--motion-in-out) both; }
+.dialog-panel { animation: dialog-in 200ms var(--motion-out) both; }
+.dialog-panel[data-closing] { animation: dialog-out 140ms var(--motion-in-out) both; }
+/* On phones confirm dialogs sit at the bottom: they slide up like a sheet. */
+@media (max-width: 639px) {
+  .dialog-panel.dialog-sheet { animation: dialog-in var(--dur-slow) var(--motion-sheet) both; }
+}
+
+/* Skeletons: flat bones with one soft highlight sweeping across (transform only). */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-2);
+  border-radius: 0.375rem;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--surface) 70%, transparent), transparent);
+  animation: shimmer 1.6s var(--motion-in-out) infinite;
+}
+/* A loading page waits a beat before showing, so fast loads never flash a skeleton. */
+.skeleton-page { animation: fade-in var(--dur-base) var(--motion-out) 90ms both; }
+
+/* Route progress: a 2px line at the very top, only for slow navigations. */
+.route-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 100;
+  height: 2px;
+  pointer-events: none;
+  transform-origin: left;
+  background: linear-gradient(90deg, var(--area), color-mix(in oklab, var(--area) 50%, var(--ink)));
+  transition: transform 300ms var(--motion-out), opacity 200ms var(--motion-in-out);
+}
+
+}
+
+/* <details> open and close smoothly where the browser can animate to auto height. */
+@supports (interpolate-size: allow-keywords) {
+  :root { interpolate-size: allow-keywords; }
+  details::details-content {
+    block-size: 0;
+    overflow-y: clip;
+    transition: block-size var(--dur-slow) var(--motion-out), content-visibility var(--dur-slow) allow-discrete;
+  }
+  details[open]::details-content { block-size: auto; }
+}
+summary { cursor: pointer; }
+
+/* Reduced motion: no travel, no loops. Fades collapse to near-instant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton::after { display: none; }
 }

@@ -2,7 +2,10 @@
 
 import { fuzzyFilter } from "@/domain/search";
 import { cn } from "@/lib/cn";
-import { Search } from "lucide-react";
+import { CircleHelp, Search, Truck, type LucideIcon } from "lucide-react";
+import { areaStyle, navItemFor, type Area } from "@/lib/areas";
+import { usePresence } from "./motion";
+import { startRouteProgress } from "./route-progress";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
@@ -12,6 +15,14 @@ export interface Command {
   group: "Go to" | "Do" | "Help" | "Recipes" | "Ingredients" | "Suppliers";
   href: string;
   hint?: string;
+}
+
+/** Row icon + area hue: the nav page the command lands on (help rows are "assist", suppliers get a truck). */
+function iconFor(c: Command): { icon: LucideIcon; area: Area } {
+  if (c.group === "Help") return { icon: CircleHelp, area: "assist" };
+  if (c.group === "Suppliers") return { icon: Truck, area: "food" };
+  const item = navItemFor(c.href);
+  return item ? { icon: item.icon, area: item.area } : { icon: Search, area: "setup" };
 }
 
 const OPEN_EVENT = "command-palette:open";
@@ -75,16 +86,19 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
     if (!c) return;
     returnTo.current = null;
     setOpen(false);
+    startRouteProgress(c.href);
     router.push(c.href);
   };
 
-  if (!open) return null;
+  // Stays mounted for 120ms after closing so it can scale/fade out.
+  const { mounted, closing } = usePresence(open, 120);
+  if (!mounted) return null;
   let lastGroup = "";
   const activeId = results[active] ? `${listId}-${active}` : undefined;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 p-3 pt-[12vh] backdrop-blur-[2px]" onMouseDown={close}>
+    <div data-closing={closing || undefined} className={cn("dialog-backdrop fixed inset-0 z-50 flex items-start justify-center bg-black/30 p-3 pt-[12vh] backdrop-blur-[2px]", closing && "pointer-events-none")} onMouseDown={close}>
       <div
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
+        className={cn("w-full max-w-lg origin-top overflow-hidden rounded-xl border border-border bg-surface shadow-2xl", closing ? "animate-scale-out" : "animate-scale-in")}
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -123,6 +137,8 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
           {results.map((c, i) => {
             const header = !q.trim() && c.group !== lastGroup ? c.group : null;
             lastGroup = c.group;
+            const icon = iconFor(c);
+            const Icon = icon.icon;
             return (
               <div key={c.id} role="presentation">
                 {header && <div role="presentation" className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted">{header}</div>}
@@ -133,9 +149,15 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
                   data-index={i}
                   onMouseMove={() => setActive(i)}
                   onClick={() => run(c)}
-                  className={cn("flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm", i === active ? "bg-surface-2 text-ink" : "text-ink-2")}
+                  style={areaStyle(icon.area)}
+                  className={cn("flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left text-sm", i === active ? "bg-surface-2 text-ink" : "text-ink-2")}
                 >
-                  <span className="truncate">{c.label}</span>
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <span aria-hidden className={cn("grid size-7 shrink-0 place-items-center rounded-md transition-colors duration-120", i === active ? "bg-area/15 text-area" : "bg-area/10 text-area")}>
+                      <Icon className="size-[0.95rem]" strokeWidth={1.9} />
+                    </span>
+                    <span className="truncate">{c.label}</span>
+                  </span>
                   <span className="shrink-0 text-xs text-muted">{q.trim() ? c.group : c.hint}</span>
                 </div>
               </div>

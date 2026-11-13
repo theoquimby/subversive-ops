@@ -2,7 +2,8 @@
 
 /**
  * People scheduled vs people the forecast needs, hour by hour, for one day.
- * Bars = scheduled, step line = needed. Short hours turn the bar amber;
+ * Bars = scheduled (--series-1), step line = needed (--series-2): two
+ * validated hues with a legend. Short hours turn the bar amber (status warn);
  * hover/tap a column for the numbers.
  */
 
@@ -27,8 +28,9 @@ export function DemandChart({ rows }: { rows: HourDemand[] }) {
     <div className="px-4 pt-3 pb-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
         <span className="flex items-center gap-3">
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-3 rounded-sm bg-ink-2/70" /> Scheduled</span>
-          <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-ink" /> Needed</span>
+          <span className="flex items-center gap-1.5"><span className="h-2.5 w-3 rounded-sm bg-series-1/55" /> Scheduled</span>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-series-2" /> Needed</span>
+          {short > 0 && <span className="flex items-center gap-1.5"><span className="h-2.5 w-3 rounded-sm bg-warn" /> Short</span>}
         </span>
         <span className="num">
           {sel ? (
@@ -49,10 +51,10 @@ export function DemandChart({ rows }: { rows: HourDemand[] }) {
               y={y(r.have)}
               height={H - y(r.have)}
               rx="0.6"
-              className={cx(r.have < r.need ? "fill-warn" : "fill-ink-2/70", hover === i && "opacity-80")}
+              className={cx("transition-opacity duration-120", r.have < r.need ? "fill-warn" : "fill-series-1/55", hover === i && "opacity-80")}
             />
           ))}
-          <path d={steps} fill="none" className="stroke-ink" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+          <path d={steps} fill="none" className="stroke-series-2" strokeWidth="2" vectorEffect="non-scaling-stroke" />
         </svg>
         <div className="absolute inset-0 flex">
           {rows.map((r, i) => (

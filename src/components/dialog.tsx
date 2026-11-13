@@ -2,8 +2,10 @@
 
 /** App-styled confirm dialog (replaces window.confirm): `const ok = await confirm({...})`. */
 
+import { cn } from "@/lib/cn";
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Button } from "./ui";
+import { usePresence } from "./motion";
 
 interface ConfirmOptions {
   title: string;
@@ -17,9 +19,12 @@ export const useConfirm = () => useContext(Ctx);
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<(ConfirmOptions & { resolve: (v: boolean) => void }) | null>(null);
+  // The last dialog stays rendered while it animates out (backdrop fade, panel settles down 4px).
+  const [shown, setShown] = useState<ConfirmOptions | null>(null);
+  const { mounted, closing } = usePresence(!!state, 140);
   const okRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-  const confirm = useCallback((o: ConfirmOptions) => new Promise<boolean>((resolve) => setState({ ...o, resolve })), []);
+  const confirm = useCallback((o: ConfirmOptions) => new Promise<boolean>((resolve) => { setShown(o); setState({ ...o, resolve }); }), []);
   const close = (v: boolean) => { state?.resolve(v); setState(null); };
   useEffect(() => {
     if (!state) return;
@@ -33,14 +38,14 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={confirm}>
       {children}
-      {state && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/30 p-3 backdrop-blur-[2px] sm:items-center" onMouseDown={() => close(false)}>
-          <div role="alertdialog" aria-modal="true" aria-label={state.title} onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border border-border bg-surface p-5 shadow-2xl">
-            <div className="text-base font-semibold">{state.title}</div>
-            {state.body && <div className="mt-1.5 text-sm text-muted">{state.body}</div>}
+      {mounted && shown && (
+        <div data-closing={closing || undefined} className={cn("dialog-backdrop fixed inset-0 z-[70] flex items-end justify-center bg-black/30 p-3 backdrop-blur-[2px] sm:items-center", closing && "pointer-events-none")} onMouseDown={() => close(false)}>
+          <div role="alertdialog" aria-modal="true" aria-label={shown.title} data-closing={closing || undefined} onMouseDown={(e) => e.stopPropagation()} className="dialog-panel dialog-sheet w-full max-w-sm rounded-2xl border border-border bg-surface p-5 shadow-2xl">
+            <div className="text-base font-semibold">{shown.title}</div>
+            {shown.body && <div className="mt-1.5 text-sm text-muted">{shown.body}</div>}
             <div className="mt-5 flex justify-end gap-2">
               <Button ref={cancelRef} variant="ghost" onClick={() => close(false)}>Cancel</Button>
-              <Button ref={okRef} variant={state.danger ? "danger" : "primary"} className={state.danger ? "bg-bad text-white hover:bg-bad/90 hover:text-white" : ""} onClick={() => close(true)}>{state.confirmLabel ?? "Confirm"}</Button>
+              <Button ref={okRef} variant={shown.danger ? "danger" : "primary"} className={shown.danger ? "bg-bad text-white hover:bg-bad/90 hover:text-white" : ""} onClick={() => close(true)}>{shown.confirmLabel ?? "Confirm"}</Button>
             </div>
           </div>
         </div>

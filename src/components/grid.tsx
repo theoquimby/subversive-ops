@@ -19,6 +19,14 @@ import { cn } from "@/lib/cn";
 import { Check } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { Select } from "./select";
+import { prefersReducedMotion } from "./motion";
+
+/** Saved: a brief green wash that fades out. Rejected: one small shake. Transform/background only. */
+function flash(el: HTMLElement | null, kind: "saved" | "error") {
+  if (!el || prefersReducedMotion()) return;
+  if (kind === "saved") el.animate([{ backgroundColor: "color-mix(in oklab, var(--good) 16%, transparent)" }, { backgroundColor: "transparent" }], { duration: 900, easing: "cubic-bezier(.2,.8,.2,1)" });
+  else el.animate([{ transform: "none" }, { transform: "translateX(-3px)" }, { transform: "translateX(3px)" }, { transform: "translateX(-2px)" }, { transform: "translateX(1px)" }, { transform: "none" }], { duration: 280, easing: "cubic-bezier(.4,0,.2,1)" });
+}
 
 type SaveResult = void | { error?: string } | undefined;
 
@@ -94,12 +102,14 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
         committed.current = prev;
         setError(res.error);
         setState("error");
+        flash(ref.current, "error");
         // Keep the rejected text for correction; bring focus back unless the user is already elsewhere.
         const el = ref.current;
         if (el && (document.activeElement === document.body || document.activeElement === el)) { el.focus(); el.select(); }
       } else {
         setError(null);
         setState("saved");
+        flash(ref.current, "saved");
         setTimeout(() => setState("idle"), 1200);
       }
     });
@@ -158,7 +168,7 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
           });
         }}
         className={cn(
-          "h-10 w-full rounded-md border border-transparent bg-transparent text-base text-ink transition-colors sm:h-8 sm:text-sm",
+          "h-10 w-full rounded-md border border-transparent bg-transparent text-base text-ink transition-[border-color,background-color] duration-120 ease-motion sm:h-8 sm:text-sm",
           "hover:border-border focus:border-ink-2 focus:bg-surface focus:outline-none",
           type === "number" && "num",
           align === "right" ? "text-right" : "text-left",
@@ -168,9 +178,9 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
         )}
       />
       {suffix && <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted">{suffix}</span>}
-      {state === "saved" && <Check className="pointer-events-none absolute top-1/2 -right-4 size-3 -translate-y-1/2 text-good" strokeWidth={3} />}
+      {state === "saved" && <span className="pointer-events-none absolute top-1/2 -right-4 -translate-y-1/2"><Check className="size-3 animate-pop text-good" strokeWidth={3} /></span>}
       </div>
-      <div id={errId} aria-live="polite" className={cn("text-left text-xs leading-snug font-normal text-bad", error ? "mt-0.5 px-2" : "sr-only")}>{error}</div>
+      <div id={errId} aria-live="polite" className={cn("text-left text-xs leading-snug font-normal text-bad", error ? "mt-0.5 animate-fade-in px-2" : "sr-only")}>{error}</div>
     </div>
   );
 }
@@ -200,7 +210,7 @@ export function GridSelect({ value, options, onSave, ariaLabel, className }: { v
         });
       }}
     />
-    <div aria-live="polite" className={error ? "mt-0.5 px-2 text-xs text-bad" : "sr-only"}>{error}</div>
+    <div aria-live="polite" className={error ? "mt-0.5 animate-fade-in px-2 text-xs text-bad" : "sr-only"}>{error}</div>
     </>
   );
 }
