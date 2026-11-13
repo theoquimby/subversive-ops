@@ -145,7 +145,7 @@ export default async function OverviewPage() {
 
       <div className="grid gap-x-8 lg:grid-cols-5">
         <HelpZone id="overview.priceChanges" tour="overview.price-changes" className="mb-10 lg:col-span-3 [&>section]:mb-0">
-        <Section title="Price changes" description="Last 30 days, biggest moves first" actions={<LinkButton href="/prices" variant="ghost" size="sm">All prices →</LinkButton>}>
+        <Section fill title="Price changes" description="Last 30 days, biggest moves first" actions={<LinkButton href="/prices" variant="ghost" size="sm">All prices →</LinkButton>}>
           {moves.length === 0 ? (
             <EmptyState title="No price changes">Import a distributor sheet to start tracking prices.</EmptyState>
           ) : (
@@ -170,7 +170,7 @@ export default async function OverviewPage() {
         </HelpZone>
 
         <HelpZone id="overview.overTarget" tour="overview.over-target" className="mb-10 lg:col-span-2 [&>section]:mb-0">
-        <Section title="Over target" description="Menu items above their food cost target" actions={<LinkButton href="/menu" variant="ghost" size="sm">Menu →</LinkButton>}>
+        <Section fill title="Over target" description="Above their food cost target" actions={<LinkButton href="/menu" variant="ghost" size="sm">Menu →</LinkButton>}>
           {over.length === 0 ? (
             <EmptyState title="Everything's on target" />
           ) : (

@@ -115,12 +115,12 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
           )}
 
           <div className="grid grid-cols-1 gap-x-8 lg:grid-cols-5">
-            <Section help="reviews.trend" className="min-w-0 lg:col-span-3" title="Rating trend" description="Rolling average of the last 5 reviews">
+            <Section fill help="reviews.trend" className="min-w-0 lg:col-span-3" title="Rating trend" description="Rolling average of the last 5 reviews">
               <Card className="p-4">
                 {trend.length >= 2 ? <LineChart points={trend} valueFormat="number" ariaLabel="Average rating over time" height={200} domain={RATING_AXIS} /> : <div className="py-10 text-center text-sm text-muted">Add a few more reviews to see a trend.</div>}
               </Card>
             </Section>
-            <Section help="reviews.themes" className="min-w-0 lg:col-span-2" title="Themes" description="Last 90 days · what guests mention most">
+            <Section fill help="reviews.themes" className="min-w-0 lg:col-span-2" title="Themes" description="Last 90 days · what guests mention most">
               <Card className="divide-y divide-border">
                 {themes.length === 0 && <div className="p-4 text-sm text-muted">No themes yet.</div>}
                 {themes.slice(0, 8).map((t) => (

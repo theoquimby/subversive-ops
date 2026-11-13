@@ -34,9 +34,13 @@ export function PageHeader({ title, description, actions, back, help }: { title:
   ), "mb-8 [&>header]:mb-0");
 }
 
-export function Section({ title, description, actions, children, className, help }: { title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; help?: string }) {
+/**
+ * `fill`: stretch to the height of the row it sits in (side-by-side panels),
+ * with the section's main content growing to match its neighbour.
+ */
+export function Section({ title, description, actions, children, className, help, fill }: { title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; help?: string; fill?: boolean }) {
   return withHelp(help, (
-    <section className={cn("mb-10", !help && className)}>
+    <section className={cn("mb-10", fill && "flex h-full flex-col [&>*:last-child]:flex-1", !help && className)}>
       {(title || actions) && (
         <div className="mb-3 flex items-end justify-between gap-4">
           <div>
@@ -48,7 +52,7 @@ export function Section({ title, description, actions, children, className, help
       )}
       {children}
     </section>
-  ), cn("mb-10 [&>section]:mb-0", className));
+  ), cn("mb-10 [&>section]:mb-0", fill && "h-full", className));
 }
 
 /** A surface. Inside a link it lifts slightly on hover and gives on press (see globals.css [data-card]). */
