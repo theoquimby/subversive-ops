@@ -122,6 +122,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </Card>
       </Section>
 
+      <div id="suppliers" className="scroll-mt-20" />
       <Section help="settings.suppliers" title="Suppliers" description="Delivery days and lead time decide when orders are due and how many days each order covers.">
         <div className="space-y-3">
           {suppliers.map((s) => (

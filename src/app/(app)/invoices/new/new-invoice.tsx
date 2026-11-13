@@ -9,7 +9,7 @@ import { money, shortDate } from "@/lib/format";
 import { FileText, Loader2, Plus, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { readInvoice, saveNewInvoice } from "../actions";
+import { quickAddSupplier, readInvoice, saveNewInvoice } from "../actions";
 import { prepareUpload } from "../compress";
 
 interface Order { id: string; supplierId: string; status: string; deliveryDate: string; invoiced: boolean; lineCount: number }
@@ -22,10 +22,29 @@ const blanks = (n: number) => Array.from({ length: n }, blank);
 const isBlank = (r: Row) => !r.sku && !r.description && !r.qty && !r.unitPrice;
 const toNum = (s: string) => (s.trim() === "" ? NaN : Number(s.replace(/[$,]/g, "")));
 
-export function NewInvoice({ suppliers, orders, today, canRead, initialSupplierId, initialOrderId }: { suppliers: { id: string; name: string }[]; orders: Order[]; today: string; canRead: boolean; initialSupplierId: string | null; initialOrderId: string | null }) {
+export function NewInvoice({ suppliers: initialSuppliers, orders, today, canRead, initialSupplierId, initialOrderId }: { suppliers: { id: string; name: string }[]; orders: Order[]; today: string; canRead: boolean; initialSupplierId: string | null; initialOrderId: string | null }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [suppliers, setSuppliers] = useState(initialSuppliers);
   const [supplierId, setSupplierId] = useState(initialSupplierId ?? "");
+  // A supplier name read off the photo that isn't set up yet (e.g. Price Chopper).
+  const [readSupplier, setReadSupplier] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [addingPending, startAdd] = useTransition();
+  const addSupplier = (name: string) =>
+    startAdd(async () => {
+      const r = await quickAddSupplier(name);
+      if (r.error || !r.supplier) return setError({ text: r.error ?? "Couldn't add that supplier." });
+      const sup = r.supplier;
+      setSuppliers((cur) => (cur.some((x) => x.id === sup.id) ? cur : [...cur, sup].sort((a, b) => a.name.localeCompare(b.name))));
+      setSupplierId(sup.id);
+      setOrderTouched(false);
+      setReadSupplier(null);
+      setAdding(false);
+      setNewName("");
+      setError(null);
+    });
   const [orderId, setOrderId] = useState(initialOrderId ?? "");
   const [orderTouched, setOrderTouched] = useState(Boolean(initialOrderId));
   const [number, setNumber] = useState("");
@@ -75,7 +94,8 @@ export function NewInvoice({ suppliers, orders, today, canRead, initialSupplierI
       setRows([...d.lines.map((l) => ({ key: nextKey++, sku: l.sku ?? "", description: l.description, qty: String(l.qty), unitPrice: l.unitPrice.toFixed(2) })), ...blanks(2)]);
       setExtracted(true);
     }
-    setReadNote(`Read ${d.lines.length} line${d.lines.length === 1 ? "" : "s"}${d.supplierName && !d.supplierId ? ` from “${d.supplierName}” — pick the supplier` : ""}. Check them against the paper before saving.`);
+    setReadSupplier(d.supplierName && !d.supplierId ? d.supplierName : null);
+    setReadNote(`Read ${d.lines.length} line${d.lines.length === 1 ? "" : "s"}${d.supplierName ? ` from “${d.supplierName}”` : ""}. Check them against the paper before saving.`);
   };
 
   const setCell = (key: number, field: keyof Omit<Row, "key">, value: string) =>
@@ -166,7 +186,26 @@ export function NewInvoice({ suppliers, orders, today, canRead, initialSupplierI
         <HelpZone id="invoices.new.details" className="h-fit"><Card className="p-4 sm:p-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Supplier">
-              <Select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setOrderTouched(false); }} options={suppliers.map((s) => ({ value: s.id, label: s.name }))} placeholder="Choose supplier…" aria-label="Supplier" />
+              {adding || !suppliers.length ? (
+                <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); addSupplier(newName); }}>
+                  <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Price Chopper" aria-label="New supplier name" className="min-w-0 flex-1" autoFocus={adding} />
+                  <Button type="submit" variant="primary" disabled={addingPending || !newName.trim()}>{addingPending ? "Adding…" : "Add"}</Button>
+                  {suppliers.length > 0 && <Button type="button" variant="ghost" onClick={() => { setAdding(false); setNewName(""); }}>Cancel</Button>}
+                </form>
+              ) : (
+                <Select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setOrderTouched(false); }} options={suppliers.map((s) => ({ value: s.id, label: s.name }))} placeholder="Choose supplier…" aria-label="Supplier" />
+              )}
+              {readSupplier && !supplierId ? (
+                <Button type="button" size="sm" variant="secondary" className="mt-2" disabled={addingPending} onClick={() => addSupplier(readSupplier)}>
+                  <Plus className="size-3.5" /> Add “{readSupplier}” as a supplier
+                </Button>
+              ) : !adding && suppliers.length > 0 ? (
+                <button type="button" onClick={() => setAdding(true)} className="mt-1.5 inline-flex items-center gap-1 text-xs text-muted hover:text-ink">
+                  <Plus className="size-3" /> New supplier
+                </button>
+              ) : !suppliers.length ? (
+                <p className="mt-1.5 text-xs text-muted">No suppliers yet — type the first one (a distributor or a store like Price Chopper).</p>
+              ) : null}
             </Field>
             <Field label="Order" hint={supplierId && !supplierOrders.length ? "No sent or received orders for this supplier" : undefined}>
               <Select
