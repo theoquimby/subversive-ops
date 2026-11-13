@@ -1,0 +1,281 @@
+// Subversive Ops — internal kitchen ops (costing, ordering, counts).
+//
+// Design rules that keep costs "live" while preserving history:
+//   * Prices are NEVER overwritten. Each change is a new PriceRecord with an
+//     effectiveDate. "Current cost" = latest record; "cost on date X" = latest
+//     record on or before X. This replaces the old "add another tab" approach.
+//   * Every quantity is stored in the ingredient's base unit (g, ml or each).
+//     Recipes can use any unit; it's converted at calculation time.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MANAGER
+  STAFF
+}
+
+enum BaseUnit {
+  g
+  ml
+  each
+}
+
+enum SupplierKind {
+  DISTRIBUTOR // sends a downloadable price sheet
+  LOCAL // bakery, butcher, etc. — prices entered by hand
+}
+
+enum PriceSource {
+  IMPORT
+  MANUAL
+  SCRAPE
+}
+
+enum RecipeKind {
+  MENU // sold item (maps to a Square item variation)
+  PREP // sauce, dough, batch — used inside other recipes
+  MODIFIER // add-on like "add bacon" (maps to a Square modifier)
+}
+
+enum OrderStatus {
+  DRAFT
+  SENT
+  RECEIVED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  pinHash   String
+  role      Role     @default(STAFF)
+  active    Boolean  @default(true)
+  failedPinAttempts Int       @default(0)
+  lockedUntil       DateTime?
+  createdAt DateTime @default(now())
+  counts    StockCount[]
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+model Supplier {
+  id            String         @id @default(cuid())
+  name          String         @unique
+  kind          SupplierKind   @default(DISTRIBUTOR)
+  email         String?
+  // Days of week the supplier delivers, 0=Sun..6=Sat
+  deliveryDays  Int[]          @default([])
+  leadTimeDays  Int            @default(1)
+  minOrder      Decimal?       @db.Decimal(10, 2)
+  // Remembered column mapping for this supplier's price sheet
+  importMapping Json?
+  notes         String?
+  active        Boolean        @default(true)
+  products      SupplierProduct[]
+  imports       PriceImport[]
+  orders        PurchaseOrder[]
+}
+
+model Ingredient {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  category    String       @default("Other")
+  storageArea String       @default("Dry storage")
+  baseUnit    BaseUnit
+  // Usable fraction after trim/cook loss (e.g. 0.85). Cost is divided by this.
+  yieldPct    Decimal      @default(1) @db.Decimal(5, 4)
+  // Extra buffer when ordering, as a fraction of forecast usage
+  safetyPct   Decimal      @default(0.15) @db.Decimal(5, 4)
+  // Unit staff count in (e.g. "case", "lb", "each"); defaults to base unit
+  countUnit   String?
+  // Which product we normally buy this ingredient as
+  preferredProductId String? @unique
+  preferredProduct   SupplierProduct? @relation("Preferred", fields: [preferredProductId], references: [id], onDelete: SetNull)
+  active      Boolean      @default(true)
+  notes       String?
+  products    SupplierProduct[]
+  conversions UnitConversion[]
+  recipeLines RecipeLine[]
+  countLines  StockCountLine[]
+  wasteLogs   WasteLog[]
+}
+
+// Ingredient-specific units: "1 slice = 21 g", "1 cup = 120 g" (flour), "1 bun = 1 each"
+model UnitConversion {
+  id           String     @id @default(cuid())
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  unit         String
+  baseQty      Decimal    @db.Decimal(14, 4)
+
+  @@unique([ingredientId, unit])
+}
+
+// A specific thing a supplier sells, e.g. "Heinz Ketchup 6/#10 can, SKU 123".
+model SupplierProduct {
+  id           String      @id @default(cuid())
+  supplierId   String
+  supplier     Supplier    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  ingredientId String?
+  ingredient   Ingredient? @relation(fields: [ingredientId], references: [id], onDelete: SetNull)
+  preferredFor Ingredient? @relation("Preferred")
+  sku          String
+  description  String
+  packText     String?     // as printed on the sheet, e.g. "6/#10"
+  purchaseUnit String      @default("case")
+  // How much of the ingredient's base unit one purchase unit contains
+  packQtyBase  Decimal?    @db.Decimal(14, 4)
+  url          String?     // supplier web page, for future price checks
+  active       Boolean     @default(true)
+  prices       PriceRecord[]
+  orderLines   PurchaseOrderLine[]
+
+  @@unique([supplierId, sku])
+}
+
+model PriceRecord {
+  id                String          @id @default(cuid())
+  supplierProductId String
+  product           SupplierProduct @relation(fields: [supplierProductId], references: [id], onDelete: Cascade)
+  price             Decimal         @db.Decimal(10, 2) // per purchase unit
+  effectiveDate     DateTime        @db.Date
+  source            PriceSource
+  importId          String?
+  import            PriceImport?    @relation(fields: [importId], references: [id], onDelete: SetNull)
+  createdAt         DateTime        @default(now())
+
+  @@index([supplierProductId, effectiveDate])
+}
+
+model PriceImport {
+  id            String        @id @default(cuid())
+  supplierId    String
+  supplier      Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  filename      String
+  effectiveDate DateTime      @db.Date
+  rowCount      Int
+  newProducts   Int
+  priceChanges  Int
+  createdAt     DateTime      @default(now())
+  prices        PriceRecord[]
+}
+
+model Recipe {
+  id         String      @id @default(cuid())
+  name       String      @unique
+  kind       RecipeKind  @default(MENU)
+  category   String      @default("Food")
+  menuPrice  Decimal?    @db.Decimal(10, 2)
+  // For PREP recipes: what one batch yields, e.g. 2000 ml of aioli
+  yieldQty   Decimal     @default(1) @db.Decimal(14, 4)
+  yieldUnit  String      @default("each")
+  // Base unit the yield converts to (prep recipes act like an ingredient)
+  yieldBase  BaseUnit    @default(each)
+  targetFoodCostPct Decimal? @db.Decimal(5, 4)
+  active     Boolean     @default(true)
+  notes      String?
+  lines      RecipeLine[] @relation("RecipeLines")
+  usedIn     RecipeLine[] @relation("SubRecipe")
+  squareMaps SquareMapping[]
+}
+
+model RecipeLine {
+  id           String      @id @default(cuid())
+  recipeId     String
+  recipe       Recipe      @relation("RecipeLines", fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredientId String?
+  ingredient   Ingredient? @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  subRecipeId  String?
+  subRecipe    Recipe?     @relation("SubRecipe", fields: [subRecipeId], references: [id], onDelete: Restrict)
+  qty          Decimal     @db.Decimal(14, 4)
+  unit         String
+  sort         Int         @default(0)
+}
+
+// Links a Square catalog object (item variation or modifier) to a recipe.
+model SquareMapping {
+  squareId   String  @id
+  squareName String
+  squareType String  // ITEM_VARIATION | MODIFIER
+  recipeId   String?
+  recipe     Recipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  ignored    Boolean @default(false) // e.g. gift cards, merch
+}
+
+// Daily sales per Square object (variation or modifier) — aggregated from orders.
+model DailySale {
+  date      DateTime @db.Date
+  squareId  String
+  name      String
+  qty       Decimal  @db.Decimal(12, 3)
+  netSales  Decimal  @db.Decimal(12, 2)
+
+  @@id([date, squareId])
+  @@index([squareId])
+}
+
+model StockCount {
+  id        String   @id @default(cuid())
+  takenAt   DateTime @default(now())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  area      String?
+  completed Boolean  @default(false)
+  lines     StockCountLine[]
+}
+
+model StockCountLine {
+  id           String     @id @default(cuid())
+  countId      String
+  count        StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  qtyBase      Decimal    @db.Decimal(14, 4)
+
+  @@unique([countId, ingredientId])
+}
+
+model WasteLog {
+  id           String     @id @default(cuid())
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  qtyBase      Decimal    @db.Decimal(14, 4)
+  reason       String
+  loggedBy     String?
+  loggedAt     DateTime   @default(now())
+}
+
+model PurchaseOrder {
+  id           String      @id @default(cuid())
+  supplierId   String
+  supplier     Supplier    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  status       OrderStatus @default(DRAFT)
+  deliveryDate DateTime    @db.Date
+  coverUntil   DateTime    @db.Date
+  createdAt    DateTime    @default(now())
+  sentAt       DateTime?
+  receivedAt   DateTime?
+  notes        String?
+  lines        PurchaseOrderLine[]
+}
+
+model PurchaseOrderLine {
+  id                String          @id @default(cuid())
+  orderId           String
+  order             PurchaseOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  supplierProductId String
+  product           SupplierProduct @relation(fields: [supplierProductId], references: [id], onDelete: Cascade)
+  suggestedQty      Decimal         @db.Decimal(10, 2)
+  qty               Decimal         @db.Decimal(10, 2)
+  unitPrice         Decimal?        @db.Decimal(10, 2)
+  receivedQty       Decimal?        @db.Decimal(10, 2)
+}

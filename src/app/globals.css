@@ -1,26 +1,98 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Warm neutrals, one ink color for primary actions, and status
+ * colors used only to carry meaning (over target, price up, short on stock).
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-2: #f1f1ee;
+  --border: #e6e5e1;
+  --border-strong: #d4d3ce;
+  --ink: #1b1a18;
+  --ink-2: #4a4843;
+  --muted: #85837c;
+  --primary: #1b1a18;
+  --primary-ink: #ffffff;
+  --good: #1f7a4d;
+  --good-bg: #e8f3ec;
+  --warn: #a15c07;
+  --warn-bg: #fbf1e2;
+  --bad: #b42318;
+  --bad-bg: #fcebea;
+  --focus: #6b8afd;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #121211;
+    --surface: #1a1a18;
+    --surface-2: #222220;
+    --border: #2c2c29;
+    --border-strong: #3a3a36;
+    --ink: #f2f1ed;
+    --ink-2: #c9c7c0;
+    --muted: #8f8d86;
+    --primary: #f2f1ed;
+    --primary-ink: #121211;
+    --good: #5cc28f;
+    --good-bg: #16261d;
+    --warn: #e3a34a;
+    --warn-bg: #2a2114;
+    --bad: #f07a6e;
+    --bad-bg: #2c1715;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-good: var(--good);
+  --color-good-bg: var(--good-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
+  --color-focus: var(--focus);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* Numbers line up in every table. */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
 }
