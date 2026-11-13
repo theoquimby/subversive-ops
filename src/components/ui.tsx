@@ -4,11 +4,15 @@ import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 
 export { clsx as cx };
+import { HelpZone } from "./help";
+
+/** Wrap in a help-mode zone when a help id is given (see src/help/README.md). */
+const withHelp = (help: string | undefined, node: ReactNode, className?: string) => (help ? <HelpZone id={help} className={className}>{node}</HelpZone> : node);
 
 // ---- Layout -------------------------------------------------------------------
 
-export function PageHeader({ title, description, actions, back }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; back?: { href: string; label: string } }) {
-  return (
+export function PageHeader({ title, description, actions, back, help }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; back?: { href: string; label: string }; help?: string }) {
+  return withHelp(help, (
     <header className="mb-8">
       {back && (
         <Link href={back.href} className="relative mb-3 inline-flex items-center gap-1 text-sm text-muted after:absolute after:-inset-x-2 after:-inset-y-2.5 after:content-[''] hover:text-ink">
@@ -23,12 +27,12 @@ export function PageHeader({ title, description, actions, back }: { title: React
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
     </header>
-  );
+  ), "mb-8 [&>header]:mb-0");
 }
 
-export function Section({ title, description, actions, children, className }: { title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
-  return (
-    <section className={cn("mb-10", className)}>
+export function Section({ title, description, actions, children, className, help }: { title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; help?: string }) {
+  return withHelp(help, (
+    <section className={cn("mb-10", !help && className)}>
       {(title || actions) && (
         <div className="mb-3 flex items-end justify-between gap-4">
           <div>
@@ -40,7 +44,7 @@ export function Section({ title, description, actions, children, className }: { 
       )}
       {children}
     </section>
-  );
+  ), cn("mb-10 [&>section]:mb-0", className));
 }
 
 export function Card({ className, children, ...rest }: ComponentProps<"div">) {
@@ -51,14 +55,14 @@ export function Card({ className, children, ...rest }: ComponentProps<"div">) {
   );
 }
 
-export function Stat({ label, value, hint, tone }: { label: ReactNode; value: ReactNode; hint?: ReactNode; tone?: Tone }) {
-  return (
+export function Stat({ label, value, hint, tone, help }: { label: ReactNode; value: ReactNode; hint?: ReactNode; tone?: Tone; help?: string }) {
+  return withHelp(help, (
     <Card className="p-5">
       <div className="text-[0.8rem] font-medium text-muted">{label}</div>
       <div className={cn("num mt-2 text-[1.75rem] font-semibold tracking-tight", tone && toneText[tone])}>{value}</div>
       {hint && <div className="mt-1 text-[0.8rem] text-muted">{hint}</div>}
     </Card>
-  );
+  ));
 }
 
 export function EmptyState({ title, children, action }: { title: ReactNode; children?: ReactNode; action?: ReactNode }) {

@@ -37,7 +37,7 @@ import { BookOpen, CircleHelp, MousePointerClick, Route as RouteIcon } from "luc
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { getHelp, type HelpEntry } from "@/help/content";
+import { getHelp, helpForPath, type HelpEntry } from "@/help/content";
 import { tourForPath } from "@/help/tours";
 import { resumeTour, setTourNavigator, setTourUser, startTour, TourHost, useTour } from "./tour";
 
@@ -90,6 +90,18 @@ function ensureRuntime() {
 
 function HelpRuntime() {
   const { on } = useModeState();
+  const pathname = usePathname();
+  // Pages without outlined sections still get help: the bar offers "About this page".
+  const [zoneCount, setZoneCount] = useState<number | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  useEffect(() => {
+    if (!on) { setAboutOpen(false); return; }
+    const count = () => setZoneCount(document.querySelectorAll("[data-help-zone]").length);
+    count();
+    const t = setTimeout(count, 400); // sections can mount a moment later
+    return () => clearTimeout(t);
+  }, [on, pathname]);
+  const pageHelp = on ? helpForPath(pathname) : [];
 
   useEffect(() => {
     runtimes++;
@@ -121,10 +133,26 @@ function HelpRuntime() {
     <>
       <TourHost />
       {on && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[65] flex justify-center px-3">
-          <div role="status" className="pointer-events-auto flex items-center gap-3 rounded-full border border-border bg-ink py-1.5 pr-1.5 pl-4 text-sm text-bg shadow-xl">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--tabbar)+0.75rem)] z-[65] flex flex-col items-center gap-2 px-3 lg:bottom-4">
+          {aboutOpen && pageHelp.length > 0 && (
+            <div className="pointer-events-auto max-h-[50dvh] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-surface p-3.5 shadow-xl">
+              {pageHelp.slice(0, 4).map((e, i) => (
+                <div key={e.id} className={i ? "mt-3 border-t border-border pt-3" : ""}>
+                  <HelpCard entry={e} onNavigate={() => setHelpMode(false)} />
+                </div>
+              ))}
+            </div>
+          )}
+          <div role="status" className="pointer-events-auto flex items-center gap-2 rounded-full border border-border bg-ink py-1.5 pr-1.5 pl-4 text-sm text-bg shadow-xl">
             <MousePointerClick className="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-            <span><span className="hidden sm:inline">Help mode — point at any outlined section</span><span className="sm:hidden">Tap any outlined section</span></span>
+            <span>
+              {zoneCount === 0 ? "Help mode" : <><span className="hidden sm:inline">Help mode — point at any outlined section</span><span className="sm:hidden">Tap any outlined section</span></>}
+            </span>
+            {pageHelp.length > 0 && (
+              <button type="button" onClick={() => setAboutOpen((o) => !o)} aria-expanded={aboutOpen} className="h-8 rounded-full bg-bg/15 px-3 text-sm font-medium hover:bg-bg/25">
+                {aboutOpen ? "Hide" : "About this page"}
+              </button>
+            )}
             <button type="button" onClick={() => setHelpMode(false)} className="h-8 rounded-full bg-bg/15 px-3 text-sm font-medium hover:bg-bg/25">Done</button>
           </div>
         </div>
@@ -286,7 +314,7 @@ export function HelpZone({ id, tour, className, children }: { id: string; tour?:
       className={clsx(
         className,
         helpable && "relative rounded-xl outline-1 outline-offset-4 transition-[outline-color,background-color] duration-150",
-        helpable && (active ? "bg-focus/[0.04] outline-2 outline-focus outline-solid" : "outline-focus/45 outline-dashed"),
+        helpable && (active ? "bg-focus/[0.06] outline-2 outline-focus outline-solid" : "bg-focus/[0.025] outline-[1.5px] outline-focus/70 outline-dashed hover:bg-focus/[0.05]"),
       )}
       onPointerOver={helpable ? (e) => { if (e.pointerType === "mouse") { e.stopPropagation(); if (mode.zone !== key) setMode({ zone: key }); } } : undefined}
       onPointerLeave={helpable ? (e) => { if (e.pointerType === "mouse" && mode.zone === key) setMode({ zone: null }); } : undefined}

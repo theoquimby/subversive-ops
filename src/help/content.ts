@@ -92,6 +92,20 @@ export function canFollowHelpLink(href: string, role: "MANAGER" | "STAFF"): bool
 /** Entries a role may read, in registry order. */
 export const helpFor = (role: "MANAGER" | "STAFF") => HELP.filter((e) => canSee(e, role));
 
+/**
+ * Help entries for a page path — the page's own entries first, then its
+ * parent's (so /menu/abc123 falls back to /menu). Used when help mode is on
+ * but a page has no outlined sections.
+ */
+export function helpForPath(pathname: string): HelpEntry[] {
+  for (let p = pathname; p; p = p.slice(0, Math.max(0, p.lastIndexOf("/")))) {
+    const hits = HELP.filter((e) => e.route === p && !e.draft);
+    if (hits.length) return hits;
+    if (p === "/") break;
+  }
+  return HELP.filter((e) => e.route === "/" && !e.draft);
+}
+
 /** Related entries that exist and the role may see. */
 export const relatedOf = (e: HelpEntry, role: "MANAGER" | "STAFF" = "MANAGER") =>
   (e.related ?? []).map(getHelp).filter((x): x is HelpEntry => !!x && canSee(x, role));
