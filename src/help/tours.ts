@@ -45,6 +45,21 @@ export interface Tour {
 
 export const TOURS: Tour[] = [
   {
+    id: "kegs",
+    title: "Scanning kegs",
+    description: "Kick a keg in one tap, put the next one on, and find any keg in the walk-in.",
+    audience: "all",
+    minutes: 1,
+    steps: [
+      { route: "/kegs", target: "kegs.scan-button", title: "One button", body: "When a keg kicks, goes on tap, or moves, scan it. That's all anyone has to remember.", helpId: "kegs.scan", touch: { body: "When a keg kicks, goes on tap, or moves, scan it. Scan is also in the tabs at the bottom." } },
+      { route: "/kegs/scan", target: "kegs.camera", title: "Point at the sticker", body: "The camera reads the QR code by itself. Old stickers from the previous app work too.", helpId: "kegs.scan" },
+      { route: "/kegs/scan", target: "kegs.type", title: "No camera? Type it", body: "The code is printed under the QR, like 7Q3-MX. Dashes don't matter.", helpId: "kegs.scan", ifMissing: "skip" },
+      { title: "The big button is the usual next step", body: "On tap: Kicked — one tap. Then it offers the next keg of the same beer and says exactly where it is. Undo stays up for 10 seconds.", helpId: "kegs.scan" },
+      { route: "/kegs", target: "kegs.taps", title: "What's on tap", body: "Each line, how long it's been on and about how much is left, worked out from Square pours.", helpId: "kegs.taps", ifMissing: "skip" },
+      { route: "/kegs/cooler", target: "kegs.find", title: "Find any beer", body: "Pick a beer and the oldest full keg of it lights up, with its spot written out.", helpId: "kegs.cooler" },
+    ],
+  },
+  {
     id: "insights",
     title: "The Insights Lab",
     description: "One thing to do at a time, how the numbers connect, and what each tile tells you.",
@@ -199,6 +214,7 @@ export function tourForPath(pathname: string): Tour | undefined {
     [/^\/(count|waste)/, "counting"],
     [/^\/ingredients/, "ingredients"],
     [/^\/insights/, "insights"],
+    [/^\/kegs/, "kegs"],
   ];
   const hit = map.find(([re]) => re.test(pathname));
   return hit ? getTour(hit[1]) : undefined;

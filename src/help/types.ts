@@ -29,7 +29,8 @@ export type HelpAreaId =
   | "budgets"
   | "brief"
   | "training"
-  | "insights";
+  | "insights"
+  | "kegs";
 
 export type Audience = "manager" | "staff" | "all";
 

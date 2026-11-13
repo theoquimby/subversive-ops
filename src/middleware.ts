@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/server/session";
 
 // Staff only ever see the floor tools; everything else is manager-only.
-const STAFF_PATHS = ["/my", "/count", "/waste", "/help"];
+const STAFF_PATHS = ["/my", "/count", "/waste", "/kegs", "/help"];
 // Webhooks authenticate by signature inside the route.
 const PUBLIC_PATHS = ["/login", "/api/cron", "/api/webhooks", "/api/public", "/sw.js", "/manifest.webmanifest", "/icons/"];
 

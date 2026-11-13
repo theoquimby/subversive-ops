@@ -15,6 +15,7 @@ import { buildContext, loadCostingSnapshot, safeCost } from "./costing";
 import { dailySalesForecast, forecastAccuracy, weatherMap } from "./forecasting";
 import { classSettings, recipeClasses } from "./insights";
 import { dailyKpis } from "./kpis";
+import { kegFindings } from "./kegs";
 import { loadTimecards } from "./labor";
 import { getLaborRules, getOpeningHours } from "./labor-rules";
 import { buildOrderPlan, estimatedOnHandAll, forecastItems, getAdjustments, usagePerServing } from "./planning";
@@ -643,9 +644,10 @@ export async function markFinding(item: Pick<Opportunity, "key" | "kind" | "titl
  * finding) so it fades next time — pass it only where Max actually sees it.
  */
 export async function insightFeed(opts: { limit?: number; remember?: boolean; run?: AnalyticsRun | null; novelty?: boolean } = {}): Promise<{ items: LabAction[]; run: AnalyticsRun | null; state: FeedState }> {
-  const [run, state] = await Promise.all([opts.run !== undefined ? Promise.resolve(opts.run) : loadRun(), getFeedState()]);
+  const [run, state, kegs] = await Promise.all([opts.run !== undefined ? Promise.resolve(opts.run) : loadRun(), getFeedState(), kegFindings()]);
   const today = businessToday();
-  const ranked = buildActions(allFindings(run) as LabFinding[], state, today, { novelty: opts.novelty ?? true });
+  // Keg run-outs are worked out here (live kegs + Square), not by the Python service.
+  const ranked = buildActions([...allFindings(run), ...kegs] as LabFinding[], state, today, { novelty: opts.novelty ?? true });
   const items = ranked.slice(0, opts.limit ?? 20);
   if (opts.remember && items.length) {
     const top = items.slice(0, Math.min(items.length, 5));

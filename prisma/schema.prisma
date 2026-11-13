@@ -823,3 +823,180 @@ model TrainingStepCompletion {
 
   @@unique([assignmentId, stepId])
 }
+
+// ---------------------------------------------------------------------------
+// Kegs: where every keg is, what's in it, and an append-only history.
+// ---------------------------------------------------------------------------
+
+enum KegStatus {
+  EMPTY // clean and ready to fill
+  FILLED // full, not in cold storage yet
+  COLD // full, in the walk-in / keg cooler
+  ON_TAP
+  KICKED // ran out on a tap line
+  OUT // out to an account
+  CLEANING // back from an account or kicked, waiting to be cleaned
+}
+
+enum KegOwner {
+  OURS
+  DEPOSIT // someone else's keg we hold on deposit
+  BORROWED
+}
+
+/// A beer that goes in kegs (house or guest). Matched to Square sales by item name.
+model Beer {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  style        String?
+  /// Board color (a preset key from src/domain/kegs.ts BEER_COLORS)
+  color        String   @default("amber")
+  house        Boolean  @default(true)
+  /// The keg ingredient used for pour costing, e.g. "Subversive IPA (keg)"
+  ingredientId String?
+  /// The beer's PREP recipe (batch yield in bbl), so a keg's cost per pint comes from the batch cost
+  recipeId     String?
+  /// Square item names (the part before " · ") whose pours come out of this beer's kegs
+  squareNames  String[] @default([])
+  /// Alert when full kegs on hand drop below this many
+  minFull      Int      @default(1)
+  active       Boolean  @default(true)
+  notes        String?
+  extra        Json?
+  createdAt    DateTime @default(now())
+  kegs         Keg[]
+  fills        KegFill[]
+  batches      KegBatch[]
+}
+
+model KegBatch {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  beerId     String?
+  beer       Beer?     @relation(fields: [beerId], references: [id], onDelete: SetNull)
+  brewedOn   DateTime? @db.Date
+  packagedOn DateTime? @db.Date
+  notes      String?
+  extra      Json?
+  fills      KegFill[]
+}
+
+/// A named spot inside a storage area ("back left · stack 2"). Managers define them.
+model KegSpot {
+  id    String @id @default(cuid())
+  area  String
+  name  String
+  sort  Int    @default(0)
+  kegs  Keg[]
+
+  @@unique([area, name])
+}
+
+/// Bars, restaurants, distributors or people kegs go out to.
+model KegAccount {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  kind      String   @default("bar") // bar | restaurant | distributor | consumer | other
+  contact   String?
+  email     String?
+  phone     String?
+  address   String?
+  notes     String?
+  active    Boolean  @default(true)
+  extra     Json?
+  createdAt DateTime @default(now())
+  kegs      Keg[]
+  events    KegEvent[]
+}
+
+model Keg {
+  id         String     @id @default(cuid())
+  /// Printed on the QR sticker, short and readable ("K7Q3M")
+  code       String     @unique
+  /// The code on a sticker from the previous keg app, so old stickers still scan
+  legacyCode String?    @unique
+  label      String?
+  sizeId     String     @default("half")
+  owner      KegOwner   @default(OURS)
+  notes      String?
+  active     Boolean    @default(true)
+  status     KegStatus  @default(EMPTY)
+  statusAt   DateTime   @default(now())
+  beerId     String?
+  beer       Beer?      @relation(fields: [beerId], references: [id], onDelete: SetNull)
+  fillId     String?    @unique
+  fill       KegFill?   @relation("CurrentFill", fields: [fillId], references: [id], onDelete: SetNull)
+  area       String?
+  spotId     String?
+  spot       KegSpot?   @relation(fields: [spotId], references: [id], onDelete: SetNull)
+  spotNote   String?
+  tapLine    Int?
+  accountId  String?
+  account    KegAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  /// Columns from an import we didn't map, kept as-is
+  extra      Json?
+  createdAt  DateTime   @default(now())
+  fills      KegFill[]  @relation("KegFills")
+  events     KegEvent[]
+
+  @@index([status])
+  @@index([beerId])
+}
+
+/// One fill of one keg: filled → tapped → kicked (or sent out).
+model KegFill {
+  id        String    @id @default(cuid())
+  kegId     String
+  keg       Keg       @relation("KegFills", fields: [kegId], references: [id], onDelete: Cascade)
+  current   Keg?      @relation("CurrentFill")
+  beerId    String?
+  beer      Beer?     @relation(fields: [beerId], references: [id], onDelete: SetNull)
+  batchId   String?
+  batch     KegBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  batchCode String?
+  filledOn  DateTime? @db.Date
+  bestBy    DateTime? @db.Date
+  tappedAt  DateTime?
+  tapLine   Int?
+  kickedAt  DateTime?
+  /// Set on fills rebuilt from an imported history, so re-importing updates them
+  importKey String?   @unique
+  createdAt DateTime  @default(now())
+
+  @@index([beerId, kickedAt])
+}
+
+/// Append-only history. Undo marks an event undone and restores `before`.
+model KegEvent {
+  id         String      @id @default(cuid())
+  kegId      String
+  keg        Keg         @relation(fields: [kegId], references: [id], onDelete: Cascade)
+  at         DateTime    @default(now())
+  userId     String?
+  userName   String?
+  action     String // CREATED FILLED STORED MOVED TAPPED KICKED OUT RETURNED CLEANED EMPTIED EDITED NOTE
+  fromStatus KegStatus?
+  toStatus   KegStatus?
+  fromPlace  String?
+  toPlace    String?
+  beerId     String?
+  fillId     String?
+  tapLine    Int?
+  accountId  String?
+  account    KegAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  note       String?
+  /// Keg fields before this event (for undo)
+  before     Json?
+  /// Events made by one tap (kick + replace) share a group
+  groupId    String?
+  undoneAt   DateTime?
+  /// Phone-generated id, so a retried offline action is applied once
+  clientId   String?     @unique
+  /// Stable key for imported history rows, so re-importing never duplicates
+  importKey  String?     @unique
+  extra      Json?
+  createdAt  DateTime    @default(now())
+
+  @@index([kegId, at])
+  @@index([at])
+}

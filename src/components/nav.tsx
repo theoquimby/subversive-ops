@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CalendarCheck, CalendarRange, ChevronRight, CircleHelp, ClipboardList, Home, LayoutGrid, LogOut, MoreHorizontal, Search, ShoppingCart, Trash2, X } from "lucide-react";
+import { CalendarCheck, CalendarRange, ChevronRight, CircleHelp, ClipboardList, Home, LayoutGrid, LogOut, MoreHorizontal, ScanLine, Search, ShoppingCart, Trash2, X } from "lucide-react";
 import { areaFor, areaStyle, isActive, MANAGER_NAV, STAFF_NAV, type Area, type NavGroup } from "@/lib/areas";
 import { openCommandPalette } from "./command-palette";
 import { HelpButton } from "./help";
@@ -149,12 +149,13 @@ const MANAGER_TABS: NavItem[] = [
   { href: "/count", label: "Count", icon: ClipboardList, area: "floor" },
   { href: "/schedule", label: "Schedule", icon: CalendarRange, area: "people" },
 ];
-// Staff have three pages, so they all get a tab; More holds help and sign out
-// (no repeated page tiles).
+// Staff pages all get a tab (Scan opens the keg scanner; Kegs is reached from it);
+// More holds help and sign out (no repeated page tiles).
 const STAFF_TABS: NavItem[] = [
   { href: "/my", label: "My shifts", icon: CalendarCheck, area: "people" },
   { href: "/count", label: "Count", icon: ClipboardList, area: "floor" },
   { href: "/waste", label: "Waste", icon: Trash2, area: "floor" },
+  { href: "/kegs/scan", label: "Scan", icon: ScanLine, area: "floor" },
 ];
 
 function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole; name: string; groups: Group[]; logout: () => Promise<void>; pathname: string }) {

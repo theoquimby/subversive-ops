@@ -14,6 +14,7 @@ import { training } from "./areas/training";
 import { insights } from "./areas/insights";
 import { quickbooks } from "./areas/quickbooks";
 import { tables } from "./areas/tables";
+import { kegs } from "./areas/kegs";
 import { settingsPages } from "./areas/settings";
 import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
@@ -45,6 +46,7 @@ export const AREAS: HelpArea[] = [
   { id: "reviews", title: "Reviews", description: "Themes, reply drafts, what to fix this month." },
   { id: "brief", title: "Weekly brief", description: "Next week in a page, with one-tap actions." },
   { id: "insights", title: "Insights", description: "The Insights Lab: one thing to do at a time, how your numbers connect, and a tile for every question." },
+  { id: "kegs", title: "Kegs", description: "Scanning kegs on a phone, what's on tap, the walk-in, demand per beer, labels and importing." },
   { id: "training", title: "Training & certificates", description: "ATAP, ServSafe and other certificates, expiry reminders and onboarding checklists." },
 ];
 
@@ -68,6 +70,7 @@ export const HELP: HelpEntry[] = [
   ...training,
   ...insights,
   ...quickbooks,
+  ...kegs,
 ];
 
 const BY_ID = new Map(HELP.map((e) => [e.id, e]));
@@ -80,7 +83,7 @@ export const getArea = (id: HelpAreaId): HelpArea | undefined => AREA_BY_ID.get(
 export const canSee = (e: HelpEntry, role: "MANAGER" | "STAFF") => role === "MANAGER" || (e.audience ?? "manager") !== "manager";
 
 /** Pages staff can open (mirrors STAFF_PATHS in src/middleware.ts). */
-const STAFF_ROUTES = ["/my", "/count", "/waste", "/help"];
+const STAFF_ROUTES = ["/my", "/count", "/waste", "/kegs", "/help"];
 
 /**
  * Whether an in-app link in help content leads somewhere this role can go:

@@ -9,6 +9,7 @@ import { analyticsStatus, getFixedCosts, getRange, insightFeed, labSetup, refres
 import { FixedCostsForm, PriceSlider } from "./client";
 import { ActionDeck } from "./deck";
 import { toDeck } from "./deck-data";
+import { KegsTile } from "./kegs-tile";
 import { LabTile, TILES, UpdatedNote } from "./lab-tiles";
 import { RangeControl, RefreshLink } from "./range";
 import { ProfitStory } from "./story";
@@ -97,6 +98,7 @@ export default async function InsightsPage() {
           {TILES.map((t) => (
             <LabTile key={t.id} spec={{ ...t, setup: t.id === "menu" ? setup.menu : t.id === "orders" ? setup.orders : t.id === "staffing" || t.id === "week" ? setup.timecards : undefined }} r={r[t.id]} />
           ))}
+          <KegsTile />
         </div>
         {fits.length > 0 && (
           <HelpZone id="insights.price" className="mt-4">

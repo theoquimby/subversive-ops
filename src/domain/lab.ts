@@ -87,6 +87,7 @@ const KIND_META: [prefix: string, meta: { area: LabArea; effort: Effort; vector:
   ["feed.price.creep", { area: "costs", effort: "medium", vector: "save" }],
   ["feed.price.typo", { area: "costs", effort: "easy", vector: "save" }],
   ["feed.leak.invoices", { area: "costs", effort: "easy", vector: "save" }],
+  ["kegs.runout", { area: "ordering", effort: "easy", vector: "save" }],
 ];
 
 export function kindMeta(kind: string) {

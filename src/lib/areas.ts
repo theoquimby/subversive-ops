@@ -8,6 +8,7 @@
  */
 
 import {
+  Beer,
   BookOpen,
   CalendarCheck,
   CalendarDays,
@@ -82,6 +83,7 @@ export const MANAGER_NAV: NavGroup[] = [
   { title: "Floor", area: "floor", items: [
     item("floor", "/count", "Counts", ClipboardList),
     item("floor", "/waste", "Waste", Trash2),
+    item("floor", "/kegs", "Kegs", Beer),
   ] },
   { title: "Setup", area: "setup", items: [
     item("setup", "/import", "Import sheets", FileUp),
@@ -94,6 +96,7 @@ export const STAFF_NAV: NavGroup[] = [
     item("people", "/my", "My shifts", CalendarCheck),
     item("floor", "/count", "Count", ClipboardList),
     item("floor", "/waste", "Waste", Trash2),
+    item("floor", "/kegs", "Kegs", Beer),
   ] },
 ];
 
