@@ -24,6 +24,7 @@ for shifts, time off, counts and waste.
 | **My shifts (staff)** | Shifts, open-shift pickup, swaps, time off and sick leave, availability and announcements. Managers are notified when a request comes in. |
 | **Labor, tips & payroll** | Timecards from Square, protected once edited or approved. Pay-period approval, NY sick leave accrual, tip pools by hours or points, adjustments, and a payroll CSV with an exceptions list. |
 | **Reviews** | Google import plus paste from Yelp, TripAdvisor and OpenTable. Themes, sentiment, reply drafts, "what to fix this month" and rating-drop alerts. New 1–2★ reviews notify managers. |
+| **Insights** | Seven statistical models, each boiled down to one number and one action with a confidence note and "how we worked this out": menu engineering, price response (with a what-if slider), forecast ranges, order sizes (newsvendor), staffing by hour, profit drivers and break-even, unusual days. An insight feed hunts for surprising findings (event payback, supplier price creep and typos, stock gaps, overtime, rain, follow-through on price changes), ranked by $/month × confidence × novelty and learning from Done / Later / Not useful. Top 3 on the brief and in a Sunday digest. |
 | **Events** | An events calendar and holidays that feed the forecast. |
 | **Connections** | Settings → Connections: Square, email, phone notifications, AI features and Google reviews, each with an illustrated step-by-step guide, paste boxes that check what you paste, and a Test button. Keys are stored encrypted in the database. |
 | **Notifications** | Email (Resend) and web push (VAPID) with per-person preferences. Covers the schedule, shift changes, request decisions, the weekly brief, price spikes, invoice issues, staff requests and low reviews. |
@@ -94,6 +95,52 @@ schedule**. Times are UTC.
 | `/api/cron/weather` | Daily 10:07 | Weather forecast for the sales forecast (Open-Meteo, no key). |
 | `/api/cron/daily-ops` | Daily 10:23 | Auto-drafts supplier orders before their cutoff, imports new Google reviews (alerting on 1–2★), sends price-spike alerts, and on Fri/Sat drafts next week's schedule if auto-draft is on. |
 | `/api/cron/weekly-brief` | Sun 21:13 | Emails and pushes the weekly brief to managers. |
+
+### Insights (Python analytics service)
+
+The models live in `analytics/` — a **separate Vercel project, `subversive-analytics`**
+(Python 3.12 + numpy, pandas, scipy, statsmodels; one function, `api/analyze.py`).
+Why separate: the app's build runs `prisma migrate deploy` against the shared
+database, so a preview of the whole app isn't a safe way to try Python; the
+scientific stack (~350 MB unpacked, 53 MB bundled) stays out of the Next.js
+functions; and each side deploys on its own.
+
+```
+app (Next.js) ──gather numbers (no DB access from Python)──▶ POST /api/analyze
+     ▲            x-analytics-secret: $ANALYTICS_SECRET            │
+     └──── cache in Setting rows analytics.<model>, analytics.feed ◀┘
+```
+
+- `src/server/services/analytics.ts` gathers ~120 days of sales, labor, costs,
+  events, weather, orders, prices, counts and reviews; posts them; caches the
+  results (`analytics.meta`, `analytics.<model>`, `analytics.feed`,
+  `analytics.status`). Pages only read the cache. Done / Later / Not useful and
+  what's been shown live in `analytics.feedState`; fixed costs in
+  `analytics.fixedCosts`.
+- Recomputed nightly at the end of `/api/cron/daily-ops`, on page views when
+  older than 36 h, and by **Refresh** on /insights. If the service is
+  unreachable the previous results stay and pages say "Insights update overnight".
+- Sunday's `/api/cron/weekly-brief` also sends "3 things worth your attention"
+  (notification event `insights`, respects each manager's preferences).
+
+| Variable | Where | What |
+|---|---|---|
+| `ANALYTICS_URL` | subversive-ops | `https://subversive-analytics.vercel.app` |
+| `ANALYTICS_SECRET` | both projects | Shared secret sent as `x-analytics-secret` |
+| `ANALYTICS_PYTHON` | local only | Interpreter for `analytics/cli.py` when `ANALYTICS_URL` isn't set (dev) |
+
+Develop and deploy the models:
+
+```bash
+cd analytics
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
+.venv/bin/pytest                      # every model and finder on synthetic data with known answers
+vercel deploy                         # preview
+vercel deploy --prod                  # what the app calls
+```
+
+Locally, with no `ANALYTICS_URL`, the app runs `python3 analytics/cli.py`
+(set `ANALYTICS_PYTHON=analytics/.venv/bin/python`).
 
 ### External accounts
 

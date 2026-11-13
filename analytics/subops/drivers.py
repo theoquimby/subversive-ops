@@ -86,7 +86,8 @@ def run(data: dict, price_result: dict | None = None) -> dict:
     if be:
         avg_daily = m["sales"] / opm
         cushion = avg_daily / be["daily"] - 1
-        headline = f"You break even at about {money(be['daily'])} a day ({money(be['dailyLow'])}–{money(be['dailyHigh'])}); you're averaging {money(avg_daily)} ({'+' if cushion >= 0 else ''}{round(cushion * 100)}%)"
+        rng = f" ({money(be['dailyLow'])}–{money(be['dailyHigh'])})" if be["dailyHigh"] > be["dailyLow"] * 1.05 else ""
+        headline = f"You break even at about {money(be['daily'])} a day{rng}; you're averaging {money(avg_daily)} ({'+' if cushion >= 0 else ''}{round(cushion * 100)}%)"
     else:
         headline = f"Biggest lever: {top['label'].lower()} → about {money(top['monthly'])}/month"
     action = f"Focus on {top['label'].lower()} — it's worth {money(top['monthly'])}/month, more than {levers[1]['label'].lower()} ({money(levers[1]['monthly'])})."
