@@ -135,11 +135,11 @@ export default async function OverviewPage() {
         <Link href="/waste" className="block h-full rounded-xl [&>*]:h-full">
           <Stat help="overview.waste" label="Waste, 7 days" value={money(wasteCost, { whole: true })} hint={wasteLogs ? `${wasteLogs} log${wasteLogs === 1 ? "" : "s"}` : "nothing logged"} tone={wasteLogs ? undefined : "warn"} />
         </Link>
-        <div className="hidden lg:block">
-          <Stat help="overview.profit" label="Profit before overhead" value={money(t.profit, { whole: true })} hint="last 7 days" tone={t.profit < 0 ? "bad" : undefined} />
+        <div className="hidden h-full lg:block">
+          <Stat help="overview.profit" label="Profit" value={money(t.profit, { whole: true })} hint="before overhead · 7 days" tone={t.profit < 0 ? "bad" : undefined} />
         </div>
-        <div className="hidden lg:block">
-          <Stat help="pnl.splh" label="Sales per labor hour" value={money(t.salesPerLaborHour, { whole: true })} hint={t.ordersPerLaborHour != null ? `${qty(t.ordersPerLaborHour, 1)} orders per labor hour` : "last 7 days"} />
+        <div className="hidden h-full lg:block">
+          <Stat help="pnl.splh" label="Sales / labor hour" value={money(t.salesPerLaborHour, { whole: true })} hint={t.ordersPerLaborHour != null ? `${qty(t.ordersPerLaborHour, 1)} orders per labor hour` : "last 7 days"} />
         </div>
       </div>
 

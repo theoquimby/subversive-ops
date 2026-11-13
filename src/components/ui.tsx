@@ -63,12 +63,13 @@ export function Card({ className, children, ...rest }: ComponentProps<"div">) {
 /** A number tile. `accent` (on by default) draws a faint top edge in the page's area hue. Values render as-is, no count-up. */
 export function Stat({ label, value, hint, tone, help, accent = true }: { label: ReactNode; value: ReactNode; hint?: ReactNode; tone?: Tone; help?: string; accent?: boolean }) {
   return withHelp(help, (
-    <Card className={cn("p-5", accent && "relative overflow-hidden before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-gradient-to-r before:from-area/55 before:via-area/15 before:via-45% before:to-transparent before:content-['']")}>
-      <div className="text-[0.8rem] font-medium text-muted">{label}</div>
-      <div className={cn("num mt-2 text-[1.75rem] font-semibold tracking-tight transition-colors duration-180", tone && toneText[tone])}>{value}</div>
-      {hint && <div className="mt-1 text-[0.8rem] text-muted">{hint}</div>}
+    <Card className={cn("flex h-full min-w-0 flex-col p-5", accent && "relative overflow-hidden before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-gradient-to-r before:from-area/55 before:via-area/15 before:via-45% before:to-transparent before:content-['']")}>
+      {/* One-line label so every value in a row lines up; the card stretches to the row's height. */}
+      <div className="truncate text-[0.8rem] font-medium text-muted">{label}</div>
+      <div className={cn("num mt-2 truncate text-[1.75rem] font-semibold tracking-tight transition-colors duration-180", tone && toneText[tone])}>{value}</div>
+      {hint && <div className="mt-1 line-clamp-2 text-[0.8rem] text-muted">{hint}</div>}
     </Card>
-  ));
+  ), "h-full min-w-0");
 }
 
 export function EmptyState({ title, children, action }: { title: ReactNode; children?: ReactNode; action?: ReactNode }) {
