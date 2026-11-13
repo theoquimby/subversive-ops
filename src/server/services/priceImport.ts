@@ -10,26 +10,44 @@ import { priceAsOf } from "./costing";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
-/** Read a CSV/XLSX upload into header + records (first sheet only). */
-export async function readSheet(file: File): Promise<{ headers: string[]; records: Record<string, unknown>[] }> {
+export interface SheetTable {
+  name: string;
+  headers: string[];
+  records: Record<string, unknown>[];
+}
+
+/** Parse workbook bytes into one table per tab. Header row = first row with 2+ text cells (skips title blocks). */
+export function parseWorkbook(bytes: Uint8Array): SheetTable[] {
+  const wb = XLSX.read(bytes, { type: "array" });
+  return wb.SheetNames.map((sheetName) => {
+    const grid = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName], { header: 1, blankrows: false, raw: true, defval: "" });
+    const headerIdx = grid.findIndex((r) => r.filter((c) => typeof c === "string" && c.trim()).length >= 2);
+    if (headerIdx < 0) return { name: sheetName, headers: [], records: [] };
+    const raw = (grid[headerIdx] as unknown[]).map((h) => String(h ?? "").trim());
+    const headers = raw.map((h, i) => h || `Column ${i + 1}`);
+    const records = grid
+      .slice(headerIdx + 1)
+      .map((row) => Object.fromEntries(headers.map((h, i) => [h, (row as unknown[])[i] ?? ""])))
+      .filter((r) => Object.values(r).some((v) => String(v).trim() !== ""));
+    return { name: sheetName, headers: headers.filter((_, i) => raw[i] || records.some((r) => String(r[headers[i]]).trim())), records };
+  }).filter((t) => t.headers.length > 0);
+}
+
+export async function readTables(file: File): Promise<SheetTable[]> {
   if (file.size > MAX_BYTES) throw new Error("That file is over 10 MB.");
   const name = file.name.toLowerCase();
   if (name.endsWith(".csv") || file.type === "text/csv") {
     const parsed = Papa.parse<Record<string, unknown>>(await file.text(), { header: true, skipEmptyLines: true, transformHeader: (h) => h.trim() });
-    return { headers: parsed.meta.fields ?? [], records: parsed.data };
+    return [{ name: file.name.replace(/\.csv$/i, ""), headers: parsed.meta.fields ?? [], records: parsed.data }];
   }
-  if (/\.(xlsx|xls)$/.test(name)) {
-    const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: "array" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    // Some distributor exports put a title block above the header row — find the first row that looks like headers.
-    const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, blankrows: false, raw: true });
-    const headerIdx = grid.findIndex((r) => r.filter((c) => typeof c === "string" && c.trim()).length >= 3);
-    if (headerIdx < 0) return { headers: [], records: [] };
-    const headers = (grid[headerIdx] as unknown[]).map((h) => String(h ?? "").trim());
-    const records = grid.slice(headerIdx + 1).map((row) => Object.fromEntries(headers.map((h, i) => [h, (row as unknown[])[i]])));
-    return { headers: headers.filter(Boolean), records };
-  }
-  throw new Error("Upload a .csv or .xlsx file.");
+  if (/\.(xlsx|xls|ods)$/.test(name)) return parseWorkbook(new Uint8Array(await file.arrayBuffer()));
+  throw new Error("Upload a .xlsx, .xls or .csv file.");
+}
+
+/** Read a CSV/XLSX upload (first table) — used by distributor price sheets. */
+export async function readSheet(file: File): Promise<{ headers: string[]; records: Record<string, unknown>[] }> {
+  const [first] = await readTables(file);
+  return first ? { headers: first.headers, records: first.records } : { headers: [], records: [] };
 }
 
 export interface ImportPreview {

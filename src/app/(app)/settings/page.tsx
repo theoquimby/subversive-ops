@@ -5,13 +5,16 @@ import { env, squareConfigured } from "@/server/env";
 import { targetFoodCost } from "@/server/services/insights";
 import { relativeTime } from "@/lib/format";
 import { lastSquareSync } from "@/server/services/sales";
-import { resetPin, saveTarget, toggleUser } from "./actions";
-import { AddUserForm, SupplierForm } from "./forms";
+import { loadDemoData, resetPin, saveTarget, toggleUser } from "./actions";
+import { AddUserForm, ClearDataForm, SupplierForm } from "./forms";
+import { LinkButton } from "@/components/ui";
 
 export const metadata = { title: "Settings" };
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
   const me = await requireUser("MANAGER");
+  const { welcome } = await searchParams;
+  const empty = (await db.ingredient.count()) === 0 && (await db.recipe.count()) === 0;
   const [users, suppliers, target, lastSync] = await Promise.all([
     db.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }),
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
@@ -22,6 +25,17 @@ export default async function SettingsPage() {
   return (
     <>
       <PageHeader title="Settings" />
+
+      {(welcome || empty) && (
+        <Card className="mb-10 p-5">
+          <div className="text-base font-semibold">{welcome ? "You're in. " : ""}Let's get your data in</div>
+          <p className="mt-1 text-sm text-muted">Import your existing spreadsheet (ingredients, prices and recipes), or load demo data to look around first.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <LinkButton href="/import" variant="primary">Import your sheets</LinkButton>
+            {empty && <form action={loadDemoData}><Button>Load demo data</Button></form>}
+          </div>
+        </Card>
+      )}
 
       <Section title="Team" description="Staff sign in with their name and PIN and only see counts and waste.">
         <Card className="divide-y divide-border">
@@ -68,6 +82,10 @@ export default async function SettingsPage() {
             <Button>Save</Button>
           </form>
         </Card>
+      </Section>
+
+      <Section title="Data" description="Clearing removes every ingredient, price, recipe, sale, count and order — handy after trying the demo. Logins are kept.">
+        <Card className="p-4"><ClearDataForm /></Card>
       </Section>
 
       <Section title="Square">

@@ -1,6 +1,6 @@
 "use server";
 
-import { loginWithPin } from "@/server/auth";
+import { createFirstManager, loginWithPin } from "@/server/auth";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
@@ -12,4 +12,13 @@ export async function login(_: { error?: string } | undefined, form: FormData) {
   const res = await loginWithPin(parsed.data.name, parsed.data.pin);
   if (!res.ok) return { error: res.error };
   redirect(res.role === "MANAGER" ? "/" : "/count");
+}
+
+export async function setup(_: { error?: string } | undefined, form: FormData) {
+  const parsed = schema.safeParse({ name: form.get("name"), pin: form.get("pin") });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (form.get("pin") !== form.get("confirm")) return { error: "PINs don't match" };
+  const res = await createFirstManager(parsed.data.name, parsed.data.pin);
+  if (!res.ok) return { error: res.error };
+  redirect("/settings?welcome=1");
 }

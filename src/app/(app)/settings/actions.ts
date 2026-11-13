@@ -80,3 +80,22 @@ export async function saveTarget(form: FormData) {
   await db.setting.upsert({ where: { key: "costing.targetFoodCostPct" }, create: { key: "costing.targetFoodCostPct", value: String(pct / 100) }, update: { value: String(pct / 100) } });
   revalidatePath("/", "layout");
 }
+
+export async function loadDemoData() {
+  await requireUser("MANAGER");
+  const empty = (await db.ingredient.count()) === 0 && (await db.recipe.count()) === 0;
+  if (!empty) return;
+  const { seedDemo } = await import("@/server/demo-data");
+  await seedDemo(db, { keepUsers: true });
+  revalidatePath("/", "layout");
+}
+
+/** Wipes every ingredient, price, recipe, sale, count and order. Logins are kept. */
+export async function clearAllData(_: Result, form: FormData): Promise<Result> {
+  await requireUser("MANAGER");
+  if (String(form.get("confirm")).trim().toUpperCase() !== "CLEAR") return { error: 'Type CLEAR to confirm.' };
+  const { seedDemo } = await import("@/server/demo-data");
+  await seedDemo(db, { keepUsers: true, mode: "empty" });
+  revalidatePath("/", "layout");
+  return { ok: "All data cleared. Logins kept." };
+}

@@ -24,6 +24,7 @@ async function managerCommands(): Promise<Command[]> {
     { id: "go-sales", label: "Sales & forecast", group: "Go to", href: "/sales" },
     { id: "go-settings", label: "Settings", group: "Go to", href: "/settings" },
     { id: "do-import", label: "Import a price sheet", group: "Do", href: "/prices/import", hint: "upload" },
+    { id: "do-bulk", label: "Import ingredients & recipes from a spreadsheet", group: "Do", href: "/import", hint: "setup" },
     { id: "do-manual", label: "Update prices by hand", group: "Do", href: "/prices/update" },
     { id: "do-unlinked", label: "Link new supplier products", group: "Do", href: "/prices?filter=unlinked" },
     { id: "do-recipe", label: "New recipe", group: "Do", href: "/menu/new" },

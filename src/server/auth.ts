@@ -49,17 +49,33 @@ export async function loginWithPin(name: string, pin: string): Promise<LoginResu
     return fail;
   }
   await db.user.update({ where: { id: user.id }, data: { failedPinAttempts: 0, lockedUntil: null } });
+  await startSession(user);
+  return { ok: true, role: user.role };
+}
+
+async function startSession(user: { id: string; name: string; role: Session["role"] }) {
   const token = await signSession({ userId: user.id, name: user.name, role: user.role }, env.SESSION_SECRET);
-  const jar = await cookies();
-  jar.set(SESSION_COOKIE, token, {
+  (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
   });
+}
+
+/** First run only: when there are no users at all, the first person becomes the manager. */
+export async function createFirstManager(name: string, pin: string): Promise<LoginResult> {
+  const user = await db.$transaction(async (tx) => {
+    if ((await tx.user.count()) > 0) return null;
+    return tx.user.create({ data: { name: name.trim(), role: "MANAGER", pinHash: await hashPin(pin) } });
+  });
+  if (!user) return { ok: false, error: "Setup is already done — sign in instead." };
+  await startSession(user);
   return { ok: true, role: user.role };
 }
+
+export const hasAnyUser = async () => (await db.user.count()) > 0;
 
 export async function logout() {
   (await cookies()).delete(SESSION_COOKIE);

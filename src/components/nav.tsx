@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { BookOpen, ChartLine, ClipboardList, Carrot, LayoutGrid, LogOut, Receipt, Search, Settings, ShoppingCart, Trash2 } from "lucide-react";
+import { BookOpen, ChartLine, ClipboardList, Carrot, FileUp, LayoutGrid, LogOut, Receipt, Search, Settings, ShoppingCart, Trash2 } from "lucide-react";
 import { openCommandPalette } from "./command-palette";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -16,6 +16,7 @@ const MANAGER = [
   { href: "/sales", label: "Sales", icon: ChartLine },
   { href: "/count", label: "Counts", icon: ClipboardList },
   { href: "/waste", label: "Waste", icon: Trash2 },
+  { href: "/import", label: "Import sheets", icon: FileUp },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 const STAFF = [

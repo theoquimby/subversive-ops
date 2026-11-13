@@ -3,7 +3,7 @@
 import { Button, cx, Field, Input, Select } from "@/components/ui";
 import { WEEKDAYS } from "@/domain/dates";
 import { useActionState } from "react";
-import { addUser, saveSupplier } from "./actions";
+import { addUser, clearAllData, saveSupplier } from "./actions";
 
 export function AddUserForm() {
   const [state, action, pending] = useActionState(addUser, undefined);
@@ -52,6 +52,17 @@ export function SupplierForm({ v }: { v: SupplierValues }) {
         <Button disabled={pending}>{v.id ? "Save" : "Add supplier"}</Button>
         {(state?.error || state?.ok) && <span className={cx("text-sm", state.error ? "text-bad" : "text-good")}>{state.error ?? state.ok}</span>}
       </div>
+    </form>
+  );
+}
+
+export function ClearDataForm() {
+  const [state, action, pending] = useActionState(clearAllData, undefined);
+  return (
+    <form action={action} className="flex flex-wrap items-center gap-2">
+      <Input name="confirm" placeholder="Type CLEAR" className="w-36" aria-label="Type CLEAR to confirm" autoComplete="off" />
+      <Button variant="danger" disabled={pending}>{pending ? "Clearing…" : "Clear all data"}</Button>
+      {(state?.error || state?.ok) && <span className={cx("text-sm", state.error ? "text-bad" : "text-good")}>{state.error ?? state.ok}</span>}
     </form>
   );
 }
