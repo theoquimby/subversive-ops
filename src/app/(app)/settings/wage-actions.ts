@@ -5,7 +5,7 @@ import { markRulesReviewed, setWageAuto } from "@/server/services/labor-rules";
 import { revalidatePath } from "next/cache";
 
 const refresh = () => {
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   revalidatePath("/team");
   revalidatePath("/labor");
   revalidatePath("/schedule");

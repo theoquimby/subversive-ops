@@ -14,7 +14,7 @@ import { teamCertChips } from "@/server/services/training";
 import { AnnouncementsManager } from "./announcements";
 import { PeopleNotesSection } from "./people-section";
 import { setPositionField } from "./actions";
-import { AddEmployeeRow, AddPositionRow, DeletePositionButton, EmployeeGrid, SyncTeamButton } from "./team-client";
+import { AddPositionRow, DeletePositionButton, EmployeeGrid, SyncTeamButton } from "./team-client";
 
 export const metadata = { title: "Team" };
 
@@ -111,7 +111,7 @@ export default async function TeamPage() {
         </Card>
       </Section>
 
-      <Section help="team.employees" title="People" actions={<LinkButton href="/team/training" size="sm" data-tour="team.training-link">Training</LinkButton>} description="Rates here are the default; a timecard or a person's rate for a specific position wins. The calendar icon opens availability and login. Sick is NY paid sick leave available this year.">
+      <Section help="team.employees" title="People" actions={<LinkButton href="/team/training" size="sm" data-tour="team.training-link">Training</LinkButton>} description="Rates here are the default; a timecard or a person's rate for a specific position wins. Click a row (away from the cells) for availability and login. Sick is NY paid sick leave available this year.">
         {differing.length > 0 && (
           <Card className="mb-3 border-warn/40 bg-warn-bg/40 p-4 text-sm">
             <div className="font-medium text-warn">Square has different details for {differing.length} {differing.length === 1 ? "person" : "people"}</div>
@@ -126,8 +126,7 @@ export default async function TeamPage() {
             </ul>
           </Card>
         )}
-        <Card className="overflow-x-auto">
-          <EmployeeGrid
+        <EmployeeGrid
             employees={employees.map((e) => ({
               id: e.id,
               name: e.name,
@@ -147,8 +146,6 @@ export default async function TeamPage() {
             users={users}
             openingHours={openingHours}
           />
-          <AddEmployeeRow />
-        </Card>
       </Section>
 
       <PeopleNotesSection />

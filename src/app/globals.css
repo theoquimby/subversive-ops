@@ -444,3 +444,69 @@ th:last-child > .col-resizer { right: 0; }
   text-overflow: clip;
   overflow-wrap: anywhere;
 }
+
+/* ---- DataTable (src/components/data-table.tsx) ---------------------------------------- */
+.dt {
+  --dt-hover: color-mix(in oklab, var(--surface-2) 70%, var(--surface));
+  --dt-selected: color-mix(in oklab, var(--area) 7%, var(--surface));
+}
+.dt-th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 2.5rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.dt-th.dt-sticky { z-index: 4; }
+.dt-row > td { background: var(--surface); transition: background-color var(--dur-fast) var(--motion-out); }
+.dt-row:hover > td { background: var(--dt-hover); }
+.dt-row[data-selected] > td { background: var(--dt-selected); }
+.dt-row[data-open] > td { background: color-mix(in oklab, var(--area) 10%, var(--surface)); }
+.dt-row[data-active]:focus > td:first-child { box-shadow: inset 2px 0 0 var(--ink); }
+.dt-row:last-child > td { border-bottom-color: transparent; }
+.dt-group > td { background: var(--surface-2); }
+td.dt-sticky, th.dt-sticky { position: sticky; z-index: 2; }
+.dt-group > td.dt-sticky { z-index: 2; }
+.dt-scrolled-x .dt-sticky-last { box-shadow: 1px 0 0 var(--border), 8px 0 10px -8px rgb(0 0 0 / 0.18); }
+.dt-row[data-active]:focus > td.dt-sticky-last:first-child { box-shadow: inset 2px 0 0 var(--ink), 1px 0 0 var(--border); }
+.dt-card[data-selected] { background: var(--dt-selected); }
+.dt-kbd {
+  display: inline-block;
+  min-width: 1.1rem;
+  margin: 0 1px;
+  padding: 0 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  line-height: 1rem;
+  text-align: center;
+  color: var(--muted);
+}
+.dt-scroll { scrollbar-gutter: stable; }
+.dt-drawer { animation: dt-drawer-in var(--dur-slow) var(--motion-sheet) both; }
+.dt-drawer[data-closing] { animation: dt-drawer-out 180ms var(--motion-in-out) both; }
+@keyframes dt-drawer-in { from { transform: translateY(100%); } }
+@keyframes dt-drawer-out { to { transform: translateY(100%); } }
+@media (min-width: 640px) {
+  @keyframes dt-drawer-in { from { transform: translateX(24px); opacity: 0; } }
+  @keyframes dt-drawer-out { to { transform: translateX(16px); opacity: 0; } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dt-drawer, .dt-drawer[data-closing] { animation: none; }
+}
+.dt-row:focus, .dt-row:focus-visible { outline: none; }
+.dt-drawer:focus, .dt-drawer:focus-visible { outline: none; }
+/* <Table sticky>: header row and first column stay put while the frame scrolls. */
+.table-sticky > thead th { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+.table-sticky > thead th:first-child { left: 0; z-index: 3; }
+.table-sticky > tbody td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
+.table-sticky > tbody tr:hover > td:first-child { background: color-mix(in oklab, var(--surface-2) 60%, var(--surface)); }
+.table-sticky > tbody tr:last-child > td { border-bottom-color: transparent; }
+@media print { .table-sticky > thead th, .table-sticky > tbody td:first-child { position: static; } }

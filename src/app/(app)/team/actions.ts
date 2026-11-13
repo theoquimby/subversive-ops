@@ -249,3 +249,30 @@ export async function inviteEmployee(employeeId: string, loginName: string, pin?
   revalidatePath("/settings");
   return { name, pin: code };
 }
+
+// ---- Bulk actions (People table) ------------------------------------------------------------
+
+const bulkIds = z.array(z.string().min(1).max(64)).min(1).max(500);
+
+/** Give several people a position, or take it away. */
+export async function bulkPosition(ids: string[], positionId: string, add: boolean): Promise<{ error?: string; message?: string }> {
+  await requireUser("MANAGER");
+  const p = bulkIds.safeParse(ids);
+  if (!p.success || !positionId) return { error: "Pick people and a position." };
+  const pos = await db.position.findUnique({ where: { id: positionId }, select: { name: true } });
+  if (!pos) return { error: "That position is gone." };
+  if (add) await db.employeePosition.createMany({ data: p.data.map((employeeId) => ({ employeeId, positionId })), skipDuplicates: true });
+  else await db.employeePosition.deleteMany({ where: { employeeId: { in: p.data }, positionId } });
+  refresh();
+  return { message: `${add ? "Added" : "Removed"} ${pos.name} ${add ? "for" : "from"} ${p.data.length} ${p.data.length === 1 ? "person" : "people"}.` };
+}
+
+/** Mark several people active or inactive (inactive people drop off the schedule). */
+export async function bulkActive(ids: string[], active: boolean): Promise<{ error?: string; message?: string }> {
+  await requireUser("MANAGER");
+  const p = bulkIds.safeParse(ids);
+  if (!p.success) return { error: "Pick at least one person." };
+  const r = await db.employee.updateMany({ where: { id: { in: p.data } }, data: { active } });
+  refresh();
+  return { message: `Marked ${r.count} ${r.count === 1 ? "person" : "people"} ${active ? "active" : "inactive"}.` };
+}

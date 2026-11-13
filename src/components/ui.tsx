@@ -155,10 +155,15 @@ export function Field({ label, hint, children, className }: { label: ReactNode; 
 
 // ---- Tables -------------------------------------------------------------------
 
-export function Table({ children, className }: { children: ReactNode; className?: string }) {
+/**
+ * `sticky`: the table scrolls inside its frame (at most a screen tall) so the header row
+ * stays in view and the first column stays put when scrolling sideways. For lists that
+ * can run long; for big, searchable lists use DataTable (@/components/data-table).
+ */
+export function Table({ children, className, sticky }: { children: ReactNode; className?: string; sticky?: boolean }) {
   return (
-    <Card className={cn("overflow-x-auto", className)}>
-      <table className="w-full border-collapse text-sm">{children}</table>
+    <Card className={cn(sticky ? "max-h-[calc(100dvh-8rem)] overflow-auto overscroll-x-contain" : "overflow-x-auto", className)}>
+      <table className={cn("w-full text-sm", sticky ? "table-sticky border-separate border-spacing-0" : "border-collapse")}>{children}</table>
     </Card>
   );
 }

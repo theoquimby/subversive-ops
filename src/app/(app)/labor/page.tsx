@@ -141,7 +141,7 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
         {rows.length === 0 ? (
           <EmptyState title="Nothing to pay yet">Totals appear once there are timecards in this period.</EmptyState>
         ) : (
-          <Table>
+          <Table sticky>
             <thead>
               <tr>
                 <Th>Person</Th>

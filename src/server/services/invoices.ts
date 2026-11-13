@@ -321,14 +321,14 @@ export const STATUS_META: Record<InvoiceStatus, { label: string; tone: "good" | 
   APPROVED: { label: "Approved", tone: "good" },
 };
 
-export async function listInvoices(filter: { status?: InvoiceStatus | "OPEN"; supplierId?: string }) {
+export async function listInvoices(filter: { status?: InvoiceStatus | "OPEN"; supplierId?: string; take?: number }) {
   return db.invoice.findMany({
     where: {
       supplierId: filter.supplierId || undefined,
       status: filter.status === "OPEN" ? { not: "APPROVED" } : filter.status || undefined,
     },
     orderBy: [{ invoiceDate: "desc" }, { createdAt: "desc" }],
-    take: 200,
+    take: filter.take ?? 200,
     select: {
       id: true, invoiceNumber: true, invoiceDate: true, total: true, status: true, supplierId: true, extractedBy: true,
       supplier: { select: { name: true } },

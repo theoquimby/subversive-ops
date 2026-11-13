@@ -3,7 +3,7 @@
 import { planRecipesFromSquare } from "@/domain/squareMenu";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { loadSquareMenu } from "@/server/services/square-menu";
+import { addRejected, loadSquareMenu } from "@/server/services/square-menu";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -80,4 +80,24 @@ export async function applySquarePrices(input: z.input<typeof prices>): Promise<
   await db.$transaction([...byRecipe].map(([id, price]) => db.recipe.updateMany({ where: { id }, data: { menuPrice: new Prisma.Decimal(price.toFixed(2)) } })));
   refresh();
   return { message: `Updated ${byRecipe.size} price${byRecipe.size === 1 ? "" : "s"}.` };
+}
+
+/** "Not this one": stop suggesting these recipes for these Square items. */
+export async function rejectSuggestions(input: z.input<typeof pairs>): Promise<Result> {
+  await requireUser("MANAGER");
+  const p = pairs.safeParse(input);
+  if (!p.success) return { error: "Nothing to reject." };
+  await addRejected(p.data);
+  refresh();
+  return { message: `Won't suggest ${p.data.length === 1 ? "that match" : `those ${p.data.length} matches`} again.` };
+}
+
+/** Undo Ignore: back to the "still to match" pile. */
+export async function unignoreItems(input: string[]): Promise<Result> {
+  await requireUser("MANAGER");
+  const p = ids.safeParse(input);
+  if (!p.success) return { error: "Pick at least one item." };
+  const r = await db.squareMapping.updateMany({ where: { squareId: { in: p.data }, ignored: true }, data: { ignored: false } });
+  refresh();
+  return { message: `${r.count} item${r.count === 1 ? " is" : "s are"} back to match.` };
 }

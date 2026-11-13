@@ -780,7 +780,7 @@ Account names must match your chart of accounts exactly. Nothing is paid or post
     area: "invoices",
     route: "/invoices",
     title: "All invoices",
-    body: "Every invoice with its supplier, number, date, linked order, match status and total. Filter by status or supplier, and tap one to check and approve it.",
+    body: "Every invoice with its supplier, number, date, linked order, match status and total. Filter by status, supplier or month, group by month for totals, and tick clean matches to approve them together.",
   },
   {
     id: "invoices.detail",

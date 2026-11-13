@@ -11,7 +11,12 @@ export interface PurchaseOrderEmail {
   /** Where supplier replies go (the manager), shown in the sign-off. */
   replyTo?: string | null;
   csvFilename: string;
+  /** Delivery address and phone from Settings → Business, shown under the sign-off. */
+  business?: { address?: string | null; phone?: string | null };
 }
+
+/** "Subversive · 123 Main St, Catskill, NY · (518) 555-0100" (falls back to the town). */
+const businessLine = (b: PurchaseOrderEmail["business"]) => [BRAND, b?.address?.trim() || "Catskill, NY", b?.phone?.trim()].filter(Boolean).join(" · ");
 
 const qtyStr = (n: number) => String(Number(n.toFixed(2)));
 
@@ -40,7 +45,7 @@ export function purchaseOrderEmail(o: PurchaseOrderEmail): RenderedEmail {
       o.notes ? p(`<strong>Notes:</strong> ${esc(o.notes)}`) : "",
       p(`Please reply to this email if anything is short, substituted or the price has changed.`),
       p(`Thank you,<br>${esc(o.senderName)}<br>${esc(BRAND)}${o.replyTo ? ` · <a href="mailto:${esc(o.replyTo)}" style="color:#4a4843;">${esc(o.replyTo)}</a>` : ""}`),
-      small(`${esc(BRAND)} · Catskill, NY`),
+      small(esc(businessLine(o.business))),
     ].join("\n"),
     footer: `Sent from ${esc(BRAND)}'s ordering system on behalf of ${esc(o.senderName)}.`,
   });
@@ -59,6 +64,7 @@ export function purchaseOrderEmail(o: PurchaseOrderEmail): RenderedEmail {
     "Thank you,",
     o.senderName,
     o.replyTo ? `${BRAND} · ${o.replyTo}` : BRAND,
+    o.business?.address || o.business?.phone ? businessLine(o.business) : null,
     footerText(),
   );
   return { subject, html, text };

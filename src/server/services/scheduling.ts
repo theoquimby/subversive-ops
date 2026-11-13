@@ -11,6 +11,7 @@ import { env } from "../env";
 import { hourlySalesForecast } from "./forecasting";
 import { getLaborRules, getOpeningHours } from "./labor-rules";
 import { localHour } from "./sales";
+import { defaultLaborPct } from "./settings";
 
 export const TZ = env.BUSINESS_TIMEZONE;
 export const MIN_SHIFT_HOURS = 4;
@@ -230,10 +231,10 @@ function complianceFor(shifts: ShiftView[], employees: EmployeeView[], positions
   return [...law, ...applyRuleSettings(availabilityConflicts(shifts, people), rules)];
 }
 
-/** The week's labor % budget from the Budgets page, or null. */
+/** The week's labor % budget from the Budgets page, else the default from Settings → Pay & labor, or null. */
 export async function laborTargetFor(monday: ISODate): Promise<number | null> {
   const b = await db.budget.findUnique({ where: { weekStart: parseISODate(monday) } });
-  return num(b?.laborPct);
+  return num(b?.laborPct) ?? (await defaultLaborPct());
 }
 
 const AUTO_DRAFT_KEY = "schedule.autoDraft";
@@ -253,7 +254,8 @@ export async function loadWeek(monday: ISODate): Promise<WeekData> {
     loadPositions(),
     // Rates in force that week, so a week after January 1 uses the new minimum wage.
     getLaborRules(monday),
-    getOpeningHours(),
+    // Seasonal hours: the ones in force that week.
+    getOpeningHours(monday),
     db.shift.findMany({ where: weekWhere(monday), orderBy: { start: "asc" } }),
     db.timeOffRequest.findMany({ where: { status: "PENDING", startDate: { lte: parseISODate(dates[6]) }, endDate: { gte: parseISODate(monday) } } }),
     db.shiftSwap.count({ where: { status: "PENDING" } }),
@@ -317,7 +319,7 @@ export interface PlanPreview {
 /** Everything planning needs for a week, loaded once so different intensities are cheap to try. */
 async function planContext(monday: ISODate) {
   const dates = weekDates(monday);
-  const [positions, rules, opening, rows, laborTarget] = await Promise.all([loadPositions(), getLaborRules(), getOpeningHours(), db.shift.findMany({ where: weekWhere(monday) }), laborTargetFor(monday)]);
+  const [positions, rules, opening, rows, laborTarget] = await Promise.all([loadPositions(), getLaborRules(), getOpeningHours(monday), db.shift.findMany({ where: weekWhere(monday) }), laborTargetFor(monday)]);
   const [employees, timeOff, days] = await Promise.all([loadEmployees(positions), approvedTimeOff(monday, dates[6]), forecastDays(dates, opening)]);
   return { monday, dates, positions, rules, opening, rows, laborTarget, employees, timeOff, days };
 }

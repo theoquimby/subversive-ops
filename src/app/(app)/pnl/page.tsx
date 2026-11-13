@@ -155,7 +155,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
           description={counts ? `Theoretical for ${countedLabel}. Each line's cost % is of its own sales. Actual is from your last two counts (${shortDate(counts.from)} → ${shortDate(counts.to)}).` : `Theoretical for ${countedLabel}. Each line's cost % is of its own sales. Count twice to see actual next to it.`}
           actions={<LinkButton href="/variance" variant="ghost" size="sm">Margin gap →</LinkButton>}
         >
-          <Table>
+          <Table sticky>
             <thead>
               <tr>
                 <Th className="px-2! sm:px-4!" />
@@ -228,7 +228,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
       {multiDay && (
         <HelpZone id="pnl.byDay" tour="pnl.by-day">
           <Section title="By day">
-            <Table>
+            <Table sticky>
               <thead>
                 <tr>
                   <Th>Day</Th>

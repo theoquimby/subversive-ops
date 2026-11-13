@@ -330,3 +330,16 @@ export async function quickAddSupplier(rawName: string): Promise<{ error?: strin
   revalidatePath("/invoices");
   return { supplier };
 }
+
+/** Approve several clean (matched) invoices at once. Ones with open issues need a note, one by one. */
+export async function approveMatched(ids: string[]): Promise<{ error?: string; message?: string }> {
+  const user = await requireUser("MANAGER");
+  const p = z.array(z.string().min(1).max(64)).min(1).max(500).safeParse(ids);
+  if (!p.success) return { error: "Pick at least one invoice." };
+  const clean = await db.invoice.findMany({ where: { id: { in: p.data }, status: "MATCHED" }, select: { id: true } });
+  for (const inv of clean) await approve(inv.id, user.name, null);
+  revalidatePath("/invoices");
+  const skipped = p.data.length - clean.length;
+  if (!clean.length) return { error: "None of those are matched. Invoices with issues are approved one by one, with a note." };
+  return { message: `Approved ${clean.length} invoice${clean.length === 1 ? "" : "s"}.${skipped ? ` ${skipped} skipped: not a clean match.` : ""}` };
+}

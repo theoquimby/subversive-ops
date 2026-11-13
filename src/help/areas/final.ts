@@ -191,7 +191,7 @@ Staff see staff documents only; managers also search manager-only ones. Ask a ma
   {
     id: "settings.wageSchedule",
     area: "settings",
-    route: "/settings",
+    route: "/settings/pay",
     title: "NY minimum wage schedule",
     body: "When on, the minimum and tipped wages follow the upstate NY rate table and switch on January 1. Future rates are marked estimated. You must verify every rate against NY DOL.",
     article: `Upstate New York (outside NYC, Long Island and Westchester): $15.50 in 2025 and $16.00 in 2026 (tipped food service cash wage $10.35 and $10.70). From 2027 the rate is indexed to inflation and published by NY DOL each autumn — the table's 2027 figure is an **estimate** until it's replaced with the published rate.

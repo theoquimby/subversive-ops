@@ -49,6 +49,14 @@ describe("email templates", () => {
     expect(r.text).not.toContain("Estimated total");
   });
 
+  it("purchase order shows the delivery address and phone from Settings", () => {
+    const base = { supplierName: "Bread Co", deliveryDate: "2026-11-18", senderName: "Max", csvFilename: "x.csv", lines: [{ sku: "1", description: "Buns", qty: 1, unit: "dozen", unitPrice: null }] };
+    const r = purchaseOrderEmail({ ...base, business: { address: "1 Main St, Catskill, NY", phone: "(518) 555-0100" } });
+    expect(r.html).toContain("1 Main St, Catskill, NY · (518) 555-0100");
+    expect(r.text).toContain("1 Main St, Catskill, NY · (518) 555-0100");
+    expect(purchaseOrderEmail(base).html).toContain("Catskill, NY");
+  });
+
   it("escapes user content in html", () => {
     const r = purchaseOrderEmail({ supplierName: "<Evil & Co>", deliveryDate: "2026-11-18", senderName: "Max", csvFilename: "x.csv", lines: [{ sku: "1", description: `Fries "3/8" <b>`, qty: 1, unit: "cs", unitPrice: 1 }] });
     expect(r.html).toContain("&lt;Evil &amp; Co&gt;");

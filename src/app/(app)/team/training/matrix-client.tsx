@@ -5,6 +5,10 @@ import { Badge, Card, cx, Select } from "@/components/ui";
 import type { CertStatus } from "@/domain/certs";
 import type { CellView, PersonView, TypeView } from "@/server/services/training";
 import { useEffect, useMemo, useState } from "react";
+import { Search } from "lucide-react";
+import { matchScore, normalize } from "@/domain/dataTable";
+
+const WORST_ORDER: CertStatus[] = ["expired", "missing", "expiring", "valid", "not-required"];
 import { CertSheet } from "./cert-sheet";
 import { CELL_CLASS, cellText, STATUS_LABEL, STATUS_TONE } from "./status";
 
@@ -37,10 +41,15 @@ function matches(cells: CellView[], f: string) {
 export function CertMatrix({ people, types, cells, positions, today, focus }: { people: PersonView[]; types: TypeView[]; cells: Record<string, Record<string, CellView>>; positions: PositionOpt[]; today: string; focus?: string }) {
   const [position, setPosition] = useState("");
   const [status, setStatus] = useState("");
+  const [q, setQ] = useState("");
+  const [sortBy, setSortBy] = useState<"name" | "worst">("name");
   const [open, setOpen] = useState<{ employeeId: string; typeId: string } | null>(null);
   const cols = types.filter((t) => t.active);
   const posName = useMemo(() => new Map(positions.map((p) => [p.id, p])), [positions]);
-  const shown = people.filter((p) => (!position || p.positionIds.includes(position)) && matches(cols.map((t) => cells[p.id][t.id]), status));
+  const shown = people
+    .filter((p) => (!position || p.positionIds.includes(position)) && matches(cols.map((t) => cells[p.id][t.id]), status))
+    .filter((p) => !q.trim() || matchScore(q, normalize(`${p.name} ${p.positionIds.map((id) => posName.get(id)?.name ?? "").join(" ")}`)) != null)
+    .sort((a, b) => (sortBy === "worst" ? WORST_ORDER.indexOf(a.worst) - WORST_ORDER.indexOf(b.worst) : 0) || a.name.localeCompare(b.name));
 
   // Arriving from the Team page (?person=…): scroll that row into view.
   useEffect(() => {
@@ -55,8 +64,13 @@ export function CertMatrix({ people, types, cells, positions, today, focus }: { 
   return (
     <>
       <div className="mb-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center" data-tour="training.filters">
+        <div className="relative col-span-2 sm:w-56">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setQ("")} placeholder="Search people" aria-label="Search people" className="h-10 w-full rounded-lg border border-border-strong bg-surface pr-3 pl-9 text-base outline-none focus:border-ink-2 sm:h-9 sm:text-sm [&::-webkit-search-cancel-button]:hidden" />
+        </div>
         <Select aria-label="Filter by position" value={position} onChange={(e) => setPosition(e.target.value)} options={[{ value: "", label: "All positions" }, ...positions.map((p) => ({ value: p.id, label: p.name }))]} className="sm:w-44" />
         <Select aria-label="Filter by status" value={status} onChange={(e) => setStatus(e.target.value)} options={STATUS_FILTERS} className="sm:w-48" />
+        <Select aria-label="Sort people" value={sortBy} onChange={(e) => setSortBy(e.target.value as "name" | "worst")} options={[{ value: "name", label: "Sort: name" }, { value: "worst", label: "Sort: most urgent first" }]} className="col-span-2 sm:w-52" />
         <span className="col-span-2 text-xs text-muted sm:ml-auto">{shown.length} of {people.length} {people.length === 1 ? "person" : "people"}</span>
       </div>
 
@@ -67,13 +81,14 @@ export function CertMatrix({ people, types, cells, positions, today, focus }: { 
       ) : (
         <>
           {/* Wide screens: the matrix. */}
-          <Card className="hidden overflow-x-auto sm:block" data-tour="training.matrix">
-            <table className="w-full border-collapse text-sm">
+          {/* Scrolls inside its frame so the header row and the Person column stay put. */}
+          <Card className="hidden max-h-[calc(100dvh-8rem)] overflow-auto sm:block" data-tour="training.matrix">
+            <table className="w-full border-separate border-spacing-0 text-sm">
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-10 min-w-44 border-b border-border bg-surface px-4 py-2.5 text-left text-[0.75rem] font-medium text-muted">Person</th>
+                  <th className="sticky top-0 left-0 z-20 min-w-44 border-b border-border bg-surface px-4 py-2.5 text-left text-[0.75rem] font-medium text-muted">Person</th>
                   {cols.map((t) => (
-                    <th key={t.id} className="min-w-28 border-b border-border px-2 py-2.5 text-left align-bottom text-[0.75rem] font-medium text-muted">
+                    <th key={t.id} className="sticky top-0 z-10 min-w-28 border-b border-border bg-surface px-2 py-2.5 text-left align-bottom text-[0.75rem] font-medium text-muted">
                       <span className="line-clamp-2 leading-tight" title={t.description ?? t.name}>{t.name}</span>
                       <span className="num mt-0.5 block text-[11px] font-normal text-muted/80">{t.requiredCount ? `${t.okCount}/${t.requiredCount} in date` : "Optional"}</span>
                     </th>

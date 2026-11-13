@@ -13,6 +13,8 @@ import { finalParity } from "./areas/final";
 import { training } from "./areas/training";
 import { insights } from "./areas/insights";
 import { quickbooks } from "./areas/quickbooks";
+import { tables } from "./areas/tables";
+import { settingsPages } from "./areas/settings";
 import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
 
@@ -30,7 +32,7 @@ export const AREAS: HelpArea[] = [
   { id: "variance", title: "Margin gap", description: "Theoretical vs actual usage between two counts." },
   { id: "sales", title: "Sales & forecast", description: "Square sync, item links and the forecast." },
   { id: "import", title: "Importing sheets", description: "Bringing in your existing spreadsheets." },
-  { id: "settings", title: "Settings", description: "Connections (Square, email, phone alerts, AI, Google, QuickBooks), team logins, suppliers, food cost target, data." },
+  { id: "settings", title: "Settings", description: "Business profile and hours, logins, pay rules, cost targets, suppliers, invoice checks, fixed costs, connections and data." },
   { id: "team", title: "Team", description: "Positions, employees, availability, logins and announcements." },
   { id: "schedule", title: "Schedule", description: "Forecast-driven schedules with NY compliance checks." },
   { id: "my", title: "My shifts", description: "For staff: shifts, pickups, swaps, time off, sick leave and availability." },
@@ -48,6 +50,7 @@ export const AREAS: HelpArea[] = [
 
 export const HELP: HelpEntry[] = [
   ...basics,
+  ...tables,
   ...overview,
   ...menu,
   ...ingredients,
@@ -59,6 +62,7 @@ export const HELP: HelpEntry[] = [
   ...sales,
   ...importing,
   ...settings,
+  ...settingsPages,
   ...upcoming,
   ...finalParity,
   ...training,

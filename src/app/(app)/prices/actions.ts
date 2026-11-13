@@ -76,3 +76,58 @@ export async function savePriceAlertThreshold(value: string): Promise<{ error?: 
   await saveSpikeThreshold(n / 100);
   revalidatePath("/prices");
 }
+
+// ---- Bulk actions (Prices table) -------------------------------------------------------
+
+const productIds = z.array(z.string().min(1).max(64)).min(1).max(2000);
+type BulkResult = { error?: string; message?: string };
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** Link several supplier products to one ingredient (pack sizes are read from the pack text when possible). */
+export async function linkProducts(ids: string[], ingredientId: string): Promise<BulkResult> {
+  await requireUser("MANAGER");
+  const p = productIds.safeParse(ids);
+  if (!p.success || !ingredientId) return { error: "Pick products and an ingredient." };
+  const ing = await db.ingredient.findUnique({ where: { id: ingredientId } });
+  if (!ing) return { error: "That ingredient is gone." };
+  const products = await db.supplierProduct.findMany({ where: { id: { in: p.data } } });
+  await db.$transaction([
+    ...products.map((product) => {
+      const pack = product.packQtyBase ?? inferPackQty(product.packText, ing.baseUnit as BaseUnit);
+      return db.supplierProduct.update({ where: { id: product.id }, data: { ingredientId, packQtyBase: pack == null ? undefined : new Prisma.Decimal(Number(pack).toFixed(4)) } });
+    }),
+    ...(products[0] ? [db.ingredient.updateMany({ where: { id: ingredientId, preferredProductId: null }, data: { preferredProductId: products[0].id } })] : []),
+  ]);
+  revalidatePath("/", "layout");
+  return { message: `Linked ${plural(products.length, "product")} to ${ing.name}.` };
+}
+
+/** One new ingredient per product, named after it (or linked to an ingredient that already has that name). */
+export async function createIngredientsFromProducts(ids: string[], baseUnit: BaseUnit = "g"): Promise<BulkResult> {
+  await requireUser("MANAGER");
+  const p = productIds.safeParse(ids);
+  if (!p.success) return { error: "Pick at least one product." };
+  const products = await db.supplierProduct.findMany({ where: { id: { in: p.data }, ingredientId: null } });
+  let created = 0;
+  for (const product of products) {
+    const name = product.description.trim();
+    const existing = await db.ingredient.findUnique({ where: { name } });
+    const ing = existing ?? (await db.ingredient.create({ data: { name, baseUnit } }));
+    if (!existing) created++;
+    const pack = product.packQtyBase ?? inferPackQty(product.packText, ing.baseUnit as BaseUnit);
+    await db.supplierProduct.update({ where: { id: product.id }, data: { ingredientId: ing.id, packQtyBase: pack == null ? undefined : new Prisma.Decimal(Number(pack).toFixed(4)) } });
+    await db.ingredient.updateMany({ where: { id: ing.id, preferredProductId: null }, data: { preferredProductId: product.id } });
+  }
+  revalidatePath("/", "layout");
+  return { message: `Created ${plural(created, "ingredient")}${products.length > created ? `, linked ${products.length - created} to ones you had` : ""}. Check their units on Ingredients.` };
+}
+
+/** Hide products you don't buy (they leave this list, ordering and imports' "new" pile) or bring them back. */
+export async function setProductsActive(ids: string[], active: boolean): Promise<BulkResult> {
+  await requireUser("MANAGER");
+  const p = productIds.safeParse(ids);
+  if (!p.success) return { error: "Pick at least one product." };
+  const r = await db.supplierProduct.updateMany({ where: { id: { in: p.data } }, data: { active } });
+  revalidatePath("/", "layout");
+  return { message: `${active ? "Restored" : "Hid"} ${plural(r.count, "product")}.` };
+}

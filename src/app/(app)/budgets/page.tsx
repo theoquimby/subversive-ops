@@ -51,7 +51,7 @@ export default async function BudgetsPage() {
       </div>
 
       <Section help="budgets.targets" title="Weekly targets" description="Under each target: actual so far, or the forecast for weeks ahead.">
-        <Table>
+        <Table sticky>
           <thead>
             <tr>
               <Th className="pr-1! pl-3! sm:px-4!">Week</Th>

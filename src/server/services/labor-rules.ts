@@ -2,6 +2,7 @@ import "server-only";
 import { todayIn, type ISODate } from "@/domain/dates";
 import { LaborRules, NY_DEFAULT_RULES } from "@/domain/labor";
 import { applyWageTable, reviewDue, wageRulesOn } from "@/domain/wageRules";
+import { DEFAULT_WEEK_HOURS, hoursOn, parseSeasons, parseWeek, type SeasonalHours, type WeekHours } from "@/domain/openingHours";
 import { db } from "../db";
 import { env } from "../env";
 
@@ -61,14 +62,50 @@ export async function wageReview() {
   return { auto, reviewed, today: t, ...wageRulesOn(t), due: reviewDue(reviewed?.date ?? null, t) };
 }
 
-/** Opening hours per weekday (0=Sun) as [openHour, closeHour); missing = closed. */
-export async function getOpeningHours(): Promise<Record<number, [number, number]>> {
-  const s = await db.setting.findUnique({ where: { key: "openingHours" } });
-  // Subversive's current taproom hours; closed Tuesdays.
-  return s ? JSON.parse(s.value) : { 0: [12, 19], 1: [16, 20], 3: [16, 20], 4: [16, 20], 5: [16, 21], 6: [12, 21] };
+const HOURS_KEY = "openingHours";
+const SEASONS_KEY = "openingHours.seasons";
+
+/** The regular week, as set in Settings → Business (Subversive's taproom hours until changed). */
+export async function getRegularHours(): Promise<WeekHours> {
+  const s = await db.setting.findUnique({ where: { key: HOURS_KEY } });
+  if (!s) return DEFAULT_WEEK_HOURS;
+  try {
+    return parseWeek(JSON.parse(s.value)) ?? DEFAULT_WEEK_HOURS;
+  } catch {
+    return DEFAULT_WEEK_HOURS;
+  }
+}
+
+/** Seasonal hours (Setting `openingHours.seasons`); none until someone adds one. */
+export async function getSeasonalHours(): Promise<SeasonalHours[]> {
+  const s = await db.setting.findUnique({ where: { key: SEASONS_KEY } });
+  if (!s) return [];
+  try {
+    return parseSeasons(JSON.parse(s.value));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Opening hours per weekday (0=Sun) as [openHour, closeHour); missing = closed.
+ * The regular week, or a season's hours when `asOf` (today by default) falls in one.
+ */
+export async function getOpeningHours(asOf: ISODate = today()): Promise<Record<number, [number, number]>> {
+  const [regular, seasons] = await Promise.all([getRegularHours(), getSeasonalHours()]);
+  return hoursOn(asOf, regular, seasons);
 }
 
 export async function saveOpeningHours(hours: Record<number, [number, number]>) {
   const value = JSON.stringify(hours);
-  await db.setting.upsert({ where: { key: "openingHours" }, create: { key: "openingHours", value }, update: { value } });
+  await db.setting.upsert({ where: { key: HOURS_KEY }, create: { key: HOURS_KEY, value }, update: { value } });
+}
+
+export async function saveSeasonalHours(seasons: SeasonalHours[]) {
+  if (seasons.length === 0) {
+    await db.setting.deleteMany({ where: { key: SEASONS_KEY } });
+    return;
+  }
+  const value = JSON.stringify(seasons);
+  await db.setting.upsert({ where: { key: SEASONS_KEY }, create: { key: SEASONS_KEY, value }, update: { value } });
 }

@@ -988,15 +988,15 @@ Timecards you corrected here, or that are in an approved week, are never overwri
   {
     id: "settings.team",
     area: "settings",
-    route: "/settings",
+    route: "/settings/people",
     title: "Team logins",
-    body: "Everyone signs in with their name and a 4–8 digit PIN. Staff see their shifts, counts, waste and help; managers see everything. Reset a PIN, deactivate someone or add a login here.",
+    body: "Everyone signs in with their name and a 4–8 digit PIN. Staff see their shifts, counts, waste and help; managers see everything. Rename, change access, set a new PIN (it unlocks a locked login), switch a login off or add one here.",
     related: ["app.roles"],
   },
   {
     id: "settings.suppliers",
     area: "settings",
-    route: "/settings",
+    route: "/settings/suppliers",
     title: "Suppliers",
     body: "Delivery days and lead time decide when each order is due and how many days it covers. Minimum order warns you when an order is too small. You can also add a supplier straight from an invoice — including stores like Price Chopper.",
     article: `- **Type** — just a label. **Distributor** sends a price sheet (Sysco, Hudson Valley Foodservice); **Local** is a farm, bakery or store run like Price Chopper. Nothing else changes with it.
@@ -1010,7 +1010,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
   {
     id: "settings.target",
     area: "settings",
-    route: "/settings",
+    route: "/settings/food",
     title: "Food cost target",
     body: "The default food cost % for every menu item. Items can override it on the menu page or in the recipe.",
     related: ["menu.list.target"],
@@ -1018,7 +1018,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
   {
     id: "settings.clear",
     area: "settings",
-    route: "/settings",
+    route: "/settings/data",
     title: "Clear all data",
     body: "Removes every ingredient, price, recipe, sale, count and order — handy after trying the demo. Logins are kept.",
   },
@@ -1027,7 +1027,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     area: "settings",
     route: "/settings",
     title: "Settings",
-    body: "Connections to outside services, notifications, the Square connection, team logins, suppliers, the food cost target, labor rules and clearing data — the things you set once and rarely touch.",
+    body: "Everything you set once and rarely touch, grouped: business, people & pay, food & ordering, money, insights, connections, notifications and data. Each line shows its current value; search finds any setting by name.",
     article: `Start with **Connections**: it links Square, email, phone notifications, AI features and Google reviews, each with a step-by-step guide.`,
     related: ["settings.team", "settings.suppliers", "settings.laborRules"],
   },
@@ -1042,7 +1042,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
   {
     id: "settings.notifications",
     area: "settings",
-    route: "/settings",
+    route: "/settings/notifications",
     title: "Notifications",
     body: "Choose which alerts you get by email and on your phone: schedules, shift changes, the weekly brief, price spikes, invoice issues, staff requests and low reviews. Staff turn theirs on from My shifts.",
     related: ["settings.notify.events"],
@@ -1050,7 +1050,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
   {
     id: "settings.laborRules",
     area: "settings",
-    route: "/settings",
+    route: "/settings/pay",
     title: "Labor rules",
     body: "Minimum and tipped wages, overtime, spread of hours, call-in pay, employer burden, meal breaks, rest, minors, paid sick leave and the pay period. Pre-filled for New York; each compliance check can be Must fix, Warn or Off.",
     related: ["schedule.compliance", "labor.overtime", "labor.sick", "settings.wageSchedule"],

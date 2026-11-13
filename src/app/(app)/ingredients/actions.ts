@@ -175,3 +175,61 @@ export async function setMinOnHand(ingredientId: string, raw: string) {
   }
   revalidatePath("/ingredients");
 }
+
+// ---- Bulk actions (Ingredients table) ----------------------------------------------------
+
+const bulkIds = z.array(z.string().min(1).max(64)).min(1).max(2000);
+type BulkResult = { error?: string; message?: string };
+const count = (n: number) => `${n} ingredient${n === 1 ? "" : "s"}`;
+
+/** Set category, storage area or order buffer % on several ingredients at once. */
+export async function bulkSetIngredients(ids: string[], field: "category" | "storageArea" | "safetyPct", raw: string): Promise<BulkResult> {
+  await requireUser("MANAGER");
+  const p = bulkIds.safeParse(ids);
+  if (!p.success) return { error: "Pick at least one ingredient." };
+  const value = raw.trim();
+  if (field === "safetyPct") {
+    const n = Number(value.replace(/%$/, ""));
+    if (!Number.isFinite(n) || n < 0 || n > 200) return { error: "Buffer is 0–200%." };
+    await db.ingredient.updateMany({ where: { id: { in: p.data } }, data: { safetyPct: new Prisma.Decimal(n / 100) } });
+  } else {
+    if (!value || value.length > 80) return { error: "Type a name." };
+    await db.ingredient.updateMany({ where: { id: { in: p.data } }, data: { [field]: value } });
+  }
+  revalidatePath("/", "layout");
+  const what = field === "category" ? `category to ${value}` : field === "storageArea" ? `storage to ${value}` : `buffer to ${value.replace(/%$/, "")}%`;
+  return { message: `Set ${what} on ${count(p.data.length)}.` };
+}
+
+/** Same minimum on hand for several ingredients, each in its own count unit (blank clears). */
+export async function bulkSetMinOnHand(ids: string[], raw: string): Promise<BulkResult> {
+  await requireUser("MANAGER");
+  const p = bulkIds.safeParse(ids);
+  if (!p.success) return { error: "Pick at least one ingredient." };
+  const errors: string[] = [];
+  for (const id of p.data) {
+    const r = await setMinOnHand(id, raw);
+    if (r?.error) errors.push(r.error);
+  }
+  revalidatePath("/ingredients");
+  if (errors.length === p.data.length) return { error: errors[0] };
+  return { message: `${raw.trim() ? "Set" : "Cleared"} minimum on hand for ${count(p.data.length - errors.length)}${errors.length ? `; ${errors.length} couldn't convert` : ""}.` };
+}
+
+/** Archive several. Ingredients still in a recipe are skipped and named. */
+export async function archiveIngredients(ids: string[]): Promise<BulkResult> {
+  await requireUser("MANAGER");
+  const p = bulkIds.safeParse(ids);
+  if (!p.success) return { error: "Pick at least one ingredient." };
+  let done = 0;
+  const kept: string[] = [];
+  for (const id of p.data) {
+    const r = await archiveIngredient(id);
+    if (r.error) {
+      const ing = await db.ingredient.findUnique({ where: { id }, select: { name: true } });
+      kept.push(ing?.name ?? id);
+    } else done++;
+  }
+  if (!done) return { error: `${kept.length === 1 ? `${kept[0]} is` : "All of them are"} still used in recipes.` };
+  return { message: `Archived ${count(done)}.${kept.length ? ` Kept ${kept.slice(0, 3).join(", ")}${kept.length > 3 ? ` and ${kept.length - 3} more` : ""}: still in recipes.` : ""}` };
+}

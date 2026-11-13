@@ -1,5 +1,5 @@
 import { HelpZone } from "@/components/help";
-import { Card, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
+import { Card, EmptyState, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
 import { buildBill } from "@/domain/accountingExport";
 import { money, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
@@ -8,6 +8,7 @@ import { businessToday } from "@/server/services/sales";
 import { Download } from "lucide-react";
 import Link from "next/link";
 import { AccountCell, RangePicker, TaxRateCell, TermsCell } from "./exports-client";
+import { BillsTable, SalesDaysTable } from "./exports-tables";
 import { readRange } from "./range";
 
 export const metadata = { title: "Accounting exports" };
@@ -69,33 +70,7 @@ export default async function ExportsPage({ searchParams }: { searchParams: Prom
         {bills.length === 0 ? (
           <EmptyState title="No approved invoices in this range">Approve invoices on the invoices page and they&apos;ll be ready to export here.</EmptyState>
         ) : (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Supplier</Th>
-                <Th className="hidden sm:table-cell">Bill no</Th>
-                <Th className="hidden md:table-cell">Date</Th>
-                <Th className="hidden md:table-cell">Due</Th>
-                <Th className="hidden lg:table-cell">Accounts</Th>
-                <Th align="right">Amount</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {bills.map((b) => (
-                <Tr key={b.id} className="relative">
-                  <Td>
-                    <Link href={`/invoices/${b.id}`} className="font-medium after:absolute after:inset-0 hover:underline">{b.supplier}</Link>
-                    <div className="text-xs text-muted sm:hidden">#{b.billNo} · {shortDate(b.date)}</div>
-                  </Td>
-                  <Td className="num hidden text-ink-2 sm:table-cell">{b.billNo}</Td>
-                  <Td className="num hidden md:table-cell">{shortDate(b.date)}</Td>
-                  <Td className="num hidden text-ink-2 md:table-cell">{shortDate(b.dueDate)}</Td>
-                  <Td className="hidden text-ink-2 lg:table-cell">{[...new Set(b.lines.map((l) => l.account))].join(", ")}</Td>
-                  <Td align="right">{money(b.total)}</Td>
-                </Tr>
-              ))}
-            </tbody>
-          </Table>
+          <BillsTable rows={bills.map((b) => ({ id: b.id, supplier: b.supplier, billNo: b.billNo, date: b.date, dueDate: b.dueDate, accounts: [...new Set(b.lines.map((l) => l.account))], total: b.total }))} />
         )}
       </Section>
 
@@ -113,30 +88,7 @@ export default async function ExportsPage({ searchParams }: { searchParams: Prom
         {days.length === 0 ? (
           <EmptyState title="No sales in this range">Sales come in from Square every night.</EmptyState>
         ) : (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Day</Th>
-                <Th className="hidden md:table-cell">By category</Th>
-                <Th align="right">Net sales</Th>
-                <Th align="right" className="hidden sm:table-cell">Tax</Th>
-                <Th align="right" className="hidden sm:table-cell">Tips</Th>
-                <Th align="right" className="hidden sm:table-cell">Total</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {days.map((d) => (
-                <Tr key={d.date}>
-                  <Td className="num">{shortDate(d.date)}</Td>
-                  <Td className="hidden text-ink-2 md:table-cell">{d.byCategory.filter((c) => Math.abs(c.net) >= 0.5).map((c) => `${c.category} ${money(c.net, { whole: true })}`).join(" · ")}</Td>
-                  <Td align="right">{money(d.net)}</Td>
-                  <Td align="right" className="hidden sm:table-cell">{d.tax == null ? <span className="text-muted">—</span> : money(d.tax)}</Td>
-                  <Td align="right" className="hidden sm:table-cell">{d.tips == null ? <span className="text-muted">—</span> : money(d.tips)}</Td>
-                  <Td align="right" className="hidden sm:table-cell">{money(d.total)}</Td>
-                </Tr>
-              ))}
-            </tbody>
-          </Table>
+          <SalesDaysTable rows={days.map((d) => ({ date: d.date, categories: d.byCategory.filter((c) => Math.abs(c.net) >= 0.5).map((c) => `${c.category} ${money(c.net, { whole: true })}`).join(" · "), net: d.net, tax: d.tax ?? null, tips: d.tips ?? null, total: d.total }))} />
         )}
         {noTax && <p className="mt-2 text-xs text-muted">Square&apos;s sales tax isn&apos;t stored yet. Set your sales tax rate below to include an estimate, or leave it out and post tax from Square&apos;s own report.</p>}
       </Section>

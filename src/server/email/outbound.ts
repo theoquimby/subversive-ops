@@ -7,6 +7,7 @@ import { emailReady, emailDeliveryStatus, isEmail, sendEmail, type DeliveryEvent
 import { loadOrder, orderAsCsv } from "../services/orders";
 import { loadTolerance } from "../services/invoices";
 import { emailForUser } from "../services/notify";
+import { getBusinessContact } from "../services/settings";
 import { creditRequestEmail, purchaseOrderEmail } from "./templates";
 
 /**
@@ -64,6 +65,7 @@ export async function sendPurchaseOrder(args: { orderId: string; to: string; cop
     senderName: args.by.name,
     replyTo: me,
     csvFilename: filename,
+    business: await getBusinessContact(),
     lines: o.lines.map((l) => ({ sku: l.product.sku, description: l.product.description, qty: l.qty.toNumber(), unit: l.product.purchaseUnit, unitPrice: num(l.unitPrice) })),
   });
   const r = await sendEmail({

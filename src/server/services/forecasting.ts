@@ -224,7 +224,7 @@ export async function hourlySalesForecast(dates: ISODate[]) {
   const [daily, rows, opening] = await Promise.all([
     dailySalesForecast(dates),
     db.hourlySale.findMany({ where: { date: { gte: parseISODate(addDays(today, -56)), lt: parseISODate(today) } } }),
-    getOpeningHours(),
+    getOpeningHours(dates[0] ?? today),
   ]);
   const plain = rows.map((r) => ({ date: toISODate(r.date), hour: r.hour, netSales: r.netSales.toNumber() }));
   const plainOrders = rows.map((r) => ({ date: toISODate(r.date), hour: r.hour, netSales: r.orders }));

@@ -9,9 +9,9 @@ import { isSquareConnected } from "@/server/services/square";
 import Link from "next/link";
 import { refreshIfStale } from "@/server/services/square-sync";
 import { forecastItems } from "@/server/services/planning";
-import { businessToday, lastSquareSync, squareCatalogMeta } from "@/server/services/sales";
-import { GridSelect } from "@/components/grid";
-import { setSquareMapping } from "@/server/actions/inline";
+import { businessToday, lastSquareSync } from "@/server/services/sales";
+import { squareItemRows } from "@/server/services/square-menu";
+import { SquareItemsTable } from "./square-items-table";
 import { dailySalesHistory, demandDrivers, forecastAccuracy, hourlySalesForecast, location, refreshWeather, weatherLabel, weatherMap, weatherStatus } from "@/server/services/forecasting";
 import { after } from "next/server";
 import { CalDay, ForecastCalendar } from "./forecast-calendar";
@@ -23,9 +23,8 @@ const toF = (c: number) => Math.round((c * 9) / 5 + 32);
 
 export const metadata = { title: "Sales & forecast" };
 
-export default async function SalesPage({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
+export default async function SalesPage() {
   await requireUser("MANAGER");
-  const { show } = await searchParams;
   await refreshIfStale();
   const today = businessToday();
   const dates = dateRange(today, addDays(today, 7));
@@ -39,14 +38,12 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   if (!haveToday) await refreshWeather();
   else after(() => refreshWeather().then(() => undefined, () => undefined));
 
-  const [connected, catalogMeta, lastSync, mappings, recipes, forecast, volume, hourly, actuals, pastDrivers, accuracy, weather, wStatus, loc] = await Promise.all([
+  const [connected, squareRows, lastSync, mappings, forecast, hourly, actuals, pastDrivers, accuracy, weather, wStatus, loc] = await Promise.all([
     isSquareConnected(),
-    squareCatalogMeta(),
+    squareItemRows(),
     lastSquareSync(),
-    db.squareMapping.findMany({ orderBy: [{ ignored: "asc" }, { squareName: "asc" }], include: { recipe: { select: { name: true } } } }),
-    db.recipe.findMany({ where: { active: true, kind: { in: ["MENU", "MODIFIER"] } }, select: { id: true, name: true, kind: true }, orderBy: { name: "asc" } }),
+    db.squareMapping.findMany({ select: { recipeId: true, ignored: true } }),
     forecastItems(dates),
-    db.dailySale.groupBy({ by: ["squareId"], _sum: { qty: true }, where: { date: { gte: new Date(`${addDays(today, -28)}T00:00:00Z`) } } }),
     hourlySalesForecast(calDates.filter((d) => d >= today)),
     dailySalesHistory(calStart, today),
     demandDrivers(pastDates),
@@ -55,9 +52,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
     weatherStatus(),
     location(),
   ]);
-  const sold = new Map(volume.map((v) => [v.squareId, v._sum.qty?.toNumber() ?? 0]));
   const unmapped = mappings.filter((m) => !m.recipeId && !m.ignored);
-  const listed = (show === "all" ? mappings : unmapped).sort((a, b) => (sold.get(b.squareId) ?? 0) - (sold.get(a.squareId) ?? 0));
 
   const byDate = new Map(hourly.map((h) => [h.date, h]));
   const backtestByDate = new Map(accuracy.rows.map((r) => [r.date, r.forecast]));
@@ -197,7 +192,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
 
       {forecast.items.length > 0 && (
         <Section help="sales.forecastByItem" title="Forecast by item" description="Next 7 days, in portions — events, weather and your adjustments included.">
-          <Table>
+          <Table sticky>
             <thead><tr><Th>Item</Th>{dates.map((d) => <Th key={d} align="right" className="hidden md:table-cell">{dayDate(d).split(",")[0]}</Th>)}<Th align="right">Week</Th></tr></thead>
             <tbody>
               {forecast.items.map((it) => (
@@ -217,48 +212,13 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
         title="Square items"
         description="Link each Square item and modifier to a recipe so its sales drive costing and ordering."
         actions={
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <a href="/sales/square-menu" className="text-sm font-medium whitespace-nowrap text-ink hover:underline">Menu from Square →</a>
-            <a href={show === "all" ? "/sales" : "/sales?show=all"} className="text-sm whitespace-nowrap text-ink-2 hover:text-ink">
-              {show === "all" ? `Only unlinked (${unmapped.length})` : `Show all (${mappings.length})`}
-            </a>
-          </div>
+          <a href="/sales/square-menu" className="text-sm font-medium whitespace-nowrap text-ink hover:underline">Menu from Square →</a>
         }
       >
-        {listed.length === 0 ? (
-          <Card className="p-5 text-sm text-muted">Every Square item is linked or ignored.</Card>
+        {squareRows.rows.length === 0 ? (
+          <Card className="p-5 text-sm text-muted">No Square items yet. They come in with the first sync.</Card>
         ) : (
-          <Table>
-            <thead><tr><Th>Square item</Th><Th align="right" className="hidden sm:table-cell">Sold, 4 wks</Th><Th>Recipe</Th></tr></thead>
-            <tbody>
-              {listed.map((m) => (
-                <Tr key={m.squareId}>
-                  <Td>
-                    <div className="font-medium">{m.squareName}</div>
-                    <div className="text-xs text-muted">
-                      {m.squareType === "MODIFIER" ? "Modifier" : "Item"}
-                      {catalogMeta[m.squareId]?.price != null && ` · ${money(catalogMeta[m.squareId].price)}`}
-                      {catalogMeta[m.squareId]?.deleted ? " · removed from Square" : catalogMeta[m.squareId]?.archived ? " · archived in Square" : ""}
-                    </div>
-                  </Td>
-                  <Td align="right" className="hidden text-ink-2 sm:table-cell">{qty(sold.get(m.squareId) ?? 0, 0)}</Td>
-                  <Td>
-                    <GridSelect
-                      value={m.ignored ? "__ignore" : m.recipeId ?? ""}
-                      options={[
-                        { value: "", label: "Not linked" },
-                        { value: "__ignore", label: "Ignore (drinks, merch, gift cards)" },
-                        ...recipes.map((r) => ({ value: r.id, label: `${r.name}${r.kind === "MODIFIER" ? " (add-on)" : ""}` })),
-                      ]}
-                      onSave={setSquareMapping.bind(null, m.squareId)}
-                      ariaLabel={`Recipe for ${m.squareName}`}
-                      className="max-w-64 border-border"
-                    />
-                  </Td>
-                </Tr>
-              ))}
-            </tbody>
-          </Table>
+          <SquareItemsTable id="sales-items" rows={squareRows.rows} recipes={squareRows.recipes} defaultFilters={unmapped.length ? { status: ["open", "suggested"] } : {}} />
         )}
       </Section>
     </>

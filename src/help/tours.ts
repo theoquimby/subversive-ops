@@ -106,7 +106,7 @@ export const TOURS: Tour[] = [
     audience: "manager",
     minutes: 2,
     steps: [
-      { route: "/prices", target: "prices.filters", title: "All your prices", body: "Filter by supplier, or by products not yet linked to an ingredient. Search finds an item by name or number.", helpId: "prices.filters" },
+      { route: "/prices", target: "prices.filters", title: "All your prices", body: "Search by name or item number, filter by supplier or by products not linked to an ingredient yet, and sort by any column.", helpId: "prices.filters" },
       { route: "/prices", selector: 'input[data-grid="prices"][data-col="price"]', title: "Change one price", body: "Type a new price and press Enter. It's saved as of today and the old price is kept in history.", helpId: "prices.list.price", ifMissing: "skip" },
       { route: "/prices", target: "prices.import-button", title: "Import a whole sheet", body: "For distributors, download their price list and bring it in here as-is.", helpId: "prices.import" },
       { route: "/prices/import", target: "prices.import.supplier", title: "1 · Whose sheet", body: "Pick the supplier. Item numbers are matched to their products, and the column layout is remembered for them.", helpId: "prices.import.supplier" },
@@ -156,7 +156,7 @@ export const TOURS: Tour[] = [
     audience: "manager",
     minutes: 1,
     steps: [
-      { route: "/ingredients", target: "ingredients.search", title: "Find an ingredient", body: "Type part of a name and press Enter to filter.", helpId: "ingredients.search" },
+      { route: "/ingredients", target: "ingredients.search", title: "Find an ingredient", body: "Type part of a name — the grid narrows as you type. Press / from anywhere on the page to jump here.", helpId: "ingredients.search" },
       { route: "/ingredients", selector: 'input[data-grid="ing"][data-col="name"]', title: "It's a spreadsheet", body: "Click any cell and type. It saves when you press Enter or click away — a green tick confirms. Enter moves down, Tab moves across, Esc undoes.", helpId: "app.grids" },
       { route: "/ingredients", selector: 'input[data-grid="ing"][data-col="yield"]', title: "Yield %", body: "How much of what you buy ends up on the plate after trim and cooking. Recipes are costed at purchase cost ÷ yield.", helpId: "ingredients.yield" },
       { route: "/ingredients", selector: 'input[data-grid="ing"][data-col="buffer"]', title: "Order buffer %", body: "Extra ordered on top of the forecast, so a busy night doesn't run you out.", helpId: "ingredients.buffer" },

@@ -98,3 +98,50 @@ export async function restoreRecipe(id: string): Promise<{ error?: string }> {
   revalidatePath("/");
   return {};
 }
+
+// ---- Bulk actions (Menu costs table) -----------------------------------------------------
+
+const bulkIds = z.array(z.string().min(1).max(64)).min(1).max(1000);
+type BulkResult = { error?: string; message?: string };
+const recipesWord = (n: number) => `${n} recipe${n === 1 ? "" : "s"}`;
+
+/** Category or target food cost % on several recipes. Target blank = use the default. */
+export async function bulkSetRecipes(ids: string[], field: "category" | "targetFoodCostPct", raw: string): Promise<BulkResult> {
+  await requireUser("MANAGER");
+  const p = bulkIds.safeParse(ids);
+  if (!p.success) return { error: "Pick at least one recipe." };
+  const value = raw.trim();
+  if (field === "category") {
+    if (!value || value.length > 80) return { error: "Type a category." };
+    await db.recipe.updateMany({ where: { id: { in: p.data } }, data: { category: value } });
+  } else {
+    const n = value === "" ? null : Number(value.replace(/%$/, ""));
+    if (n != null && (!Number.isFinite(n) || n <= 0 || n >= 100)) return { error: "Enter 1–99%, or leave blank for the default." };
+    await db.recipe.updateMany({ where: { id: { in: p.data } }, data: { targetFoodCostPct: n == null ? null : new Prisma.Decimal(n / 100) } });
+  }
+  revalidatePath("/", "layout");
+  return { message: `Updated ${recipesWord(p.data.length)}.` };
+}
+
+/** Archive several recipes. Prep recipes still used inside others are skipped. */
+export async function archiveRecipes(ids: string[]): Promise<BulkResult> {
+  await requireUser("MANAGER");
+  const p = bulkIds.safeParse(ids);
+  if (!p.success) return { error: "Pick at least one recipe." };
+  const label = shortDate(businessToday());
+  let done = 0;
+  const kept: string[] = [];
+  for (const id of p.data) {
+    const recipe = await db.recipe.findUnique({ where: { id } });
+    if (!recipe?.active) continue;
+    if (await db.recipeLine.count({ where: { subRecipeId: id, recipe: { active: true } } })) { kept.push(recipe.name); continue; }
+    let name = archivedName(recipe.name, label);
+    for (let n = 2; await db.recipe.findUnique({ where: { name }, select: { id: true } }); n++) name = archivedName(recipe.name, label, n);
+    await db.recipe.update({ where: { id }, data: { active: false, name } });
+    done++;
+  }
+  revalidatePath("/menu");
+  revalidatePath("/");
+  if (!done && kept.length) return { error: `Still used inside other recipes: ${kept.slice(0, 3).join(", ")}.` };
+  return { message: `Archived ${recipesWord(done)}.${kept.length ? ` Kept ${kept.length} used inside other recipes.` : ""}` };
+}

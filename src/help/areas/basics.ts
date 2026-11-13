@@ -46,7 +46,7 @@ export const basics: HelpEntry[] = [
     area: "basics",
     title: "Command bar (⌘K)",
     audience: "all",
-    body: "Press ⌘K (Ctrl+K on Windows) or / anywhere to search recipes, ingredients and suppliers, or start a task like \"Import a price sheet\". Use ↑ ↓ and Enter.",
+    body: "Press ⌘K (Ctrl+K on Windows), or / where there is no list to search, to find recipes, ingredients and suppliers, or start a task like \"Import a price sheet\". Use ↑ ↓ and Enter.",
     article: `The command bar is the fastest way around the app.
 
 - **Open it:** ⌘K on a Mac, Ctrl+K on Windows, or just press **/** when you're not typing in a field. On a phone, tap the magnifying glass at the top.

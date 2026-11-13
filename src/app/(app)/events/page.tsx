@@ -60,7 +60,7 @@ export default async function EventsPage() {
         {learned.length === 0 ? (
           <Card className="p-5 text-sm text-muted">Once a few events have happened with sales history around them, their real effect shows up here.</Card>
         ) : (
-          <Table>
+          <Table sticky>
             <thead>
               <tr>
                 <Th>Event</Th>
