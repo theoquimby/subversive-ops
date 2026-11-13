@@ -152,3 +152,11 @@ def test_open_days_per_month_ignores_days_before_history():
     lead = [{"date": f"2026-08-{i:02d}", "open": False, "sales": 0} for i in range(1, 32)]
     # closed Tuesdays only: 6 open days in 7
     assert abs(open_days_per_month(lead + data["days"]) - 30.4 * 6 / 7) < 0.6
+
+
+def test_price_skips_items_with_suspect_costs():
+    data = make_data()
+    data["items"][0]["unitCost"] = 25.0  # burger costs more than it sells for: a typo upstream
+    r = price.run(data)
+    assert all(x["id"] != "burger" for x in r["details"]["items"])
+    assert "Burger" in " ".join(r["how"])
