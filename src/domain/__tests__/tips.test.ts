@@ -52,4 +52,11 @@ describe("tipsCsv", () => {
     expect(csv.split("\n")[1]).toBe('"Sam ""Jr"", Bar",5.00,5.00,40.00,2026-11-02,2026-11-08');
     expect(csv).toContain("Total,5.00,,40.00");
   });
+
+  it("adds card and cash columns when the period has them", () => {
+    const csv = tipsCsv([{ name: "Ana", hours: 4, points: 4, amount: 50, card: 42.5, cash: 7.5 }], { start: "2026-11-02", end: "2026-11-08", method: "HOURS", total: 50 });
+    expect(csv.split("\n")[0]).toBe("Employee,Hours,Share basis (hours),Tips,Card tips,Cash tips,Period start,Period end");
+    expect(csv.split("\n")[1]).toBe("Ana,4.00,4.00,50.00,42.50,7.50,2026-11-02,2026-11-08");
+    expect(csv.split("\n")[2]).toBe("Total,4.00,,50.00,42.50,7.50,,");
+  });
 });

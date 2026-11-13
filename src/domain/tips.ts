@@ -67,11 +67,14 @@ const csvCell = (v: string | number) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-export function tipsCsv(rows: { name: string; hours: number; points: number; amount: number }[], meta: { start: string; end: string; method: TipMethod; total: number }): string {
+export function tipsCsv(rows: { name: string; hours: number; points: number; amount: number; card?: number; cash?: number }[], meta: { start: string; end: string; method: TipMethod; total: number }): string {
+  // Periods with tips from Square also say how much of each person's total is card (payroll) and cash.
+  const split = rows.some((r) => r.card != null || r.cash != null);
+  const sum = (f: (r: (typeof rows)[number]) => number) => rows.reduce((a, r) => a + f(r), 0).toFixed(2);
   const lines = [
-    ["Employee", "Hours", meta.method === "POINTS" ? "Weighted points" : "Share basis (hours)", "Tips", "Period start", "Period end"].map(csvCell).join(","),
-    ...rows.map((r) => [r.name, r.hours.toFixed(2), r.points.toFixed(2), r.amount.toFixed(2), meta.start, meta.end].map(csvCell).join(",")),
-    ["Total", rows.reduce((a, r) => a + r.hours, 0).toFixed(2), "", meta.total.toFixed(2), "", ""].map(csvCell).join(","),
+    ["Employee", "Hours", meta.method === "POINTS" ? "Weighted points" : "Share basis (hours)", "Tips", ...(split ? ["Card tips", "Cash tips"] : []), "Period start", "Period end"].map(csvCell).join(","),
+    ...rows.map((r) => [r.name, r.hours.toFixed(2), r.points.toFixed(2), r.amount.toFixed(2), ...(split ? [(r.card ?? 0).toFixed(2), (r.cash ?? 0).toFixed(2)] : []), meta.start, meta.end].map(csvCell).join(",")),
+    ["Total", sum((r) => r.hours), "", meta.total.toFixed(2), ...(split ? [sum((r) => r.card ?? 0), sum((r) => r.cash ?? 0)] : []), "", ""].map(csvCell).join(","),
   ];
   return lines.join("\n") + "\n";
 }

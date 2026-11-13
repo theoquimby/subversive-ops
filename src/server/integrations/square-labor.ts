@@ -77,6 +77,8 @@ export interface SquareTimecard {
   unpaidBreakMinutes: number;
   jobTitle: string | null;
   hourlyRate: number | null;
+  /** Timecard.declared_cash_tip_money: "The cash tips declared by the team member for this timecard." Cents. */
+  declaredCashTipCents: number;
 }
 
 interface RawTimecard {
@@ -87,6 +89,7 @@ interface RawTimecard {
   end_at?: string;
   breaks?: { start_at?: string; end_at?: string; is_paid?: boolean }[];
   wage?: { title?: string; hourly_rate?: Money };
+  declared_cash_tip_money?: Money;
 }
 
 function normalize(t: RawTimecard): SquareTimecard | null {
@@ -105,6 +108,7 @@ function normalize(t: RawTimecard): SquareTimecard | null {
     unpaidBreakMinutes: Math.round(unpaid),
     jobTitle: t.wage?.title?.trim() || null,
     hourlyRate: t.wage?.hourly_rate?.amount != null ? t.wage.hourly_rate.amount / 100 : null,
+    declaredCashTipCents: t.declared_cash_tip_money?.amount ?? 0,
   };
 }
 

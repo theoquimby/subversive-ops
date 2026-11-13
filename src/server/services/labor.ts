@@ -1,7 +1,8 @@
 import "server-only";
-import { addDays, businessDate, ISODate } from "@/domain/dates";
+import { addDays, businessDate, dateRange, ISODate } from "@/domain/dates";
 import { payForWeek, PayLine } from "@/domain/labor";
 import { mergePositionRate, mergeTeamMember, parseTeamDiffs, type TeamDiff } from "@/domain/teamSync";
+import { cashTipRows } from "@/domain/tipSources";
 import { blockHours, zonedTime } from "@/domain/timecards";
 import { Prisma } from "@prisma/client";
 import { db, num } from "../db";
@@ -10,6 +11,7 @@ import { SquareClient } from "../integrations/square-http";
 import { getWageJobs, listTeamMembers, listTimecards } from "../integrations/square-labor";
 import { isSquareConnected, recordSquareSync, requireSquareClient } from "./square";
 import { getLaborRules } from "./labor-rules";
+import { storeSquareTips } from "./tips";
 
 const tz = () => env.BUSINESS_TIMEZONE;
 
@@ -222,13 +224,21 @@ export async function syncSquareTimecards(from: ISODate, toExclusive: ISODate, c
     await db.timecard.upsert({ where: { squareId: card.id }, create: { ...data, squareId: card.id }, update: data });
     saved++;
   }
+  // Cash tips each person declared at clock-out (Timecard.declared_cash_tip_money), rebuilt for these days.
+  // Stored apart from the timecard, so edited and approved cards still report what Square says.
+  const cashRows = cashTipRows(
+    cards.map((x) => ({ timecardId: x.id, startAt: x.startAt, teamMemberId: x.teamMemberId, cashCents: x.declaredCashTipCents })),
+    dateRange(from, toExclusive),
+    (iso) => businessDate(iso, tz()),
+  );
+  await storeSquareTips("CASH", from, toExclusive, cashRows);
   await db.setting.upsert({
     where: { key: "square.lastLaborSync" },
     create: { key: "square.lastLaborSync", value: new Date().toISOString() },
     update: { value: new Date().toISOString() },
   });
   await recordSquareSync("labor", saved, `${from} → ${addDays(toExclusive, -1)}${kept ? `, ${kept} edited kept` : ""}`);
-  return { timecards: saved, keptEdited: kept, members: team?.members ?? 0, positionsCreated: (team?.positionsCreated ?? 0) + pos.created() };
+  return { timecards: saved, keptEdited: kept, members: team?.members ?? 0, positionsCreated: (team?.positionsCreated ?? 0) + pos.created(), cashTips: cashRows.reduce((a, r) => a + r.amount, 0) };
 }
 
 /** Team members, wages and timecards for business dates [from, toExclusive). */

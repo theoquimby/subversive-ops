@@ -448,6 +448,17 @@ model TipPeriod {
   createdAt   DateTime @default(now())
   finalized   Boolean  @default(false)
   allocations TipAllocation[]
+  /// POOL: card tips all go into the pool. KEEP: each person in the pool keeps the card tips Square credits to them; the rest is pooled.
+  cardMode    String   @default("POOL")
+  /// POOL: declared cash tips go into the pool. KEEP: each person in the pool keeps the cash they declared.
+  cashMode    String   @default("POOL")
+  /// Card tips and cash tips in totalTips (null on periods saved before tips came from Square).
+  cardTips    Decimal? @db.Decimal(10, 2)
+  cashTips    Decimal? @db.Decimal(10, 2)
+  /// Values typed over Square's: { card: {employeeId: $}, cash: {employeeId: $}, pooledCard?: $, pooledCash?: $ }. The Square sync never touches these.
+  overrides   Json?
+  /// The tip lines (Square + manual) as they were at the last save, so a finalized period never changes.
+  snapshot    Json?
 }
 
 model TipAllocation {
@@ -459,6 +470,27 @@ model TipAllocation {
   hours      Decimal   @db.Decimal(8, 2)
   points     Decimal   @db.Decimal(10, 2)
   amount     Decimal   @db.Decimal(10, 2)
+  /// Of amount: card tips (paid through payroll) and cash tips (handed out or already in hand).
+  cardAmount Decimal?  @db.Decimal(10, 2)
+  cashAmount Decimal?  @db.Decimal(10, 2)
+}
+
+/// Tips Square reports per business day, rebuilt by every sync of that day.
+/// CARD: Payment.tip_money by Payment.team_member_id (the person who took the payment).
+/// CASH: Timecard.declared_cash_tip_money by the timecard's team member.
+/// teamMemberId "" holds tips not linked to anyone; it is written for every synced day, so it also marks the day as synced.
+model SquareTip {
+  id           String   @id @default(cuid())
+  date         DateTime @db.Date
+  kind         String   // CARD | CASH
+  teamMemberId String   @default("")
+  amount       Decimal  @db.Decimal(10, 2)
+  /// Payments (CARD) or timecards (CASH) behind the amount.
+  count        Int      @default(0)
+  syncedAt     DateTime @default(now())
+
+  @@unique([date, kind, teamMemberId])
+  @@index([date])
 }
 
 /// One-off pay lines (bonus, correction, deduction, reimbursement) on a business date.

@@ -438,12 +438,14 @@ export const tips: HelpEntry[] = [
     area: "tips",
     route: "/tips",
     title: "Tip pooling",
-    body: "Splits a period's tips across the people in the pool, by hours worked or by points per position. Finalized pools flow into the payroll export.",
+    body: "Card and cash tips come in from Square. The page splits them across the people in the pool, by hours worked or by points per position. Finalized pools flow into the payroll export.",
     article: `- **By hours** — each person's share is their hours ÷ everyone's hours in the pool.
 - **By points** — each position has points (say server 1, expo 0.5); share = points × hours ÷ total points × hours.
 
+Card tips and declared cash tips come in from Square on every sync; type over any number to correct it.
+
 Only tip-eligible positions are in the pool (set on the Team page). Check the split, save, then **Finalize** — finalized tips are added to the payroll export on Timecards, prorated by day if the tip period and pay period don't line up.`,
-    related: ["tips.hours", "tips.points", "labor.export"],
+    related: ["tips.hours", "tips.points", "tips.sources", "labor.export"],
     keywords: ["gratuity", "tip out", "pool"],
   },
   {
@@ -465,8 +467,56 @@ Only tip-eligible positions are in the pool (set on the Team page). Check the sp
     area: "tips",
     route: "/tips",
     title: "Period, tips and method",
-    body: "Pick the dates, enter the tips to share (tap use to take the card tips synced from Square), and choose to split by hours or by points.",
-    related: ["tips.hours", "tips.points"],
+    body: "Pick the dates and choose to split by hours or by points. The tips themselves come in from Square below.",
+    related: ["tips.hours", "tips.points", "tips.sources"],
+  },
+  {
+    id: "tips.summary",
+    area: "tips",
+    route: "/tips",
+    title: "Tips summary",
+    body: "Card tips plus declared cash tips, how they're split and what each hour is worth. Pool all puts everything in one pot; Each keeps own lets people in the pool keep the tips Square credits to them.",
+    related: ["tips.sources", "tips.ny"],
+    keywords: ["tip out", "keep own tips", "cash tips"],
+  },
+  {
+    id: "tips.sources",
+    area: "tips",
+    route: "/tips",
+    title: "Tips by person",
+    body: "Filled in from Square on every sync. Type over a number to correct it (marked Edited); syncing never changes it. Clear it, or tap the arrow, to go back to Square's number.",
+    article: `- **Card** — tips on card payments, credited to whoever took the payment in Square. Tips on payments with no team member go to **Not linked to anyone**.
+- **Cash** — the cash tips each person declares when they clock out in Square.
+- **Not linked to anyone · Cash** — add tip-jar cash nobody declared here.
+
+Days imported before Ops read tips by person show their card tips in **Not linked to anyone**. Totals are still right.`,
+    related: ["tips.card", "tips.cash", "tips.summary"],
+    keywords: ["declared tips", "cash tips", "square tips"],
+  },
+  {
+    id: "tips.card",
+    area: "tips",
+    route: "/tips",
+    title: "Card tips",
+    body: "Tips on card payments in Square, credited to the team member who took the payment. If staff share one Square login, they all land on one person or on Not linked to anyone.",
+    related: ["tips.sources"],
+  },
+  {
+    id: "tips.cash",
+    area: "tips",
+    route: "/tips",
+    title: "Cash tips",
+    body: "The cash tips each person enters when they clock out in Square. If nobody declares, this stays at $0: type the cash in, or add tip-jar cash on Not linked to anyone.",
+    related: ["tips.sources"],
+  },
+  {
+    id: "tips.ny",
+    area: "tips",
+    route: "/tips",
+    title: "New York tip rules",
+    body: "A short reminder of who can share tips in New York. Roles named like owner, manager or cook that have pool hours are flagged; fix them by setting Tips to no for that position on Team.",
+    related: ["tips.page"],
+    keywords: ["tip credit", "196-d", "tip pool law"],
   },
   {
     id: "tips.shares",
