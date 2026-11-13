@@ -24,10 +24,10 @@ export function InvoiceViewer({ src, type, invoiceId, locked, label = "Invoice" 
       </Card>
     );
   }
-  return <ZoomImage src={src} />;
+  return <ZoomImage src={src} label={label} />;
 }
 
-function ZoomImage({ src }: { src: string }) {
+function ZoomImage({ src, label }: { src: string; label: string }) {
   const box = useRef<HTMLDivElement>(null);
   const [v, setV] = useState<View>({ s: 1, x: 0, y: 0 });
   const pointers = useRef(new Map<number, { x: number; y: number }>());
