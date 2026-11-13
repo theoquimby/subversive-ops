@@ -130,8 +130,37 @@ Today (it isn't finished), a day whose last sync ran before closing, closed days
     id: "insights.how",
     area: "insights",
     title: "Show me how",
-    body: "Every answer opens to show how it was worked out, in plain English, and the numbers behind it — so you can check it against what you know.",
-    related: ["insights.page"],
+    body: "Every card opens to show what was compared: the raw numbers, the same numbers relative to how busy you were, the same weeks last year, what was left out (events, holidays, short days) and how sure we are.",
+    article: `Every card has **Show me how**. It answers "why does it say that?" in the order a skeptic would ask:
+
+1. **The raw numbers** — e.g. "Lager sold per open day: 4.9 → 2.5".
+2. **How busy you were** — orders per open day before and after. If the place was quieter, the item is judged **per 100 orders**, with each weekday counted the same in both periods.
+3. **The time of year** — what the same weeks did last year (and the year before) with no price change, so autumn isn't blamed on a price.
+4. **What was left out** — event days, holidays like Labor Day, short days (closed early, storms) and days an item didn't sell at all (86'd, keg kicked).
+5. **The result and its likely range** — drawn on a line with "no change" marked. If the range crosses "no change", it isn't reported as a result; it goes on the **Watching** list.
+6. **How sure are we** — one line saying why.`,
+    related: ["insights.page", "insights.watching", "insights.confidence"],
+    keywords: ["why", "explain", "evidence", "relative", "traffic", "per 100 orders", "last year", "how sure"],
+  },
+  {
+    id: "insights.watching",
+    area: "insights",
+    route: "/insights#lab-watching",
+    title: "Watching",
+    body: "Things that looked like something on the raw numbers but don't hold up once we allow for how busy you were, the weekday mix, the season and events. Each says what would make it count.",
+    article: `A raw before-and-after mixes the thing we're judging with everything else that moved at the same time. "30% fewer Lagers since the price went up" might just be 10% fewer guests and the start of autumn.
+
+So before anything becomes a card, it's checked:
+
+- **Relative to how busy you were** — per 100 orders, same weekday mix.
+- **Against the same weeks last year** — or, for something new, against similar items.
+- **Fair days only** — no events, holidays or short days.
+- **Timing** — a price change works the day guests see it. If the first two weeks after didn't move, a later slide is put down to something else.
+- **Size and steadiness** — the likely range has to stay clear of "no change", and staffing gaps have to show up most weeks, lately, and against other hours that bring in the same sales.
+
+What doesn't pass is listed here instead of as a to-do, with exactly what would make it count ("about 3 more weeks of sales will tell").`,
+    related: ["insights.how", "insights.queue"],
+    keywords: ["watching", "watch list", "not significant", "not sure", "why did it disappear", "traffic", "season"],
   },
   {
     id: "insights.forecast",
@@ -155,7 +184,7 @@ Today (it isn't finished), a day whose last sync ran before closing, closed days
     area: "insights",
     route: "/insights#lab-staffing",
     title: "Staffing by hour",
-    body: "How much each person on the clock brings in, hour by hour, over the last 6 months. Only service hours count — setup before you open and cleanup after close are expected.",
+    body: "Hour by hour over the last 6 months. An hour counts as over-staffed only if it has more people than that week's pace needs and than you usually put on for hours with the same sales — most weeks, and lately. Events, holidays, setup and cleanup are left out.",
     related: ["schedule.page", "insights.week"],
     keywords: ["sales per labor hour", "overstaffed", "understaffed", "stagger"],
   },
@@ -185,7 +214,9 @@ Today (it isn't finished), a day whose last sync ran before closing, closed days
     body: "Where $1 more would pay, after the few guests who'd buy a little less. When a price has really changed in Square, it uses how your own guests reacted.",
     article: `For each item we ask: if the price goes up $1, how many fewer would you sell, and what's left after its cost?
 
-When an item's price has really changed in your Square history (and stayed changed for a few weeks), we measure how your guests reacted, week by week, allowing for how busy the place was and the time of year. Otherwise we use how guests typically react to that kind of item. The card says which.
+When an item's price has really changed in your Square history (and stayed changed for a few weeks), we measure how your guests reacted, week by week, allowing for how busy the place was and the time of year. One item's history is noisy, so it's blended with what similar items on your menu showed — and items that never changed price borrow from those. Weeks an item barely sold (off the menu, keg out) are left out, and an item that hasn't sold in the last four weeks never gets a price suggestion.
+
+After you change a price, the follow-up compares the item **per 100 orders** (so a quieter month isn't blamed on the price), against what the same weeks did last year, leaving out events and holidays. Only a change whose likely range stays clear of "no change" is reported; the rest are on the **Watching** list.
 
 Until items are linked to recipes we use a typical cost (beer about 22% of the price, food about 30%) and say so.`,
     related: ["insights.menu", "insights.whatif"],
@@ -196,7 +227,7 @@ Until items are linked to recipes we use a typical cost (beer about 22% of the p
     area: "insights",
     route: "/insights#lab-menu",
     title: "Menu",
-    body: "Each dish by how much it sells and how much it earns: Stars (keep), Crowd-pleasers (nudge the price), Hidden gems (promote), Rethink (rework or drop). Needs plate costs.",
+    body: "Each dish by how much it sells and how much it earns: Stars (keep), Crowd-pleasers (nudge the price), Hidden gems (promote), Rethink (rework or drop). Popularity is judged against its own category and per day it was on the menu, so a new dish isn't marked down. Needs plate costs.",
     related: ["insights.price", "insights.setup", "menu.page"],
     keywords: ["menu engineering", "stars", "dogs", "puzzles", "workhorses", "menu mix"],
   },
@@ -214,7 +245,7 @@ Until items are linked to recipes we use a typical cost (beer about 22% of the p
     area: "insights",
     route: "/insights#lab-anomalies",
     title: "Unusual days",
-    body: "Days in the last two weeks that were far off normal for that weekday. One-off days are here to know about; the pattern behind them (slow days still get a full crew) goes on your list.",
+    body: "Days far off what was expected for that date: the same weekday lately, moved the way last year moved into that week, with events, rain and holidays built in. A slow day counts fully against the crew only if it was foreseeable when the schedule was written.",
     related: ["insights.page"],
   },
   {

@@ -23,6 +23,47 @@ export interface InputRow {
   value: string;
 }
 
+// ---- Evidence: what a finding compared, in plain English ("Show me how") ---------------------
+
+/** One line of the evidence table: before → after with the change, or a single value. */
+export interface EvidenceRow {
+  label: string;
+  before?: string;
+  after?: string;
+  /** "−10%" */
+  change?: string;
+  /** −0.1, for colour */
+  changePct?: number;
+  value?: string;
+  note?: string;
+  strong?: boolean;
+}
+
+export type EvidenceChart =
+  | { type: "series"; unit: "per100" | "money" | "count"; label: string; refLabel?: string | null; marker?: ISODate | null; markerLabel?: string; points: { x: ISODate; y: number; ref?: number }[] }
+  | { type: "compare"; unit: "money" | "number" | "hours" | "people"; rows: { label: string; value: number; tone?: "good" | "bad" | null }[] };
+
+/**
+ * Sent by analytics service 2.1+ on every finding. verdict: "real" (it counts), "unclear" (not
+ * distinguishable from normal ups and downs once traffic, weekday, season and events are allowed
+ * for — on the watch list), "good" (a change that worked), "info".
+ */
+export interface Evidence {
+  verdict: "real" | "unclear" | "good" | "info";
+  summary: string;
+  rows: EvidenceRow[];
+  steps: string[];
+  excluded: string[];
+  method: string;
+  /** "Fairly sure: …" */
+  sure: string;
+  /** The effect and its likely range, as fractions (−0.04 = −4%). */
+  effect?: { mid: number; low: number; high: number; label?: string };
+  chart?: EvidenceChart | null;
+  /** What would make a watched finding count. */
+  watch?: string | null;
+}
+
 export interface Opportunity {
   /** Stable per subject, e.g. "menu.reprice.<recipeId>" — novelty and Done/Snooze hang off it. */
   key: string;
@@ -43,6 +84,12 @@ export interface Opportunity {
   subject?: string | null;
   /** One-time amount (cash freed, a single bad day); ranked at a twelfth a month. */
   oneOff?: number;
+  /** What was compared (service 2.1+). */
+  evidence?: Evidence | null;
+  /** "watching": didn't survive the controls — shown on the watch list, never as an action. */
+  status?: "watching" | null;
+  /** What would make a watched finding count. */
+  watch?: string | null;
 }
 
 export type Chart =
@@ -68,12 +115,18 @@ export interface Insight {
   chart: Chart | null;
   details: Record<string, unknown>;
   opportunities: Opportunity[];
+  /** The evidence behind the headline (service 2.1+). */
+  evidence?: Evidence | null;
+  /** Findings that didn't survive the controls (service 2.1+). */
+  watching?: Opportunity[];
 }
 
 export interface FeedResult {
   items: Opportunity[];
   errors: string[];
   finders: string[];
+  /** Findings that didn't survive the controls (service 2.1+). */
+  watching?: Opportunity[];
 }
 
 export interface AnalyticsRun {
@@ -260,6 +313,46 @@ export function allFindings(run: AnalyticsRun | null): Opportunity[] {
   out.push(...(run.results.feed?.items ?? []));
   const seen = new Set<string>();
   return out.filter((o) => (seen.has(o.key) ? false : (seen.add(o.key), true)));
+}
+
+/** A finding that didn't survive the controls: it belongs on the watch list, not in the actions. */
+export const isWatching = (o: Pick<Opportunity, "status" | "evidence">) => o.status === "watching" || o.evidence?.verdict === "unclear";
+
+/** Everything the models are watching (not yet distinguishable from normal ups and downs), biggest effect first. */
+export function allWatching(run: AnalyticsRun | null): Opportunity[] {
+  if (!run) return [];
+  const out: Opportunity[] = [];
+  for (const id of MODEL_IDS) out.push(...(run.results[id]?.watching ?? []));
+  out.push(...(run.results.feed?.watching ?? []));
+  // An older service may still put an unclear finding among the actions.
+  out.push(...allFindings(run).filter(isWatching));
+  const seen = new Set<string>();
+  return out
+    .filter((o) => (seen.has(o.key) ? false : (seen.add(o.key), true)))
+    .sort((a, b) => Math.abs(b.evidence?.effect?.mid ?? 0) - Math.abs(a.evidence?.effect?.mid ?? 0));
+}
+
+const certainty = (c: number) => (c >= 0.6 ? "Pretty sure" : c >= 0.4 ? "Fairly sure" : "A hunch");
+
+/**
+ * The evidence for a finding: the model's own (service 2.1+), or — for an older service and for
+ * findings worked out in the app (kegs) — one built from its "how" and inputs, so every card can
+ * show what's behind it.
+ */
+export function evidenceOf(o: Pick<Opportunity, "evidence" | "how" | "inputs" | "confidence" | "title">): Evidence {
+  if (o.evidence && Array.isArray(o.evidence.rows)) return { ...o.evidence, steps: o.evidence.steps ?? [], excluded: o.evidence.excluded ?? [] };
+  const how = (o.how ?? []).filter(Boolean);
+  const c = o.confidence ?? 0;
+  const why = c >= 0.6 ? "the pattern is steady across the weeks we looked at." : c >= 0.4 ? "the pattern shows up most weeks, but the dollars could be off by a fair bit." : "it's based on a short stretch or a few examples — treat it as a hunch to check.";
+  return {
+    verdict: "real",
+    summary: how[0] ?? o.title,
+    rows: (o.inputs ?? []).map((i) => ({ label: i.label, value: i.value })),
+    steps: how.slice(1),
+    excluded: [],
+    method: "",
+    sure: `${certainty(c)}: ${why}`,
+  };
 }
 
 /** "2 hours ago" style age, and whether the run is stale (older than ~36h). */

@@ -1,8 +1,8 @@
 import { HelpTip, HelpZone } from "@/components/help";
 import { EmptyState, PageHeader, Section } from "@/components/ui";
-import { allFindings, type PriceFit } from "@/domain/analytics";
+import { allFindings, allWatching, type PriceFit } from "@/domain/analytics";
 import { daysBetween } from "@/domain/dates";
-import { priceResults, trackRecord, type ProfitBase } from "@/domain/lab";
+import { priceResults, trackRecord, watchList, type ProfitBase } from "@/domain/lab";
 import { money, relativeTime, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { analyticsStatus, getFixedCosts, getRange, insightFeed, labSetup, refreshIfStale } from "@/server/services/analytics";
@@ -13,6 +13,7 @@ import { KegsTile } from "./kegs-tile";
 import { LabTile, TILES, UpdatedNote } from "./lab-tiles";
 import { RangeControl, RefreshLink } from "./range";
 import { ProfitStory } from "./story";
+import { WatchList } from "./watching";
 
 export const metadata = { title: "Insights Lab" };
 
@@ -55,6 +56,7 @@ export default async function InsightsPage() {
   const findings = allFindings(run);
   const span = run.window ? spanLabel(run.data?.from ?? run.window.from, run.window.through) : null;
   const actions = items.map(toDeck);
+  const watching = watchList(allWatching(run), state);
 
   // How it connects: a month of the business, and the levers (drivers model).
   const dd = r.drivers?.status === "ok" ? (r.drivers.details as { base?: ProfitBase & { costMeasured?: boolean }; levers?: { key: string; label: string; monthly: number }[]; month?: { sales: number; cogs: number; labor: number; laborHours: number; waste: number; openDays: number }; elasticity?: number; laborSplit?: { fixed: number; variable: number }; fixedTotal?: number }) : null;
@@ -73,6 +75,19 @@ export default async function InsightsPage() {
       <HelpZone id="insights.hero">
         <ActionDeck actions={actions} />
       </HelpZone>
+
+      {watching.length > 0 && (
+        <Section
+          help="insights.watching"
+          className="scroll-mt-20"
+          title={<span id="lab-watching" className="inline-flex items-center gap-1">Watching <HelpTip id="insights.watching" /></span>}
+          description="Looked like something on the raw numbers, but not once we allow for how busy you were, the weekday, the season and events. Each says what would make it count."
+        >
+          <div data-tour="insights.watching">
+            <WatchList items={watching} />
+          </div>
+        </Section>
+      )}
 
       {base && base.sales > 0 && (
         <Section

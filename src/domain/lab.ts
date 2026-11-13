@@ -10,7 +10,7 @@
  */
 
 import { addDays, ISODate } from "./dates";
-import { type FeedState, type Opportunity, rankFeed, type Ranked } from "./analytics";
+import { type FeedState, isWatching, type Opportunity, rankFeed, type Ranked } from "./analytics";
 
 // ---- Data range ---------------------------------------------------------------------------
 
@@ -77,6 +77,7 @@ const KIND_META: [prefix: string, meta: { area: LabArea; effort: Effort; vector:
   ["menu.promote", { area: "menu", effort: "easy", vector: "earn" }],
   ["feed.mix", { area: "menu", effort: "easy", vector: "earn" }],
   ["feed.follow.wait", { area: "menu", effort: "easy", vector: "info" }],
+  ["feed.follow.watch", { area: "menu", effort: "easy", vector: "info" }],
   ["feed.follow", { area: "menu", effort: "easy", vector: "earn" }],
   ["feed.event", { area: "menu", effort: "medium", vector: "earn" }],
   ["orders", { area: "ordering", effort: "easy", vector: "save" }],
@@ -95,7 +96,7 @@ export function kindMeta(kind: string) {
 }
 
 /** One-off findings that are worth knowing but aren't actions (they live in the Lab tiles). */
-const NOT_ACTIONS = ["anomaly.labor", "feed.follow.wait"];
+const NOT_ACTIONS = ["anomaly.labor", "feed.follow.wait", "feed.follow.watch", "staffing.over.watch", "anomaly.slowdays.watch"];
 
 // ---- Stories and visuals --------------------------------------------------------------------
 
@@ -191,6 +192,7 @@ export function buildActions(findings: LabFinding[], state: FeedState, today: IS
   const singles: LabFinding[] = [];
   for (const o of findings) {
     if (NOT_ACTIONS.some((k) => o.kind === k || o.kind.startsWith(`${k}.`))) continue;
+    if (isWatching(o)) continue; // didn't survive the controls: it's on the watch list, not a to-do
     if ((o.vector ?? kindMeta(o.kind).vector) === "info") continue;
     if (o.kind === "feed.follow" && !/−/.test(o.title)) continue; // a price change that worked is good news, not a to-do
     const g = rootCause(o);
@@ -344,5 +346,36 @@ export function trackRecord(state: FeedState, findings: Opportunity[]): { items:
 
 /** Price changes Square shows you already made, and what each one did (good news included). */
 export function priceResults(findings: Opportunity[]) {
-  return findings.filter((f) => f.kind === "feed.follow").map((f) => ({ key: f.key, title: f.title, good: !/−/.test(f.title), monthly: f.monthly }));
+  return findings.filter((f) => f.kind === "feed.follow" && !isWatching(f)).map((f) => ({ key: f.key, title: f.title, good: !/−/.test(f.title), monthly: f.monthly, evidence: f.evidence ?? null }));
+}
+
+export interface WatchItem {
+  key: string;
+  title: string;
+  /** Plain-English verdict ("Relative to how busy you were, the Lager sold about the same"). */
+  summary: string;
+  /** What would make it count. */
+  watch: string | null;
+  area: LabArea;
+  evidence: Opportunity["evidence"];
+  how: string[];
+  inputs: Opportunity["inputs"];
+  confidence: number;
+}
+
+/** The watch list as the page shows it: what didn't survive the controls, and what would make it count. Hidden by Not for us. */
+export function watchList(watching: Opportunity[], state: FeedState): WatchItem[] {
+  return watching
+    .filter((o) => state.marks[o.key]?.status !== "dismissed")
+    .map((o) => ({
+      key: o.key,
+      title: o.title,
+      summary: o.evidence?.summary ?? o.how[0] ?? o.title,
+      watch: o.watch ?? o.evidence?.watch ?? null,
+      area: (o as LabFinding).area ?? kindMeta(o.kind).area,
+      evidence: o.evidence ?? null,
+      how: o.how,
+      inputs: o.inputs,
+      confidence: o.confidence,
+    }));
 }

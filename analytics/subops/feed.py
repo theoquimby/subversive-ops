@@ -19,7 +19,9 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
+from .context import basic_evidence, day_context, evidence, row, sure_line
 from .common import in_service, open_windows, DAYS_PER_MONTH, WEEKDAYS, WEEKS_PER_MONTH, add_days, cost_note, cost_share, d, daypart, exact_money, hour_label, hours_span, inp, money, open_days, open_days_per_month, opportunity, pct, plural, slot_key, story, weekday
+from . import followup
 from .staffing import recent_hourly
 
 FOOD_INFLATION = 0.03  # US food-away-from-home CPI has run ~3–4%/yr; we use the low end.
@@ -49,9 +51,12 @@ def open_hours(data: dict, ctx: dict) -> list[dict]:
         return []
     cogs, measured = cost_share(data)
     windows = open_windows(data, hourly)
+    dctx = day_context(data)
     by: dict[tuple[int, int], list[tuple[float, float, float]]] = defaultdict(list)
     dates_by_wd: dict[int, set] = defaultdict(set)
     for r in hourly:
+        if dctx.special(r["date"]) in ("event", "holiday", "short"):
+            continue  # not how a normal week runs
         wd_r, h_r = weekday(r["date"]), int(r["hour"])
         dates_by_wd[wd_r].add(r["date"])
         # Setup before opening and cleanup after close are expected labor, never "an hour that loses money".
@@ -431,60 +436,61 @@ def reviews_ops(data: dict, ctx: dict) -> list[dict]:
 # ---- 12. Follow-through ------------------------------------------------------------------
 
 def follow_through(data: dict, ctx: dict) -> list[dict]:
-    """Before/after on price changes (detected or marked done), traffic-adjusted."""
+    """Before/after on price changes (detected or marked done), judged relative to the business:
+    per 100 orders, same weekday mix, fair days only, minus what the same weeks did in earlier years
+    (see followup.py). Changes we can't tell apart from normal ups and downs go on the watch list."""
     as_of = data["asOf"]
-    traffic = {x["date"]: float(x.get("orders") or 0) for x in data.get("days", []) if x.get("orders")}
     price_items = {x["id"]: x for x in (ctx.get("price") or {}).get("details", {}).get("items", [])}
     tracked = []
     for iid, f in price_items.items():
         for c in f.get("changes") or []:
-            tracked.append((iid, c["date"], f"{'raising' if c['to'] > c['from'] else 'cutting'} the {f['name']} ${abs(c['to'] - c['from']):.2f}"))
+            tracked.append((iid, c["date"], c.get("from"), c.get("to")))
+    items = {i["id"]: i for i in data.get("items", [])}
     for a in data.get("actions") or []:
         if a.get("kind") in ("menu.reprice", "price.test") and a.get("subject") and a.get("doneAt"):
-            tracked.append((a["subject"], a["doneAt"][:10], f"acting on “{a.get('title', 'the price change')}”"))
-    items = {i["id"]: i for i in data.get("items", [])}
+            tracked.append((a["subject"], a["doneAt"][:10], None, None))
     out = []
-    seen = set()
-    opm = open_days_per_month(data.get("days", []))
     # Only changes the daily history can judge (it covers the last ~4 months), latest per item.
     first_daily = min((k for i in items.values() for k in (i.get("daily") or {})), default=as_of)
-    latest: dict[str, tuple[str, str, str]] = {}
-    for iid, start, what in tracked:
-        if start < add_days(first_daily, 28) or start > as_of:
+    latest: dict[str, tuple] = {}
+    prev: dict[str, str] = {}
+    for iid, start, p0, p1 in sorted(tracked, key=lambda t: t[1]):
+        if start > as_of:
             continue
-        if iid not in latest or start > latest[iid][1]:
-            latest[iid] = (iid, start, what)
-    for iid, start, what in latest.values():
-        if (iid, start) in seen or iid not in items:
+        if start < add_days(first_daily, 14):
+            prev[iid] = start
             continue
-        seen.add((iid, start))
-        if sum(v[0] for k, v in (items[iid].get("daily") or {}).items() if k >= add_days(start, -28)) < 30:
-            continue  # too few sold to tell anything
-        it = items[iid]
+        if iid in latest:
+            prev[iid] = latest[iid][1]
+        latest[iid] = (iid, start, p0, p1)
+    for iid, start, p0, p1 in latest.values():
+        it = items.get(iid)
+        if not it:
+            continue
         daily = it.get("daily") or {}
-        before = [(k, v) for k, v in daily.items() if add_days(start, -28) <= k < start]
-        after = [(k, v) for k, v in daily.items() if start <= k < as_of]
-        if len(after) < 12 or len(before) < 12:
-            if len(after) < 12 and 0 <= (d(as_of) - d(start)).days <= 21:
-                out.append(opportunity(f"feed.follow.wait.{iid}.{start}", "feed.follow.wait", "feed", f"Tracking {what} — results in {plural(max(1, 14 - len(after)), 'more open day')}", "Nothing to do; we'll report the before and after.", 5.0, 0, 10, 0.2, ["We need two weeks after a change to compare fairly."], href="/insights", subject=iid, area="menu", effort="easy", vector="info"))
+        if p0 is None or p1 is None:  # a change Max marked done: read the prices from the sales themselves
+            def avg_price(lo, hi):
+                q = sum(v[0] for k, v in daily.items() if lo <= k < hi)
+                return sum(v[1] for k, v in daily.items() if lo <= k < hi) / q if q else None
+            p0, p1 = avg_price(add_days(start, -28), start), avg_price(start, as_of)
+            if not p0 or not p1 or abs(p1 / p0 - 1) < 0.02:
+                continue
+        if sum(v[0] for k, v in daily.items() if k >= add_days(start, -28)) < 30:
+            continue  # too few sold to tell anything
+        if p0 and p1 and abs(p1 / p0 - 1) > followup.MAX_STEP:
+            continue  # a 40%+ jump is a different size or product under the same button, not a price change
+        cat = (it.get("category") or "").strip().lower()
+        sibs = [x for x in items.values() if x["id"] != iid and cat and (x.get("category") or "").strip().lower() == cat and x.get("kind") in ("MENU", None) and x.get("daily")]
+        m = followup.measure(data, it, start, float(p0), float(p1), sibs, prev.get(iid))
+        if m is None:
             continue
-        cost = float(it["unitCost"]) if it.get("unitCost") is not None else float(it.get("price") or 0) * cost_share(data)[0]
-        tb = np.mean([traffic.get(k, np.nan) for k, _ in before])
-        ta = np.mean([traffic.get(k, np.nan) for k, _ in after])
-        adj = tb / ta if tb and ta and np.isfinite(tb) and np.isfinite(ta) else 1.0
-        def per_day(rows):
-            q = sum(v[0] for _, v in rows)
-            s = sum(v[1] for _, v in rows)
-            return q / len(rows), (s - q * cost) / len(rows)
-        qb, pb = per_day(before)
-        qa, pa = per_day(after)
-        qa_adj, pa_adj = qa * adj, pa * adj
-        gain = (pa_adj - pb) * opm
-        vol = qa_adj / qb - 1 if qb else 0
-        when = nice_date(start)
-        title = f"Since {what} on {when}: {'+' if gain >= 0 else '−'}{money(abs(gain))} a month, {'the same number sold' if abs(vol) < 0.05 else f'{abs(vol) * 100:.0f}% {"more" if vol > 0 else "fewer"} sold'}"
-        out.append(opportunity(f"feed.follow.{iid}.{start}", "feed.follow", "feed", title, "Keep it." if gain >= 0 else "Consider rolling it back.", abs(gain), abs(gain) * 0.5, abs(gain) * 1.3, 0.5, [f"28 days before vs {len(after)} open days after, per open day, with the 'after' scaled by store traffic (order count) so a busier month doesn't get the credit."], [inp("Profit/day before", money(pb, True)), inp("Profit/day after (traffic-adjusted)", money(pa_adj, True)), inp("Volume change", f"{vol * 100:+.0f}%")], href="/insights#lab-price", subject=iid,
-                               area="menu", effort="easy", vector="info" if gain > -60 else "earn", story=story(f"On {when} you started {what}.", f"Per open day, the 28 days before vs the {len(after)} days after — with the after scaled to store traffic so a busier month doesn't get the credit — profit on it is {'up' if gain >= 0 else 'down'} {money(abs(gain))} a month and {'the same number sold' if abs(vol) < 0.05 else f'{abs(vol) * 100:.0f}% {"more" if vol > 0 else "fewer"} sold'}.", "Keep it." if gain >= 0 else "Consider putting the price back.", f"{'+' if gain >= 0 else '−'}{money(abs(gain))} a month so far."), visual={"type": "compare", "unit": "money", "rows": [{"label": "Profit a day before", "value": round(pb, 2)}, {"label": "After", "value": round(pa_adj, 2), "tone": "good" if gain >= 0 else "bad"}]}))
+        if m.get("status") == "wait":
+            n_after = m.get("after", 0)
+            if 0 <= (d(as_of) - d(start)).days <= 28:
+                what = f"{'raising' if p1 > p0 else 'cutting'} the {it['name']} ${abs(p1 - p0):.2f}"
+                out.append(opportunity(f"feed.follow.wait.{iid}.{start}", "feed.follow.wait", "feed", f"Tracking {what} — results in {plural(max(1, followup.MIN_DAYS - n_after), 'more open day')}", "Nothing to do; we'll report the before and after.", 5.0, 0, 10, 0.2, ["We need two weeks of fair days after a change to compare it with the weeks before, allowing for how busy you were."], href="/insights", subject=iid, area="menu", effort="easy", vector="info"))
+            continue
+        out.append(followup.describe(data, it, start, float(p0), float(p1), m))
     return out
 
 
@@ -526,4 +532,10 @@ def run(data: dict, ctx: dict) -> dict:
         items.extend(merge_slots(items, ctx))
     except Exception as e:  # noqa: BLE001
         errors.append(f"merge_slots: {e}")
-    return {"items": items, "errors": errors, "finders": [f.__name__ for f in FINDERS]}
+    # Findings that didn't survive the controls aren't actions: they're on the watch list, with what would make them count.
+    watching = sorted([o for o in items if o.get("status") == "watching"], key=lambda o: -abs(((o.get("evidence") or {}).get("effect") or {}).get("mid") or 0))
+    items = [o for o in items if o.get("status") != "watching"]
+    for o in items:
+        if "evidence" not in o:
+            o["evidence"] = basic_evidence(o)
+    return {"items": items, "watching": watching, "errors": errors, "finders": [f.__name__ for f in FINDERS]}

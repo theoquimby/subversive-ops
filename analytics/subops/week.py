@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from .context import day_context
 from .common import WEEKDAYS, WEEKDAY_SHORT, WEEKS_PER_MONTH, add_days, confidence, cost_note, cost_share, inp, insight, money, open_days, opportunity, story, weekday
 
 
@@ -23,7 +24,9 @@ def _season(iso_date: str) -> str:
 def run(data: dict) -> dict:
     as_of = data["asOf"]
     since = add_days(as_of, -365)
-    days = [x for x in open_days(data.get("days", [])) if x["date"] >= since and (x.get("laborHours") or 0) > 0]
+    dctx = day_context(data)
+    # Event days and holidays aren't what a normal Monday is like.
+    days = [x for x in open_days(data.get("days", [])) if x["date"] >= since and (x.get("laborHours") or 0) > 0 and dctx.special(x["date"]) not in ("event", "holiday")]
     if len(days) < 28:
         return insight("week", "Your week", status="thin", headline="Needs a month of sales and timecards.", action="Have the team clock in and out on Square.", how=[], details={"needs": ["timecards"]})
     share, measured = cost_share(data)
@@ -73,7 +76,7 @@ def run(data: dict) -> dict:
     headline = f"{WEEKDAYS[best['wd']]}s leave the most (about {money(best['left'])} each after food, drink and wages); {WEEKDAYS[worst['wd']]}s the least ({money(worst['left'])})"
     action = opps[0]["action"] if opps else "Every day you open pays for itself before rent."
     how = [
-        f"Every open day in the last 12 months with timecards ({len(days)} days), grouped by weekday: average sales, minus a {cost_note(measured, share)}, minus wages.",
+        f"Every open day in the last 12 months with timecards ({len(days)} days; event days and holidays left out), grouped by weekday: average sales, minus a {cost_note(measured, share)}, minus wages.",
         "Rent, insurance and other fixed costs aren't taken off — they're paid whether you open or not — so a day that's negative here really costs money to open.",
         "Winter (November to March) and the rest of the year are also checked on their own, so a day that only struggles in winter shows up.",
     ]

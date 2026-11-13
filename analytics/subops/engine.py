@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from . import VERSION, anomalies, drivers, feed, forecast, menu, orders, price, seasons, staffing, week
 from .common import insight, prepare
+from .context import basic_evidence
 
 ALL = ["price", "menu", "forecast", "orders", "anomalies", "drivers", "staffing", "seasons", "week", "feed"]
 TITLES = {"price": "Price response", "menu": "Menu engineering", "forecast": "Forecast ranges", "orders": "Order quantities", "anomalies": "Unusual days", "drivers": "Profit drivers & break-even", "staffing": "Staffing by hour", "seasons": "Your seasons", "week": "Your week", "feed": "Insight feed"}
@@ -53,4 +54,16 @@ def analyze(payload: dict) -> dict:
         except Exception as e:  # noqa: BLE001
             results[m] = insight(m, TITLES[m], status="error", headline="This one couldn't be worked out this time.", action="It retries overnight.", how=[f"{type(e).__name__}: {e}"], details={"trace": traceback.format_exc()[-2000:]})
         timings[m] = round(time.time() - t, 3)
+    # Every finding carries its evidence ("Show me how"), and every result says what it's watching.
+    for m, r in results.items():
+        if m == "feed":
+            r.setdefault("watching", [])
+            for o in r.get("items", []):
+                o.setdefault("evidence", basic_evidence(o))
+            continue
+        r.setdefault("watching", [])
+        for o in r.get("opportunities", []):
+            if not o.get("evidence"):
+                o["evidence"] = basic_evidence(o)
+    data.pop("_dayctx", None)
     return {"version": VERSION, "computedAt": datetime.now(timezone.utc).isoformat(), "results": results, "timings": timings, "data": prep}

@@ -6,10 +6,11 @@ import { ArrowRight, BellRing, Check, ChevronDown, Undo2, X } from "lucide-react
 import { Button, cx } from "@/components/ui";
 import { AREA_LABEL, certaintyWord, EFFORT_LABEL, sortActions, SORTS, type LabArea, type SortVector } from "@/domain/lab";
 import type { DeckAction } from "./deck-data";
-import type { InputRow } from "@/domain/analytics";
+import type { Evidence, InputRow } from "@/domain/analytics";
 import { money } from "@/lib/format";
 import { markInsight } from "./actions";
 import { AreaChip, StarDots, StoryVisual } from "./visuals";
+import { EvidenceView } from "./evidence";
 
 type Verdict = "done" | "dismissed" | "snoozed";
 const whole = (n: number) => money(n, { whole: true });
@@ -221,7 +222,7 @@ function Hero({ a, onDecide }: { a: DeckAction; onDecide: (v: Verdict) => void }
           </div>
         </div>
       </div>
-      <ShowMeHow how={a.how} inputs={a.inputs} className="border-t border-border px-5 sm:px-7" />
+      <ShowMeHow how={a.how} inputs={a.inputs} evidence={a.evidence} className="border-t border-border px-5 sm:px-7" />
     </article>
   );
 }
@@ -257,7 +258,7 @@ function QueueRow({ a, sort, onDecide }: { a: DeckAction; sort: SortVector; onDe
             <Button onClick={() => onDecide("snoozed")} className="h-10 sm:h-9"><BellRing className="size-3.5" strokeWidth={1.75} />Later</Button>
             <Button variant="ghost" onClick={() => onDecide("dismissed")} className="h-10 sm:h-9"><X className="size-3.5" strokeWidth={1.75} />Not for us</Button>
           </div>
-          <ShowMeHow how={a.how} inputs={a.inputs} />
+          <ShowMeHow how={a.how} inputs={a.inputs} evidence={a.evidence} />
         </div>
       )}
     </li>
@@ -266,9 +267,24 @@ function QueueRow({ a, sort, onDecide }: { a: DeckAction; sort: SortVector; onDe
 
 // ---- Evidence drawer ----------------------------------------------------------------------
 
-export function ShowMeHow({ how, inputs, className, label = "Show me how" }: { how: string[]; inputs?: InputRow[]; className?: string; label?: string }) {
+export function ShowMeHow({ how, inputs, evidence, className, label = "Show me how", both = false }: { how: string[]; inputs?: InputRow[]; evidence?: Evidence | null; className?: string; label?: string; both?: boolean }) {
   const [open, setOpen] = useState(false);
-  if (!how.length && !inputs?.length) return null;
+  if (!how.length && !inputs?.length && !evidence) return null;
+  if (evidence && !both) {
+    return (
+      <div className={className}>
+        <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="flex h-11 w-full items-center justify-between gap-2 text-left text-[0.85rem] font-medium text-ink-2 hover:text-ink sm:h-10">
+          {label}
+          <ChevronDown className={cx("size-4 transition-transform duration-180", open && "rotate-180")} strokeWidth={1.75} />
+        </button>
+        {open && (
+          <div className="animate-fade-in pb-4">
+            <EvidenceView ev={evidence} />
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div className={className}>
       <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="flex h-11 w-full items-center justify-between gap-2 text-left text-[0.85rem] font-medium text-ink-2 hover:text-ink sm:h-10">
@@ -280,7 +296,13 @@ export function ShowMeHow({ how, inputs, className, label = "Show me how" }: { h
           {how.map((h, i) => (
             <p key={i} className="mb-2">{h}</p>
           ))}
-          {!!inputs?.length && (
+          {evidence && (
+            <div className="mt-4 border-t border-border pt-3">
+              <h4 className="mb-2 text-xs font-medium tracking-wide text-muted uppercase">Behind the headline</h4>
+              <EvidenceView ev={evidence} />
+            </div>
+          )}
+          {!!inputs?.length && !evidence && (
             <dl className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 rounded-lg bg-surface-2 px-3 py-2 text-xs">
               {inputs.map((r, i) => (
                 <div key={i} className="contents">

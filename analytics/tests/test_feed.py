@@ -141,8 +141,11 @@ def test_follow_through_measures_a_price_change():
     data = make_data(elasticity=-0.5, change_day=35)
     ctx = {"price": price.run(data)}
     out = feed.follow_through(data, ctx)
-    f = next(o for o in out if o["subject"] == "pretzel" and o["kind"] == "feed.follow")
-    assert "Since raising the Pretzel $1.00" in f["title"] and f["title"].split(": ")[1].startswith("+")
+    # A small item (6 a day) and a gentle response (about −4%): too small to tell apart from normal
+    # ups and downs relative to traffic, so it's watched, with its evidence, not reported.
+    f = next(o for o in out if o["subject"] == "pretzel")
+    assert f["kind"] == "feed.follow.watch" and f["status"] == "watching"
+    assert "Since raising the Pretzel $1" in f["title"] and f["evidence"]["verdict"] == "unclear"
 
 
 def test_feed_run_isolates_failures():

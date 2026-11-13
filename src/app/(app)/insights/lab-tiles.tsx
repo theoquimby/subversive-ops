@@ -94,7 +94,7 @@ export function LabTile({ spec, r }: { spec: TileSpec; r: Insight | undefined })
           </>
         )}
         <div className="mt-auto pt-2">
-          {r && !locked && <ShowMeHow how={r.how} inputs={r.inputs} className="border-t border-border" />}
+          {r && !locked && <ShowMeHow how={r.how} inputs={r.inputs} evidence={r.evidence ?? null} both className="border-t border-border" />}
           {r && locked && r.how.length > 0 && <ShowMeHow how={r.how} inputs={[]} className="border-t border-border" label="Why it needs this" />}
         </div>
       </Card>

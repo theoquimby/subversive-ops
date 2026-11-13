@@ -206,7 +206,7 @@ export async function gatherPayload(today = businessToday(), opts: { range?: Ran
   // Items: weekly qty and sales over the whole range (price responses need years), daily for the last 120 days.
   // Square items linked to a recipe come with plate costs; the best sellers not linked yet come as Square items
   // (no cost — the models use a typical one and say so), so price findings work before setup is finished.
-  const [{ byRecipe }, saleRows, mappings, catalog, weeklyRows] = await Promise.all([
+  const [{ byRecipe }, saleRows, mappings, catalog, weeklyRows, nameRows] = await Promise.all([
     salesByRecipe(detailFrom, end),
     db.dailySale.findMany({ where: { date: { gte: parseISODate(detailFrom), lt: parseISODate(end) } }, select: { date: true, squareId: true, name: true, qty: true, netSales: true } }),
     db.squareMapping.findMany({ select: { squareId: true, recipeId: true, ignored: true } }),
@@ -215,7 +215,17 @@ export async function gatherPayload(today = businessToday(), opts: { range?: Ran
       SELECT "squareId", date_trunc('week', date)::date AS week, SUM(qty)::float AS qty, SUM("netSales")::float AS sales
       FROM "DailySale" WHERE date >= ${parseISODate(from)} AND date < ${parseISODate(end)}
       GROUP BY 1, 2`,
+    // The names each Square button sold under: a button reused for a different dish shouldn't lend it the old dish's history.
+    db.$queryRaw<{ squareId: string; name: string; first: Date; last: Date; qty: number }[]>`
+      SELECT "squareId", trim(name) AS name, min(date) AS first, max(date) AS last, SUM(qty)::float AS qty
+      FROM "DailySale" WHERE date >= ${parseISODate(from)} AND date < ${parseISODate(end)}
+      GROUP BY 1, 2`,
   ]);
+  const namesOf = new Map<string, { name: string; from: ISODate; to: ISODate }[]>();
+  for (const r of nameRows) {
+    if (Number(r.qty) < 3) continue; // a one-off test sale under another name isn't a different product
+    namesOf.set(r.squareId, [...(namesOf.get(r.squareId) ?? []), { name: r.name, from: toISODate(r.first), to: toISODate(r.last) }]);
+  }
   const mapOf = new Map(mappings.map((m) => [m.squareId, m]));
   const keyOf = (squareId: string) => {
     const m = mapOf.get(squareId);
@@ -272,7 +282,7 @@ export async function gatherPayload(today = businessToday(), opts: { range?: Ran
       const category = meta?.category ?? null;
       return {
         id,
-        name: names.get(id) ?? meta?.baseName ?? "Square item",
+        name: [...(namesOf.get(sq) ?? [])].sort((a, b) => b.to.localeCompare(a.to))[0]?.name ?? names.get(id) ?? meta?.baseName ?? "Square item",
         kind: "MENU",
         category,
         group: /beer|draft|tap|cider|wine|seltzer|cocktail|drink|bev|soda|slushy/i.test(`${category ?? ""} ${names.get(id) ?? ""}`) ? "beverage" : "food",
@@ -282,6 +292,7 @@ export async function gatherPayload(today = businessToday(), opts: { range?: Ran
         linked: false,
         daily: daily.get(id) ?? {},
         weekly: weekly.get(id) ?? {},
+        names: (namesOf.get(sq) ?? []).sort((a, b) => a.from.localeCompare(b.from)),
       };
     });
   const items = [...linked, ...unlinked];

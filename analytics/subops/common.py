@@ -268,11 +268,53 @@ def prepare(data: dict) -> dict:
         if len(v) >= 4 and sum(v) / len(v) < 0.4:
             closed.add(wd)
     data["closedWeekdays"] = sorted(closed)
+    trimmed = trim_renamed(data.get("items") or [])
     od = [x for x in days if x.get("open") and (x.get("sales") or 0) > 0]
     span = (d(od[-1]["date"]) - d(od[0]["date"])).days + 1 if od else 0
-    summary = {"from": od[0]["date"] if od else None, "to": od[-1]["date"] if od else None, "openDays": len(od), "spanDays": span, "strayDays": len(stray), "closedWeekdays": sorted(closed)}
+    summary = {"from": od[0]["date"] if od else None, "to": od[-1]["date"] if od else None, "openDays": len(od), "spanDays": span, "strayDays": len(stray), "closedWeekdays": sorted(closed), "renamedItems": trimmed}
     data["_prep"] = summary
     return summary
+
+
+def _words(name: str) -> set[str]:
+    import re
+
+    return {w for w in re.findall(r"[a-z0-9]+", (name or "").lower()) if len(w) > 1 and w not in ("the", "and", "with", "oz", "of")}
+
+
+def same_product(a: str, b: str) -> bool:
+    """'House Smoked Pulled Pork' ~ 'House Smoked Pulled Pork Sandwich'; not ~ 'Chicken Club Sandwich Special'."""
+    x, y = _words(a), _words(b)
+    if not x or not y:
+        return True
+    return len(x & y) / min(len(x), len(y)) >= 0.6
+
+
+def trim_renamed(items: list[dict]) -> int:
+    """A Square button renamed to a different dish ('Kimchi Reuben' → 'Pulled Pork') carries the old dish's
+    history. When the app sends the names an item sold under (`names`: [{name, from, to}]), history before
+    the last switch to a different product is dropped. Returns how many items were trimmed."""
+    n = 0
+    for it in items:
+        names = sorted(it.get("names") or [], key=lambda x: x.get("from") or "")
+        if len(names) < 2:
+            continue
+        cur = max(names, key=lambda x: x.get("to") or "")["name"]
+        start = None
+        for x in reversed(names):
+            if same_product(x["name"], cur):
+                start = x["from"]
+            else:
+                break
+        if start and start > (names[0].get("from") or start):
+            for key in ("weekly", "daily"):
+                h = it.get(key)
+                if h:
+                    # weekly keys are Mondays: keep the week the new product started in only if it's mostly new
+                    it[key] = {k: v for k, v in h.items() if k >= (start if key == "daily" else add_days(start, -3))}
+            it["historyFrom"] = start
+            n += 1
+    return n
 
 
 def cost_share(data: dict, recent_days: int = 56) -> tuple[float, bool]:
