@@ -7,7 +7,7 @@
 
 import type { PrismaClient } from "@prisma/client";
 import { addDays, parseISODate, todayIn, weekday } from "../../domain/dates";
-import { assignShifts, curveToBlocks, NY_DEFAULT_RULES } from "../../domain/labor";
+import { assignShifts, curveToBlocks, defaultBreakMinutes, NY_DEFAULT_RULES } from "../../domain/labor";
 import { clipAvailability, dayRequirement, hourlySalesOrFallback, parseAvailability, splitLongBlocks, weekDates, weekStartOf, zonedInstant } from "../../domain/schedule";
 
 const TZ = process.env.BUSINESS_TIMEZONE || "America/New_York";
@@ -68,6 +68,8 @@ export async function seedScheduling(db: PrismaClient): Promise<void> {
       { employeeId: offApproved.employeeId, startDate: parseISODate(offApproved.start), endDate: parseISODate(offApproved.end), note: "Sister's wedding", status: "APPROVED" },
       { employeeId: at(3).id, startDate: parseISODate(addDays(nextWeek, 9)), endDate: parseISODate(addDays(nextWeek, 11)), note: "Family visit", status: "PENDING" },
       { employeeId: at(5).id, startDate: parseISODate(addDays(nextWeek, 6)), endDate: parseISODate(addDays(nextWeek, 6)), note: "Concert in Albany", status: "PENDING" },
+      { employeeId: at(4).id, startDate: parseISODate(addDays(thisWeek, 6)), endDate: parseISODate(addDays(thisWeek, 6)), type: "SICK", note: "Fever", status: "PENDING" },
+      { employeeId: at(6).id, startDate: parseISODate(addDays(thisWeek, -12)), endDate: parseISODate(addDays(thisWeek, -12)), type: "SICK", hours: 6, status: "APPROVED" },
       { employeeId: at(1).id, startDate: parseISODate(addDays(thisWeek, -10)), endDate: parseISODate(addDays(thisWeek, -9)), status: "DENIED" },
     ],
   });
@@ -100,7 +102,8 @@ export async function seedScheduling(db: PrismaClient): Promise<void> {
           employeeId = null;
           leftOpen = true;
         }
-        return { employeeId, positionId: s.positionId, start: zonedInstant(s.day, s.startHour * 60, TZ), end: zonedInstant(s.day, s.endHour * 60, TZ), published };
+        const breakMinutes = defaultBreakMinutes(s.endHour - s.startHour, NY_DEFAULT_RULES);
+        return { employeeId, positionId: s.positionId, start: zonedInstant(s.day, s.startHour * 60, TZ), end: zonedInstant(s.day, s.endHour * 60, TZ), breakMinutes, published };
       }),
     });
   }
@@ -119,4 +122,9 @@ export async function seedScheduling(db: PrismaClient): Promise<void> {
   // A pending swap: someone gives away a shift later this week.
   const later = await db.shift.findFirst({ where: { published: true, employeeId: { not: null }, start: { gte: new Date() } }, orderBy: { start: "desc" } });
   if (later?.employeeId) await db.shiftSwap.create({ data: { shiftId: later.id, requesterId: later.employeeId } });
+
+  // A pinned announcement for My shifts (only if there are none yet).
+  if ((await db.announcement.count()) === 0) {
+    await db.announcement.create({ data: { body: "New fall menu starts Thursday. Tasting at 3:30 before service, so come in 30 minutes early (paid).", author: "Max", pinned: true } });
+  }
 }

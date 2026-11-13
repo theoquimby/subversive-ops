@@ -1,38 +1,17 @@
 import "server-only";
-import { env } from "../env";
+import { squareCall, SquareClient } from "./square-http";
 
 /**
  * Minimal Square REST client — only the read endpoints this app needs
  * (catalog + orders). Uses fetch directly; no SDK dependency to keep current.
+ * Every call takes the connected account explicitly (see services/square.ts).
  */
 
-const SQUARE_VERSION = "2025-10-16";
-
-const baseUrl = () =>
-  env.SQUARE_ENVIRONMENT === "sandbox" ? "https://connect.squareupsandbox.com/v2" : "https://connect.squareup.com/v2";
-
-export class SquareError extends Error {}
-
-async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${baseUrl()}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${env.SQUARE_ACCESS_TOKEN}`,
-      "Square-Version": SQUARE_VERSION,
-      "Content-Type": "application/json",
-      ...init.headers,
-    },
-    cache: "no-store",
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const detail = (body as { errors?: { detail?: string }[] }).errors?.map((e) => e.detail).join("; ");
-    throw new SquareError(`Square ${res.status}: ${detail || res.statusText}`);
-  }
-  return body as T;
-}
+export { SquareError } from "./square-http";
 
 // ---- Catalog -----------------------------------------------------------------
+
+interface MoneyAmount { amount?: number | null }
 
 interface CatalogObject {
   id: string;
@@ -40,11 +19,16 @@ interface CatalogObject {
   is_deleted?: boolean;
   item_data?: {
     name?: string;
-    variations?: { id: string; is_deleted?: boolean; item_variation_data?: { name?: string } }[];
+    is_archived?: boolean;
+    category_id?: string;
+    categories?: { id: string }[];
+    reporting_category?: { id: string };
+    variations?: { id: string; is_deleted?: boolean; item_variation_data?: { name?: string; price_money?: MoneyAmount } }[];
   };
+  category_data?: { name?: string };
   modifier_list_data?: {
     name?: string;
-    modifiers?: { id: string; is_deleted?: boolean; modifier_data?: { name?: string } }[];
+    modifiers?: { id: string; is_deleted?: boolean; modifier_data?: { name?: string; price_money?: MoneyAmount } }[];
   };
 }
 
@@ -52,34 +36,54 @@ export interface SellableObject {
   squareId: string;
   squareName: string;
   squareType: "ITEM_VARIATION" | "MODIFIER";
+  /** Name without the modifier list, used to match and to name new recipes. */
+  baseName: string;
+  /** Dollars; null for variable-priced items. */
+  price: number | null;
+  category: string | null;
+  archived: boolean;
 }
 
-export async function listSellables(): Promise<SellableObject[]> {
-  const out: SellableObject[] = [];
+const dollars = (m?: MoneyAmount) => (m?.amount != null ? m.amount / 100 : null);
+
+export async function listSellables(client: SquareClient): Promise<SellableObject[]> {
+  const items: CatalogObject[] = [];
+  const lists: CatalogObject[] = [];
+  const categories = new Map<string, string>();
   let cursor: string | undefined;
   do {
-    const q = new URLSearchParams({ types: "ITEM,MODIFIER_LIST" });
+    const q = new URLSearchParams({ types: "ITEM,MODIFIER_LIST,CATEGORY" });
     if (cursor) q.set("cursor", cursor);
-    const page = await call<{ objects?: CatalogObject[]; cursor?: string }>(`/catalog/list?${q}`);
+    const page = await squareCall<{ objects?: CatalogObject[]; cursor?: string }>(client, `/catalog/list?${q}`);
     for (const o of page.objects ?? []) {
       if (o.is_deleted) continue;
-      if (o.type === "ITEM" && o.item_data) {
-        const vars = (o.item_data.variations ?? []).filter((v) => !v.is_deleted);
-        for (const v of vars) {
-          const vName = v.item_variation_data?.name;
-          const name = vars.length > 1 && vName && vName !== "Regular" ? `${o.item_data.name} · ${vName}` : (o.item_data.name ?? "Item");
-          out.push({ squareId: v.id, squareName: name, squareType: "ITEM_VARIATION" });
-        }
-      }
-      if (o.type === "MODIFIER_LIST" && o.modifier_list_data) {
-        for (const m of o.modifier_list_data.modifiers ?? []) {
-          if (m.is_deleted) continue;
-          out.push({ squareId: m.id, squareName: `${m.modifier_data?.name ?? "Modifier"} (${o.modifier_list_data.name ?? "modifier"})`, squareType: "MODIFIER" });
-        }
-      }
+      if (o.type === "ITEM" && o.item_data) items.push(o);
+      else if (o.type === "MODIFIER_LIST" && o.modifier_list_data) lists.push(o);
+      else if (o.type === "CATEGORY") categories.set(o.id, o.category_data?.name ?? "");
     }
     cursor = page.cursor;
   } while (cursor);
+
+  const out: SellableObject[] = [];
+  for (const o of items) {
+    const d = o.item_data!;
+    const catId = d.categories?.[0]?.id ?? d.reporting_category?.id ?? d.category_id;
+    const category = (catId && categories.get(catId)) || null;
+    const vars = (d.variations ?? []).filter((v) => !v.is_deleted);
+    for (const v of vars) {
+      const vName = v.item_variation_data?.name;
+      const name = vars.length > 1 && vName && vName !== "Regular" ? `${d.name} · ${vName}` : (d.name ?? "Item");
+      out.push({ squareId: v.id, squareName: name, squareType: "ITEM_VARIATION", baseName: name, price: dollars(v.item_variation_data?.price_money), category, archived: !!d.is_archived });
+    }
+  }
+  for (const o of lists) {
+    const d = o.modifier_list_data!;
+    for (const m of d.modifiers ?? []) {
+      if (m.is_deleted) continue;
+      const base = m.modifier_data?.name ?? "Modifier";
+      out.push({ squareId: m.id, squareName: `${base} (${d.name ?? "modifier"})`, squareType: "MODIFIER", baseName: base, price: dollars(m.modifier_data?.price_money), category: d.name ?? null, archived: false });
+    }
+  }
   return out;
 }
 
@@ -91,7 +95,9 @@ interface OrderLine {
   name?: string;
   variation_name?: string;
   quantity: string;
+  item_type?: string;
   total_money?: Money;
+  total_tax_money?: Money;
   modifiers?: { catalog_object_id?: string; name?: string; quantity?: string; total_price_money?: Money }[];
 }
 interface Order {
@@ -101,14 +107,17 @@ interface Order {
   total_tax_money?: Money;
   total_tip_money?: Money;
   total_service_charge_money?: Money;
+  /** After returns; preferred when present. */
+  net_amounts?: { total_money?: Money; tax_money?: Money; tip_money?: Money; service_charge_money?: Money };
   line_items?: OrderLine[];
   returns?: { return_line_items?: OrderLine[] }[];
 }
 
 export interface OrderTotal {
   closedAt: string;
-  netSales: number; // dollars, after discounts, before tax & tips
+  netSales: number; // dollars, after discounts and returns, before tax, tips & service charges; gift card sales excluded
   tips: number;
+  tax: number; // dollars
 }
 
 export interface SoldUnit {
@@ -116,70 +125,77 @@ export interface SoldUnit {
   squareId: string;
   name: string;
   qty: number; // negative for returns
-  netSales: number; // dollars
+  netSales: number; // dollars before tax; an item's figure excludes its modifiers (they are their own units)
 }
 
 /** All units sold (items and modifiers) in completed orders closed in [start, end), plus per-order totals. */
-export async function listSoldUnits(startISO: string, endISO: string): Promise<SoldUnit[]> {
-  return (await listOrders(startISO, endISO)).units;
+export async function listSoldUnits(client: SquareClient, startISO: string, endISO: string): Promise<SoldUnit[]> {
+  return (await listOrders(client, startISO, endISO)).units;
 }
 
-export async function listOrders(startISO: string, endISO: string): Promise<{ units: SoldUnit[]; orders: OrderTotal[] }> {
+export async function listOrders(client: SquareClient, startISO: string, endISO: string): Promise<{ units: SoldUnit[]; orders: OrderTotal[] }> {
   const out: SoldUnit[] = [];
   const totals: OrderTotal[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await call<{ orders?: Order[]; cursor?: string }>("/orders/search", {
-      method: "POST",
-      body: JSON.stringify({
-        location_ids: [env.SQUARE_LOCATION_ID],
-        limit: 500,
-        cursor,
-        query: {
-          filter: {
-            date_time_filter: { closed_at: { start_at: startISO, end_at: endISO } },
-            state_filter: { states: ["COMPLETED"] },
+  // orders/search takes at most 10 locations per request.
+  for (let i = 0; i < client.locationIds.length; i += 10) {
+    const locationIds = client.locationIds.slice(i, i + 10);
+    let cursor: string | undefined;
+    do {
+      const page = await squareCall<{ orders?: Order[]; cursor?: string }>(client, "/orders/search", {
+        method: "POST",
+        body: JSON.stringify({
+          location_ids: locationIds,
+          limit: 500,
+          cursor,
+          query: {
+            filter: {
+              date_time_filter: { closed_at: { start_at: startISO, end_at: endISO } },
+              state_filter: { states: ["COMPLETED"] },
+            },
+            sort: { sort_field: "CLOSED_AT", sort_order: "ASC" },
           },
-          sort: { sort_field: "CLOSED_AT", sort_order: "ASC" },
-        },
-      }),
-    });
-    for (const order of page.orders ?? []) {
-      if (!order.closed_at) continue;
-      const cents = (m?: Money) => m?.amount ?? 0;
-      totals.push({
-        closedAt: order.closed_at,
-        netSales: (cents(order.total_money) - cents(order.total_tax_money) - cents(order.total_tip_money) - cents(order.total_service_charge_money)) / 100,
-        tips: cents(order.total_tip_money) / 100,
+        }),
       });
-      const push = (lines: OrderLine[] | undefined, sign: 1 | -1) => {
-        for (const li of lines ?? []) {
-          const qty = Number(li.quantity) || 0;
-          if (li.catalog_object_id) {
-            out.push({
-              closedAt: order.closed_at!,
-              squareId: li.catalog_object_id,
-              name: [li.name, li.variation_name && li.variation_name !== "Regular" ? li.variation_name : null].filter(Boolean).join(" · "),
-              qty: sign * qty,
-              netSales: (sign * (li.total_money?.amount ?? 0)) / 100,
-            });
+      for (const order of page.orders ?? []) {
+        if (!order.closed_at) continue;
+        const cents = (m?: Money) => m?.amount ?? 0;
+        const n = order.net_amounts;
+        const gross = n ? cents(n.total_money) - cents(n.tax_money) - cents(n.tip_money) - cents(n.service_charge_money)
+          : cents(order.total_money) - cents(order.total_tax_money) - cents(order.total_tip_money) - cents(order.total_service_charge_money);
+        // Gift card loads are money in, not sales.
+        const lineNet = (li: OrderLine) => cents(li.total_money) - cents(li.total_tax_money);
+        const giftCards = (order.line_items ?? []).filter((li) => li.item_type === "GIFT_CARD").reduce((s, li) => s + lineNet(li), 0);
+        totals.push({ closedAt: order.closed_at, netSales: (gross - giftCards) / 100, tips: cents(n?.tip_money ?? order.total_tip_money) / 100, tax: cents(n?.tax_money ?? order.total_tax_money) / 100 });
+        const push = (lines: OrderLine[] | undefined, sign: 1 | -1) => {
+          for (const li of lines ?? []) {
+            const qty = Number(li.quantity) || 0;
+            const modTotal = (li.modifiers ?? []).reduce((s, m) => s + cents(m.total_price_money), 0);
+            if (li.catalog_object_id) {
+              out.push({
+                closedAt: order.closed_at!,
+                squareId: li.catalog_object_id,
+                name: [li.name, li.variation_name && li.variation_name !== "Regular" ? li.variation_name : null].filter(Boolean).join(" · "),
+                qty: sign * qty,
+                netSales: (sign * (lineNet(li) - modTotal)) / 100,
+              });
+            }
+            for (const m of li.modifiers ?? []) {
+              if (!m.catalog_object_id) continue;
+              out.push({
+                closedAt: order.closed_at!,
+                squareId: m.catalog_object_id,
+                name: m.name ?? "Modifier",
+                qty: sign * qty * (m.quantity ? Number(m.quantity) : 1),
+                netSales: (sign * cents(m.total_price_money)) / 100,
+              });
+            }
           }
-          for (const m of li.modifiers ?? []) {
-            if (!m.catalog_object_id) continue;
-            out.push({
-              closedAt: order.closed_at!,
-              squareId: m.catalog_object_id,
-              name: m.name ?? "Modifier",
-              qty: sign * qty * (m.quantity ? Number(m.quantity) : 1),
-              netSales: (sign * (m.total_price_money?.amount ?? 0)) / 100,
-            });
-          }
-        }
-      };
-      push(order.line_items, 1);
-      for (const r of order.returns ?? []) push(r.return_line_items, -1);
-    }
-    cursor = page.cursor;
-  } while (cursor);
+        };
+        push(order.line_items, 1);
+        for (const r of order.returns ?? []) push(r.return_line_items, -1);
+      }
+      cursor = page.cursor;
+    } while (cursor);
+  }
   return { units: out, orders: totals };
 }

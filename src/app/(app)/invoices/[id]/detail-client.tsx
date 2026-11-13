@@ -2,7 +2,7 @@
 
 import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
-import { Badge, Button, Card, cx, DatePicker, LinkButton, type Tone } from "@/components/ui";
+import { Badge, Button, Card, cx, DatePicker, LinkButton, Textarea, type Tone } from "@/components/ui";
 import { money, qty as fmtQty, shortDate } from "@/lib/format";
 import { Check, Copy, Mail, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -187,21 +187,16 @@ export function InvoiceActions({ id, status, statusLabel, flagged, priceChanges,
   const [showCredit, setShowCredit] = useState(false);
   const approved = status === "APPROVED";
 
-  const approve = async () => {
+  const [approving, setApproving] = useState(false);
+  const approve = () => {
     if (status !== "MATCHED") {
-      const ok = await confirm({
-        title: "Approve with open issues?",
-        body: (
-          <>
-            This invoice is marked <b>{statusLabel.toLowerCase()}</b>{flagged > 0 && <> with {flagged} line{flagged === 1 ? "" : "s"} that don&apos;t match</>}.
-            {credit && <> You may be owed {money(credit.total)} — send the credit request first if you haven&apos;t.</>} Your name goes on the approval.
-          </>
-        ),
-        confirmLabel: "Approve anyway",
-      });
-      if (!ok) return;
+      setApproving(true);
+      return;
     }
-    start(async () => { await approveInvoice(id); router.refresh(); });
+    start(async () => {
+      await approveInvoice(id);
+      router.refresh();
+    });
   };
 
   const prices = async () => {
@@ -229,7 +224,78 @@ export function InvoiceActions({ id, status, statusLabel, flagged, priceChanges,
         <Button variant="primary" disabled={pending} onClick={approve}><Check className="size-4" />Approve</Button>
       )}
       {showCredit && credit && <CreditSheet credit={credit} onClose={() => setShowCredit(false)} />}
+      {approving && <ApproveSheet id={id} statusLabel={statusLabel} flagged={flagged} credit={credit} onClose={() => setApproving(false)} />}
     </>
+  );
+}
+
+/** Approving with open issues: the note is required and stays in the invoice history. */
+function ApproveSheet({ id, statusLabel, flagged, credit, onClose }: { id: string; statusLabel: string; flagged: number; credit: Credit | null; onClose: () => void }) {
+  const router = useRouter();
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const submit = () =>
+    start(async () => {
+      const res = await approveInvoice(id, note);
+      if (res?.error) return setError(res.error);
+      onClose();
+      router.refresh();
+    });
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/30 p-3 backdrop-blur-[2px] sm:items-center" onMouseDown={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Approve with open issues" onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-2xl">
+        <div className="text-base font-semibold">Approve with open issues?</div>
+        <p className="mt-1.5 text-sm text-muted">
+          This invoice is marked <b className="text-ink-2">{statusLabel.toLowerCase()}</b>
+          {flagged > 0 && <> with {flagged} line{flagged === 1 ? "" : "s"} that don&apos;t match</>}.
+          {credit && <> You may be owed {money(credit.total)}.</>} Your name and note go on the record.
+        </p>
+        <Textarea
+          autoFocus
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && note.trim()) submit(); }}
+          placeholder="Why it's OK, e.g. rep confirmed new price, credit requested"
+          aria-label="Approval note"
+          maxLength={500}
+          rows={3}
+          className="mt-4"
+        />
+        {error && <p className="mt-2 text-sm text-bad">{error}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={pending || !note.trim()} onClick={submit}><Check className="size-4" />Approve anyway</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ACTION_LABEL: Record<string, string> = { approved: "Approved", "auto-approved": "Auto-approved", reopened: "Reopened", "prices-updated": "Prices updated" };
+
+/** The approval history, oldest first. Nothing in it is ever removed. */
+export function InvoiceHistory({ events }: { events: { at: string; when: string; by: string; action: string; status?: string; statusLabel?: string; note?: string }[] }) {
+  if (events.length === 0) return null;
+  return (
+    <div>
+      <h2 className="mb-2 text-[0.95rem] font-semibold">History</h2>
+      <Card className="divide-y divide-border text-sm">
+        {events.map((e, i) => (
+          <div key={`${e.at}-${i}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-2.5">
+            <span className="font-medium">{ACTION_LABEL[e.action] ?? e.action}</span>
+            {e.statusLabel && e.action !== "reopened" && e.status !== "MATCHED" && <Badge tone="warn">was {e.statusLabel.toLowerCase()}</Badge>}
+            <span className="text-muted">by {e.by === "auto" ? "auto-approve" : e.by} · {e.when}</span>
+            {e.note && <div className="w-full text-ink-2">{e.note}</div>}
+          </div>
+        ))}
+      </Card>
+    </div>
   );
 }
 

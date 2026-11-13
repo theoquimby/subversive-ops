@@ -10,6 +10,7 @@ import {
   OrderLineRef,
   Tolerance,
 } from "@/domain/invoiceMatch";
+import { appendEvent, canAutoApprove, InvoiceEvent, parseHistory } from "@/domain/invoiceHistory";
 import { InvoiceStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, num } from "../db";
@@ -93,7 +94,61 @@ export async function rematch(invoiceId: string) {
     ),
     ...(inv.status === "APPROVED" ? [] : [db.invoice.update({ where: { id: inv.id }, data: { status: r.status } })]),
   ]);
+  if (inv.status !== "APPROVED") await maybeAutoApprove(inv.id);
   return r;
+}
+
+// ---- Approval history (append-only, one Setting per invoice) -------------------------------
+
+const HISTORY_PREFIX = "invoices.history.";
+export const AUTO_APPROVE_KEY = "invoices.autoApprove";
+
+export async function loadHistory(invoiceId: string): Promise<InvoiceEvent[]> {
+  const s = await db.setting.findUnique({ where: { key: `${HISTORY_PREFIX}${invoiceId}` } });
+  return parseHistory(s?.value);
+}
+
+/** Append one event; earlier entries are never rewritten. */
+export async function recordEvent(invoiceId: string, e: Omit<InvoiceEvent, "at"> & { at?: string }) {
+  const key = `${HISTORY_PREFIX}${invoiceId}`;
+  const history = appendEvent(await loadHistory(invoiceId), { ...e, at: e.at ?? new Date().toISOString() });
+  const value = JSON.stringify(history);
+  await db.setting.upsert({ where: { key }, create: { key, value }, update: { value } });
+  return history;
+}
+
+export async function autoApproveEnabled() {
+  return (await db.setting.findUnique({ where: { key: AUTO_APPROVE_KEY } }))?.value === "true";
+}
+
+export async function setAutoApprove(on: boolean) {
+  await db.setting.upsert({ where: { key: AUTO_APPROVE_KEY }, create: { key: AUTO_APPROVE_KEY, value: String(on) }, update: { value: String(on) } });
+}
+
+/** With auto-approve on, approve a clean three-way match straight away (approvedBy "auto"). */
+export async function maybeAutoApprove(invoiceId: string): Promise<boolean> {
+  if (!(await autoApproveEnabled())) return false;
+  const inv = await db.invoice.findUnique({ where: { id: invoiceId }, select: { id: true, status: true, supplierId: true, invoiceNumber: true, order: { select: { status: true } } } });
+  if (!inv || inv.status === "APPROVED") return false;
+  const [duplicate, history] = await Promise.all([duplicateOf(inv), loadHistory(inv.id)]);
+  if (!canAutoApprove({ status: inv.status, orderStatus: inv.order?.status ?? null, duplicate: Boolean(duplicate), history })) return false;
+  await db.invoice.update({ where: { id: inv.id }, data: { status: "APPROVED", approvedBy: "auto", approvedAt: new Date() } });
+  await recordEvent(inv.id, { by: "auto", action: "auto-approved", status: inv.status, note: "Clean three-way match with a checked-in order." });
+  return true;
+}
+
+/** Approve by hand. Anything but a clean match needs a note, which goes on the record. */
+export async function approve(invoiceId: string, by: string, note: string | null) {
+  const inv = await db.invoice.findUniqueOrThrow({ where: { id: invoiceId }, select: { status: true } });
+  if (inv.status === "APPROVED") return;
+  await db.invoice.update({ where: { id: invoiceId }, data: { status: "APPROVED", approvedBy: by, approvedAt: new Date() } });
+  await recordEvent(invoiceId, { by, action: "approved", status: inv.status, note: note ?? undefined });
+}
+
+/** Reopen for changes. The approval stays in the history; only the status changes. */
+export async function reopen(invoiceId: string, by: string, note: string | null) {
+  await db.invoice.update({ where: { id: invoiceId }, data: { status: "NEEDS_REVIEW" } });
+  await recordEvent(invoiceId, { by, action: "reopened", note: note ?? undefined });
 }
 
 // ---- Create -----------------------------------------------------------------------
@@ -136,6 +191,7 @@ export async function createInvoice(args: {
       },
     },
   });
+  await maybeAutoApprove(inv.id);
   return inv.id;
 }
 

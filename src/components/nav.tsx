@@ -28,7 +28,7 @@ const MANAGER: { title?: string; items: NavItem[] }[] = [
   { title: "People", items: [
     { href: "/schedule", label: "Schedule", icon: CalendarRange },
     { href: "/team", label: "Team", icon: Users },
-    { href: "/labor", label: "Timecards", icon: Clock },
+    { href: "/labor", label: "Timecards & payroll", icon: Clock },
     { href: "/tips", label: "Tips", icon: HandCoins },
     { href: "/my", label: "My shifts", icon: CalendarCheck },
   ] },

@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "../db";
-import { squareConfigured } from "../env";
+import { isSquareConnected } from "./square";
 
 /**
  * First-run setup progress, stored as JSON in Setting `onboarding.progress`.
@@ -126,7 +126,7 @@ export async function onboardingState(): Promise<OnboardingState> {
     basics: settings > 0,
     suppliers: suppliers > 0,
     data: ingredients > 0 || recipes > 0,
-    square: squareConfigured(),
+    square: await isSquareConnected(),
     team: users > 1,
     phone: counts > 0,
     done: !!p.finishedAt,

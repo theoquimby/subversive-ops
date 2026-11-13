@@ -1,48 +1,54 @@
+import { refreshIfStale } from "@/server/services/square-sync";
 import { addDays } from "@/domain/dates";
-import { dayDate, money, pct, relativeTime, shortDate, signedPct } from "@/lib/format";
+import { dayDate, money, pct, qty, relativeTime, shortDate, signedPct } from "@/lib/format";
 import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
+import type { Tone } from "@/components/ui";
+import { costTone } from "@/domain/pnl";
+import { pnlReport, todaySoFar } from "@/server/services/pnl";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { loadCostingSnapshot } from "@/server/services/costing";
 import { menuCosts, recentPriceMoves } from "@/server/services/insights";
 import { deliveryWindow } from "@/server/services/planning";
-import { businessToday, lastSquareSync, salesByRecipe } from "@/server/services/sales";
+import { businessToday, lastSquareSync } from "@/server/services/sales";
 import Link from "next/link";
 import { HelpTip, HelpZone } from "@/components/help";
 import { onboardingState } from "@/server/services/onboarding";
 
 export const metadata = { title: "Overview" };
 
+function LiveFigure({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: Tone }) {
+  return (
+    <div>
+      <div className="text-[0.8rem] text-muted">{label}</div>
+      <div className={cx("num text-xl font-semibold", tone === "bad" ? "text-bad" : tone === "warn" ? "text-warn" : tone === "good" ? "text-good" : "text-ink")}>{value}</div>
+      {hint && <div className="num text-xs text-muted">{hint}</div>}
+    </div>
+  );
+}
+
 export default async function OverviewPage() {
   await requireUser("MANAGER");
+  await refreshIfStale();
   const today = businessToday();
   const snap = await loadCostingSnapshot();
-  const [{ rows }, moves, week, sales7, suppliers, lastSync, ob] = await Promise.all([
+  const now = new Date();
+  const [{ rows }, moves, week, live, suppliers, lastSync, ob] = await Promise.all([
     menuCosts(snap),
     recentPriceMoves(30, snap),
-    salesByRecipe(addDays(today, -7), today),
-    db.dailySale.aggregate({ _sum: { netSales: true }, where: { date: { gte: new Date(`${addDays(today, -7)}T00:00:00Z`), lt: new Date(`${today}T00:00:00Z`) } } }),
+    pnlReport(addDays(today, -7), today, now),
+    todaySoFar(now),
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     lastSquareSync(),
     onboardingState(),
   ]);
 
   const sold = rows.filter((r) => r.kind !== "PREP");
-  const costById = new Map(rows.map((r) => [r.id, r]));
-  let theoCost = 0;
-  let mappedSales = 0;
-  for (const [recipeId, series] of week.byRecipe) {
-    const r = costById.get(recipeId);
-    if (!r || r.cost == null || r.menuPrice == null) continue;
-    for (const q of series.values()) {
-      theoCost += q * r.cost;
-      mappedSales += q * r.menuPrice;
-    }
-  }
-  const theoPct = mappedSales > 0 ? theoCost / mappedSales : null;
+  const { split, targets, total: t, budget } = week;
   const over = sold.filter((r) => r.foodCostPct != null && r.foodCostPct > r.target).sort((a, b) => b.foodCostPct! - b.target - (a.foodCostPct! - a.target));
   const ups = moves.filter((m) => m.changePct > 0);
-  const target = sold[0]?.target ?? 0.3;
+  const vsForecast = live.projected != null && live.forecastDay ? live.projected / live.forecastDay - 1 : null;
+  const pnlWeek = `/pnl?period=custom&from=${addDays(today, -7)}&to=${addDays(today, -1)}`;
 
   return (
     <>
@@ -57,12 +63,53 @@ export default async function OverviewPage() {
         </Card>
       )}
 
-      <HelpZone id="overview.page" tour="overview.stats" className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={<span className="inline-flex items-center gap-1.5">Food cost, last 7 days <HelpTip id="overview.foodCost" /></span>} value={pct(theoPct)} hint={`Target ${pct(target, 0)} · theoretical`} tone={theoPct == null ? undefined : theoPct > target ? "bad" : "good"} />
-        <Stat label="Sales, last 7 days" value={money(sales7._sum.netSales?.toNumber() ?? 0, { whole: true })} hint="Net, from Square" />
+      <HelpZone id="overview.today" tour="overview.today" className="mb-8">
+        <Card className="grid grid-cols-2 gap-x-4 gap-y-3 p-4 lg:grid-cols-4">
+          <div className="col-span-2 flex items-center justify-between gap-2 lg:col-span-4">
+            <div className="inline-flex items-center gap-1.5 text-sm font-medium">Today so far <HelpTip id="overview.today" /></div>
+            <LinkButton href="/pnl?period=today" variant="ghost" size="sm">Today&apos;s P&amp;L →</LinkButton>
+          </div>
+          <LiveFigure label="Sales" value={money(live.soFar, { whole: true })} hint={live.hasSales ? `${live.orders} orders` : "nothing synced yet today"} />
+          <LiveFigure label="Labor so far" value={money(live.laborSoFar, { whole: true })} hint={`${qty(live.laborHours, 1)} hours`} />
+          <LiveFigure
+            label="Labor %"
+            value={pct(live.laborPct, 0)}
+            tone={budget?.laborPct != null ? costTone(live.laborPct, budget.laborPct) : undefined}
+            hint={live.projectedLaborPct != null ? `${pct(live.projectedLaborPct, 0)} by close, on schedule` : budget?.laborPct != null ? `target ${pct(budget.laborPct, 0)}` : undefined}
+          />
+          {live.hasSales ? (
+            <LiveFigure
+              label="Projected close"
+              value={live.projected != null ? money(live.projected, { whole: true }) : "—"}
+              tone={vsForecast == null ? undefined : vsForecast >= 0 ? "good" : vsForecast >= -0.1 ? "warn" : "bad"}
+              hint={live.forecastDay != null ? `forecast ${money(live.forecastDay, { whole: true })}${vsForecast != null ? ` · ${signedPct(vsForecast, 0)}` : ""}` : "no forecast yet"}
+            />
+          ) : (
+            <LiveFigure label="Forecast today" value={live.forecastDay != null ? money(live.forecastDay, { whole: true }) : "—"} hint="projection starts once today's sales sync" />
+          )}
+        </Card>
+      </HelpZone>
+
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium text-ink-2">Last 7 days</h2>
+        <LinkButton href={pnlWeek} variant="ghost" size="sm">P&amp;L →</LinkButton>
+      </div>
+      <HelpZone id="overview.page" tour="overview.stats" className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label={<span className="inline-flex items-center gap-1.5">Sales <HelpTip id="overview.sales" /></span>} value={money(t.sales, { whole: true })} hint={`food ${pct(split.food.mix, 0)} · drinks ${pct(split.beverage.mix, 0)}`} />
+        <Stat label={<span className="inline-flex items-center gap-1.5">Food cost <HelpTip id="overview.foodCost" /></span>} value={pct(split.food.pct)} hint={`Target ${pct(targets.food, 0)} · theoretical`} tone={split.food.pct == null ? undefined : costTone(split.food.pct, targets.food)} />
+        <Stat label={<span className="inline-flex items-center gap-1.5">Beverage cost <HelpTip id="overview.bevCost" /></span>} value={pct(split.beverage.pct)} hint={split.beverage.sales > 0 && split.beverage.cogs === 0 ? "drinks not costed yet" : `Target ${pct(targets.beverage, 0)} · theoretical`} tone={split.beverage.pct == null || split.beverage.cogs === 0 ? undefined : costTone(split.beverage.pct, targets.beverage)} />
+        <Stat label="Labor" value={pct(t.laborPct)} hint={`prime cost ${pct(t.primePct, 0)}${budget?.laborPct != null ? ` · target ${pct(budget.laborPct, 0)}` : ""}`} tone={budget?.laborPct != null ? costTone(t.laborPct, budget.laborPct) : undefined} />
+      </HelpZone>
+      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={<span className="inline-flex items-center gap-1.5">Items over target <HelpTip id="overview.overTarget" /></span>} value={over.length} hint={`of ${sold.length} menu items`} tone={over.length ? "warn" : "good"} />
         <Stat label="Price increases" value={ups.length} hint="Last 30 days" tone={ups.length ? "warn" : undefined} />
-      </HelpZone>
+        <div className="hidden lg:block">
+          <Stat label="Profit before overhead" value={money(t.profit, { whole: true })} hint="last 7 days" tone={t.profit < 0 ? "bad" : undefined} />
+        </div>
+        <div className="hidden lg:block">
+          <Stat label="Sales per labor hour" value={money(t.salesPerLaborHour, { whole: true })} hint={t.ordersPerLaborHour != null ? `${qty(t.ordersPerLaborHour, 1)} orders per labor hour` : "last 7 days"} />
+        </div>
+      </div>
 
       <div className="grid gap-x-8 lg:grid-cols-5">
         <HelpZone id="overview.priceChanges" tour="overview.price-changes" className="mb-10 lg:col-span-3 [&>section]:mb-0">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allocateTips, assignShifts, checkCompliance, curveToBlocks, NY_DEFAULT_RULES as R, payForWeek, staffingCurve } from "../labor";
+import { allocateTips, applyRuleSettings, assignShifts, checkCompliance, curveToBlocks, defaultBreakMinutes, NY_DEFAULT_RULES as R, payForWeek, staffingCurve } from "../labor";
 
 const at = (day: number, h: number) => new Date(Date.UTC(2026, 10, day, h));
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
@@ -68,5 +68,39 @@ describe("allocateTips", () => {
     expect(r.map((x) => x.amount)).toEqual([40, 40, 20]);
     const odd = allocateTips(10, [{ employeeId: "a", hours: 1, points: 1 }, { employeeId: "b", hours: 1, points: 1 }, { employeeId: "c", hours: 1, points: 1 }], "HOURS");
     expect(odd.reduce((s, x) => s + x.amount, 0)).toBeCloseTo(10);
+  });
+});
+
+describe("meal breaks, minimum wage and rule settings", () => {
+  const emps = [{ id: "a", name: "Ann", isMinor: false, maxHoursWeek: null }];
+  const shifts = [
+    { id: "1", employeeId: "a", start: at(1, 14), end: at(1, 22), breakMinutes: 0, rate: 10.7, tipped: true }, // 8h, no break, tipped wage ok
+    { id: "2", employeeId: "a", start: at(3, 14), end: at(3, 22), breakMinutes: 30, rate: 12, tipped: false }, // break ok, under min wage
+  ];
+  it("flags a missing meal break and pay under the right minimum", () => {
+    const v = checkCompliance(shifts, emps, R, (d) => d.getUTCHours()).map((x) => `${x.shiftId}:${x.rule}`);
+    expect(v).toContain("1:meal-break");
+    expect(v).not.toContain("2:meal-break");
+    expect(v).not.toContain("1:min-wage");
+    expect(v).toContain("2:min-wage");
+  });
+  it("honours per-rule on/off and block/warn", () => {
+    const rules = { ...R, ruleSettings: { "meal-break": { on: false }, "min-wage": { level: "block" as const } } };
+    const v = checkCompliance(shifts, emps, rules, (d) => d.getUTCHours());
+    expect(v.some((x) => x.rule === "meal-break")).toBe(false);
+    expect(v.find((x) => x.rule === "min-wage")?.level).toBe("block");
+    expect(applyRuleSettings([{ rule: "overlap", level: "block" as const }], { ruleSettings: { overlap: { level: "warn" } } })[0].level).toBe("warn");
+  });
+  it("suggests a default break for long shifts", () => {
+    expect(defaultBreakMinutes(6, R)).toBe(0);
+    expect(defaultBreakMinutes(7, R)).toBe(30);
+    expect(defaultBreakMinutes(7, { ...R, ruleSettings: { "meal-break": { on: false } } })).toBe(0);
+  });
+  it("costs call-in pay for short planned shifts only when asked", () => {
+    const blocks = [{ employeeId: "a", start: at(1, 16), end: at(1, 18), breakMinutes: 0, rate: 20 }];
+    expect(payForWeek(blocks, R, dayKey)[0].wages).toBe(40);
+    const [p] = payForWeek(blocks, R, dayKey, { callIn: true });
+    expect(p.callInHours).toBe(2);
+    expect(p.wages).toBe(40 + 2 * R.minimumWage);
   });
 });

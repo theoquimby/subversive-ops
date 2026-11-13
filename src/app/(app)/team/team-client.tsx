@@ -2,15 +2,16 @@
 
 import { GridCell, GridSelect } from "@/components/grid";
 import { useConfirm } from "@/components/dialog";
-import { Badge, Button, cx, Select } from "@/components/ui";
+import { Badge, Button, cx, Input, Select } from "@/components/ui";
 import { formatWindows, toMinutes } from "@/domain/timecards";
-import { CalendarClock, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { CalendarClock, KeyRound, Plus, RefreshCw, Trash2, UserPlus, X } from "lucide-react";
 import { Fragment, useRef, useState, useTransition } from "react";
 import {
   addEmployee,
   addEmployeePosition,
   addPosition,
   deletePosition,
+  inviteEmployee,
   removeEmployeePosition,
   resetAvailability,
   setAvailabilityDay,
@@ -118,6 +119,10 @@ export interface EmployeeRow {
   squareTeamMemberId: string | null;
   positionIds: string[];
   availability: Record<string, [string, string][]> | null;
+  /** Paid sick leave available this year, in hours. */
+  sickAvailable: number | null;
+  /** e.g. "under $16.00 minimum" when their base rate is below the legal floor. */
+  rateWarning: string | null;
 }
 
 export interface PositionOption {
@@ -141,12 +146,13 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
         <tr>
           <th className="border-b border-border px-4 py-2.5 text-left text-[0.75rem] font-medium text-muted">Name</th>
           <th className="hidden border-b border-border px-4 py-2.5 text-left text-[0.75rem] font-medium text-muted md:table-cell">Positions</th>
-          <th className="w-24 border-b border-border px-4 py-2.5 text-right text-[0.75rem] font-medium text-muted">Rate</th>
+          <th className="w-28 border-b border-border px-4 py-2.5 text-right text-[0.75rem] font-medium text-muted">Rate</th>
           <th className="hidden w-20 border-b border-border px-4 py-2.5 text-left text-[0.75rem] font-medium text-muted lg:table-cell">Minor</th>
           <th className="hidden w-20 border-b border-border px-4 py-2.5 text-right text-[0.75rem] font-medium whitespace-nowrap text-muted sm:table-cell">Max h/wk</th>
+          <th className="hidden w-20 border-b border-border px-4 py-2.5 text-right text-[0.75rem] font-medium whitespace-nowrap text-muted xl:table-cell" title="Paid sick leave available this year">Sick</th>
           <th className="hidden w-20 border-b border-border px-4 py-2.5 text-left text-[0.75rem] font-medium text-muted lg:table-cell">Active</th>
           <th className="hidden w-32 border-b border-border px-4 py-2.5 text-left text-[0.75rem] font-medium text-muted xl:table-cell">Login</th>
-          <th className="hidden w-28 border-b border-border px-4 py-2.5 text-left text-[0.75rem] font-medium text-muted xl:table-cell">Square</th>
+          <th className="hidden w-28 border-b border-border px-4 py-2.5 text-left text-[0.75rem] font-medium text-muted 2xl:table-cell">Square</th>
           <th className="w-12 border-b border-border" aria-label="Availability" />
         </tr>
       </thead>
@@ -156,7 +162,7 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
             <tr className={cx("transition-colors hover:bg-surface-2/60", !e.active && "opacity-55")}>
               <td className={tdCell}>
                 <div className="flex items-center gap-1.5">
-                  <GridCell grid="emp" col="name" value={e.name} onSave={setEmployeeField.bind(null, e.id, "name")} ariaLabel="Name" className="min-w-0 flex-1 font-medium" />
+                  <GridCell grid="emp" col="name" value={e.name} onSave={setEmployeeField.bind(null, e.id, "name")} ariaLabel="Name" className="min-w-28 flex-1 font-medium" />
                   {e.isMinor && <Badge tone="warn">Minor</Badge>}
                 </div>
                 <div className="px-2 pb-1 md:hidden">
@@ -167,7 +173,8 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
                 <PositionChips employeeId={e.id} assigned={e.positionIds} positions={positions} />
               </td>
               <td className={tdCell}>
-                <GridCell grid="emp" col="rate" type="number" prefix="$" decimals={2} value={e.hourlyRate} placeholder="—" onSave={setEmployeeField.bind(null, e.id, "hourlyRate")} ariaLabel={`${e.name} hourly rate`} />
+                <GridCell grid="emp" col="rate" type="number" prefix="$" decimals={2} value={e.hourlyRate} placeholder="—" onSave={setEmployeeField.bind(null, e.id, "hourlyRate")} ariaLabel={`${e.name} hourly rate`} className={e.rateWarning ? "[&_input]:text-bad" : undefined} />
+                {e.rateWarning && <div className="px-2 pb-1 text-right text-[11px] text-bad">{e.rateWarning}</div>}
               </td>
               <td className={cx(tdCell, "hidden lg:table-cell")}>
                 <GridSelect value={e.isMinor ? "yes" : "no"} options={YES_NO} onSave={setEmployeeField.bind(null, e.id, "isMinor")} ariaLabel={`${e.name} is a minor`} />
@@ -175,13 +182,20 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
               <td className={cx(tdCell, "hidden sm:table-cell")}>
                 <GridCell grid="emp" col="max" type="number" value={e.maxHoursWeek} placeholder="—" onSave={setEmployeeField.bind(null, e.id, "maxHoursWeek")} ariaLabel={`${e.name} max hours per week`} />
               </td>
+              <td className={cx(tdCell, "num hidden px-4 text-right text-muted xl:table-cell")}>{e.sickAvailable == null ? "—" : `${e.sickAvailable.toFixed(1)}h`}</td>
               <td className={cx(tdCell, "hidden lg:table-cell")}>
                 <GridSelect value={e.active ? "yes" : "no"} options={YES_NO} onSave={setEmployeeField.bind(null, e.id, "active")} ariaLabel={`${e.name} active`} />
               </td>
               <td className={cx(tdCell, "hidden xl:table-cell")}>
-                <GridSelect value={e.userId ?? ""} options={userOptions} onSave={setEmployeeField.bind(null, e.id, "userId")} ariaLabel={`${e.name} login`} />
+                {e.userId ? (
+                  <GridSelect value={e.userId} options={userOptions} onSave={setEmployeeField.bind(null, e.id, "userId")} ariaLabel={`${e.name} login`} />
+                ) : (
+                  <button type="button" onClick={() => setOpen(e.id)} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-ink-2 hover:bg-surface-2">
+                    <UserPlus className="size-3.5" /> Invite
+                  </button>
+                )}
               </td>
-              <td className={cx(tdCell, "hidden xl:table-cell")}>
+              <td className={cx(tdCell, "hidden 2xl:table-cell")}>
                 {e.squareTeamMemberId ? (
                   <span className="block max-w-28 truncate px-2 font-mono text-xs text-muted" title={e.squareTeamMemberId}>{e.squareTeamMemberId}</span>
                 ) : (
@@ -193,8 +207,8 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
                   type="button"
                   onClick={() => setOpen(open === e.id ? null : e.id)}
                   aria-expanded={open === e.id}
-                  aria-label={`${e.name} availability`}
-                  title="Availability"
+                  aria-label={`${e.name} availability and login`}
+                  title="Availability and login"
                   className={cx("grid size-10 place-items-center rounded-md hover:bg-surface-2 sm:size-8", open === e.id ? "bg-surface-2 text-ink" : e.availability ? "text-ink-2" : "text-muted")}
                 >
                   <CalendarClock className="size-4" />
@@ -203,7 +217,8 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
             </tr>
             {open === e.id && (
               <tr>
-                <td colSpan={9} className="border-b border-border bg-surface-2/40 px-3 py-3 sm:px-4">
+                <td colSpan={10} className="border-b border-border bg-surface-2/40 px-3 py-3 sm:px-4">
+                  {!e.userId && <InviteBox employee={e} />}
                   <AvailabilityEditor employee={e} openingHours={openingHours} users={userOptions} />
                 </td>
               </tr>
@@ -321,8 +336,45 @@ function AvailabilityEditor({ employee: e, openingHours, users }: { employee: Em
           Minor
           <span className="w-24"><GridSelect value={e.isMinor ? "yes" : "no"} options={YES_NO} onSave={setEmployeeField.bind(null, e.id, "isMinor")} ariaLabel={`${e.name} is a minor`} /></span>
         </span>
-        {e.squareTeamMemberId && <span className="xl:hidden">Square ID <span className="font-mono">{e.squareTeamMemberId}</span></span>}
+        {e.squareTeamMemberId && <span className="2xl:hidden">Square ID <span className="font-mono">{e.squareTeamMemberId}</span></span>}
+        {e.sickAvailable != null && <span className="xl:hidden">Sick leave <span className="num">{e.sickAvailable.toFixed(1)}h</span> available</span>}
       </div>
+    </div>
+  );
+}
+
+/** Create a staff login with a PIN and link it, in one step. Shows the PIN once. */
+function InviteBox({ employee: e }: { employee: EmployeeRow }) {
+  const [name, setName] = useState(e.name.split(" ")[0] ?? e.name);
+  const [pin, setPin] = useState("");
+  const [result, setResult] = useState<{ error?: string; name?: string; pin?: string } | null>(null);
+  const [pending, start] = useTransition();
+  if (result?.pin) {
+    return (
+      <div className="mb-4 flex items-start gap-3 rounded-lg bg-good-bg px-3 py-2.5 text-sm text-good">
+        <KeyRound className="mt-0.5 size-4 shrink-0" />
+        <div>
+          <div className="font-medium">Login ready: {result.name} · PIN <span className="num tracking-widest">{result.pin}</span></div>
+          <div className="text-xs">Share it with {e.name.split(" ")[0]}. They sign in on their phone and land on My shifts. The PIN isn&apos;t shown again (reset it in Settings).</div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-4 rounded-lg border border-border bg-surface px-3 py-3">
+      <div className="mb-2 flex items-center gap-2 text-sm font-medium"><UserPlus className="size-4" /> Give {e.name.split(" ")[0]} a login</div>
+      <form
+        className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(8rem,12rem)_8rem_auto] sm:items-center"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          start(async () => setResult(await inviteEmployee(e.id, name, pin)));
+        }}
+      >
+        <Input aria-label="Login name" value={name} onChange={(ev) => setName(ev.target.value)} placeholder="Login name" />
+        <Input aria-label="PIN (blank for a random one)" value={pin} onChange={(ev) => setPin(ev.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="PIN (random)" inputMode="numeric" className="num" />
+        <Button variant="primary" disabled={pending || !name.trim()} className="col-span-2 sm:col-span-1">{pending ? "Creating…" : "Create login"}</Button>
+      </form>
+      <p className="mt-1.5 text-xs text-muted">{result?.error ? <span className="text-bad">{result.error}</span> : "Staff logins only see My shifts, counts and waste."}</p>
     </div>
   );
 }

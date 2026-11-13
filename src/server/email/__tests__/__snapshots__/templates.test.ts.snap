@@ -1,0 +1,182 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`email templates > credit-request > matches the snapshot 1`] = `
+{
+  "subject": "Credit request — invoice 88123401",
+  "text": "Hi Sysco Albany team,
+
+Thanks for the delivery. When we checked invoice 88123401 (2026-11-10) against what we ordered and received, a few lines didn't line up:
+
+- Beef, ground 80/20 fresh chub (#4127783): price — charged $64.90, agreed $62.40 × 4: $10.00
+- Lettuce, romaine hearts (#7731001): short — billed 2, received 1: $39.00
+
+Total credit requested: $49.00
+
+Could you send a credit memo for this amount, or apply it to our next invoice? Happy to send photos or the delivery slip if that helps.
+
+Thank you,
+Max
+Subversive · max@subversivebrewing.com
+
+—
+Subversive · Catskill, NY",
+}
+`;
+
+exports[`email templates > invoice-issue > matches the snapshot 1`] = `
+{
+  "subject": "Sysco Albany invoice #88123401: price and qty issues",
+  "text": "Hi Max,
+
+Sysco Albany invoice #88123401 (Price and qty issues): 2 line(s) don't match. Credit to request: $49.00.
+
+- Beef, ground 80/20 fresh chub: Charged $64.90, expected $62.40
+- Lettuce, romaine hearts: Billed 2, received 1
+
+Review: https://ops.example.com/invoices/inv_sample
+
+—
+Subversive invoices
+Subversive · Catskill, NY",
+}
+`;
+
+exports[`email templates > price-spikes > matches the snapshot 1`] = `
+{
+  "subject": "2 prices jumped",
+  "text": "Hi Max,
+
+These prices went up enough to move your plate costs:
+
+- Butter (Sysco Albany): $98.50 → $121.20, +23.1%
+- Eggs (Sysco Albany): $44.00 → $51.75, +17.6%
+
+Review: https://ops.example.com/prices
+
+—
+Subversive price alerts
+Subversive · Catskill, NY",
+}
+`;
+
+exports[`email templates > purchase-order > matches the snapshot 1`] = `
+{
+  "subject": "Order from Subversive — delivery Tue, Nov 17",
+  "text": "Hi Sysco Albany team,
+
+Here's our order for delivery on Tue, Nov 17 (4 items). The same list is attached as Sysco-Albany-2026-11-17.csv.
+
+- 4 case — Beef, ground 80/20 fresh chub (#4127783) @ $62.40
+- 6 case — Fries, 3/8" straight cut skin-on (#1009912) @ $41.15
+- 2 case — Cheese, American yellow 160 sl (#5518230) @ $48.90
+- 1.5 case — Lettuce, romaine hearts (#7731001) @ $39.00
+
+Estimated total: $652.80
+
+Notes: Back door after 9 am please.
+
+Please reply if anything is short, substituted or the price has changed.
+
+Thank you,
+Max
+Subversive · max@subversivebrewing.com
+
+—
+Subversive · Catskill, NY",
+}
+`;
+
+exports[`email templates > schedule-published > matches the snapshot 1`] = `
+{
+  "subject": "Your shifts for the week of Nov 16",
+  "text": "Hi Jamie,
+
+The schedule for the week of Nov 16 is out. You have 3 shifts · 18.5 h:
+
+- Wed, Nov 18: 4:00 pm – 10:00 pm · Server
+- Fri, Nov 20: 4:30 pm – 11:00 pm · Server (Trivia night)
+- Sun, Nov 22: 11:00 am – 5:00 pm · Bar
+
+See your shifts, swap or ask for time off: https://ops.example.com/my
+
+—
+Subversive schedule
+Subversive · Catskill, NY",
+}
+`;
+
+exports[`email templates > shift-changed > matches the snapshot 1`] = `
+{
+  "subject": "Shift changed: Wed, Nov 18",
+  "text": "Hi Jamie,
+
+Your shift changed. Here's the new time.
+
+- Was: Wed, Nov 18 · 4:00 pm – 10:00 pm · Server
+- Now: Wed, Nov 18 · 5:00 pm – 11:00 pm · Server
+
+My shifts: https://ops.example.com/my
+
+—
+Subversive schedule
+Subversive · Catskill, NY",
+}
+`;
+
+exports[`email templates > swap-approved > matches the snapshot 1`] = `
+{
+  "subject": "Swap approved: Fri, Nov 20",
+  "text": "Hi Jamie,
+
+Your swap was approved. Sam is taking it — it's off your schedule.
+
+- Fri, Nov 20: 4:30 pm – 11:00 pm · Server
+
+My shifts: https://ops.example.com/my
+
+—
+Subversive schedule
+Subversive · Catskill, NY",
+}
+`;
+
+exports[`email templates > time-off > matches the snapshot 1`] = `
+{
+  "subject": "Time off approved: Nov 26–Nov 28",
+  "text": "Hi Jamie,
+
+Your time off is approved. You won't be scheduled on these days.
+
+- Thu, Nov 26 – Sat, Nov 28 · Thanksgiving
+
+My shifts: https://ops.example.com/my
+
+—
+Subversive schedule
+Subversive · Catskill, NY",
+}
+`;
+
+exports[`email templates > weekly-brief > matches the snapshot 1`] = `
+{
+  "subject": "Week of Nov 16: 3 things need you",
+  "text": "Hi Max,
+
+Week of Nov 16 – Nov 22. We're forecasting $24,850 in sales (above the $24,000 target), busiest on Friday and Saturday. Labor is scheduled at 27% of forecast vs 28% target. On the calendar: Holiday market (Sat, Nov 21).
+
+NEEDS YOU
+- Order from Sysco Albany: 14 items · $1,284.50 · delivers Tue, Nov 17 (https://ops.example.com/ordering)
+- Publish the schedule: 18 draft shifts · 212 h · labor 27% of forecast (https://ops.example.com/schedule)
+- Price increases this week: 3 items went up in the last 7 days (https://ops.example.com/prices)
+
+IN HAND
+- Staff requests: Nothing waiting
+- Counts: Last count Nov 9
+
+Full brief: https://ops.example.com/brief
+
+—
+Subversive weekly brief
+Subversive · Catskill, NY",
+}
+`;

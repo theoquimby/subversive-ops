@@ -7,6 +7,8 @@ export const metadata: Metadata = {
   title: { default: "Subversive Ops", template: "%s · Subversive Ops" },
   description: "Food costing, ordering and inventory for Subversive.",
   robots: { index: false, follow: false },
+  icons: { apple: "/icons/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "Subversive Ops", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {

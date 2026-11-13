@@ -2,7 +2,7 @@
 
 import { Badge, Button, Card, cx, Field, Input, LinkButton, Select } from "@/components/ui";
 import { useTour } from "@/components/tour";
-import { Check, ClipboardList, Copy, FileSpreadsheet, Plug, Receipt, Scale, ShoppingCart, Smartphone } from "lucide-react";
+import { Check, ClipboardList, FileSpreadsheet, Plug, Receipt, Scale, ShoppingCart, Smartphone } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
@@ -459,57 +459,33 @@ function DataStep({ data, run, pending, onLoaded }: { data: Props["data"]; run: 
 
 // ---- (e) Square -----------------------------------------------------------------------------
 
-function CopyCode({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1200); } catch {} }}
-      className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2/60 px-2 py-1 font-mono text-[0.8rem] text-ink hover:border-border-strong"
-      aria-label={`Copy ${text}`}
-    >
-      {text}
-      {copied ? <Check className="size-3.5 text-good" strokeWidth={2.5} /> : <Copy className="size-3.5 text-muted group-hover:text-ink" />}
-    </button>
-  );
-}
-
 function SquareStep({ connected }: { connected: boolean }) {
   return (
     <>
-      <StepHeader title="Connect Square">Square sales drive the food cost numbers and the forecast behind every order. It syncs on its own every night once connected.</StepHeader>
+      <StepHeader title="Connect Square">Square sales drive the food cost numbers and the forecast behind every order. Once connected it keeps itself up to date through the day.</StepHeader>
       <Card className="mb-4 flex items-center justify-between gap-3 p-5">
         <div className="flex items-center gap-3">
           <Plug className="size-5 text-ink-2" strokeWidth={1.75} />
           <div>
             <div className="text-sm font-semibold">{connected ? "Square is connected" : "Not connected yet"}</div>
-            <div className="text-sm text-muted">{connected ? "Next: import past sales and link Square items to recipes." : "This part needs whoever manages the app's hosting."}</div>
+            <div className="text-sm text-muted">{connected ? "Next: import past sales and match Square items to recipes." : "Sign in with the restaurant's Square account and approve read access."}</div>
           </div>
         </div>
         <Badge tone={connected ? "good" : "warn"}>{connected ? "Live" : "Setup needed"}</Badge>
       </Card>
-      {connected ? (
-        <Card className="p-5 text-sm leading-relaxed text-ink-2">
+      <Card className="p-5 text-sm leading-relaxed text-ink-2">
+        {connected ? (
           <ol className="list-decimal space-y-1.5 pl-5">
-            <li>On <Link href="/sales" className="text-ink underline-offset-2 hover:underline">Sales</Link>, press <b>Import last 6 months</b> so the forecast has history.</li>
-            <li>Link each Square item to its recipe. Mark drinks, merch and gift cards as <b>Ignore</b>.</li>
+            <li>Under <Link href="/settings/square#import" className="text-ink underline-offset-2 hover:underline">Settings → Square</Link>, run the <b>first import</b> (6 months is a good start).</li>
+            <li>On <Link href="/sales/square-menu" className="text-ink underline-offset-2 hover:underline">Menu from Square</Link>, accept the suggested matches and create recipes for the rest. Mark drinks, merch and gift cards as <b>Ignore</b>.</li>
           </ol>
-        </Card>
-      ) : (
-        <Card className="p-5 text-sm leading-relaxed text-ink-2">
-          <ol className="list-decimal space-y-3 pl-5">
-            <li>At <b>developer.squareup.com</b>, sign in with the restaurant's Square account and create an app.</li>
-            <li>Under <b>Production</b> credentials, copy the <b>access token</b>. On the <b>Locations</b> tab, copy Subversive's <b>location ID</b>.</li>
-            <li>
-              In the hosting project (Vercel → Settings → Environment Variables), add:
-              <div className="mt-2 flex flex-wrap gap-2"><CopyCode text="SQUARE_ACCESS_TOKEN" /><CopyCode text="SQUARE_LOCATION_ID" /></div>
-              <div className="mt-2 text-xs text-muted">Optional: <span className="font-mono">SQUARE_ENVIRONMENT</span> = sandbox for testing. <span className="font-mono">CRON_SECRET</span> protects the nightly sync.</div>
-            </li>
-            <li>Redeploy. This page will show <b>Live</b>.</li>
-          </ol>
-          <p className="mt-4 border-t border-border pt-4 text-xs text-muted">The access token is a password to your sales data. Paste it only into the hosting settings — never into email or chat.</p>
-        </Card>
-      )}
+        ) : (
+          <>
+            <p>Connecting takes a minute: press the button, sign in to Square and approve. If one-click connect isn&apos;t set up yet, you can paste an access token from the Square Developer Dashboard on the same page.</p>
+            <LinkButton href="/settings/square" variant="primary" className="mt-4">Connect Square</LinkButton>
+          </>
+        )}
+      </Card>
     </>
   );
 }

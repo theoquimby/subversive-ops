@@ -4,11 +4,11 @@ import { creditItems } from "@/domain/invoiceMatch";
 import { money, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { db, num } from "@/server/db";
-import { listInvoices, loadTolerance, STATUS_META } from "@/server/services/invoices";
+import { autoApproveEnabled, listInvoices, loadTolerance, STATUS_META } from "@/server/services/invoices";
 import { InvoiceStatus } from "@prisma/client";
-import { Camera } from "lucide-react";
+import { Camera, FileSpreadsheet } from "lucide-react";
 import Link from "next/link";
-import { InvoiceFilters, ToleranceCells } from "./list-client";
+import { AutoApproveCell, InvoiceFilters, ToleranceCells } from "./list-client";
 
 export const metadata = { title: "Invoices" };
 
@@ -18,11 +18,12 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
   await requireUser("MANAGER");
   const sp = await searchParams;
   const status = sp.status === "OPEN" || STATUSES.includes(sp.status as InvoiceStatus) ? (sp.status as InvoiceStatus | "OPEN") : undefined;
-  const [invoices, all, suppliers, tolerance] = await Promise.all([
+  const [invoices, all, suppliers, tolerance, autoApprove] = await Promise.all([
     listInvoices({ status, supplierId: sp.supplier }),
     db.invoice.findMany({ select: { status: true, lines: { select: { qty: true, unitPrice: true, expectedQty: true, expectedPrice: true, description: true, sku: true } } } }),
     db.supplier.findMany({ where: { invoices: { some: {} } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     loadTolerance(),
+    autoApproveEnabled(),
   ]);
 
   const open = all.filter((i) => i.status !== "APPROVED");
@@ -38,7 +39,12 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
       <PageHeader
         title="Invoices"
         description="Snap a supplier invoice. It's checked against what you ordered and received, and price changes flow into costing."
-        actions={<LinkButton href="/invoices/new" variant="primary" size="lg"><Camera className="size-4" />Add invoice</LinkButton>}
+        actions={
+          <>
+            <LinkButton href="/invoices/exports" size="lg"><FileSpreadsheet className="size-4" />Exports</LinkButton>
+            <LinkButton href="/invoices/new" variant="primary" size="lg"><Camera className="size-4" />Add invoice</LinkButton>
+          </>
+        }
       />
 
       {all.length > 0 && (
@@ -49,6 +55,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
           <Card className="p-5">
             <div className="text-[0.8rem] font-medium text-muted">Flag differences over</div>
             <ToleranceCells price={tolerance.price} qty={tolerance.qty} />
+            <AutoApproveCell on={autoApprove} />
           </Card>
         </div>
       )}

@@ -1,34 +1,23 @@
 "use server";
 
 import { requireUser } from "@/server/auth";
-import { squareConfigured } from "@/server/env";
+import { friendlySquareError } from "@/server/integrations/square-http";
+import { isSquareConnected } from "@/server/services/square";
+import { dailySync } from "@/server/services/square-sync";
 import { parseImpactPct } from "@/domain/events";
 import { setManualAdjustment } from "@/server/services/forecasting";
-import { backfillSales, dailySync } from "@/server/services/sales";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 export async function syncNow(): Promise<{ error?: string; message?: string }> {
   await requireUser("MANAGER");
-  if (!squareConfigured()) return { error: "Add the Square access token and location ID first." };
+  if (!(await isSquareConnected())) return { error: "Connect Square first (Settings → Square)." };
   try {
     const r = await dailySync();
     revalidatePath("/", "layout");
-    return { message: "catalog" in r ? `Synced ${r.orderLines} sold items, ${r.catalog} catalog entries.` : r.skipped };
+    return { message: "catalog" in r ? `Synced ${r.orders} orders, ${r.catalog} catalog entries and ${r.timecards} timecards.` : r.skipped };
   } catch (e) {
-    return { error: (e as Error).message };
-  }
-}
-
-export async function backfill(days: number): Promise<{ error?: string; message?: string }> {
-  await requireUser("MANAGER");
-  if (!squareConfigured()) return { error: "Add the Square access token and location ID first." };
-  try {
-    const n = await backfillSales(Math.min(Math.max(days, 7), 400));
-    revalidatePath("/", "layout");
-    return { message: `Imported ${n} sold items from the last ${days} days.` };
-  } catch (e) {
-    return { error: (e as Error).message };
+    return { error: friendlySquareError(e) };
   }
 }
 

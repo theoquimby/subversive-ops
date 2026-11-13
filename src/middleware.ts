@@ -3,7 +3,8 @@ import { SESSION_COOKIE, verifySession } from "@/server/session";
 
 // Staff only ever see the floor tools; everything else is manager-only.
 const STAFF_PATHS = ["/my", "/count", "/waste", "/help"];
-const PUBLIC_PATHS = ["/login", "/api/cron"];
+// Webhooks authenticate by signature inside the route.
+const PUBLIC_PATHS = ["/login", "/api/cron", "/api/webhooks", "/sw.js", "/manifest.webmanifest", "/icons/"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

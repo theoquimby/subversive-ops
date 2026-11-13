@@ -1,11 +1,14 @@
 "use client";
 
+import { GridCell } from "@/components/grid";
 import { Badge, Button, Card, cx, DatePicker, Input, Select } from "@/components/ui";
 import { shiftLabel } from "@/domain/schedule";
+import type { SickBalance } from "@/domain/sickLeave";
+import { formatWindows, toMinutes } from "@/domain/timecards";
 import { dayDate, shortDate } from "@/lib/format";
-import { ArrowLeftRight, CalendarOff, Hand } from "lucide-react";
+import { ArrowLeftRight, CalendarClock, CalendarOff, Hand } from "lucide-react";
 import { useState, useTransition } from "react";
-import { cancelSwap, cancelTimeOff, offerToTake, pickUpShift, requestSwap, requestTimeOff } from "./actions";
+import { cancelSwap, cancelTimeOff, offerToTake, pickUpShift, requestSwap, requestTimeOff, resetMyAvailability, setMyAvailability } from "./actions";
 
 export interface MyShift {
   id: string;
@@ -25,18 +28,29 @@ interface Props {
   mine: (MyShift & { swap: { id: string; taker: string | null } | null })[];
   open: MyShift[];
   board: (MyShift & { swapId: string; from: string })[];
-  timeOff: { id: string; start: string; end: string; note: string | null; status: "PENDING" | "APPROVED" | "DENIED" }[];
+  timeOff: { id: string; start: string; end: string; note: string | null; status: "PENDING" | "APPROVED" | "DENIED"; type: LeaveType; hours: number | null }[];
   team: { id: string; name: string; positionIds: string[] }[];
+  sick: SickBalance | null;
+  availability: Record<string, [string, string][]> | null;
+  openingHours: Record<number, [number, number]>;
 }
+
+type LeaveType = "PTO" | "SICK" | "UNPAID";
+const LEAVE_TYPES = [
+  { value: "UNPAID", label: "Day off (unpaid)" },
+  { value: "SICK", label: "Sick (paid sick leave)" },
+  { value: "PTO", label: "Paid time off" },
+];
+const LEAVE_LABEL: Record<LeaveType, string> = { UNPAID: "Day off", SICK: "Sick", PTO: "PTO" };
 
 const fmtH = (h: number) => `${Number(h.toFixed(1))}h`;
 
-export function MyApp({ today, weekHours, mine, open, board, timeOff, team }: Props) {
+export function MyApp({ today, weekHours, mine, open, board, timeOff, team, sick, availability, openingHours }: Props) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [swapFor, setSwapFor] = useState<string | null>(null);
   const [taker, setTaker] = useState("");
-  const [off, setOff] = useState({ start: "", end: "", note: "" });
+  const [off, setOff] = useState<{ start: string; end: string; note: string; type: LeaveType; hours: string }>({ start: "", end: "", note: "", type: "UNPAID", hours: "" });
 
   const run = (fn: () => Promise<{ error?: string; ok?: string }>, after?: () => void) =>
     start(async () => {
@@ -129,22 +143,43 @@ export function MyApp({ today, weekHours, mine, open, board, timeOff, team }: Pr
 
       <section>
         <h2 className="mb-1 text-[0.95rem] font-semibold">Time off</h2>
-        <p className="mb-3 text-sm text-muted">Ask early — your manager approves it before the schedule is built.</p>
+        <p className="mb-3 text-sm text-muted">Ask early so your manager can approve it before the schedule is built. Out sick? Log it here, even for today.</p>
+        {sick && (
+          <Card className="mb-3 flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Paid sick leave</div>
+              <div className="text-xs text-muted">{sick.accrued.toFixed(1)}h earned this year from {Math.round(sick.workedHours)}h worked · {sick.used.toFixed(1)}h used</div>
+            </div>
+            <div className="num shrink-0 text-right text-xl font-semibold">{sick.available.toFixed(1)}h<span className="block text-[11px] font-normal text-muted">available</span></div>
+          </Card>
+        )}
         <Card className="p-4">
+          <div className="mb-3 grid gap-3 sm:grid-cols-[1fr_8rem]">
+            <div>
+              <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">Type</div>
+              <Select aria-label="Type of time off" value={off.type} options={LEAVE_TYPES} onChange={(e) => setOff((o) => ({ ...o, type: e.target.value as LeaveType }))} className="max-sm:h-11" />
+            </div>
+            {off.type !== "UNPAID" && (
+              <div>
+                <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">Hours</div>
+                <Input aria-label="Paid hours" inputMode="decimal" placeholder="Scheduled" value={off.hours} onChange={(e) => setOff((o) => ({ ...o, hours: e.target.value }))} className="num max-sm:h-11" />
+              </div>
+            )}
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">First day off</div>
-              <DatePicker aria-label="First day off" value={off.start} min={today} className="max-sm:h-11" onChange={(e) => setOff((o) => ({ ...o, start: e.target.value, end: o.end && o.end >= e.target.value ? o.end : e.target.value }))} />
+              <DatePicker aria-label="First day off" value={off.start} min={off.type === "SICK" ? `${today.slice(0, 8)}01` : today} className="max-sm:h-11" onChange={(e) => setOff((o) => ({ ...o, start: e.target.value, end: o.end && o.end >= e.target.value ? o.end : e.target.value }))} />
             </div>
             <div>
               <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">Last day off</div>
-              <DatePicker aria-label="Last day off" value={off.end} min={off.start || today} className="max-sm:h-11" onChange={(e) => setOff((o) => ({ ...o, end: e.target.value }))} />
+              <DatePicker aria-label="Last day off" value={off.end} min={off.start || (off.type === "SICK" ? `${today.slice(0, 8)}01` : today)} className="max-sm:h-11" onChange={(e) => setOff((o) => ({ ...o, end: e.target.value }))} />
             </div>
           </div>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <Input aria-label="Reason" placeholder="Reason (optional)" value={off.note} onChange={(e) => setOff((o) => ({ ...o, note: e.target.value }))} className="max-sm:h-11" />
-            <Button variant="primary" className="shrink-0 max-sm:h-11" disabled={pending || !off.start} onClick={() => run(() => requestTimeOff({ start: off.start, end: off.end || off.start, note: off.note }), () => setOff({ start: "", end: "", note: "" }))}>
-              <CalendarOff className="size-4" strokeWidth={1.75} /> Request time off
+            <Button variant="primary" className="shrink-0 max-sm:h-11" disabled={pending || !off.start} onClick={() => run(() => requestTimeOff({ start: off.start, end: off.end || off.start, note: off.note, type: off.type, hours: off.hours }), () => setOff({ start: "", end: "", note: "", type: "UNPAID", hours: "" }))}>
+              <CalendarOff className="size-4" strokeWidth={1.75} /> {off.type === "SICK" ? "Log sick time" : "Request time off"}
             </Button>
           </div>
         </Card>
@@ -153,7 +188,7 @@ export function MyApp({ today, weekHours, mine, open, board, timeOff, team }: Pr
             {timeOff.map((t) => (
               <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                 <div className="min-w-0">
-                  <div className="font-medium">{t.start === t.end ? dayDate(t.start) : `${shortDate(t.start)} – ${shortDate(t.end)}`}</div>
+                  <div className="font-medium">{t.start === t.end ? dayDate(t.start) : `${shortDate(t.start)} – ${shortDate(t.end)}`} <span className="font-normal text-muted">· {LEAVE_LABEL[t.type]}{t.hours != null ? ` · ${Number(t.hours.toFixed(2))}h` : ""}</span></div>
                   {t.note && <div className="truncate text-xs text-muted">{t.note}</div>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -167,7 +202,51 @@ export function MyApp({ today, weekHours, mine, open, board, timeOff, team }: Pr
           </Card>
         )}
       </section>
+
+      <MyAvailability availability={availability} openingHours={openingHours} />
     </div>
+  );
+}
+
+const DISPLAY_DAYS = [1, 2, 3, 4, 5, 6, 0];
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Staff edit their own availability, one typed range per weekday. Autosaves. */
+function MyAvailability({ availability, openingHours }: { availability: Record<string, [string, string][]> | null; openingHours: Record<number, [number, number]> }) {
+  const [pending, start] = useTransition();
+  const notSet = availability == null;
+  const pct = (m: number) => `${(m / 1440) * 100}%`;
+  return (
+    <section>
+      <h2 className="mb-1 flex items-center gap-2 text-[0.95rem] font-semibold"><CalendarClock className="size-4" strokeWidth={1.75} /> When you can work</h2>
+      <p className="mb-3 text-sm text-muted">
+        {notSet ? "Not set, so you can be scheduled any time the taproom is open." : "Type ranges like 4p-10p or 11-2, or “all day”. Leave a day blank if you can't work it. Saves as you go."}
+      </p>
+      {notSet ? (
+        <Button className="max-sm:h-11" disabled={pending} onClick={() => start(async () => { await resetMyAvailability("all"); })}>Set my availability</Button>
+      ) : (
+        <Card className="divide-y divide-border">
+          {DISPLAY_DAYS.map((d) => {
+            const windows = availability?.[String(d)];
+            const open = openingHours[d];
+            return (
+              <div key={d} className="grid grid-cols-[3rem_1fr] items-center gap-x-2 px-3 py-1.5 sm:grid-cols-[3rem_12rem_1fr]">
+                <span className="text-sm font-medium text-ink-2">{DAY_NAMES[d]}</span>
+                <GridCell grid="my-avail" col="day" value={formatWindows(windows)} placeholder="Can't work" onSave={setMyAvailability.bind(null, d)} ariaLabel={`${DAY_NAMES[d]} availability`} />
+                <div className="relative col-span-2 mb-1 h-2 overflow-hidden rounded-full bg-border/60 sm:col-span-1 sm:mb-0" aria-hidden>
+                  {open && <div className="absolute inset-y-0 bg-border-strong/60" style={{ left: pct(open[0] * 60), width: pct((open[1] - open[0]) * 60) }} />}
+                  {(windows ?? []).map(([a, b], i) => <div key={i} className="absolute inset-y-0 rounded-full bg-ink" style={{ left: pct(toMinutes(a)), width: pct(toMinutes(b) - toMinutes(a)) }} />)}
+                </div>
+              </div>
+            );
+          })}
+          <div className="flex items-center justify-between gap-2 px-4 py-2 text-xs text-muted">
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-4 rounded-full bg-ink" /> you <span className="ml-2 h-2 w-4 rounded-full bg-border-strong/60" /> open hours</span>
+            <Button size="sm" variant="ghost" className="max-sm:h-10" disabled={pending} onClick={() => start(async () => { await resetMyAvailability("clear"); })}>Any time</Button>
+          </div>
+        </Card>
+      )}
+    </section>
   );
 }
 

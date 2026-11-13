@@ -10,7 +10,7 @@
  */
 
 import { Prisma, PrismaClient } from "@prisma/client";
-import { addDays, dateRange, ISODate, todayIn, toISODate, weekday } from "../../domain/dates";
+import { addDays, dateRange, ISODate, parseISODate, todayIn, toISODate, weekday } from "../../domain/dates";
 import { hourlyShape, splitCents } from "../../domain/pnl";
 import { zonedTime } from "../../domain/timecards";
 
@@ -194,4 +194,10 @@ export async function seedLabor(db: PrismaClient): Promise<void> {
     }
   }
   await db.timecard.createMany({ data: cards });
+
+  // One-off pay adjustment last week, so the payroll export shows the column.
+  if ((await db.payAdjustment.count()) === 0) {
+    const someone = await db.employee.findFirst({ where: { active: true }, orderBy: { name: "asc" } });
+    if (someone) await db.payAdjustment.create({ data: { employeeId: someone.id, date: parseISODate(addDays(today, -7)), kind: "BONUS", amount: D(50), note: "Covered a double on short notice", createdBy: "Max" } });
+  }
 }

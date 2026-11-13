@@ -1,9 +1,10 @@
+import { refreshIfStale } from "@/server/services/square-sync";
 import { Badge, Card, cx, LinkButton } from "@/components/ui";
 import { addDays, weekday } from "@/domain/dates";
 import { dayDate, money, pct, shortDate, signedPct } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { weeklyBrief, WeeklyBrief } from "@/server/services/brief";
-import { CalendarDays, ClipboardList, Inbox, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Tag, TrendingUp, UtensilsCrossed } from "lucide-react";
+import { CalendarDays, ClipboardList, Inbox, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Star, Tag, Trash2, TrendingUp, UtensilsCrossed } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CreateOrderButton } from "./create-order-button";
@@ -29,6 +30,7 @@ interface Item {
 
 export default async function BriefPage() {
   const session = await requireUser("MANAGER");
+  await refreshIfStale();
   const b = await weeklyBrief();
   const items = buildItems(b);
   const todo = items.filter((i) => i.needsYou);
@@ -200,8 +202,24 @@ function buildItems(b: WeeklyBrief): Item[] {
       title: `Order from ${o.supplier}`,
       status: `${o.items} item${o.items === 1 ? "" : "s"} · ${money(o.total)} · delivers ${dayDate(o.deliveryDate)}${below ? ` · under ${money(o.minOrder, { whole: true })} minimum` : ""}`,
       needsYou: true,
-      body: o.needsCount > 0 ? <p className="text-xs text-muted">{o.needsCount} item{o.needsCount === 1 ? " hasn't" : "s haven't"} been counted, so {o.needsCount === 1 ? "it's" : "they're"} not in this draft. <Link href={`/ordering/${o.supplierId}`} className="underline underline-offset-2 hover:text-ink">Review the full order</Link></p> : undefined,
+      body: o.needsCount > 0 || o.runsOut.length > 0 ? (
+        <div className="space-y-1">
+          {o.runsOut.length > 0 && <p className="text-sm text-bad">Runs out before delivery: {o.runsOut.length > 4 ? `${o.runsOut.slice(0, 4).join(", ")} and ${o.runsOut.length - 4} more` : list(o.runsOut)}.</p>}
+          {o.needsCount > 0 && <p className="text-xs text-muted">{o.needsCount} item{o.needsCount === 1 ? " hasn't" : "s haven't"} been counted, so {o.needsCount === 1 ? "it's" : "they're"} not in this draft. <Link href={`/ordering/${o.supplierId}`} className="underline underline-offset-2 hover:text-ink">Review the full order</Link></p>}
+        </div>
+      ) : undefined,
       action: <CreateOrderButton input={{ supplierId: o.supplierId, deliveryDate: o.deliveryDate, coverUntil: o.coverUntil, lines: o.lines }} />,
+    });
+  }
+  // Drafts saved automatically before a cutoff still need a look and a send.
+  for (const o of drafted.filter((d) => d.autoDrafted)) {
+    items.push({
+      id: `draft-${o.supplierId}`,
+      icon: ShoppingCart,
+      title: `Send the ${o.supplier} order`,
+      status: `Drafted automatically · delivers ${dayDate(o.deliveryDate)}${o.runsOut.length ? ` · ${o.runsOut.length} item${o.runsOut.length === 1 ? " runs" : "s run"} out first` : ""}`,
+      needsYou: true,
+      action: go(`/ordering/po/${o.existingDraftId}`, "Review & send"),
     });
   }
   if (toOrder.length === 0) {
@@ -244,6 +262,11 @@ function buildItems(b: WeeklyBrief): Item[] {
   // Reviews
   const rv = b.reviews.unreplied;
   items.push({ id: "reviews", icon: MessageSquareText, title: rv ? "Reply to reviews" : "Reviews", status: rv ? `${rv} critical review${rv === 1 ? "" : "s"} without a reply — drafts are ready` : "Every critical review has a reply", needsYou: rv > 0, action: go("/reviews", rv ? "Reply" : "Reviews", rv > 0) });
+
+  // Rating drop
+  for (const a of b.reviews.alerts) {
+    items.push({ id: "rating", icon: Star, title: a.title, status: a.detail, needsYou: true, action: go("/reviews", "See what to fix") });
+  }
 
   // Price increases
   const inc = b.increases;
@@ -309,6 +332,17 @@ function buildItems(b: WeeklyBrief): Item[] {
     status: c.last == null ? "No completed counts yet — ordering and the margin gap need one" : c.overdue ? `Last full count was ${c.daysSince} days ago (${shortDate(c.last)})` : `Last count ${shortDate(c.last)}`,
     needsYou: c.overdue,
     action: go("/count", c.overdue ? "Start a count" : "Counts", c.overdue),
+  });
+
+  // Waste log
+  const w = b.waste;
+  items.push({
+    id: "waste",
+    icon: Trash2,
+    title: w.quiet ? "Nothing in the waste log lately" : "Waste log",
+    status: w.last == null ? "No waste logged yet — the margin gap can't tell waste from loss without it" : w.quiet ? `Last entry ${w.daysSince} days ago (${shortDate(w.last)}). Remind the team to log spills, comps and spoilage.` : `Last entry ${shortDate(w.last)}`,
+    needsYou: w.quiet,
+    action: go("/waste", w.quiet ? "Log waste" : "Waste", w.quiet),
   });
 
   return items;

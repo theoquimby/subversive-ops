@@ -17,7 +17,64 @@ export interface LaborRules {
   minorMaxDailyHours: number; // NY minors 16–17 on non-school days: 8
   minorLatestHour: number; // NY minors 16–17 before a school day: 22 (10pm)
   employerBurdenPct: number; // payroll taxes etc., applied on top of wages for labor cost
+  tippedMinimumWage: number; // NY food service workers' cash wage (tip credit)
+  mealBreakAfterHours: number; // shifts longer than this need a meal break
+  mealBreakMinutes: number; // NY §162: 30 min (simplified)
+  sickHoursWorkedPerHour: number; // NY paid sick leave: 1h accrued per 30h worked
+  sickAnnualCapHours: number; // 40h/yr for 5–99 employees, 56h for 100+
+  payPeriod: "WEEKLY" | "BIWEEKLY";
+  /** A Monday that starts a pay period (bi-weekly periods count from here). */
+  payPeriodAnchor: string;
+  /** Per-rule on/off and block/warn overrides; missing = the RULES default. */
+  ruleSettings: Partial<Record<RuleId, RuleSetting>>;
 }
+
+export type RuleLevel = "block" | "warn";
+export interface RuleSetting {
+  on?: boolean;
+  level?: RuleLevel;
+}
+
+/** Every compliance rule the app checks, with its default level and a one-line basis. */
+export const RULES = {
+  overlap: { label: "Double-booking", level: "block", basis: "Someone can't work two shifts at once." },
+  times: { label: "Shift times", level: "block", basis: "A shift has to end after it starts." },
+  "time-off": { label: "Approved time off", level: "block", basis: "Don't schedule someone on time off you've approved." },
+  "minor-hours": { label: "Minors: hours per day", level: "block", basis: "NY Labor Law §142: 16–17 year olds work at most 8h on a non-school day." },
+  "minor-late": { label: "Minors: late finish", level: "warn", basis: "NY Labor Law §142: not past 10pm before a school day." },
+  "meal-break": { label: "Meal break", level: "warn", basis: "NY Labor Law §162: a meal period on longer shifts." },
+  "min-wage": { label: "Pay below minimum wage", level: "warn", basis: "NY minimum wage, or the tipped cash wage for tip-eligible positions." },
+  "call-in": { label: "Call-in pay", level: "warn", basis: "NY hospitality wage order: short shifts can owe call-in pay." },
+  rest: { label: "Rest between shifts", level: "warn", basis: "House rule: flags clopens." },
+  "long-shift": { label: "Long shifts", level: "warn", basis: "House rule." },
+  overtime: { label: "Overtime", level: "warn", basis: "FLSA and NY: 1.5× after 40 hours in a workweek." },
+  "max-hours": { label: "Max hours preference", level: "warn", basis: "Each person's own max hours from the Team page." },
+  availability: { label: "Outside availability", level: "warn", basis: "What each person says they can work." },
+} as const satisfies Record<string, { label: string; level: RuleLevel; basis: string }>;
+
+export type RuleId = keyof typeof RULES;
+export const RULE_IDS = Object.keys(RULES) as RuleId[];
+
+export const ruleOn = (rules: Pick<LaborRules, "ruleSettings">, id: RuleId) => rules.ruleSettings?.[id]?.on !== false;
+export const ruleLevel = (rules: Pick<LaborRules, "ruleSettings">, id: RuleId): RuleLevel => rules.ruleSettings?.[id]?.level ?? RULES[id].level;
+
+/** Drop violations for rules that are switched off and apply the configured block/warn level. */
+export function applyRuleSettings<V extends { rule: string; level: RuleLevel }>(violations: V[], rules: Pick<LaborRules, "ruleSettings">): V[] {
+  const out: V[] = [];
+  for (const v of violations) {
+    if (!(v.rule in RULES)) {
+      out.push(v);
+      continue;
+    }
+    const id = v.rule as RuleId;
+    if (!ruleOn(rules, id)) continue;
+    out.push({ ...v, level: ruleLevel(rules, id) });
+  }
+  return out;
+}
+
+/** Unpaid meal break a shift spanning `hours` should carry; 0 when not needed or the rule is off. */
+export const defaultBreakMinutes = (hours: number, rules: LaborRules) => (ruleOn(rules, "meal-break") && hours > rules.mealBreakAfterHours ? rules.mealBreakMinutes : 0);
 
 export const NY_DEFAULT_RULES: LaborRules = {
   weeklyOvertimeHours: 40,
@@ -30,6 +87,14 @@ export const NY_DEFAULT_RULES: LaborRules = {
   minorMaxDailyHours: 8,
   minorLatestHour: 22,
   employerBurdenPct: 0.12,
+  tippedMinimumWage: 10.7,
+  mealBreakAfterHours: 6,
+  mealBreakMinutes: 30,
+  sickHoursWorkedPerHour: 30,
+  sickAnnualCapHours: 40,
+  payPeriod: "WEEKLY",
+  payPeriodAnchor: "2026-01-05",
+  ruleSettings: {},
 };
 
 const H = 3_600_000;
@@ -50,6 +115,8 @@ export interface PayLine {
   regularHours: number;
   overtimeHours: number;
   spreadHours: number;
+  /** Unworked hours paid as call-in pay (only when `opts.callIn` is set). */
+  callInHours: number;
   wages: number;
   missingRate: boolean;
 }
@@ -57,8 +124,11 @@ export interface PayLine {
 /**
  * Wages for one workweek of blocks (timecards or planned shifts).
  * Overtime is assigned to the hours past the weekly threshold in time order.
+ * With `opts.callIn` (planning), a block shorter than the call-in minimum is
+ * topped up to it at minimum wage, which is what NY call-in pay would cost.
  */
-export function payForWeek(blocks: WorkBlock[], rules: LaborRules, dayKey: (d: Date) => string): PayLine[] {
+export function payForWeek(blocks: WorkBlock[], rules: LaborRules, dayKey: (d: Date) => string, opts: { callIn?: boolean } = {}): PayLine[] {
+  const callIn = !!opts.callIn && ruleOn(rules, "call-in");
   const byEmp = new Map<string, WorkBlock[]>();
   for (const b of blocks) byEmp.set(b.employeeId, [...(byEmp.get(b.employeeId) ?? []), b]);
   const out: PayLine[] = [];
@@ -68,9 +138,11 @@ export function payForWeek(blocks: WorkBlock[], rules: LaborRules, dayKey: (d: D
     let regular = 0;
     let overtime = 0;
     let wages = 0;
+    let callInHours = 0;
     let missingRate = false;
     for (const b of list) {
       const h = paidHours(b);
+      if (callIn && h > 0 && h < rules.callInMinHours) callInHours += rules.callInMinHours - h;
       const rate = b.rate ?? 0;
       if (b.rate == null) missingRate = true;
       const reg = Math.max(0, Math.min(h, rules.weeklyOvertimeHours - worked));
@@ -91,8 +163,8 @@ export function payForWeek(blocks: WorkBlock[], rules: LaborRules, dayKey: (d: D
       days.set(k, d);
     }
     for (const d of days.values()) if ((d.last - d.first) / H > rules.spreadOfHours) spread += 1;
-    wages += spread * rules.minimumWage;
-    out.push({ employeeId, regularHours: regular, overtimeHours: overtime, spreadHours: spread, wages, missingRate });
+    wages += spread * rules.minimumWage + callInHours * rules.minimumWage;
+    out.push({ employeeId, regularHours: regular, overtimeHours: overtime, spreadHours: spread, callInHours, wages, missingRate });
   }
   return out;
 }
@@ -105,6 +177,10 @@ export interface ShiftLike {
   start: Date;
   end: Date;
   breakMinutes: number;
+  /** Hourly rate the shift is paid at, if known (for the minimum-wage check). */
+  rate?: number | null;
+  /** Tip-eligible position: the tipped cash wage applies instead of full minimum wage. */
+  tipped?: boolean;
 }
 
 export interface EmployeeLike {
@@ -122,7 +198,15 @@ export interface Violation {
   message: string;
 }
 
+/**
+ * Rule violations for a set of shifts. Rules switched off in
+ * `rules.ruleSettings` are skipped, and levels follow the settings.
+ */
 export function checkCompliance(shifts: ShiftLike[], employees: EmployeeLike[], rules: LaborRules, localHour: (d: Date) => number): Violation[] {
+  return applyRuleSettings(rawCompliance(shifts, employees, rules, localHour), rules);
+}
+
+function rawCompliance(shifts: ShiftLike[], employees: EmployeeLike[], rules: LaborRules, localHour: (d: Date) => number): Violation[] {
   const v: Violation[] = [];
   const emp = new Map(employees.map((e) => [e.id, e]));
   const byEmp = new Map<string, ShiftLike[]>();
@@ -131,6 +215,14 @@ export function checkCompliance(shifts: ShiftLike[], employees: EmployeeLike[], 
     const len = paidHours(s);
     if (len > 0 && len < rules.callInMinHours) v.push({ shiftId: s.id, employeeId: s.employeeId, level: "warn", rule: "call-in", message: `Under ${rules.callInMinHours}h — NY call-in pay may apply` });
     if (len > rules.maxShiftHours) v.push({ shiftId: s.id, employeeId: s.employeeId, level: "warn", rule: "long-shift", message: `Longer than ${rules.maxShiftHours}h` });
+    const span = (s.end.getTime() - s.start.getTime()) / H;
+    if (span > rules.mealBreakAfterHours && s.breakMinutes < rules.mealBreakMinutes) {
+      v.push({ shiftId: s.id, employeeId: s.employeeId, level: "warn", rule: "meal-break", message: `Over ${rules.mealBreakAfterHours}h with ${s.breakMinutes ? `only a ${s.breakMinutes}-min` : "no"} break, needs ${rules.mealBreakMinutes} min` });
+    }
+    if (s.employeeId && s.rate != null) {
+      const floor = s.tipped ? rules.tippedMinimumWage : rules.minimumWage;
+      if (s.rate < floor - 0.005) v.push({ shiftId: s.id, employeeId: s.employeeId, level: "warn", rule: "min-wage", message: `Paid $${s.rate.toFixed(2)}/h, under the ${s.tipped ? "tipped " : ""}minimum of $${floor.toFixed(2)}` });
+    }
     if (s.employeeId) byEmp.set(s.employeeId, [...(byEmp.get(s.employeeId) ?? []), s]);
   }
   for (const [employeeId, list] of byEmp) {

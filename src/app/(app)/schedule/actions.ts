@@ -4,8 +4,10 @@ import { addDays } from "@/domain/dates";
 import { intensityFromSlider, weekStartOf } from "@/domain/schedule";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { applyPlan, clearDrafts, hasOverlap, instantAt, planWeek, publishWeek, shiftView, weekBlockers } from "@/server/services/scheduling";
+import { applyPlan, clearDrafts, fitPlanToBudget, hasOverlap, instantAt, planWeek, publishWeek, setAutoDraft, shiftView, weekBlockers } from "@/server/services/scheduling";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { notifySchedulePublished, notifyShiftChanged, shiftSnapshot } from "@/server/services/notify";
 import { z } from "zod";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -26,6 +28,15 @@ type Res = { error?: string; id?: string };
 
 const done = () => revalidatePath("/schedule", "layout");
 
+/** Tell the people involved when a *published* shift changes (after the response is sent). */
+async function snapshotIfPublished(id: string) {
+  const s = await db.shift.findUnique({ where: { id }, select: { published: true } });
+  return s?.published ? shiftSnapshot(id) : null;
+}
+const notifyChange = (id: string, before: Awaited<ReturnType<typeof shiftSnapshot>> | null) => {
+  if (before) after(() => notifyShiftChanged(id, before).then(() => undefined));
+};
+
 export async function createShift(input: z.input<typeof shiftInput>): Promise<Res> {
   await requireUser("MANAGER");
   const p = shiftInput.safeParse(input);
@@ -45,11 +56,13 @@ export async function updateShift(id: string, input: z.input<typeof shiftInput>)
   const s = p.data;
   const exists = await db.shift.findUnique({ where: { id }, select: { id: true } });
   if (!exists) return { error: "That shift was deleted." };
+  const before = await snapshotIfPublished(id);
   await db.shift.update({
     where: { id },
     data: { employeeId: s.employeeId, positionId: s.positionId, start: instantAt(s.date, s.startMin), end: instantAt(s.date, s.endMin), breakMinutes: s.breakMinutes, notes: s.notes || null },
   });
   done();
+  notifyChange(id, before);
   return { id };
 }
 
@@ -67,15 +80,19 @@ export async function moveShift(id: string, to: { employeeId: string | null; dat
   const start = instantAt(to.date, to.startMin);
   const end = instantAt(to.date, to.endMin);
   if (to.employeeId && (await hasOverlap(to.employeeId, start, end, id))) return { error: "They're already working then." };
+  const before = await snapshotIfPublished(id);
   await db.shift.update({ where: { id }, data: { employeeId: to.employeeId, positionId, start, end } });
   done();
+  notifyChange(id, before);
   return { id };
 }
 
 export async function deleteShift(id: string): Promise<Res> {
   await requireUser("MANAGER");
+  const before = await snapshotIfPublished(id);
   await db.shift.deleteMany({ where: { id } });
   done();
+  notifyChange(id, before);
   return {};
 }
 
@@ -115,6 +132,7 @@ export async function publishSchedule(monday: string, override: boolean): Promis
   }
   const n = await publishWeek(wk);
   done();
+  if (n > 0) after(() => notifySchedulePublished(wk).then(() => undefined));
   return { published: n };
 }
 
@@ -142,4 +160,21 @@ export async function copyPreviousWeek(monday: string): Promise<Res & { created?
   });
   done();
   return { created: prev.length };
+}
+
+/** The slider setting whose plan fits the week's labor % budget. */
+export async function fitScheduleToBudget(monday: string) {
+  await requireUser("MANAGER");
+  if (!isoDate.safeParse(monday).success) return { error: "Bad week." };
+  const r = await fitPlanToBudget(weekStartOf(monday));
+  if (!r) return { error: "No labor % budget for this week. Set one on the Budgets page." };
+  return r;
+}
+
+/** Turn the weekend auto-draft of next week's schedule on or off. */
+export async function setScheduleAutoDraft(on: boolean): Promise<Res> {
+  await requireUser("MANAGER");
+  await setAutoDraft(on);
+  done();
+  return {};
 }

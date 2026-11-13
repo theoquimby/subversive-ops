@@ -1,9 +1,9 @@
 import "server-only";
-import { addDays, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
-import { assignShifts, Candidate, checkCompliance, curveToBlocks, LaborRules, paidHours, PositionRule } from "@/domain/labor";
+import { addDays, ISODate, parseISODate, todayIn, toISODate, weekday } from "@/domain/dates";
+import { applyRuleSettings, assignShifts, Candidate, checkCompliance, curveToBlocks, defaultBreakMinutes, LaborRules, paidHours, PositionRule } from "@/domain/labor";
 import {
-  Availability, availabilityConflicts, clipAvailability, coverage, curveHours, dayRequirement, hourlySalesOrFallback, inclusiveDates, localParts,
-  parseAvailability, ScheduledShift, ScheduleSummary, splitLongBlocks, summarizeSchedule, weekDates, zonedInstant,
+  Availability, availabilityConflicts, clipAvailability, coverage, curveHours, dayRequirement, fitSliderToTarget, HourDemand, hourlySalesOrFallback, inclusiveDates,
+  intensityFromSlider, localParts, parseAvailability, ScheduledShift, ScheduleSummary, splitLongBlocks, staffVsDemand, summarizeSchedule, weekDates, weekStartOf, zonedInstant,
 } from "@/domain/schedule";
 import { db, num } from "../db";
 import { env } from "../env";
@@ -24,6 +24,8 @@ export interface PositionView {
   color: string;
   area: string;
   defaultRate: number | null;
+  /** Tip-eligible: the tipped minimum wage applies. */
+  tipped: boolean;
   rule: PositionRule;
 }
 
@@ -46,6 +48,7 @@ export async function loadPositions(): Promise<PositionView[]> {
     color: p.color,
     area: p.area,
     defaultRate: num(p.defaultRate),
+    tipped: p.tipEligible,
     rule: { id: p.id, name: p.name, salesPerHour: num(p.salesPerHour), minStaff: p.minStaff, maxStaff: p.maxStaff },
   }));
 }
@@ -170,28 +173,62 @@ export interface WeekData {
   opening: Record<number, [number, number]>;
   rules: LaborRules;
   pendingRequests: number;
+  /** Weekly labor % budget (Budgets page), if set. */
+  laborTarget: number | null;
+  /** People needed vs scheduled per hour, per date. */
+  demand: Record<ISODate, HourDemand[]>;
+  autoDraft: boolean;
 }
 
-function complianceFor(shifts: ShiftView[], employees: EmployeeView[], rules: LaborRules, timeOff: Map<string, Set<ISODate>>): WeekIssue[] {
+function complianceFor(shifts: ShiftView[], employees: EmployeeView[], positions: PositionView[], rules: LaborRules, timeOff: Map<string, Set<ISODate>>): WeekIssue[] {
+  const emps = new Map(employees.map((e) => [e.id, e]));
+  const pos = new Map(positions.map((p) => [p.id, p]));
   const law = checkCompliance(
-    shifts.map((s) => ({ id: s.id, employeeId: s.employeeId, start: instantAt(s.date, s.startMin), end: instantAt(s.date, s.endMin), breakMinutes: s.breakMinutes })),
+    shifts.map((s) => ({
+      id: s.id,
+      employeeId: s.employeeId,
+      start: instantAt(s.date, s.startMin),
+      end: instantAt(s.date, s.endMin),
+      breakMinutes: s.breakMinutes,
+      rate: s.employeeId ? rateFor(emps.get(s.employeeId), s.positionId, pos) : null,
+      tipped: pos.get(s.positionId)?.tipped ?? false,
+    })),
     employees.map((e) => ({ id: e.id, name: e.name, isMinor: e.isMinor, maxHoursWeek: e.maxHoursWeek })),
     rules,
     (d) => localHour(d, TZ),
   );
   const people = new Map(employees.map((e) => [e.id, { name: e.name, availability: e.availability, timeOff: timeOff.get(e.id) ?? new Set<ISODate>() }]));
-  return [...law, ...availabilityConflicts(shifts, people)];
+  return [...law, ...applyRuleSettings(availabilityConflicts(shifts, people), rules)];
+}
+
+/** The week's labor % budget from the Budgets page, or null. */
+export async function laborTargetFor(monday: ISODate): Promise<number | null> {
+  const b = await db.budget.findUnique({ where: { weekStart: parseISODate(monday) } });
+  return num(b?.laborPct);
+}
+
+const AUTO_DRAFT_KEY = "schedule.autoDraft";
+
+export async function getAutoDraft(): Promise<boolean> {
+  return (await db.setting.findUnique({ where: { key: AUTO_DRAFT_KEY } }))?.value === "on";
+}
+
+export async function setAutoDraft(on: boolean) {
+  const value = on ? "on" : "off";
+  await db.setting.upsert({ where: { key: AUTO_DRAFT_KEY }, create: { key: AUTO_DRAFT_KEY, value }, update: { value } });
 }
 
 export async function loadWeek(monday: ISODate): Promise<WeekData> {
   const dates = weekDates(monday);
-  const [positions, rules, opening, rows, pendingOff, pendingSwaps] = await Promise.all([
+  const [positions, rules, opening, rows, pendingOff, pendingSwaps, laborTarget, autoDraft] = await Promise.all([
     loadPositions(),
     getLaborRules(),
     getOpeningHours(),
     db.shift.findMany({ where: weekWhere(monday), orderBy: { start: "asc" } }),
     db.timeOffRequest.findMany({ where: { status: "PENDING", startDate: { lte: parseISODate(dates[6]) }, endDate: { gte: parseISODate(monday) } } }),
     db.shiftSwap.count({ where: { status: "PENDING" } }),
+    laborTargetFor(monday),
+    getAutoDraft(),
   ]);
   const [employees, timeOff, days, pendingAll] = await Promise.all([
     loadEmployees(positions),
@@ -220,13 +257,16 @@ export async function loadWeek(monday: ISODate): Promise<WeekData> {
     positions,
     employees,
     shifts,
-    issues: complianceFor(shifts, employees, rules, timeOff),
+    issues: complianceFor(shifts, employees, positions, rules, timeOff),
     summary,
     timeOff: Object.fromEntries([...timeOff].map(([k, v]) => [k, [...v]])),
     pendingTimeOff: pendingMap,
     opening,
     rules,
     pendingRequests: pendingAll + pendingSwaps,
+    laborTarget,
+    demand: Object.fromEntries(dates.map((d) => [d, staffVsDemand([...(req.get(d)?.values() ?? [])], shifts.filter((s) => s.date === d))])),
+    autoDraft,
   };
 }
 
@@ -239,16 +279,27 @@ export interface PlanPreview {
   planned: (ScheduledShift & { name: string | null })[];
   summary: ScheduleSummary; // whole week after applying (published + planned)
   plannedOnly: ScheduleSummary;
+  /** Weekly labor % budget, if one is set on the Budgets page. */
+  laborTarget: number | null;
 }
 
-/**
- * Build a draft for the week: forecast → people needed per position per hour
- * → shift blocks → people. Published shifts stay and count as coverage.
- */
-export async function planWeek(monday: ISODate, intensity: number): Promise<PlanPreview> {
+/** Everything planning needs for a week, loaded once so different intensities are cheap to try. */
+async function planContext(monday: ISODate) {
   const dates = weekDates(monday);
-  const [positions, rules, opening, rows] = await Promise.all([loadPositions(), getLaborRules(), getOpeningHours(), db.shift.findMany({ where: weekWhere(monday) })]);
+  const [positions, rules, opening, rows, laborTarget] = await Promise.all([loadPositions(), getLaborRules(), getOpeningHours(), db.shift.findMany({ where: weekWhere(monday) }), laborTargetFor(monday)]);
   const [employees, timeOff, days] = await Promise.all([loadEmployees(positions), approvedTimeOff(monday, dates[6]), forecastDays(dates, opening)]);
+  return { monday, dates, positions, rules, opening, rows, laborTarget, employees, timeOff, days };
+}
+
+type PlanContext = Awaited<ReturnType<typeof planContext>>;
+
+/**
+ * Forecast → people needed per position per hour → shift blocks → people.
+ * Published shifts stay and count as coverage. Long shifts get the default
+ * meal break from the labor rules.
+ */
+function buildPlan(ctx: PlanContext, intensity: number): PlanPreview {
+  const { dates, positions, rules, opening, rows, employees, timeOff, days } = ctx;
   const emps = new Map(employees.map((e) => [e.id, e]));
   const pos = new Map(positions.map((p) => [p.id, p]));
   const published = rows.filter((r) => r.published).map(toView);
@@ -287,7 +338,15 @@ export async function planWeek(monday: ISODate, intensity: number): Promise<Plan
   const assigned = assignShifts(blocks, people, off, existingHours);
   const planned = assigned
     .map((a) => {
-      const s: ScheduledShift = { employeeId: a.employeeId, positionId: a.positionId, date: a.day, startMin: a.startHour * 60, endMin: a.endHour * 60, breakMinutes: 0, rate: null };
+      const s: ScheduledShift = {
+        employeeId: a.employeeId,
+        positionId: a.positionId,
+        date: a.day,
+        startMin: a.startHour * 60,
+        endMin: a.endHour * 60,
+        breakMinutes: defaultBreakMinutes(a.endHour - a.startHour, rules),
+        rate: null,
+      };
       s.rate = rateFor(a.employeeId ? emps.get(a.employeeId) : undefined, a.positionId, pos);
       return { ...s, name: a.employeeId ? emps.get(a.employeeId)?.name ?? null : null };
     })
@@ -302,11 +361,34 @@ export async function planWeek(monday: ISODate, intensity: number): Promise<Plan
     planned,
     summary: summarizeSchedule([...published.map((s) => toScheduled(s, emps, pos)), ...planned], dates, forecast, required, rules),
     plannedOnly: summarizeSchedule(planned, dates, forecast, required, rules),
+    laborTarget: ctx.laborTarget,
   };
 }
 
-export async function applyPlan(monday: ISODate, intensity: number) {
-  const plan = await planWeek(monday, intensity);
+/** Build a draft for the week at a given intensity (see buildPlan). */
+export async function planWeek(monday: ISODate, intensity: number): Promise<PlanPreview> {
+  return buildPlan(await planContext(monday), intensity);
+}
+
+/**
+ * The most generous slider setting whose plan fits the week's labor % budget.
+ * Null when no budget is set. `reachable` is false when even the leanest plan
+ * is over budget (the leanest plan is returned then).
+ */
+export async function fitPlanToBudget(monday: ISODate): Promise<{ slider: number; reachable: boolean; plan: PlanPreview } | null> {
+  const ctx = await planContext(monday);
+  if (ctx.laborTarget == null) return null;
+  const cache = new Map<number, PlanPreview>();
+  const at = (v: number) => {
+    if (!cache.has(v)) cache.set(v, buildPlan(ctx, intensityFromSlider(v)));
+    return cache.get(v)!;
+  };
+  const fit = fitSliderToTarget((v) => at(v).summary.laborPct, ctx.laborTarget);
+  return { ...fit, plan: at(fit.slider) };
+}
+
+export async function applyPlan(monday: ISODate, intensity: number, plan?: PlanPreview) {
+  plan ??= await planWeek(monday, intensity);
   await db.$transaction([
     db.shift.deleteMany({ where: { ...weekWhere(monday), published: false } }),
     db.shift.createMany({
@@ -333,6 +415,22 @@ export async function clearDrafts(monday: ISODate) {
   return r.count;
 }
 
+/**
+ * For the nightly job: if auto-draft is on and next week has no shifts at
+ * all, draft it, fitted to the labor % budget when one is set, otherwise at
+ * the standard staffing level. Never touches a week that has any shifts.
+ */
+export async function autoDraftNextWeek(today: ISODate = todayIn(TZ)): Promise<{ skipped: string } | { week: ISODate; created: number; slider: number; laborPct: number | null; laborTarget: number | null }> {
+  if (!(await getAutoDraft())) return { skipped: "Auto-draft is off." };
+  const monday = addDays(weekStartOf(today), 7);
+  const existing = await db.shift.count({ where: weekWhere(monday) });
+  if (existing > 0) return { skipped: `Week of ${monday} already has ${existing} shifts.` };
+  const fit = await fitPlanToBudget(monday);
+  const slider = fit?.slider ?? 50;
+  const plan = await applyPlan(monday, intensityFromSlider(slider), fit?.plan);
+  return { week: monday, created: plan.planned.length, slider, laborPct: plan.summary.laborPct, laborTarget: plan.laborTarget };
+}
+
 /** Block-level problems for the week (for the publish guard). */
 export async function weekBlockers(monday: ISODate) {
   const w = await loadWeek(monday);
@@ -354,3 +452,16 @@ export async function hasOverlap(employeeId: string, start: Date, end: Date, exc
 }
 
 export const shiftHours = (s: { start: Date; end: Date; breakMinutes: number }) => paidHours(s);
+
+// ---- Announcements ---------------------------------------------------------------------
+
+/** Team notes for My shifts: pinned first, then the last 30 days, newest first. */
+export async function listAnnouncements(limit = 10) {
+  const since = new Date(Date.now() - 30 * 86_400_000);
+  const now = new Date();
+  return db.announcement.findMany({
+    where: { AND: [{ OR: [{ pinned: true }, { createdAt: { gte: since } }] }, { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }] },
+    orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
+    take: limit,
+  });
+}

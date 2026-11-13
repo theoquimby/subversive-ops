@@ -4,8 +4,10 @@ import { payForWeek, PayLine } from "@/domain/labor";
 import { blockHours, zonedTime } from "@/domain/timecards";
 import { Prisma } from "@prisma/client";
 import { db, num } from "../db";
-import { env, squareConfigured } from "../env";
+import { env } from "../env";
+import { SquareClient } from "../integrations/square-http";
 import { getWageJobs, listTeamMembers, listTimecards } from "../integrations/square-labor";
+import { isSquareConnected, recordSquareSync, requireSquareClient } from "./square";
 import { getLaborRules } from "./labor-rules";
 
 const tz = () => env.BUSINESS_TIMEZONE;
@@ -84,31 +86,34 @@ export async function weeklyPay(weekStart: ISODate, now = new Date()) {
 
 // ---- Square sync ---------------------------------------------------------------
 
-/**
- * Pull team members, wages and timecards from Square for business dates
- * [from, toExclusive). Employees match on Square id (or, the first time, on
- * an unlinked employee with the same name); timecards upsert on Square id.
- */
-export async function syncLabor(from: ISODate, toExclusive: ISODate): Promise<{ skipped: string } | { members: number; timecards: number; positionsCreated: number }> {
-  if (!squareConfigured()) return { skipped: "Square isn't connected — add the access token and location ID first." };
+type PositionResolver = (title: string | null) => Promise<string | null>;
 
-  const members = await listTeamMembers();
+async function positionResolver(): Promise<{ resolve: PositionResolver; created: () => number }> {
   const positions = await db.position.findMany();
   const posByName = new Map(positions.map((p) => [p.name.toLowerCase(), p.id]));
-  let positionsCreated = 0;
-  const positionFor = async (title: string | null) => {
+  let created = 0;
+  const resolve: PositionResolver = async (title) => {
     if (!title) return null;
     const hit = posByName.get(title.toLowerCase());
     if (hit) return hit;
-    const created = await db.position.create({ data: { name: title, sort: positions.length + positionsCreated } });
-    positionsCreated++;
-    posByName.set(title.toLowerCase(), created.id);
-    return created.id;
+    const row = await db.position.create({ data: { name: title, sort: positions.length + created } });
+    created++;
+    posByName.set(title.toLowerCase(), row.id);
+    return row.id;
   };
+  return { resolve, created: () => created };
+}
 
-  const empBySquare = new Map<string, string>();
+/**
+ * Pull team members and their wage settings from Square. Employees match on
+ * Square id (or, the first time, on an unlinked employee with the same name).
+ */
+export async function syncSquareTeam(client?: SquareClient) {
+  const c = client ?? (await requireSquareClient());
+  const members = await listTeamMembers(c);
+  const pos = await positionResolver();
   for (const m of members) {
-    const jobs = await getWageJobs(m.id);
+    const jobs = await getWageJobs(c, m.id);
     const baseRate = jobs.find((j) => j.hourlyRate != null)?.hourlyRate ?? null;
     let emp = await db.employee.findUnique({ where: { squareTeamMemberId: m.id } });
     if (!emp) emp = await db.employee.findFirst({ where: { squareTeamMemberId: null, name: { equals: m.name, mode: "insensitive" } } });
@@ -121,9 +126,8 @@ export async function syncLabor(from: ISODate, toExclusive: ISODate): Promise<{ 
       ...(baseRate != null ? { hourlyRate: new Prisma.Decimal(baseRate.toFixed(2)) } : {}),
     };
     emp = emp ? await db.employee.update({ where: { id: emp.id }, data }) : await db.employee.create({ data });
-    empBySquare.set(m.id, emp.id);
     for (const j of jobs) {
-      const positionId = await positionFor(j.title);
+      const positionId = await pos.resolve(j.title);
       if (!positionId) continue;
       const rate = j.hourlyRate != null ? new Prisma.Decimal(j.hourlyRate.toFixed(2)) : null;
       await db.employeePosition.upsert({
@@ -133,23 +137,51 @@ export async function syncLabor(from: ISODate, toExclusive: ISODate): Promise<{ 
       });
     }
   }
+  return { members: members.length, positionsCreated: pos.created() };
+}
 
+/**
+ * Timecards that started in business dates [from, toExclusive), upserted on
+ * Square id. Cards a manager corrected here (manuallyEdited) or that sit in
+ * an approved week (approvedAt) are never overwritten. Unknown team members
+ * trigger one team sync.
+ */
+export async function syncSquareTimecards(from: ISODate, toExclusive: ISODate, client?: SquareClient) {
+  const c = client ?? (await requireSquareClient());
   const { gte, lt } = dayBounds(from, toExclusive);
-  const cards = await listTimecards(gte.toISOString(), lt.toISOString());
+  const cards = await listTimecards(c, gte.toISOString(), lt.toISOString());
+  const loadEmployees = async () =>
+    new Map((await db.employee.findMany({ where: { squareTeamMemberId: { not: null } }, select: { id: true, squareTeamMemberId: true } })).map((e) => [e.squareTeamMemberId!, e.id]));
+  let empBySquare = await loadEmployees();
+  let team: Awaited<ReturnType<typeof syncSquareTeam>> | null = null;
+  if (cards.some((x) => !empBySquare.has(x.teamMemberId))) {
+    team = await syncSquareTeam(c);
+    empBySquare = await loadEmployees();
+  }
+  const existing = new Map(
+    (await db.timecard.findMany({ where: { squareId: { in: cards.map((x) => x.id) } }, select: { squareId: true, manuallyEdited: true, approvedAt: true } })).map((t) => [t.squareId!, t]),
+  );
+  const pos = await positionResolver();
   let saved = 0;
-  for (const c of cards) {
-    const employeeId = empBySquare.get(c.teamMemberId);
+  let kept = 0;
+  for (const card of cards) {
+    const employeeId = empBySquare.get(card.teamMemberId);
     if (!employeeId) continue; // team member at another location
+    const prev = existing.get(card.id);
+    if (prev && (prev.manuallyEdited || prev.approvedAt)) {
+      kept++;
+      continue;
+    }
     const data = {
       employeeId,
-      positionId: await positionFor(c.jobTitle),
-      clockIn: new Date(c.startAt),
-      clockOut: c.endAt ? new Date(c.endAt) : null,
-      breakMinutes: c.unpaidBreakMinutes,
-      hourlyRate: c.hourlyRate != null ? new Prisma.Decimal(c.hourlyRate.toFixed(2)) : null,
+      positionId: await pos.resolve(card.jobTitle),
+      clockIn: new Date(card.startAt),
+      clockOut: card.endAt ? new Date(card.endAt) : null,
+      breakMinutes: card.unpaidBreakMinutes,
+      hourlyRate: card.hourlyRate != null ? new Prisma.Decimal(card.hourlyRate.toFixed(2)) : null,
       source: "SQUARE" as const,
     };
-    await db.timecard.upsert({ where: { squareId: c.id }, create: { ...data, squareId: c.id }, update: data });
+    await db.timecard.upsert({ where: { squareId: card.id }, create: { ...data, squareId: card.id }, update: data });
     saved++;
   }
   await db.setting.upsert({
@@ -157,7 +189,17 @@ export async function syncLabor(from: ISODate, toExclusive: ISODate): Promise<{ 
     create: { key: "square.lastLaborSync", value: new Date().toISOString() },
     update: { value: new Date().toISOString() },
   });
-  return { members: members.length, timecards: saved, positionsCreated };
+  await recordSquareSync("labor", saved, `${from} → ${addDays(toExclusive, -1)}${kept ? `, ${kept} edited kept` : ""}`);
+  return { timecards: saved, keptEdited: kept, members: team?.members ?? 0, positionsCreated: (team?.positionsCreated ?? 0) + pos.created() };
+}
+
+/** Team members, wages and timecards for business dates [from, toExclusive). */
+export async function syncLabor(from: ISODate, toExclusive: ISODate): Promise<{ skipped: string } | { members: number; timecards: number; keptEdited: number; positionsCreated: number }> {
+  if (!(await isSquareConnected())) return { skipped: "Square isn't connected — connect it under Settings → Square first." };
+  const client = await requireSquareClient();
+  const team = await syncSquareTeam(client);
+  const cards = await syncSquareTimecards(from, toExclusive, client);
+  return { members: team.members, timecards: cards.timecards, keptEdited: cards.keptEdited, positionsCreated: team.positionsCreated + cards.positionsCreated };
 }
 
 export async function lastLaborSync() {

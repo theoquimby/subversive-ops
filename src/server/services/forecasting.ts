@@ -1,6 +1,6 @@
 import "server-only";
 import { addDays, dateRange, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
-import { DayForecast, defaultHourlyShape, forecastSeries, hourlyShares, isWet, learnRainFactor, WeatherObs } from "@/domain/forecast";
+import { DayForecast, defaultHourlyShape, forecastSeries, hasYearOfHistory, hourlyShares, isWet, learnRainFactor, seasonalIndex, WeatherObs, YEAR_LAG } from "@/domain/forecast";
 import { backtest, bias, mape } from "@/domain/forecastAccuracy";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
@@ -10,6 +10,8 @@ import { getAdjustments, setAdjustment } from "./planning";
 import { businessToday } from "./sales";
 
 const HISTORY_DAYS = 120;
+/** Enough for "same week last year" plus the four weeks before it. */
+const SEASONAL_HISTORY_DAYS = YEAR_LAG + 63;
 
 // ---- Weather (Open-Meteo: free, no key) -----------------------------------------
 
@@ -102,7 +104,7 @@ export async function dailySalesHistory(from: ISODate, to: ISODate) {
 }
 
 /** Past event dates (other than plain holidays-with-no-effect) are left out of baselines. */
-async function pastEventDays(from: ISODate, to: ISODate) {
+export async function pastEventDays(from: ISODate, to: ISODate) {
   const rows = await db.event.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(to) } }, select: { date: true, impact: true, kind: true } });
   return new Set(rows.filter((e) => e.kind === "CLOSURE" || e.impact.toNumber() !== 1).map((e) => toISODate(e.date)));
 }
@@ -181,16 +183,42 @@ export async function setManualAdjustment(date: ISODate, multiplier: number | nu
 
 export interface DailySalesForecast extends DayForecast {
   drivers: DayDrivers;
+  /** Forecast orders (checks / covers proxy) for the day; null before hourly sales are synced. */
+  orders: number | null;
+}
+
+/** Store-level orders per day from the hourly table (Square order count). */
+export async function dailyOrdersHistory(from: ISODate, to: ISODate) {
+  const rows = await db.hourlySale.groupBy({ by: ["date"], _sum: { orders: true }, where: { date: { gte: parseISODate(from), lt: parseISODate(to) } } });
+  return new Map<ISODate, number>(rows.map((r) => [toISODate(r.date), r._sum.orders ?? 0]));
 }
 
 export async function dailySalesForecast(dates: ISODate[]): Promise<DailySalesForecast[]> {
   const today = businessToday();
-  const [history, drivers] = await Promise.all([baselineHistory(addDays(today, -HISTORY_DAYS), today), demandDrivers(dates)]);
+  const from = addDays(today, -SEASONAL_HISTORY_DAYS);
+  const [history, drivers, orders] = await Promise.all([baselineHistory(from, today), demandDrivers(dates), dailyOrdersHistory(from, today)]);
   const adjustments = new Map([...drivers].map(([d, x]) => [d, x.total]));
-  return forecastSeries({ history: history.sales, openDays: history.cleanOpenDays, asOf: today, dates, adjustments }).map((f) => ({ ...f, drivers: drivers.get(f.date)! }));
+  // Orders follow the same model, on days that had both sales and orders recorded.
+  const orderDays = new Set([...history.cleanOpenDays].filter((d) => (orders.get(d) ?? 0) > 0));
+  const orderF = orderDays.size ? new Map(forecastSeries({ history: orders, openDays: orderDays, asOf: today, dates, adjustments }).map((f) => [f.date, f])) : null;
+  return forecastSeries({ history: history.sales, openDays: history.cleanOpenDays, asOf: today, dates, adjustments }).map((f) => {
+    const o = orderF?.get(f.date);
+    return { ...f, drivers: drivers.get(f.date)!, orders: o && o.samples > 0 ? o.qty : null };
+  });
 }
 
-/** Forecast sales for each hour of each date (local hours 0–23). */
+/**
+ * Store-level year-over-year seasonal factor per date (1 until a year of sales
+ * history exists). Item forecasts only look back ten weeks, so they borrow this.
+ */
+export async function seasonalFactors(dates: ISODate[]): Promise<{ factors: Map<ISODate, number>; active: boolean }> {
+  const today = businessToday();
+  const history = await baselineHistory(addDays(today, -SEASONAL_HISTORY_DAYS), today);
+  const active = hasYearOfHistory(history.sales, history.cleanOpenDays, today);
+  return { factors: new Map(dates.map((d) => [d, active ? seasonalIndex(history.sales, history.cleanOpenDays, today, d) : 1])), active };
+}
+
+/** Forecast sales and orders for each hour of each date (local hours 0–23). */
 export async function hourlySalesForecast(dates: ISODate[]) {
   const today = businessToday();
   const [daily, rows, opening] = await Promise.all([
@@ -199,17 +227,20 @@ export async function hourlySalesForecast(dates: ISODate[]) {
     getOpeningHours(),
   ]);
   const plain = rows.map((r) => ({ date: toISODate(r.date), hour: r.hour, netSales: r.netSales.toNumber() }));
-  const shapeCache = new Map<number, { shares: number[]; learned: boolean }>();
+  const plainOrders = rows.map((r) => ({ date: toISODate(r.date), hour: r.hour, netSales: r.orders }));
+  const shapeCache = new Map<number, { shares: number[]; orderShares: number[]; learned: boolean }>();
   return daily.map((d) => {
     const wd = weekday(d.date);
     if (!shapeCache.has(wd)) {
       const learned = hourlyShares(plain, wd, today);
       const hours = opening[wd];
       const ok = learned.some((x) => x > 0);
-      shapeCache.set(wd, { shares: ok ? learned : hours ? defaultHourlyShape(hours[0], hours[1]) : learned, learned: ok });
+      const shares = ok ? learned : hours ? defaultHourlyShape(hours[0], hours[1]) : learned;
+      const lo = hourlyShares(plainOrders, wd, today);
+      shapeCache.set(wd, { shares, orderShares: lo.some((x) => x > 0) ? lo : shares, learned: ok });
     }
-    const { shares, learned } = shapeCache.get(wd)!;
-    return { ...d, hours: shares.map((s) => s * d.qty), shapeLearned: learned };
+    const { shares, orderShares, learned } = shapeCache.get(wd)!;
+    return { ...d, hours: shares.map((s) => s * d.qty), orderHours: d.orders == null ? null : orderShares.map((s) => s * d.orders!), shapeLearned: learned };
   });
 }
 
@@ -225,7 +256,7 @@ export async function forecastAccuracy(days = 28) {
   const today = businessToday();
   const from = addDays(today, -days);
   const [history, events, manual] = await Promise.all([
-    baselineHistory(addDays(from, -HISTORY_DAYS), today),
+    baselineHistory(addDays(from, -SEASONAL_HISTORY_DAYS), today),
     db.event.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(today) } } }),
     getAdjustments(),
   ]);

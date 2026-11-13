@@ -3,14 +3,16 @@ import { addDays, dateRange, weekday } from "@/domain/dates";
 import { dayDate, money, qty, relativeTime, shortDate, signedPct } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { squareConfigured } from "@/server/env";
+import { isSquareConnected } from "@/server/services/square";
+import { refreshIfStale } from "@/server/services/square-sync";
 import { forecastItems } from "@/server/services/planning";
-import { businessToday, lastSquareSync } from "@/server/services/sales";
+import { businessToday, lastSquareSync, squareCatalogMeta } from "@/server/services/sales";
 import { GridSelect } from "@/components/grid";
 import { setSquareMapping } from "@/server/actions/inline";
 import { dailySalesHistory, demandDrivers, forecastAccuracy, hourlySalesForecast, location, refreshWeather, weatherLabel, weatherMap, weatherStatus } from "@/server/services/forecasting";
 import { after } from "next/server";
 import { CalDay, ForecastCalendar } from "./forecast-calendar";
+import { DemandOutlook } from "./demand-outlook";
 import { SyncButtons } from "./sync-buttons";
 
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -21,6 +23,7 @@ export const metadata = { title: "Sales & forecast" };
 export default async function SalesPage({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
   await requireUser("MANAGER");
   const { show } = await searchParams;
+  await refreshIfStale();
   const today = businessToday();
   const dates = dateRange(today, addDays(today, 7));
   const calStart = addDays(today, -weekday(today));
@@ -33,7 +36,9 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   if (!haveToday) await refreshWeather();
   else after(() => refreshWeather().then(() => undefined, () => undefined));
 
-  const [lastSync, mappings, recipes, forecast, volume, hourly, actuals, pastDrivers, accuracy, weather, wStatus, loc] = await Promise.all([
+  const [connected, catalogMeta, lastSync, mappings, recipes, forecast, volume, hourly, actuals, pastDrivers, accuracy, weather, wStatus, loc] = await Promise.all([
+    isSquareConnected(),
+    squareCatalogMeta(),
     lastSquareSync(),
     db.squareMapping.findMany({ orderBy: [{ ignored: "asc" }, { squareName: "asc" }], include: { recipe: { select: { name: true } } } }),
     db.recipe.findMany({ where: { active: true, kind: { in: ["MENU", "MODIFIER"] } }, select: { id: true, name: true, kind: true }, orderBy: { name: "asc" } }),
@@ -73,6 +78,9 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
       baseline: f?.baseline ?? 0,
       samples: f?.samples ?? 0,
       trend: f?.trend ?? 1,
+      seasonal: f?.seasonal ?? 1,
+      orders: f?.orders ?? null,
+      orderHours: f?.orderHours ?? null,
       manual: drivers.manual,
       reason: drivers.reason,
       eventFactor: drivers.eventFactor,
@@ -109,8 +117,8 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Sales & forecast"
-        description={squareConfigured() ? `Square synced ${relativeTime(lastSync)} · syncs automatically every night` : "Square isn't connected yet — add the access token in Vercel settings."}
-        actions={<SyncButtons configured={squareConfigured()} />}
+        description={connected ? `Square synced ${relativeTime(lastSync)} · keeps itself up to date through the day` : "Square isn't connected yet — connect it to bring in sales."}
+        actions={<SyncButtons configured={connected} />}
       />
 
       <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -131,6 +139,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
         actions={<a href="/events" className="text-sm whitespace-nowrap text-ink-2 hover:text-ink">Events →</a>}
       >
         <ForecastCalendar days={days} weatherNote={weatherNote} />
+        <div className="mt-6"><DemandOutlook /></div>
       </Section>
 
       <Section title="How the forecast did" description="Each of the last four weeks, forecast as it would have been made the day before, against what we actually sold.">
@@ -197,9 +206,12 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
         title="Square items"
         description="Link each Square item and modifier to a recipe so its sales drive costing and ordering."
         actions={
-          <a href={show === "all" ? "/sales" : "/sales?show=all"} className="text-sm text-ink-2 hover:text-ink">
-            {show === "all" ? `Only unlinked (${unmapped.length})` : `Show all (${mappings.length})`}
-          </a>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <a href="/sales/square-menu" className="text-sm font-medium whitespace-nowrap text-ink hover:underline">Menu from Square →</a>
+            <a href={show === "all" ? "/sales" : "/sales?show=all"} className="text-sm whitespace-nowrap text-ink-2 hover:text-ink">
+              {show === "all" ? `Only unlinked (${unmapped.length})` : `Show all (${mappings.length})`}
+            </a>
+          </div>
         }
       >
         {listed.length === 0 ? (
@@ -212,7 +224,11 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
                 <Tr key={m.squareId}>
                   <Td>
                     <div className="font-medium">{m.squareName}</div>
-                    <div className="text-xs text-muted">{m.squareType === "MODIFIER" ? "Modifier" : "Item"}</div>
+                    <div className="text-xs text-muted">
+                      {m.squareType === "MODIFIER" ? "Modifier" : "Item"}
+                      {catalogMeta[m.squareId]?.price != null && ` · ${money(catalogMeta[m.squareId].price)}`}
+                      {catalogMeta[m.squareId]?.deleted ? " · removed from Square" : catalogMeta[m.squareId]?.archived ? " · archived in Square" : ""}
+                    </div>
                   </Td>
                   <Td align="right" className="hidden text-ink-2 sm:table-cell">{qty(sold.get(m.squareId) ?? 0, 0)}</Td>
                   <Td>

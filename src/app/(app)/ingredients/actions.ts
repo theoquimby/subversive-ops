@@ -2,6 +2,8 @@
 
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
+import { countUnitsFor } from "@/server/services/inventory";
+import { setPar } from "@/server/services/planning";
 import { canConvert, toBase } from "@/domain/units";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -125,3 +127,24 @@ export async function archiveIngredient(id: string) {
   redirect("/ingredients");
 }
 
+
+/** Minimum on hand, typed in the ingredient's count unit. Used for items no recipe uses. */
+export async function setMinOnHand(ingredientId: string, raw: string) {
+  await requireUser("MANAGER");
+  const ing = await db.ingredient.findUnique({ where: { id: ingredientId }, include: { conversions: true, preferredProduct: { select: { purchaseUnit: true, packQtyBase: true } } } });
+  if (!ing) return { error: "That ingredient is gone." };
+  const text = raw.trim();
+  if (text === "") {
+    await setPar(ingredientId, null);
+  } else {
+    const n = Number(text.replace(/,/g, ""));
+    if (!Number.isFinite(n) || n < 0) return { error: "Enter a quantity, or leave blank." };
+    const { units, conversions } = countUnitsFor(ing);
+    try {
+      await setPar(ingredientId, n === 0 ? null : toBase(n, units[0], ing.baseUnit, conversions));
+    } catch {
+      return { error: `Can't convert ${units[0]} for this ingredient.` };
+    }
+  }
+  revalidatePath("/ingredients");
+}

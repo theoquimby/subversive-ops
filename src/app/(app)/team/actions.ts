@@ -2,9 +2,10 @@
 
 import { addDays } from "@/domain/dates";
 import { parseWindows } from "@/domain/timecards";
-import { requireUser } from "@/server/auth";
+import { hashPin, requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { syncLabor } from "@/server/services/labor";
+import { friendlySquareError } from "@/server/integrations/square-http";
 import { businessToday } from "@/server/services/sales";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -182,8 +183,69 @@ export async function syncTeamFromSquare(): Promise<{ error?: string; message?: 
     const r = await syncLabor(addDays(today, -14), addDays(today, 1));
     if ("skipped" in r) return { error: r.skipped };
     refresh();
-    return { message: `Synced ${r.members} team members and ${r.timecards} timecards${r.positionsCreated ? `, added ${r.positionsCreated} positions` : ""}.` };
+    return { message: `Synced ${r.members} team members and ${r.timecards} timecards${r.positionsCreated ? `, added ${r.positionsCreated} positions` : ""}${r.keptEdited ? `; kept ${r.keptEdited} edited` : ""}.` };
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: friendlySquareError(e) };
   }
+}
+
+// ---- Announcements ----------------------------------------------------------------
+
+export async function postAnnouncement(body: string): Promise<{ error?: string }> {
+  const me = await requireUser("MANAGER");
+  const text = body.trim();
+  if (!text) return { error: "Write something first." };
+  if (text.length > 1000) return { error: "Keep it under 1,000 characters." };
+  await db.announcement.create({ data: { body: text, author: me.name } });
+  revalidatePath("/team");
+  revalidatePath("/schedule");
+  revalidatePath("/my");
+  return {};
+}
+
+export async function pinAnnouncement(id: string, pinned: boolean): R {
+  await requireUser("MANAGER");
+  await db.announcement.updateMany({ where: { id }, data: { pinned } });
+  revalidatePath("/team");
+  revalidatePath("/schedule");
+  revalidatePath("/my");
+}
+
+export async function deleteAnnouncement(id: string): R {
+  await requireUser("MANAGER");
+  await db.announcement.deleteMany({ where: { id } });
+  revalidatePath("/team");
+  revalidatePath("/schedule");
+  revalidatePath("/my");
+}
+
+// ---- Invite ----------------------------------------------------------------------
+
+/**
+ * One step from the team grid: create a staff login with a PIN and link it to
+ * the employee. Returns the PIN to hand over (it's only shown once).
+ */
+export async function inviteEmployee(employeeId: string, loginName: string, pin?: string): Promise<{ error?: string; name?: string; pin?: string }> {
+  await requireUser("MANAGER");
+  const name = loginName.trim();
+  if (!name || name.length > 40) return { error: "Pick a login name." };
+  const code = pin?.trim() || String(Math.floor(1000 + Math.random() * 9000));
+  if (!/^\d{4,8}$/.test(code)) return { error: "PINs are 4–8 digits." };
+  const emp = await db.employee.findUnique({ where: { id: employeeId }, select: { userId: true } });
+  if (!emp) return { error: "That person was removed." };
+  if (emp.userId) return { error: "They already have a login." };
+  const taken = await db.user.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
+  if (taken) return { error: `"${name}" is taken. Try their full name.` };
+  try {
+    await db.$transaction(async (tx) => {
+      const u = await tx.user.create({ data: { name, role: "STAFF", pinHash: await hashPin(code) } });
+      await tx.employee.update({ where: { id: employeeId }, data: { userId: u.id } });
+    });
+  } catch (e) {
+    if (isUnique(e)) return { error: `"${name}" is taken. Try their full name.` };
+    throw e;
+  }
+  refresh();
+  revalidatePath("/settings");
+  return { name, pin: code };
 }

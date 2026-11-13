@@ -71,3 +71,51 @@ describe("learnRainFactor", () => {
     expect(factor).toBeLessThan(0.8);
   });
 });
+
+import { hasYearOfHistory, seasonalIndex, yoyTrend } from "../forecast";
+describe("year-over-year seasonality", () => {
+  // Two years of a smooth season: quiet in winter, ~3× in late July. This year runs 10% above last.
+  const start = "2024-11-01";
+  const asOfS = "2026-05-15";
+  const all = dateRange(start, "2026-12-31");
+  const level = (d: string) => {
+    const doy = (Date.parse(`${d}T00:00:00Z`) - Date.parse(`${d.slice(0, 4)}-01-01T00:00:00Z`)) / 86400000;
+    const season = 1 + 2 * Math.exp(-(((doy - 205) / 45) ** 2));
+    const growth = d >= "2025-11-01" ? 1.1 : 1;
+    return 1000 * season * growth;
+  };
+  const hist = new Map(all.filter((d) => d < asOfS).map((d) => [d, level(d)]));
+  const open = new Set(all.filter((d) => d < asOfS));
+
+  it("needs a year of history before it switches on", () => {
+    const short = new Set([...open].filter((d) => d >= "2026-01-01"));
+    expect(hasYearOfHistory(hist, short, asOfS)).toBe(false);
+    expect(seasonalIndex(hist, short, asOfS, "2026-07-20")).toBe(1);
+    expect(hasYearOfHistory(hist, open, asOfS)).toBe(true);
+  });
+
+  it("lifts the forecast into the summer peak", () => {
+    const target = "2026-07-24";
+    const idx = seasonalIndex(hist, open, asOfS, target);
+    expect(idx).toBeGreaterThan(1.5);
+    const [withS] = forecastSeries({ history: hist, openDays: open, asOf: asOfS, dates: [target] });
+    const [without] = forecastSeries({ history: hist, openDays: open, asOf: asOfS, dates: [target] }, { seasonality: false });
+    const actual = level(target);
+    expect(withS.seasonal).toBeCloseTo(idx);
+    expect(without.seasonal).toBe(1);
+    expect(Math.abs(withS.qty - actual)).toBeLessThan(Math.abs(without.qty - actual));
+  });
+
+  it("can be turned fully on with weight 1", () => {
+    const target = "2026-07-24";
+    const idx = seasonalIndex(hist, open, asOfS, target, { seasonalWeight: 1, seasonalClamp: [0.1, 10] });
+    const ly = level("2025-07-25"); // 364 days earlier, same weekday
+    expect(idx).toBeGreaterThan(ly / level("2025-04-20") * 0.8);
+  });
+
+  it("measures trend year over year so the seasonal ramp isn't counted twice", () => {
+    // Spring ramp this year is the same shape as last year → neutral trend, while the plain trend reads it as growth.
+    expect(yoyTrend(hist, open, asOfS)).toBeCloseTo(1, 1);
+    expect(computeTrend(hist, open, asOfS)).toBeGreaterThan(1.02);
+  });
+});

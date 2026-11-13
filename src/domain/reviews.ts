@@ -342,3 +342,96 @@ export function operationalHint(themes: readonly string[], ops: OpsDay | undefin
   }
   return out.length ? out.join(" ") : null;
 }
+
+// ---- Rating-drop alert -----------------------------------------------------------------
+
+export interface RatingDrop {
+  /** Average over the last 30 days, and over the 90 days before that. */
+  recent: number | null;
+  baseline: number | null;
+  recentCount: number;
+  baselineCount: number;
+  /** baseline − recent, in stars (positive = worse lately). */
+  drop: number | null;
+  alert: boolean;
+  /** Themes in the last 30 days' critical reviews, most frequent first. */
+  themes: string[];
+}
+
+/**
+ * Has the rating slipped? Alerts when the last 30 days average at least
+ * `threshold` stars below the 90 days before, with enough reviews on both sides
+ * that one grumpy guest can't trigger it.
+ */
+export function ratingDrop(reviews: readonly ReviewLite[], today: ISODate, opts: { threshold?: number; minRecent?: number; minBaseline?: number } = {}): RatingDrop {
+  const threshold = opts.threshold ?? 0.3;
+  const recentFrom = addDays(today, -30);
+  const baseFrom = addDays(today, -120);
+  const recent = reviews.filter((r) => r.postedAt > recentFrom && r.postedAt <= today);
+  const base = reviews.filter((r) => r.postedAt > baseFrom && r.postedAt <= recentFrom);
+  const avg = (rs: readonly ReviewLite[]) => (rs.length ? rs.reduce((s, r) => s + r.rating, 0) / rs.length : null);
+  const a = avg(recent);
+  const b = avg(base);
+  const drop = a != null && b != null ? b - a : null;
+  const alert = drop != null && drop >= threshold - 1e-9 && recent.length >= (opts.minRecent ?? 3) && base.length >= (opts.minBaseline ?? 5);
+  const counts = new Map<string, number>();
+  for (const r of recent) if (r.rating <= 3 || r.sentiment === "negative" || r.sentiment === "mixed") for (const t of r.themes) counts.set(t, (counts.get(t) ?? 0) + 1);
+  const themes = [...counts].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).map(([t]) => t);
+  return { recent: a, baseline: b, recentCount: recent.length, baselineCount: base.length, drop, alert, themes };
+}
+
+// ---- "What to fix" (deterministic fallback) -------------------------------------------
+
+export interface FixAction {
+  theme: string;
+  title: string;
+  why: string;
+  action: string;
+}
+
+const PLAYBOOK: Record<ReviewTheme, { title: string; action: string }> = {
+  "service-speed": { title: "Speed up service at the peaks", action: "Compare the schedule with the hourly forecast for the busiest shifts and add a runner or line cook where sales outrun staff hours. Check ticket times on Fridays and Saturdays." },
+  food: { title: "Tighten consistency in the kitchen", action: "Re-check recipe cards and portioning on the dishes guests mention, taste-test at the start of each shift, and hold plates under the pass no longer than a few minutes." },
+  beer: { title: "Look after the taps", action: "Check line cleaning dates, pour temperatures and what's run out. Brief staff on the current list so they can steer guests to something they'll like." },
+  price: { title: "Make the value obvious", action: "Look at the items called out as pricey against their food cost and portion. Consider a lower-priced option or a clearer description before cutting prices." },
+  staff: { title: "Reset the welcome", action: "Talk through greeting, check-backs and how to handle a problem at the next pre-shift. Pair newer staff with someone guests praise by name." },
+  family: { title: "Make families feel planned for", action: "Check high chairs, the kids' options and crayons, and seat families where there's room for strollers." },
+  dogs: { title: "Keep the dog policy clear", action: "Post the dog rules where guests see them, keep water bowls out on the patio, and make sure staff explain it the same way." },
+  cleanliness: { title: "Fix cleaning between turns", action: "Add bathroom and table checks to an hourly checklist during service, with initials, and walk the room before the dinner rush." },
+  wait: { title: "Manage the wait", action: "Quote honest wait times, offer a drink at the bar while guests wait, and look at whether reservations or a waitlist text would help on peak nights." },
+  atmosphere: { title: "Look at the room", action: "Check music volume, lighting and temperature during the busiest hours, and fix anything guests keep mentioning about the space." },
+};
+
+/**
+ * Up to three things to fix this month, from theme counts and likely causes.
+ * Recent critical mentions weigh most; positive-only themes never make the list.
+ */
+export function whatToFixFallback(args: {
+  themes: readonly { theme: string; total: number; negative: number; mixed: number }[];
+  recentThemes?: readonly string[];
+  rootCauses?: readonly string[];
+}): FixAction[] {
+  const recent = new Set(args.recentThemes ?? []);
+  const scored = args.themes
+    .filter((t) => isTheme(t.theme) && t.negative + t.mixed > 0)
+    .map((t) => ({ t, score: t.negative + t.mixed * 0.5 + (recent.has(t.theme) ? 1 : 0) }))
+    .sort((a, b) => b.score - a.score || b.t.total - a.t.total);
+  return scored.slice(0, 3).map(({ t }) => {
+    const p = PLAYBOOK[t.theme as ReviewTheme];
+    const n = t.negative + t.mixed;
+    const cause = args.rootCauses?.find((c) => matchesTheme(c, t.theme));
+    return {
+      theme: t.theme,
+      title: p.title,
+      why: `${n} critical or mixed mention${n === 1 ? "" : "s"} of ${themeLabel(t.theme).toLowerCase()} in the last 90 days${recent.has(t.theme) ? ", including this month" : ""}.${cause ? ` ${cause}` : ""}`,
+      action: p.action,
+    };
+  });
+}
+
+function matchesTheme(cause: string, theme: string) {
+  const c = cause.toLowerCase();
+  if (theme === "service-speed" || theme === "wait" || theme === "staff") return /short-staffed|staff|over forecast/.test(c);
+  if (theme === "food") return /food-cost|recipe|portion/.test(c);
+  return false;
+}

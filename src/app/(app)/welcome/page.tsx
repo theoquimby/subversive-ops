@@ -1,6 +1,6 @@
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { squareConfigured } from "@/server/env";
+import { isSquareConnected } from "@/server/services/square";
 import { targetFoodCost } from "@/server/services/insights";
 import { getOpeningHours } from "@/server/services/labor-rules";
 import { getBusinessProfile, getOnboardingProgress, isStepId, onboardingState } from "@/server/services/onboarding";
@@ -11,7 +11,7 @@ export const metadata = { title: "Set up" };
 export default async function WelcomePage({ searchParams }: { searchParams: Promise<{ step?: string }> }) {
   const me = await requireUser("MANAGER");
   const { step } = await searchParams;
-  const [progress, state, profile, hours, target, suppliers, users, ingredients, recipes, counts] = await Promise.all([
+  const [progress, state, profile, hours, target, suppliers, users, ingredients, recipes, counts, square] = await Promise.all([
     getOnboardingProgress(),
     onboardingState(),
     getBusinessProfile(),
@@ -22,6 +22,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
     db.ingredient.count(),
     db.recipe.count(),
     db.stockCount.count({ where: { completed: true } }),
+    isSquareConnected(),
   ]);
 
   return (
@@ -35,7 +36,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
       suppliers={suppliers}
       users={users.map((u) => ({ ...u, me: u.id === me.userId }))}
       data={{ ingredients, recipes }}
-      square={squareConfigured()}
+      square={square}
       counts={counts}
     />
   );

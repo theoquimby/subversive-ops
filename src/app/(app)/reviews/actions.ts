@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { analyzeReviews, importGoogleReviews, importPastedReviews, saveReviewSetting, SETTING_PLACE_ID, SETTING_TONE } from "@/server/services/reviews";
+import { analyzeReviews, generateWhatToFix, importGoogleReviews, importPastedReviews, saveReviewSetting, SETTING_PLACE_ID, SETTING_TONE } from "@/server/services/reviews";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -63,5 +63,11 @@ export async function saveSetting(field: "placeId" | "tone", raw: string) {
   if (field === "placeId" && value && !/^[A-Za-z0-9_-]{10,}$/.test(value)) return { error: "That doesn't look like a Place ID (it starts with ChIJ…)" };
   if (value.length > 1000) return { error: "Keep it under 1,000 characters" };
   await saveReviewSetting(field === "placeId" ? SETTING_PLACE_ID : SETTING_TONE, value);
+  refresh();
+}
+
+export async function refreshWhatToFix() {
+  await requireUser("MANAGER");
+  await generateWhatToFix(true);
   refresh();
 }

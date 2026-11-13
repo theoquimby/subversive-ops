@@ -3,9 +3,12 @@ import { Card, PageHeader, Section, Th, Tr } from "@/components/ui";
 import { relativeTime } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { num } from "@/server/db";
-import { squareConfigured } from "@/server/env";
+import { isSquareConnected } from "@/server/services/square";
 import { lastLaborSync, loadTeam } from "@/server/services/labor";
-import { getOpeningHours } from "@/server/services/labor-rules";
+import { getLaborRules, getOpeningHours } from "@/server/services/labor-rules";
+import { sickBalances } from "@/server/services/payroll";
+import { listAnnouncements } from "@/server/services/scheduling";
+import { AnnouncementsManager } from "./announcements";
 import { setPositionField } from "./actions";
 import { AddEmployeeRow, AddPositionRow, DeletePositionButton, EmployeeGrid, SyncTeamButton } from "./team-client";
 
@@ -22,8 +25,15 @@ const td = "border-b border-border px-2 py-1 align-middle [tr:last-child_&]:bord
 
 export default async function TeamPage() {
   await requireUser("MANAGER");
-  const [{ positions, employees, users }, openingHours, lastSync] = await Promise.all([loadTeam(), getOpeningHours(), lastLaborSync()]);
-  const connected = squareConfigured();
+  const [{ positions, employees, users }, openingHours, lastSync, rules, sick, notes] = await Promise.all([loadTeam(), getOpeningHours(), lastLaborSync(), getLaborRules(), sickBalances(), listAnnouncements()]);
+  const tipEligible = new Map(positions.map((p) => [p.id, p.tipEligible]));
+  const rateWarning = (rate: number | null, positionIds: string[]) => {
+    if (rate == null) return null;
+    const tipped = positionIds.length > 0 && positionIds.every((id) => tipEligible.get(id));
+    const floor = tipped ? rules.tippedMinimumWage : rules.minimumWage;
+    return rate < floor - 0.005 ? `under $${floor.toFixed(2)} ${tipped ? "tipped " : ""}minimum` : null;
+  };
+  const connected = await isSquareConnected();
 
   return (
     <>
@@ -94,7 +104,7 @@ export default async function TeamPage() {
         </Card>
       </Section>
 
-      <Section title="People" description="Rates here are the default; a timecard or a person's rate for a specific position wins. The calendar icon opens availability.">
+      <Section title="People" description="Rates here are the default; a timecard or a person's rate for a specific position wins. The calendar icon opens availability and login. Sick is NY paid sick leave available this year.">
         <Card className="overflow-x-auto">
           <EmployeeGrid
             employees={employees.map((e) => ({
@@ -108,6 +118,8 @@ export default async function TeamPage() {
               squareTeamMemberId: e.squareTeamMemberId,
               positionIds: e.positions.map((p) => p.positionId),
               availability: (e.availability ?? null) as Record<string, [string, string][]> | null,
+              sickAvailable: sick.get(e.id)?.available ?? (e.active ? 0 : null),
+              rateWarning: rateWarning(num(e.hourlyRate), e.positions.map((p) => p.positionId)),
             }))}
             positions={positions.map((p) => ({ id: p.id, name: p.name, color: p.color }))}
             users={users}
@@ -115,6 +127,10 @@ export default async function TeamPage() {
           />
           <AddEmployeeRow />
         </Card>
+      </Section>
+
+      <Section title="Announcements" description="Short notes for the team. They show at the top of everyone's My shifts.">
+        <AnnouncementsManager items={notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() }))} />
       </Section>
     </>
   );

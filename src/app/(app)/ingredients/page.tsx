@@ -1,12 +1,15 @@
 import { GridCell, GridSelect } from "@/components/grid";
-import { Badge, EmptyState, Input, LinkButton, PageHeader, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, cx, EmptyState, Input, LinkButton, PageHeader, Table, Td, Th, Tr } from "@/components/ui";
 import { usableCostPerBase } from "@/domain/costing";
-import { money } from "@/lib/format";
+import { toBase } from "@/domain/units";
+import { money, qty as fmtQty, shortDate } from "@/lib/format";
 import { DISPLAY_UNIT, perDisplayUnit } from "@/lib/units-display";
 import { setIngredientField } from "@/server/actions/inline";
 import { requireUser } from "@/server/auth";
 import { buildContext, loadCostingSnapshot } from "@/server/services/costing";
 import { countUnitsFor, loadCountableIngredients } from "@/server/services/inventory";
+import { estimatedOnHandAll, loadPars } from "@/server/services/planning";
+import { MinOnHandCell } from "./min-on-hand-cell";
 import { businessToday } from "@/server/services/sales";
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
@@ -17,7 +20,7 @@ export const metadata = { title: "Ingredients" };
 export default async function IngredientsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   await requireUser("MANAGER");
   const { q = "" } = await searchParams;
-  const [snap, ingredients] = await Promise.all([loadCostingSnapshot(), loadCountableIngredients()]);
+  const [snap, ingredients, stock, pars] = await Promise.all([loadCostingSnapshot(), loadCountableIngredients(), estimatedOnHandAll(), loadPars()]);
   const ctx = buildContext(snap, businessToday());
   const usedIn = new Map<string, number>();
   for (const r of snap.recipes) for (const l of r.lines) if (l.ingredientId) usedIn.set(l.ingredientId, (usedIn.get(l.ingredientId) ?? 0) + 1);
@@ -42,20 +45,28 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
         <Table>
           <thead>
             <tr>
-              <Th className="w-[30%]">Ingredient</Th>
+              <Th className="w-[30%] xl:w-[22%]">Ingredient</Th>
               <Th className="hidden md:table-cell">Category</Th>
               <Th className="hidden lg:table-cell">Storage</Th>
               <Th align="right"><span className="inline-flex items-center gap-1">Cost <HelpTip id="ingredients.cost" /></span></Th>
               <Th align="right" className="w-24"><span className="inline-flex items-center gap-1">Yield <HelpTip id="ingredients.yield" /></span></Th>
               <Th align="right" className="hidden w-24 sm:table-cell"><span className="inline-flex items-center gap-1">Buffer <HelpTip id="ingredients.buffer" /></span></Th>
               <Th className="hidden w-28 sm:table-cell"><span className="inline-flex items-center gap-1">Count in <HelpTip id="ingredients.countIn" /></span></Th>
+              <Th align="right" className="hidden md:table-cell"><span className="inline-flex items-center gap-1">On hand (est.) <HelpTip id="ingredients.onHand" /></span></Th>
+              <Th align="right" className="hidden w-28 lg:table-cell"><span className="inline-flex items-center gap-1">Min on hand <HelpTip id="ingredients.minOnHand" /></span></Th>
             </tr>
           </thead>
           <tbody>
             {list.map((i) => {
               const c = ctx.ingredients.get(i.id)!;
               const cost = perDisplayUnit(usableCostPerBase(c), c.baseUnit);
-              const { units } = countUnitsFor(i);
+              const { units, conversions } = countUnitsFor(i);
+              let perUnit = 1;
+              try {
+                perUnit = toBase(1, units[0], c.baseUnit, conversions);
+              } catch {}
+              const st = stock.get(i.id);
+              const par = pars[i.id];
               return (
                 <Tr key={i.id}>
                   <td className="border-b border-border py-1 pr-2 pl-2 [tr:last-child_&]:border-b-0">
@@ -85,6 +96,19 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
                   </td>
                   <td className="hidden border-b border-border px-2 py-1 sm:table-cell [tr:last-child_&]:border-b-0">
                     <GridSelect value={units[0]} options={units.map((u) => ({ value: u, label: u }))} onSave={setIngredientField.bind(null, i.id, "countUnit")} ariaLabel="Count unit" />
+                  </td>
+                  <Td align="right" className="hidden whitespace-nowrap md:table-cell">
+                    {!st?.known ? (
+                      <span className="text-muted">Not counted</span>
+                    ) : (
+                      <>
+                        <span className={cx(par != null && st.qty < par && "font-medium text-warn")}>{fmtQty(st.qty / perUnit, 1)}</span> <span className="text-muted">{units[0]}</span>
+                        <div className="text-xs text-muted">counted {shortDate(st.countedOn!)}</div>
+                      </>
+                    )}
+                  </Td>
+                  <td className="hidden border-b border-border px-2 py-1 lg:table-cell [tr:last-child_&]:border-b-0">
+                    <MinOnHandCell id={i.id} value={par == null ? null : Math.round((par / perUnit) * 100) / 100} unit={units[0]} />
                   </td>
                 </Tr>
               );

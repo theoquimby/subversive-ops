@@ -123,10 +123,10 @@ export function TipPool({ from, to, shares, excludedHours, synced, saved, period
                 className="max-sm:h-10"
                 disabled={pending}
                 onClick={async () => {
-                  if (!(await confirm({ title: "Finalize this tip period?", body: `${money(amount)} split between ${split.length} people. Finalized periods can't be edited.`, confirmLabel: "Finalize" }))) return;
+                  if (!(await confirm({ title: "Finalize this tip period?", body: `${money(amount)} split between ${split.length} people. Finalized periods can't be edited, and their tips go into the payroll export on Timecards.`, confirmLabel: "Finalize" }))) return;
                   start(async () => {
                     await finalizeTipPeriod(saved.id);
-                    setMsg({ text: "Finalized. Download the CSV for payroll." });
+                    setMsg({ text: "Finalized. These tips now show in the payroll export on Timecards." });
                   });
                 }}
               >

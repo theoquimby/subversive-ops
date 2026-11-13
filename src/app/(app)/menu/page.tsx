@@ -1,9 +1,13 @@
 import { money, pct, signedPct } from "@/lib/format";
-import { Badge, cx, EmptyState, LinkButton, PageHeader, Table, Td, Th, Tr } from "@/components/ui";
-import { GridCell } from "@/components/grid";
+import { Badge, cx, EmptyState, LinkButton, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
+import { GridCell, GridSelect } from "@/components/grid";
+import { classLabel, classifyCategory, DEFAULT_BEV_TARGET, normalizeCategory, REVENUE_CLASSES } from "@/domain/revenueClass";
+import { classSettings, costTargets } from "@/server/services/insights";
+import { saveBevTarget, saveCategoryClass } from "./draft-beer/actions";
 import { setRecipeField } from "@/server/actions/inline";
 import { requireUser } from "@/server/auth";
 import { menuCosts } from "@/server/services/insights";
+import { db } from "@/server/db";
 import Link from "next/link";
 import { HelpTip, HelpZone } from "@/components/help";
 
@@ -18,7 +22,12 @@ const TABS = [
 export default async function MenuPage({ searchParams }: { searchParams: Promise<{ kind?: string }> }) {
   await requireUser("MANAGER");
   const { kind = "MENU" } = await searchParams;
-  const { rows } = await menuCosts();
+  const [{ rows }, noLines, cls, targets] = await Promise.all([menuCosts(), db.recipe.findMany({ where: { lines: { none: {} } }, select: { id: true } }), classSettings(), costTargets()]);
+  // Every category in use (menu items and add-ons), with the class it maps to.
+  const categories = [...new Map(rows.filter((r) => r.kind !== "PREP").map((r) => [normalizeCategory(r.category), r.category])).values()]
+    .sort((a, b) => a.localeCompare(b))
+    .map((c) => ({ name: c, cls: classifyCategory(c, cls.map), saved: normalizeCategory(c) in cls.map, items: rows.filter((r) => r.kind !== "PREP" && normalizeCategory(r.category) === normalizeCategory(c)).length }));
+  const needsIngredients = new Set(noLines.map((r) => r.id));
   const list = rows.filter((r) => r.kind === kind).sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
   const isPrep = kind === "PREP";
 
@@ -27,7 +36,12 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
       <PageHeader
         title="Menu costs"
         description="Plate costs update automatically whenever a supplier price changes."
-        actions={<LinkButton href={`/menu/new?kind=${kind}`} variant="primary">New recipe</LinkButton>}
+        actions={
+          <>
+            <LinkButton href="/menu/draft-beer" data-tour="menu.draft-beer-link">Draft beer</LinkButton>
+            <LinkButton href={`/menu/new?kind=${kind}`} variant="primary">New recipe</LinkButton>
+          </>
+        }
       />
       <HelpZone id="menu.tabs" tour="menu.tabs" className="mb-5 flex gap-1 border-b border-border">
         {TABS.map((t) => (
@@ -62,9 +76,13 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
                 <Tr key={r.id}>
                   <Td>
                     <Link href={`/menu/${r.id}`} data-tour="menu.recipe-link" className="font-medium hover:underline">{r.name}</Link>
-                    {r.incomplete && <Badge tone="warn" className="ml-2">{r.error ? "Error" : "Missing prices"}</Badge>}
+                    {needsIngredients.has(r.id) ? (
+                      <Badge tone="warn" className="ml-2">Needs ingredients</Badge>
+                    ) : (
+                      r.incomplete && <Badge tone="warn" className="ml-2">{r.error ? "Error" : "Missing prices"}</Badge>
+                    )}
                   </Td>
-                  <Td className="hidden text-muted sm:table-cell">{r.category}</Td>
+                  <Td className="hidden text-muted sm:table-cell">{r.category}{!isPrep && r.cls !== "food" && <Badge className="ml-2">{classLabel(r.cls)}</Badge>}</Td>
                   {!isPrep && (
                     <td className="border-b border-border px-2 py-1 [tr:last-child_&]:border-b-0">
                       <GridCell grid="menu" col="price" type="number" prefix="$" decimals={2} value={r.menuPrice} onSave={setRecipeField.bind(null, r.id, "menuPrice")} ariaLabel={`${r.name} price`} />
@@ -88,6 +106,41 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
             })}
           </tbody>
         </Table>
+        </HelpZone>
+      )}
+
+      {!isPrep && categories.length > 0 && (
+        <HelpZone id="menu.classes" tour="menu.classes" className="mt-10">
+          <Section
+            title={<span className="inline-flex items-center gap-1.5">Food and drink <HelpTip id="menu.classes" /></span>}
+            description="Which part of the business each category's sales and costs count toward on the P&L, Overview and Margin gap."
+          >
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Category</Th>
+                  <Th className="w-48">Counts as</Th>
+                  <Th align="right" className="hidden sm:table-cell">Items</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.map((c) => (
+                  <Tr key={c.name}>
+                    <Td className="font-medium">{c.name}{!c.saved && <span className="ml-2 text-xs font-normal text-muted">guessed</span>}</Td>
+                    <td className="border-b border-border px-2 py-1 [tr:last-child_&]:border-b-0">
+                      <GridSelect value={c.cls} options={REVENUE_CLASSES.map((x) => ({ value: x.value, label: x.label }))} onSave={saveCategoryClass.bind(null, c.name)} ariaLabel={`${c.name} counts as`} />
+                    </td>
+                    <Td align="right" className="hidden text-muted sm:table-cell">{c.items}</Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-2">
+              <span>Beverage cost target</span>
+              <GridCell grid="menu-bev" col="target" type="number" suffix="%" value={Math.round(targets.beverage * 1000) / 10} onSave={saveBevTarget} ariaLabel="Beverage cost target" className="w-20" />
+              <span className="text-xs text-muted">{cls.bevTarget == null ? `default ${pct(DEFAULT_BEV_TARGET, 0)}; ` : ""}food uses the target in Settings ({pct(targets.food, 0)}).</span>
+            </div>
+          </Section>
         </HelpZone>
       )}
     </>

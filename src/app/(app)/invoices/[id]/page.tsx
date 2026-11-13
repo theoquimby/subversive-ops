@@ -5,10 +5,12 @@ import { money, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { db, num } from "@/server/db";
 import { env } from "@/server/env";
-import { candidateOrders, loadInvoice, loadTolerance, pendingPriceChanges, STATUS_META } from "@/server/services/invoices";
+import { currentApproval } from "@/domain/invoiceHistory";
+import { candidateOrders, loadHistory, loadInvoice, loadTolerance, pendingPriceChanges, STATUS_META } from "@/server/services/invoices";
+import { InvoiceStatus } from "@prisma/client";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { DeleteInvoice, HeaderFields, InvoiceActions, LinesGrid } from "./detail-client";
+import { DeleteInvoice, HeaderFields, InvoiceActions, InvoiceHistory, LinesGrid } from "./detail-client";
 import { InvoiceViewer } from "./viewer";
 
 export const metadata = { title: "Invoice" };
@@ -21,14 +23,18 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const inv = await loadInvoice(id);
   if (!inv) notFound();
 
-  const [tolerance, hasImage, products, orders, siblings, priceChanges] = await Promise.all([
+  const [tolerance, hasImage, products, orders, siblings, priceChanges, history] = await Promise.all([
     loadTolerance(),
     db.invoice.count({ where: { id, image: { not: null } } }),
     db.supplierProduct.findMany({ where: { supplierId: inv.supplierId }, select: { id: true, sku: true, description: true, active: true, ingredient: { select: { name: true } } }, orderBy: { description: "asc" } }),
     candidateOrders(),
     db.invoice.findMany({ where: { supplierId: inv.supplierId, invoiceNumber: { not: null } }, select: { id: true, invoiceNumber: true, invoiceDate: true } }),
     pendingPriceChanges(inv),
+    loadHistory(id),
   ]);
+  const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: env.BUSINESS_TIMEZONE });
+  const standing = currentApproval(history);
+  const events = history.map((e) => ({ ...e, when: when(e.at), statusLabel: e.status && e.status in STATUS_META ? STATUS_META[e.status as InvoiceStatus].label : undefined }));
 
   const date = toISODate(inv.invoiceDate);
   const locked = inv.status === "APPROVED";
@@ -98,7 +104,17 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       )}
       {locked && (
         <Card className="mb-5 p-4 text-sm text-ink-2">
-          Approved by <span className="font-medium text-ink">{inv.approvedBy}</span>{inv.approvedAt && <> on {inv.approvedAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: env.BUSINESS_TIMEZONE })}</>}. Reopen it to make changes.
+          {standing ? (
+            <>
+              {standing.action === "auto-approved" ? "Auto-approved as a clean three-way match" : <>Approved by <span className="font-medium text-ink">{standing.by}</span></>} on {when(standing.at)}
+              {standing.note && standing.action === "approved" && <> · &ldquo;{standing.note}&rdquo;</>}. Reopen it to make changes; the approval stays in the history.
+            </>
+          ) : (
+            <>
+              Approved by <span className="font-medium text-ink">{inv.approvedBy}</span>
+              {inv.approvedAt && <> on {inv.approvedAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: env.BUSINESS_TIMEZONE })}</>}. Reopen it to make changes.
+            </>
+          )}
         </Card>
       )}
 
@@ -139,6 +155,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
               <p className="mt-2 text-xs text-muted">Fine if it comes on a separate invoice — otherwise check whether a line was read wrong.</p>
             </div>
           )}
+
+          <InvoiceHistory events={events} />
 
           {!locked && <div className="pt-4"><DeleteInvoice id={inv.id} /></div>}
         </div>

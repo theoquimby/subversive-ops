@@ -1,9 +1,11 @@
 import { Badge, Button, Card, Input, PageHeader, Section } from "@/components/ui";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { env, squareConfigured } from "@/server/env";
 import { targetFoodCost } from "@/server/services/insights";
 import { relativeTime } from "@/lib/format";
+import { squareStatus } from "@/server/services/square";
+import { ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { lastSquareSync } from "@/server/services/sales";
 import { loadDemoData, resetPin, saveTarget, toggleUser } from "./actions";
 import { AddUserForm, ClearDataForm, SupplierForm } from "./forms";
@@ -17,11 +19,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const me = await requireUser("MANAGER");
   const { welcome } = await searchParams;
   const empty = (await db.ingredient.count()) === 0 && (await db.recipe.count()) === 0;
-  const [users, suppliers, target, lastSync] = await Promise.all([
+  const [users, suppliers, target, lastSync, square] = await Promise.all([
     db.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }),
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     targetFoodCost(),
     lastSquareSync(),
+    squareStatus(),
   ]);
 
   return (
@@ -38,6 +41,33 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </div>
         </Card>
       )}
+
+      <Link href="/settings/notifications" className="group mb-3 block">
+        <Card className="flex items-center justify-between gap-3 p-5 transition-colors group-hover:border-border-strong">
+          <div className="min-w-0">
+            <div className="text-base font-semibold">Notifications</div>
+            <div className="mt-1 text-sm text-muted">Email and phone alerts — schedules, orders, price spikes, the weekly brief.</div>
+          </div>
+          <ChevronRight className="size-5 shrink-0 text-muted group-hover:text-ink" />
+        </Card>
+      </Link>
+      <Link href="/settings/square" className="group mb-10 block">
+        <Card className="flex items-center justify-between gap-3 p-5 transition-colors group-hover:border-border-strong">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-base font-semibold">Square</span>
+              <Badge tone={square.connected ? "good" : "warn"}>{square.connected ? "Live" : "Setup needed"}</Badge>
+              {square.connected && square.environment === "sandbox" && <Badge tone="warn">Sandbox</Badge>}
+            </div>
+            <div className="mt-1 text-sm text-muted">
+              {square.connected
+                ? `${square.merchantName ?? "Connected"} · ${square.selectedCount} location${square.selectedCount === 1 ? "" : "s"} · last sync ${relativeTime(lastSync)}`
+                : "Connect Square to bring in sales, the menu and timecards."}
+            </div>
+          </div>
+          <ChevronRight className="size-5 shrink-0 text-muted group-hover:text-ink" />
+        </Card>
+      </Link>
 
       <Section title="Team" description="Staff sign in with their name and PIN and only see counts and waste.">
         <Card className="divide-y divide-border">
@@ -94,17 +124,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <Card className="p-4"><ClearDataForm /></Card>
       </Section>
 
-      <Section title="Square">
-        <Card className="flex items-center justify-between p-4 text-sm">
-          <div>
-            <div className="font-medium">{squareConfigured() ? "Connected" : "Not connected"}</div>
-            <div className="text-muted">
-              {squareConfigured() ? `${env.SQUARE_ENVIRONMENT} · location ${env.SQUARE_LOCATION_ID} · last sync ${relativeTime(lastSync)}` : "Set SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID in the Vercel project's environment variables."}
-            </div>
-          </div>
-          <Badge tone={squareConfigured() ? "good" : "warn"}>{squareConfigured() ? "Live" : "Setup needed"}</Badge>
-        </Card>
-      </Section>
     </>
   );
 }

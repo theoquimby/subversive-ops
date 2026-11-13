@@ -7,16 +7,19 @@ interface HourPoint {
   hour: number;
   sales: number;
   labor: number;
+  laborHours: number;
   orders: number;
+  scheduled: number;
 }
 
 const hourLabel = (h: number) => `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "am" : "pm"}`;
 
 /**
- * Sales (bars) vs labor cost (line) for each hour of one day. Same visual
- * language as LineChart: recessive grid, 2px ink line, hover tooltip.
+ * Sales (bars) vs actual labor cost (solid line) and scheduled labor cost
+ * (dashed line) for each hour of one day. Same visual language as LineChart:
+ * recessive grid, 2px ink line, hover tooltip.
  */
-export function HourlyChart({ hours, height = 220 }: { hours: HourPoint[]; height?: number }) {
+export function HourlyChart({ hours, height = 220, showScheduled = true }: { hours: HourPoint[]; height?: number; showScheduled?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(640);
   const [hover, setHover] = useState<number | null>(null);
@@ -29,7 +32,7 @@ export function HourlyChart({ hours, height = 220 }: { hours: HourPoint[]; heigh
 
   // Show the active part of the day (an hour either side of any sales or labor).
   const visible = useMemo(() => {
-    const active = hours.filter((h) => h.sales > 0 || h.labor > 0).map((h) => h.hour);
+    const active = hours.filter((h) => h.sales > 0 || h.labor > 0 || h.scheduled > 0).map((h) => h.hour);
     const lo = active.length ? Math.max(0, Math.min(...active) - 1) : 10;
     const hi = active.length ? Math.min(23, Math.max(...active) + 1) : 22;
     return hours.filter((h) => h.hour >= lo && h.hour <= hi);
@@ -37,12 +40,15 @@ export function HourlyChart({ hours, height = 220 }: { hours: HourPoint[]; heigh
 
   const H = height;
   const pad = { top: 12, right: 12, bottom: 24, left: 52 };
-  const max = Math.max(1, ...visible.map((h) => Math.max(h.sales, h.labor))) * 1.15;
+  const sched = showScheduled && visible.some((h) => h.scheduled > 0);
+  const max = Math.max(1, ...visible.map((h) => Math.max(h.sales, h.labor, sched ? h.scheduled : 0))) * 1.15;
   const band = (W - pad.left - pad.right) / Math.max(1, visible.length);
   const x = (i: number) => pad.left + band * i + band / 2;
   const y = (v: number) => pad.top + (1 - v / max) * (H - pad.top - pad.bottom);
   const ticks = [0, 0.5, 1].map((t) => max * t);
-  const line = visible.map((h, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(h.labor).toFixed(1)}`).join(" ");
+  const path = (v: (h: HourPoint) => number) => visible.map((h, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v(h)).toFixed(1)}`).join(" ");
+  const line = path((h) => h.labor);
+  const schedLine = sched ? path((h) => h.scheduled) : null;
   const barW = Math.max(4, Math.min(28, band * 0.6));
   const hv = hover == null ? null : visible[hover];
   const labelEvery = band < 34 ? 2 : 1;
@@ -51,7 +57,12 @@ export function HourlyChart({ hours, height = 220 }: { hours: HourPoint[]; heigh
     <div>
       <div className="mb-2 flex items-center gap-4 text-xs text-muted">
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-border-strong" /> Sales</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full bg-ink" /> Labor cost</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full bg-ink" /> Actual labor</span>
+        {sched && (
+          <span className="inline-flex items-center gap-1.5">
+            <svg width="16" height="2" aria-hidden><line x1="0" x2="16" y1="1" y2="1" stroke="var(--muted)" strokeWidth={2} strokeDasharray="4 3" /></svg> Scheduled
+          </span>
+        )}
       </div>
       <div className="relative" ref={ref}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block" role="img" aria-label="Sales and labor cost by hour" onMouseLeave={() => setHover(null)}>
@@ -67,6 +78,7 @@ export function HourlyChart({ hours, height = 220 }: { hours: HourPoint[]; heigh
               {i % labelEvery === 0 && <text x={x(i)} y={H - 6} textAnchor="middle" className="fill-muted text-[11px]">{hourLabel(h.hour)}</text>}
             </g>
           ))}
+          {schedLine && <path d={schedLine} fill="none" stroke="var(--muted)" strokeWidth={2} strokeDasharray="5 4" strokeLinejoin="round" />}
           <path d={line} fill="none" stroke="var(--ink)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
           {hv && <circle cx={x(hover!)} cy={y(hv.labor)} r={4.5} fill="var(--ink)" stroke="var(--surface)" strokeWidth={2} />}
           {visible.map((h, i) => (
@@ -81,6 +93,8 @@ export function HourlyChart({ hours, height = 220 }: { hours: HourPoint[]; heigh
             <div className="text-muted">{hourLabel(hv.hour)}–{hourLabel((hv.hour + 1) % 24)}</div>
             <div className="num"><span className="text-muted">Sales</span> <span className="font-medium text-ink">{money(hv.sales)}</span>{hv.orders ? <span className="text-muted"> · {hv.orders} orders</span> : null}</div>
             <div className="num"><span className="text-muted">Labor</span> <span className="font-medium text-ink">{money(hv.labor)}</span>{hv.sales > 0 && <span className="text-muted"> · {pct(hv.labor / hv.sales, 0)}</span>}</div>
+            {sched && <div className="num"><span className="text-muted">Scheduled</span> <span className="font-medium text-ink">{money(hv.scheduled)}</span>{hv.scheduled > 0 && Math.abs(hv.labor - hv.scheduled) >= 1 && <span className={hv.labor > hv.scheduled ? "text-bad" : "text-good"}> · {hv.labor > hv.scheduled ? "+" : "−"}{money(Math.abs(hv.labor - hv.scheduled))}</span>}</div>}
+            {hv.orders > 0 && hv.laborHours > 0 && <div className="num"><span className="text-muted">Orders per labor hour</span> <span className="font-medium text-ink">{(hv.orders / hv.laborHours).toFixed(1)}</span></div>}
           </div>
         )}
       </div>

@@ -1,9 +1,12 @@
 import "server-only";
 import { explodeUsage } from "@/domain/costing";
 import { ISODate, toISODate } from "@/domain/dates";
-import { computeVariance, VarianceSummary } from "@/domain/variance";
+import { groupOf, RevenueGroup, classifyCategory } from "@/domain/revenueClass";
+import type { BaseUnit } from "@/domain/units";
+import { computeVariance, Consumer, dominantClass, explainVariance, VarianceExplanation, VarianceInput, VarianceRow, VarianceSummary } from "@/domain/variance";
 import { db, num } from "../db";
 import { buildContext, loadCostingSnapshot } from "./costing";
+import { classSettings, recipeClasses } from "./insights";
 import { salesByRecipe } from "./sales";
 
 /** Completed counts, newest first — each one is a possible period boundary. */
@@ -17,16 +20,40 @@ export async function countPoints() {
   return counts.map((c) => ({ id: c.id, at: c.takenAt, date: toISODate(c.takenAt), area: c.area ?? "All", lines: c._count.lines }));
 }
 
-export interface VarianceReport extends VarianceSummary {
+export interface VarianceGroupTotals {
+  /** Net sales of linked items in this group. */
+  sales: number;
+  theoreticalCost: number;
+  actualCost: number;
+  wasteCost: number;
+  unexplainedCost: number;
+  /** cost ÷ sales; null with no sales. */
+  theoreticalPct: number | null;
+  actualPct: number | null;
+}
+
+export type VarianceLine = VarianceRow & VarianceInput & {
+  group: RevenueGroup;
+  baseUnit: BaseUnit;
+  consumers: Consumer[];
+  explanation: VarianceExplanation | null;
+};
+
+export interface VarianceReport extends Omit<VarianceSummary, "rows"> {
+  rows: VarianceLine[];
   from: ISODate;
   to: ISODate;
+  /** Net sales of every item linked to a recipe (food and drink). */
   foodSales: number;
   days: number;
+  groups: { food: VarianceGroupTotals; beverage: VarianceGroupTotals };
 }
 
 /**
  * Usage between two counts. Counts are assumed to happen before service, so
  * sales on the start date count toward the period and sales on the end date don't.
+ * Every ingredient is put in the food or beverage group by which sales used
+ * most of it (a keg goes with beer, ground beef with food).
  */
 export async function varianceReport(startCountId: string, endCountId: string): Promise<VarianceReport> {
   const [start, end] = await Promise.all([
@@ -37,7 +64,7 @@ export async function varianceReport(startCountId: string, endCountId: string): 
   const from = toISODate(a.takenAt);
   const to = toISODate(b.takenAt);
 
-  const [snap, lines, received, waste, sales, saleRows, mappings] = await Promise.all([
+  const [snap, lines, received, waste, sales, saleRows, mappings, settings] = await Promise.all([
     loadCostingSnapshot(),
     db.stockCountLine.findMany({ where: { count: { completed: true, takenAt: { lte: b.takenAt } } }, include: { count: { select: { takenAt: true } } }, orderBy: { count: { takenAt: "asc" } } }),
     db.purchaseOrderLine.findMany({
@@ -47,10 +74,12 @@ export async function varianceReport(startCountId: string, endCountId: string): 
     db.wasteLog.findMany({ where: { loggedAt: { gt: a.takenAt, lte: b.takenAt } } }),
     salesByRecipe(from, to),
     db.dailySale.findMany({ where: { date: { gte: new Date(`${from}T00:00:00Z`), lt: new Date(`${to}T00:00:00Z`) } }, select: { squareId: true, netSales: true } }),
-    db.squareMapping.findMany({ where: { recipeId: { not: null } }, select: { squareId: true } }),
+    db.squareMapping.findMany({ where: { recipeId: { not: null }, ignored: false }, select: { squareId: true, recipeId: true } }),
+    classSettings(),
   ]);
 
   const ctx = buildContext(snap, to);
+  const classOf = recipeClasses(snap, settings);
 
   // Opening = last count at/before the start; closing = last count inside (start, end].
   const opening = new Map<string, number>();
@@ -70,31 +99,88 @@ export async function varianceReport(startCountId: string, endCountId: string): 
   const receivedBy = sumBy(received, (r) => r.product.ingredientId, (r) => (num(r.receivedQty) ?? r.qty.toNumber()) * (num(r.product.packQtyBase) ?? 0));
   const wasteBy = sumBy(waste, (r) => r.ingredientId, (r) => r.qtyBase.toNumber());
 
+  // Theoretical usage, which items drove it, and which revenue class used each ingredient.
   const theoretical = new Map<string, number>();
+  const consumers = new Map<string, Consumer[]>();
+  const usageByGroup = new Map<string, Map<RevenueGroup, number>>();
   for (const [recipeId, series] of sales.byRecipe) {
     const servings = [...series.values()].reduce((s, q) => s + q, 0);
-    if (servings) explodeUsage(ctx, recipeId, servings, theoretical);
+    if (!servings) continue;
+    const { usage } = explodeUsage(ctx, recipeId, 1);
+    const group = groupOf(classOf.get(recipeId) ?? "food");
+    const name = ctx.recipes.get(recipeId)?.name ?? "Item";
+    for (const [ingId, perServing] of usage) {
+      theoretical.set(ingId, (theoretical.get(ingId) ?? 0) + perServing * servings);
+      consumers.set(ingId, [...(consumers.get(ingId) ?? []), { recipeId, name, perServing, sold: servings }]);
+      const g = usageByGroup.get(ingId) ?? new Map<RevenueGroup, number>();
+      g.set(group, (g.get(group) ?? 0) + perServing * servings);
+      usageByGroup.set(ingId, g);
+    }
   }
 
-  const mapped = new Set(mappings.map((m) => m.squareId));
-  const foodSales = saleRows.filter((r) => mapped.has(r.squareId)).reduce((s, r) => s + r.netSales.toNumber(), 0);
+  const recipeFor = new Map(mappings.map((m) => [m.squareId, m.recipeId!]));
+  const salesByGroup = { food: 0, beverage: 0, other: 0 } as Record<RevenueGroup, number>;
+  for (const r of saleRows) {
+    const recipeId = recipeFor.get(r.squareId);
+    if (!recipeId) continue;
+    salesByGroup[groupOf(classOf.get(recipeId) ?? "food")] += r.netSales.toNumber();
+  }
 
   const summary = computeVariance(
     snap.ingredients
       .filter((i) => opening.has(i.id) || closing.has(i.id) || theoretical.has(i.id))
-      .map((i) => ({
-        ingredientId: i.id,
-        name: i.name,
-        category: i.category,
-        opening: opening.get(i.id) ?? null,
-        closing: closing.get(i.id) ?? null,
-        received: receivedBy.get(i.id) ?? 0,
-        theoretical: theoretical.get(i.id) ?? 0,
-        waste: wasteBy.get(i.id) ?? 0,
-        unitCost: ctx.ingredients.get(i.id)?.costPerBase ?? null,
-      })),
+      .map((i) => {
+        const fallback = groupOf(classifyCategory(i.category, settings.map));
+        const group = dominantClass(usageByGroup.get(i.id) ?? new Map<RevenueGroup, number>(), fallback);
+        return {
+          ingredientId: i.id,
+          name: i.name,
+          category: i.category,
+          opening: opening.get(i.id) ?? null,
+          closing: closing.get(i.id) ?? null,
+          received: receivedBy.get(i.id) ?? 0,
+          theoretical: theoretical.get(i.id) ?? 0,
+          waste: wasteBy.get(i.id) ?? 0,
+          unitCost: ctx.ingredients.get(i.id)?.costPerBase ?? null,
+          group: group === "other" ? ("food" as const) : group,
+          baseUnit: i.baseUnit as BaseUnit,
+          consumers: consumers.get(i.id) ?? [],
+        };
+      }),
   );
-  return { ...summary, from, to, foodSales, days: Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) };
+  const rows: VarianceLine[] = summary.rows.map((r) => ({ ...r, explanation: explainVariance(r, r.consumers) }));
+
+  const totals = (group: "food" | "beverage"): VarianceGroupTotals => {
+    const s = computeVariance(rows.filter((r) => r.group === group));
+    const sales = salesByGroup[group];
+    return {
+      sales,
+      theoreticalCost: s.theoreticalCost,
+      actualCost: s.actualCost,
+      wasteCost: s.wasteCost,
+      unexplainedCost: s.unexplainedCost,
+      theoreticalPct: sales > 0 ? s.theoreticalCost / sales : null,
+      actualPct: sales > 0 ? s.actualCost / sales : null,
+    };
+  };
+
+  return {
+    ...summary,
+    rows,
+    from,
+    to,
+    foodSales: salesByGroup.food + salesByGroup.beverage + salesByGroup.other,
+    days: Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000),
+    groups: { food: totals("food"), beverage: totals("beverage") },
+  };
+}
+
+/** The latest two counts on different days, or null if there aren't two yet. */
+export async function lastCountPeriod() {
+  const points = await countPoints();
+  const end = points[0];
+  const start = end && points.find((p) => p.at < end.at && p.date !== end.date);
+  return end && start ? { start, end } : null;
 }
 
 /** Waste logging leaderboard — keeps logging a habit (who's logging, not who's wasting). */

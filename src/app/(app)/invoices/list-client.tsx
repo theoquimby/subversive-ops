@@ -1,9 +1,9 @@
 "use client";
 
-import { GridCell } from "@/components/grid";
+import { GridCell, GridSelect } from "@/components/grid";
 import { Select } from "@/components/ui";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { saveTolerance } from "./actions";
+import { saveAutoApprove, saveTolerance } from "./actions";
 
 export function InvoiceFilters({ status, supplier, statuses, suppliers }: { status: string; supplier: string; statuses: { value: string; label: string }[]; suppliers: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -38,5 +38,20 @@ export function ToleranceCells({ price, qty }: { price: number; qty: number }) {
         <GridCell grid="tolerance" col="qty" type="number" align="left" value={qty} ariaLabel="Quantity tolerance" onSave={(v) => saveTolerance("qty", v)} className="-ml-2" />
       </label>
     </div>
+  );
+}
+
+export function AutoApproveCell({ on }: { on: boolean }) {
+  return (
+    <label className="mt-2 block">
+      <span className="text-xs text-muted">Auto-approve clean matches</span>
+      <GridSelect
+        value={on ? "on" : "off"}
+        options={[{ value: "off", label: "Off — approve by hand" }, { value: "on", label: "On — PO received, all lines match" }]}
+        onSave={(v) => saveAutoApprove(v === "on")}
+        ariaLabel="Auto-approve clean matches"
+        className="-ml-2"
+      />
+    </label>
   );
 }

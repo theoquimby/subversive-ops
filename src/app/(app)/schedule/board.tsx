@@ -9,6 +9,7 @@ import type { ShiftView, WeekData, WeekIssue } from "@/server/services/schedulin
 import { AlertTriangle, ChevronLeft, ChevronRight, CopyPlus, Eraser, Inbox, Plus, Send, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { clearDraftShifts, copyPreviousWeek, createShift, moveShift, publishSchedule } from "./actions";
+import { DemandChart } from "./demand-chart";
 import { GeneratePanel } from "./generate-panel";
 import { ShiftEditor } from "./shift-editor";
 
@@ -301,8 +302,13 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { d
       {/* KPI strip */}
       <div className="mb-6 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <Kpi label="Forecast sales" value={money(summary.sales, { whole: true })} hint="this week" />
-        <Kpi label="Scheduled labor" value={money(summary.cost, { whole: true })} hint={summary.overtimeHours > 0 ? `incl. ${fmtH(summary.overtimeHours)} overtime` : "wages + employer taxes"} />
-        <Kpi label="Labor %" value={pct(summary.laborPct)} tone={laborTone(summary.laborPct)} hint="of forecast sales" />
+        <Kpi label="Scheduled labor" value={money(summary.cost, { whole: true })} hint={summary.overtimeHours > 0 ? `incl. ${fmtH(summary.overtimeHours)} overtime` : summary.callInHours > 0 ? `incl. ${fmtH(summary.callInHours)} call-in pay` : "wages + employer taxes"} />
+        <Kpi
+          label="Labor %"
+          value={pct(summary.laborPct)}
+          tone={data.laborTarget != null && summary.laborPct != null ? (summary.laborPct > data.laborTarget + 0.0005 ? "text-bad" : "text-good") : laborTone(summary.laborPct)}
+          hint={data.laborTarget != null ? `budget ${pct(data.laborTarget)}` : "of forecast sales"}
+        />
         <Kpi label="Hours" value={<>{fmtH(summary.hours)}<span className="text-base font-normal text-muted"> / {fmtH(summary.requiredHours)}</span></>} hint={summary.openShifts ? `${summary.openShifts} open shift${summary.openShifts === 1 ? "" : "s"}` : "scheduled / needed"} />
       </div>
 
@@ -433,12 +439,33 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { d
             </div>
           </div>
 
+          {/* Staff vs demand */}
+          <section className="mt-8">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-[0.95rem] font-semibold">Staff vs demand</h2>
+                <p className="mt-0.5 text-sm text-muted">People on shift each hour against what the forecast needs at the standard staffing level.</p>
+              </div>
+              <div className="hidden gap-1 md:flex" role="tablist" aria-label="Day for staff vs demand">
+                {dates.map((d, i) => (
+                  <button key={d} role="tab" aria-selected={i === dayIdx} onClick={() => setDayIdx(i)} className={cx("h-8 rounded-md px-2.5 text-xs", i === dayIdx ? "bg-primary text-primary-ink" : "text-ink-2 hover:bg-surface-2")}>
+                    {DOW[weekday(d)]} {Number(d.slice(8))}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Card>
+              <div className="px-4 pt-3 text-sm font-medium md:hidden">{dayDate(day)}</div>
+              <DemandChart rows={data.demand[day] ?? []} />
+            </Card>
+          </section>
+
           {/* Compliance */}
           <section className="mt-8">
             <div className="mb-3 flex items-end justify-between gap-4">
               <div>
                 <h2 className="text-[0.95rem] font-semibold">Compliance</h2>
-                <p className="mt-0.5 text-sm text-muted">Checked against your labor rules (New York defaults) — rest, overtime, minors, call-in pay, time off and availability.</p>
+                <p className="mt-0.5 text-sm text-muted">Checked against your labor rules (New York defaults): meal breaks, minimum wage, rest, overtime, minors, call-in pay, time off and availability. Turn rules on or off in Settings.</p>
               </div>
               {issues.length > 0 && (
                 <div className="flex shrink-0 gap-1.5">
@@ -530,7 +557,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek }: { d
           onToast={showToast}
         />
       )}
-      {generating && <GeneratePanel monday={data.monday} positions={positions} onClose={() => setGenerating(false)} onDone={showToast} />}
+      {generating && <GeneratePanel monday={data.monday} positions={positions} laborTarget={data.laborTarget} autoDraft={data.autoDraft} onClose={() => setGenerating(false)} onDone={showToast} />}
       {toast && (
         <div role="status" className="fixed inset-x-0 bottom-4 z-[80] flex justify-center px-4 pb-[env(safe-area-inset-bottom)]">
           <div className="rounded-xl bg-primary px-4 py-2.5 text-sm text-primary-ink shadow-xl">{toast}</div>

@@ -7,6 +7,14 @@
  *   trend         = last 4 weeks vs the 4 before, dampened and clamped
  *   forecast      = baseline × trend × manual adjustment for that date
  *
+ * Seasonality (once a year of history exists):
+ *   seasonal      = (same week last year ÷ the 4 weeks before "today" last year),
+ *                   blended toward 1 and clamped — i.e. how much busier or quieter
+ *                   the target week was than the point in the year we're at now
+ *   trend         = then measured year over year (this year's momentum ÷ last
+ *                   year's over the same weeks), so the seasonal ramp isn't counted twice
+ *   forecast      = baseline × seasonal × trend × adjustment
+ *
  * Manual adjustments cover what history can't see (a festival, a private
  * buyout, a closure). The interface is stable, so a smarter model (weather,
  * events, ML) can replace `forecastSeries` later without touching callers.
@@ -18,6 +26,11 @@ export interface ForecastOptions {
   weeksBack?: number; // same-weekday samples to use (default 8)
   trendDampening?: number; // 0 = ignore trend, 1 = full (default 0.5)
   trendClamp?: [number, number]; // default [0.8, 1.25]
+  /** Use last year's shape when ≥ a year of history exists (default true). */
+  seasonality?: boolean;
+  /** How far to trust last year's week-to-week shape: 0 = ignore, 1 = fully (default 0.7). */
+  seasonalWeight?: number;
+  seasonalClamp?: [number, number]; // default [0.5, 2.5]
 }
 
 export interface ForecastInput {
@@ -37,8 +50,73 @@ export interface DayForecast {
   qty: number;
   baseline: number;
   trend: number;
+  /** Year-over-year seasonal factor (1 until a year of history exists). */
+  seasonal: number;
   adjustment: number;
   samples: number;
+}
+
+/** Days back to the same weekday a year earlier (52 weeks). */
+export const YEAR_LAG = 364;
+
+function openAverage(history: ReadonlyMap<ISODate, number>, openDays: ReadonlySet<ISODate>, from: ISODate, toExclusive: ISODate) {
+  let total = 0;
+  let open = 0;
+  for (const d of dateRange(from, toExclusive)) {
+    if (!openDays.has(d)) continue;
+    open++;
+    total += history.get(d) ?? 0;
+  }
+  return { avg: open ? total / open : 0, open };
+}
+
+/** True once there's a usable "same time last year" reference for `asOf`. */
+export function hasYearOfHistory(history: ReadonlyMap<ISODate, number>, openDays: ReadonlySet<ISODate>, asOf: ISODate): boolean {
+  const ref = openAverage(history, openDays, addDays(asOf, -YEAR_LAG - 28), addDays(asOf, -YEAR_LAG));
+  return ref.open >= 10 && ref.avg > 0;
+}
+
+/**
+ * Seasonal factor for `date`, forecasting from `asOf`: the same week last year
+ * (centred on the same weekday 52 weeks back) against the four weeks before
+ * `asOf` last year. Returns 1 without a year of history or with too few open days.
+ */
+export function seasonalIndex(
+  history: ReadonlyMap<ISODate, number>,
+  openDays: ReadonlySet<ISODate>,
+  asOf: ISODate,
+  date: ISODate,
+  opts: ForecastOptions = {},
+): number {
+  if (opts.seasonality === false) return 1;
+  const weight = opts.seasonalWeight ?? 0.7;
+  const [lo, hi] = opts.seasonalClamp ?? [0.5, 2.5];
+  const ref = openAverage(history, openDays, addDays(asOf, -YEAR_LAG - 28), addDays(asOf, -YEAR_LAG));
+  if (ref.open < 10 || ref.avg <= 0) return 1;
+  const ly = addDays(date, -YEAR_LAG);
+  const target = openAverage(history, openDays, addDays(ly, -3), addDays(ly, 4));
+  if (target.open < 3) return 1;
+  const ratio = target.avg / ref.avg;
+  return Math.min(hi, Math.max(lo, 1 + (ratio - 1) * weight));
+}
+
+/**
+ * Trend with last year's seasonal movement taken out: (last 4 weeks ÷ the 4
+ * before) this year, divided by the same ratio a year earlier. Dampened and
+ * clamped like `computeTrend`; 1 when last year's windows are too thin.
+ */
+export function yoyTrend(history: ReadonlyMap<ISODate, number>, openDays: ReadonlySet<ISODate>, asOf: ISODate, opts: ForecastOptions = {}): number {
+  const damp = opts.trendDampening ?? 0.5;
+  const [lo, hi] = opts.trendClamp ?? [0.8, 1.25];
+  const win = (end: ISODate) => ({
+    recent: openAverage(history, openDays, addDays(end, -28), end),
+    prior: openAverage(history, openDays, addDays(end, -56), addDays(end, -28)),
+  });
+  const now = win(asOf);
+  const ly = win(addDays(asOf, -YEAR_LAG));
+  if ([now.recent, now.prior, ly.recent, ly.prior].some((w) => w.open < 7 || w.avg <= 0)) return 1;
+  const ratio = now.recent.avg / now.prior.avg / (ly.recent.avg / ly.prior.avg);
+  return Math.min(hi, Math.max(lo, 1 + (ratio - 1) * damp));
 }
 
 export function computeTrend(
@@ -69,7 +147,8 @@ export function computeTrend(
 
 export function forecastSeries(input: ForecastInput, opts: ForecastOptions = {}): DayForecast[] {
   const weeksBack = opts.weeksBack ?? 8;
-  const trend = computeTrend(input.history, input.openDays, input.asOf, opts);
+  const seasonalOn = opts.seasonality !== false && hasYearOfHistory(input.history, input.openDays, input.asOf);
+  const trend = seasonalOn ? yoyTrend(input.history, input.openDays, input.asOf, opts) : computeTrend(input.history, input.openDays, input.asOf, opts);
 
   return input.dates.map((date) => {
     const wd = weekday(date);
@@ -90,7 +169,8 @@ export function forecastSeries(input: ForecastInput, opts: ForecastOptions = {})
     }
     const baseline = weights > 0 ? weighted / weights : 0;
     const adjustment = input.adjustments?.get(date) ?? 1;
-    return { date, qty: baseline * trend * adjustment, baseline, trend, adjustment, samples };
+    const seasonal = seasonalOn ? seasonalIndex(input.history, input.openDays, input.asOf, date, opts) : 1;
+    return { date, qty: baseline * seasonal * trend * adjustment, baseline, trend, seasonal, adjustment, samples };
   });
 }
 
@@ -100,7 +180,7 @@ export function forecastSeries(input: ForecastInput, opts: ForecastOptions = {})
  * Share of a day's sales falling in each hour (sums to 1), learned from the
  * same weekday over recent weeks. Days with no sales are ignored.
  */
-export function hourlyShares(rows: { date: ISODate; hour: number; netSales: number }[], targetWeekday: number, asOf: ISODate, weeksBack = 8): number[] {
+export function hourlyShares(rows: readonly { date: ISODate; hour: number; netSales: number }[], targetWeekday: number, asOf: ISODate, weeksBack = 8): number[] {
   const shares = new Array(24).fill(0);
   const byDate = new Map<ISODate, number[]>();
   for (const r of rows) {

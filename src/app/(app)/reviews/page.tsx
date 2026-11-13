@@ -3,9 +3,11 @@ import { LineChart } from "@/components/line-chart";
 import { Badge, Card, cx, EmptyState, PageHeader, Section, Stat } from "@/components/ui";
 import { addDays } from "@/domain/dates";
 import { OpsDay, operationalHint, rollingRating, themeCounts, themeLabel } from "@/domain/reviews";
-import { money, pct, shortDate, signedPct } from "@/lib/format";
+import { money, pct, relativeTime, shortDate, signedPct } from "@/lib/format";
 import { requireUser } from "@/server/auth";
-import { claudeHints, LoadedReview, loadReviews, needsReply, opsForDates, reviewSettings } from "@/server/services/reviews";
+import { claudeHints, generateWhatToFix, lastGoogleSync, LoadedReview, loadReviews, needsReply, opsForDates, reviewAlerts, reviewSettings, whatToFixThisMonth } from "@/server/services/reviews";
+import { after } from "next/server";
+import { RefreshFix } from "./fix-refresh";
 import { businessToday } from "@/server/services/sales";
 import Link from "next/link";
 import { saveSetting } from "./actions";
@@ -26,7 +28,10 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
   await requireUser("MANAGER");
   const { show: rawShow } = await searchParams;
   const today = businessToday();
-  const [reviews, settings, hints] = await Promise.all([loadReviews(), reviewSettings(), claudeHints()]);
+  const [reviews, settings, hints, alerts, lastSync] = await Promise.all([loadReviews(), reviewSettings(), claudeHints(), reviewAlerts(), lastGoogleSync()]);
+  const { fix, stale } = reviews.length ? await whatToFixThisMonth() : { fix: null, stale: false };
+  // A new month: show the quick version now and let Claude rewrite it after the response.
+  if (stale) after(() => generateWhatToFix(true).then(() => undefined, (e) => console.error("what-to-fix failed", e)));
   const critical = reviews.filter((r) => r.rating <= 3 || r.sentiment === "negative" || r.sentiment === "mixed");
   const ops = await opsForDates(critical.map((r) => r.date));
 
@@ -51,7 +56,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
     <>
       <PageHeader
         title="Reviews"
-        description="What guests are saying, lined up against what happened on the floor and in the kitchen that day."
+        description={`What guests are saying, lined up against what happened on the floor and in the kitchen that day.${settings.googleConfigured && settings.placeId ? ` Google checked ${relativeTime(lastSync)}, and every morning.` : ""}`}
         actions={<ImportActions googleReady={settings.googleConfigured && Boolean(settings.placeId)} googleHint={!settings.googleConfigured ? "Add GOOGLE_PLACES_API_KEY to turn on Google import" : "Add your Google Place ID at the bottom of this page"} />}
       />
 
@@ -70,6 +75,38 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
             <Stat label="Need a reply" value={open.length} hint="Critical or mixed, not answered" tone={open.length ? "warn" : "good"} />
             <Stat label="Most complained about" value={<span className="text-[1.25rem] sm:text-[1.5rem]">{worst && worst.negative + worst.mixed > 0 ? themeLabel(worst.theme) : "Nothing"}</span>} hint={worst && worst.negative + worst.mixed > 0 ? `${worst.negative + worst.mixed} critical or mixed mention${worst.negative + worst.mixed === 1 ? "" : "s"}` : "No recurring complaints"} />
           </div>
+
+          {alerts.map((a) => (
+            <Card key={a.kind} className="-mt-4 mb-8 border-bad/30 bg-bad-bg p-4 text-sm">
+              <span className="font-medium text-bad">{a.title}.</span> <span className="text-ink-2">{a.detail}</span>
+            </Card>
+          ))}
+
+          {fix && (
+            <Section
+              title="What to fix this month"
+              description={`${fix.by === "claude" ? "Written by Claude" : "From the most-mentioned complaints"} from ${fix.reviewCount} review${fix.reviewCount === 1 ? "" : "s"} in the last 90 days and what operations looked like on those days.`}
+              actions={<RefreshFix claude={settings.claude} />}
+            >
+              {fix.actions.length === 0 ? (
+                <Card className="p-4 text-sm text-muted">No recurring complaints in the last 90 days. Keep doing what you&apos;re doing.</Card>
+              ) : (
+                <div className="grid gap-3 lg:grid-cols-3">
+                  {fix.actions.map((a, i) => (
+                    <Card key={`${a.theme}-${i}`} className="flex flex-col p-4">
+                      <div className="flex items-baseline gap-2">
+                        <span className="num text-xs font-medium text-muted">{i + 1}</span>
+                        <span className="text-[0.95rem] font-medium">{a.title}</span>
+                      </div>
+                      {a.theme && <div className="mt-1"><Badge>{themeLabel(a.theme)}</Badge></div>}
+                      <p className="mt-2 text-sm text-ink-2">{a.action}</p>
+                      <p className="mt-2 text-xs text-muted">{a.why}</p>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </Section>
+          )}
 
           <div className="grid grid-cols-1 gap-x-8 lg:grid-cols-5">
             <Section className="min-w-0 lg:col-span-3" title="Rating trend" description="Rolling average of the last 5 reviews">

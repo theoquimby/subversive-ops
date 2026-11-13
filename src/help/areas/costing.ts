@@ -9,39 +9,57 @@ export const overview: HelpEntry[] = [
     route: "/",
     tour: "overview",
     title: "Overview",
-    body: "The week at a glance: food cost, sales, menu items over target, recent price moves and your next deliveries.",
+    body: "Today so far, the last 7 days split into food and drink, labor, menu items over target, recent price moves and your next deliveries.",
     article: `The Overview is the page to open each morning. Everything on it links to where you'd fix it.
 
-- **Food cost, last 7 days** — what food cost should have been, given what sold.
-- **Sales, last 7 days** — net sales from Square.
-- **Items over target** — menu items whose food cost % is above target.
+- **Today so far** — sales, labor on the clock, labor % and where today will likely close against the forecast.
+- **Last 7 days** — sales (food vs drinks mix), food cost %, beverage cost %, labor % and prime cost. **P&L →** opens the same week on the P&L.
+- **Items over target** — menu items whose cost % is above target.
 - **Price increases** — supplier prices that went up in the last 30 days.
 
 Below that: the biggest price moves, the items over target, and when each supplier delivers next.`,
-    related: ["overview.foodCost", "overview.priceChanges", "overview.overTarget", "overview.deliveries"],
+    related: ["overview.today", "overview.foodCost", "overview.bevCost", "overview.priceChanges", "overview.overTarget", "overview.deliveries", "pnl.page"],
     keywords: ["dashboard", "home"],
+  },
+  {
+    id: "overview.today",
+    area: "overview",
+    route: "/",
+    title: "Today so far",
+    body: "Sales and labor since opening, as of the last Square sync. Projected close = sales so far + the forecast for the hours left. Labor % by close assumes everyone works their scheduled shift.",
+    related: ["pnl.page", "pnl.hourly", "sales.forecast5w"],
+    keywords: ["live", "today", "projection"],
   },
   {
     id: "overview.foodCost",
     area: "overview",
     route: "/",
     title: "Food cost, last 7 days",
-    body: "What food cost should have been: each item sold in the last 7 days × today's plate cost, divided by those items' menu-price sales. Green is under target, red is over.",
+    body: "What food should have cost: each food item sold in the last 7 days × its recipe cost that day, divided by food sales. Drinks are left out; they have their own number.",
     article: `This is **theoretical** food cost — what it would be if every plate matched its recipe.
 
-It only counts Square items that are linked to a recipe with a menu price, so link your Square items on the [Sales](/sales) page to make it complete.
+It only counts Square items linked to a recipe, so link your Square items on the [Sales](/sales) page to make it complete. Which categories count as food is set on [Menu costs](/menu).
 
 To see what food cost **actually** was, including waste and over-portioning, use the [Margin gap](/variance) page, which compares two stock counts.`,
-    related: ["variance.page", "sales.mapping", "settings.target"],
+    related: ["variance.page", "sales.mapping", "settings.target", "menu.classes"],
     keywords: ["theoretical", "food cost %", "cogs"],
+  },
+  {
+    id: "overview.bevCost",
+    area: "overview",
+    route: "/",
+    title: "Beverage cost, last 7 days",
+    body: "What beer and other drinks should have cost, as a share of drink sales, against the beverage target. Set up kegs on Draft beer so beer has a cost.",
+    related: ["menu.draftBeer", "menu.classes", "pnl.split"],
+    keywords: ["pour cost", "beer cost", "bar cost"],
   },
   {
     id: "overview.sales",
     area: "overview",
     route: "/",
     title: "Sales, last 7 days",
-    body: "Net sales from Square for the last seven business days, not counting today. Refunds are taken off.",
-    related: ["sales.sync"],
+    body: "Net sales from Square for the last seven business days, not counting today or items marked Ignore (gift cards, merch). Matches the P&L. The hint shows the food vs drinks mix.",
+    related: ["sales.sync", "pnl.page"],
   },
   {
     id: "overview.overTarget",
@@ -113,6 +131,40 @@ A **Missing prices** badge means at least one ingredient has no price yet, so th
     body: "Menu items are what you sell, add-ons are Square modifiers, and prep recipes are batches (sauces, doughs) used inside other recipes.",
     related: ["menu.editor.subRecipes", "menu.editor.details"],
     keywords: ["modifier", "sub-recipe", "batch"],
+  },
+  {
+    id: "menu.classes",
+    area: "menu",
+    route: "/menu",
+    title: "Food and drink",
+    body: "Each category counts as Food, Beer, Other beverage or Retail on the P&L, Overview and Margin gap. Categories are guessed from their name until you pick one.",
+    article: `Food and drinks run at very different cost %, so the P&L reports them separately. The class comes from the recipe's category: everything in "Beer" counts as beer, "Mains" as food, and so on.
+
+- Change a category's class in the table at the bottom of [Menu costs](/menu). It applies to every recipe in that category, past and future.
+- **Retail** (merch, cans to go if you'd rather) counts toward total sales only.
+- The **beverage cost target** sits under the table. Drinks without their own target are held to it instead of the food target.`,
+    related: ["pnl.split", "menu.draftBeer", "menu.list.target"],
+    keywords: ["category", "beverage", "beer", "revenue class", "food vs beverage"],
+  },
+  {
+    id: "menu.draftBeer",
+    area: "menu",
+    route: "/menu/draft-beer",
+    title: "Draft beer",
+    body: "Enter a beer, its keg size and what a keg costs you. It creates the keg as an ingredient and a costed recipe for each pour (16 oz, 10 oz, flight), linked to your Square items.",
+    article: `### What it creates
+- **The keg** as an ingredient measured in ml and counted in kegs, with "1 keg" as a unit so a half-full keg counts as 0.5.
+- **The keg price** on a "House brewery" supplier (or the supplier you pick), dated today.
+- **One menu recipe per pour**, in the Beer category, using that many fl oz of the keg.
+- **Square links** for the pours you pick, so beer sales start costing straight away.
+
+### Usable %
+Foam, line flushes and the last pint mean you sell less than the keg holds. 95% is a fair start; lower it if your counts keep showing beer short.
+
+### Price changes
+Enter the same beer again with the new keg cost. A new price is recorded from today, the pours update, and past days keep the cost that applied then.`,
+    related: ["menu.classes", "pnl.split", "variance.page"],
+    keywords: ["keg", "beer", "pour", "half barrel", "sixtel", "bbl", "flight", "pint"],
   },
   {
     id: "menu.list.price",
@@ -356,6 +408,24 @@ Allowed range: 1–100%.`,
 Allowed range: 0–200%.`,
     related: ["ordering.builder.formula", "ordering.builder.needed"],
     keywords: ["safety stock", "par", "extra"],
+  },
+  {
+    id: "ingredients.onHand",
+    area: "ingredients",
+    route: "/ingredients",
+    title: "On hand (est.)",
+    body: "What should be on the shelf now: last count + deliveries since (checked-in orders and approved invoices) − what sales used through recipes − logged waste. Orange when below the minimum on hand.",
+    related: ["ordering.builder.onHand", "count.home"],
+    keywords: ["stock", "inventory", "on hand", "estimate"],
+  },
+  {
+    id: "ingredients.minOnHand",
+    area: "ingredients",
+    route: "/ingredients",
+    title: "Min on hand",
+    body: "For items no recipe uses (gloves, napkins, cleaning supplies): the least you want on the shelf, in the count unit. Suggested orders top it back up. Leave blank for items the forecast drives.",
+    related: ["ordering.builder.par"],
+    keywords: ["par", "par level", "minimum", "reorder point"],
   },
   {
     id: "ingredients.countIn",

@@ -327,6 +327,7 @@ model Employee {
   swapsRequested     ShiftSwap[] @relation("SwapRequester")
   swapsTaken         ShiftSwap[] @relation("SwapTaker")
   tips               TipAllocation[]
+  payAdjustments     PayAdjustment[]
 }
 
 model EmployeePosition {
@@ -373,6 +374,11 @@ model Timecard {
   hourlyRate   Decimal?       @db.Decimal(8, 2)
   source       TimecardSource @default(MANUAL)
   squareId     String?        @unique
+  /// Set when a manager changes the card in Ops; the Square sync must not overwrite it.
+  manuallyEdited Boolean      @default(false)
+  /// Set when the pay period/week is approved; approved cards are read-only until unlocked.
+  approvedAt   DateTime?
+  approvedBy   String?
 
   @@index([clockIn])
 }
@@ -383,12 +389,21 @@ enum RequestStatus {
   DENIED
 }
 
+enum TimeOffType {
+  PTO
+  SICK
+  UNPAID
+}
+
 model TimeOffRequest {
   id         String        @id @default(cuid())
   employeeId String
   employee   Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   startDate  DateTime      @db.Date
   endDate    DateTime      @db.Date
+  type       TimeOffType   @default(UNPAID)
+  /// Paid hours to draw from a balance (SICK/PTO). Null = work it out from scheduled shifts.
+  hours      Decimal?      @db.Decimal(6, 2)
   note       String?
   status     RequestStatus @default(PENDING)
   createdAt  DateTime      @default(now())
@@ -426,6 +441,54 @@ model TipAllocation {
   hours      Decimal   @db.Decimal(8, 2)
   points     Decimal   @db.Decimal(10, 2)
   amount     Decimal   @db.Decimal(10, 2)
+}
+
+/// One-off pay lines (bonus, correction, deduction, reimbursement) on a business date.
+model PayAdjustment {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date       DateTime @db.Date
+  kind       String   @default("BONUS") // BONUS | CORRECTION | DEDUCTION | REIMBURSEMENT
+  /// Signed dollars; deductions are stored negative.
+  amount     Decimal  @db.Decimal(10, 2)
+  note       String?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+
+  @@index([date])
+}
+
+enum PayPeriodStatus {
+  OPEN
+  APPROVED
+}
+
+/// A pay period. Approving it locks its timecards and stores the payroll rows as they were.
+model PayPeriod {
+  id         String          @id @default(cuid())
+  startDate  DateTime        @db.Date
+  endDate    DateTime        @db.Date
+  status     PayPeriodStatus @default(OPEN)
+  approvedBy String?
+  approvedAt DateTime?
+  /// Payroll rows + totals at approval time (see domain/payroll.ts PayrollSnapshot).
+  snapshot   Json?
+  createdAt  DateTime        @default(now())
+
+  @@unique([startDate, endDate])
+}
+
+/// Manager → team notes shown on My shifts.
+model Announcement {
+  id        String    @id @default(cuid())
+  body      String
+  author    String?
+  pinned    Boolean   @default(false)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([createdAt])
 }
 
 // ---------------------------------------------------------------------------

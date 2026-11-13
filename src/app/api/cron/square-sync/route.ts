@@ -1,5 +1,5 @@
 import { env } from "@/server/env";
-import { dailySync } from "@/server/services/sales";
+import { dailySync } from "@/server/services/square-sync";
 
 export const maxDuration = 300;
 

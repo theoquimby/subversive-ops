@@ -4,6 +4,7 @@
  */
 
 import { addDays, ISODate, parseISODate, weekday } from "./dates";
+import { ClassSplit, emptySplit, RevenueClass } from "./revenueClass";
 
 /** Same values as the UI Badge tones. */
 export type Tone = "good" | "warn" | "bad" | "neutral";
@@ -89,6 +90,39 @@ export function addInputs(rows: PnlInput[]): PnlInput {
   );
 }
 
+export interface SoldLine {
+  date: ISODate;
+  recipeId: string;
+  qty: number;
+  /** Net sales for these servings (Square). */
+  sales: number;
+}
+
+/**
+ * Theoretical cost of goods per day and revenue class. `costAt` returns a
+ * recipe's cost as of a date (so past days use the prices that applied then)
+ * or null when it can't be costed. Sales of uncostable recipes still count
+ * toward their class; their cost is missing, so that class's % is a floor.
+ */
+export function theoreticalByDay(
+  sold: SoldLine[],
+  costAt: (recipeId: string, date: ISODate) => { cost: number; incomplete: boolean } | null,
+  classOf: (recipeId: string) => RevenueClass,
+): { byDay: Map<ISODate, ClassSplit>; uncosted: Set<string> } {
+  const byDay = new Map<ISODate, ClassSplit>();
+  const uncosted = new Set<string>();
+  for (const s of sold) {
+    const split = byDay.get(s.date) ?? emptySplit();
+    const cls = classOf(s.recipeId);
+    const c = costAt(s.recipeId, s.date);
+    if (!c || c.incomplete) uncosted.add(s.recipeId);
+    split[cls].sales += s.sales;
+    if (c) split[cls].cogs += s.qty * c.cost;
+    byDay.set(s.date, split);
+  }
+  return { byDay, uncosted };
+}
+
 /** Cost % against a target: at or under = good, up to 2 points over = warn, beyond = bad. */
 export function costTone(actual: number | null, target: number | null): Tone {
   if (actual == null || target == null) return "neutral";
@@ -101,6 +135,52 @@ export function salesTone(actual: number, target: number | null): Tone {
   if (target == null || target <= 0) return "neutral";
   if (actual >= target) return "good";
   return actual >= target * 0.9 ? "warn" : "bad";
+}
+
+/**
+ * Actual vs theoretical cost % (e.g. from the last two counts): within a point
+ * is normal noise, up to 2.5 points is worth a look, beyond that is a leak.
+ */
+export function gapTone(actualPct: number | null, theoreticalPct: number | null): Tone {
+  if (actualPct == null || theoreticalPct == null) return "neutral";
+  const gap = actualPct - theoreticalPct;
+  if (gap <= 0.01) return "good";
+  return gap <= 0.025 ? "warn" : "bad";
+}
+
+export interface CloseProjection {
+  /** Sales so far today. */
+  soFar: number;
+  /** What the forecast expected by now. */
+  forecastSoFar: number;
+  /** The whole day's forecast. */
+  forecastDay: number;
+  /** Sales so far + the forecast for the rest of the day. */
+  projected: number;
+  /** soFar ÷ forecastSoFar; null before anything was expected. */
+  pace: number | null;
+}
+
+/**
+ * Where today will likely close: what has sold plus what the forecast expects
+ * for the rest of the day. The current hour counts as partly gone
+ * (`minute` / 60), so the projection doesn't jump on the hour.
+ */
+export function projectClose(actualByHour: number[], forecastByHour: number[], hour: number, minute = 0): CloseProjection {
+  const soFar = actualByHour.reduce((a, b) => a + b, 0);
+  const frac = Math.min(1, Math.max(0, minute / 60));
+  let forecastSoFar = 0;
+  let later = 0;
+  forecastByHour.forEach((f, h) => {
+    if (h < hour) forecastSoFar += f;
+    else if (h === hour) forecastSoFar += f * frac;
+    else later += f;
+  });
+  // The rest of the current hour, less anything it has already sold beyond its share.
+  const cur = forecastByHour[hour] ?? 0;
+  const thisHourLeft = Math.max(0, cur * (1 - frac) - Math.max(0, (actualByHour[hour] ?? 0) - cur * frac));
+  const forecastDay = forecastByHour.reduce((a, b) => a + b, 0);
+  return { soFar, forecastSoFar, forecastDay, projected: soFar + thisHourLeft + later, pace: forecastSoFar > 0 ? soFar / forecastSoFar : null };
 }
 
 /**

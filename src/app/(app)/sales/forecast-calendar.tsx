@@ -44,6 +44,11 @@ export interface CalDay {
   } | null;
   hours: number[];
   shapeLearned: boolean;
+  /** Year-over-year seasonal factor (1 until a year of history). Optional until page.tsx passes it. */
+  seasonal?: number;
+  /** Forecast orders for the day and by hour; null before hourly sales sync. */
+  orders?: number | null;
+  orderHours?: number[] | null;
 }
 
 const ICONS = {
@@ -238,6 +243,12 @@ function DayPanel({ day, onClose, onPrev, onNext }: { day: CalDay; onClose: () =
                 <div>
                   <div className="text-[0.8rem] font-medium text-muted">Forecast sales</div>
                   <div className="num mt-1 text-[1.75rem] font-semibold tracking-tight">{day.closed ? "Closed" : money(day.forecast ?? 0, { whole: true })}</div>
+                  {!day.closed && day.orders != null && day.orders >= 1 && (
+                    <div className="num text-sm text-muted">
+                      about {Math.round(day.orders)} orders
+                      {day.forecast ? ` · ${money(day.forecast / day.orders, { whole: true })} average check` : ""}
+                    </div>
+                  )}
                 </div>
                 {day.weather && (
                   <div className="text-right text-sm text-ink-2">
@@ -256,7 +267,7 @@ function DayPanel({ day, onClose, onPrev, onNext }: { day: CalDay; onClose: () =
                     <span className="text-[0.8rem] font-medium text-ink-2">By hour</span>
                     {!day.shapeLearned && <span className="text-[11px] text-muted">shape from opening hours until hourly sales sync</span>}
                   </div>
-                  <HourlyChart hours={day.hours} />
+                  <HourlyChart hours={day.hours} orders={day.orderHours ?? undefined} />
                 </div>
               )}
 
@@ -277,7 +288,20 @@ function DayPanel({ day, onClose, onPrev, onNext }: { day: CalDay; onClose: () =
                       }
                       value={money(day.baseline, { whole: true })}
                     />
-                    <Row label="Trend" hint="Last 4 weeks against the 4 before, damped." value={signed(day.trend)} muted={Math.round((day.trend - 1) * 100) === 0} />
+                    {day.seasonal != null && day.seasonal !== 1 && (
+                      <Row
+                        label="Season"
+                        hint="How the same week last year compared with this time last year (blended, so one odd week can't swing it)."
+                        value={signed(day.seasonal)}
+                        muted={Math.round((day.seasonal - 1) * 100) === 0}
+                      />
+                    )}
+                    <Row
+                      label="Trend"
+                      hint={day.seasonal != null && day.seasonal !== 1 ? "Last 4 weeks against the 4 before, compared with the same weeks last year, damped." : "Last 4 weeks against the 4 before, damped."}
+                      value={signed(day.trend)}
+                      muted={Math.round((day.trend - 1) * 100) === 0}
+                    />
                     <Row
                       label="Weather"
                       hint={
@@ -424,7 +448,7 @@ function OverrideForm({ day }: { day: CalDay }) {
 // ---- Hourly chart ----------------------------------------------------------------------
 
 /** Single-series hourly line, same style as LineChart: 2px ink line, recessive grid, hover tooltip. */
-export function HourlyChart({ hours, height = 170 }: { hours: number[]; height?: number }) {
+export function HourlyChart({ hours, orders, height = 170 }: { hours: number[]; orders?: number[]; height?: number }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(420);
   const [hover, setHover] = useState<number | null>(null);
@@ -497,6 +521,7 @@ export function HourlyChart({ hours, height = 170 }: { hours: number[]; height?:
             {hourLabel(hp.h)}–{hourLabel(hp.h + 1)}
           </div>
           <div className="num font-medium text-ink">{money(hp.y, { whole: true })}</div>
+          {orders && orders[hp.h] >= 0.5 && <div className="num text-muted">~{Math.round(orders[hp.h])} orders</div>}
         </div>
       )}
     </div>

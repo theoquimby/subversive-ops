@@ -61,6 +61,7 @@ async function managerCommands(): Promise<Command[]> {
     { id: "do-unlinked", label: "Link new supplier products", group: "Do", href: "/prices?filter=unlinked" },
     { id: "do-recipe", label: "New recipe", group: "Do", href: "/menu/new" },
     { id: "do-prep", label: "New prep recipe", group: "Do", href: "/menu/new?kind=PREP" },
+    { id: "do-draft-beer", label: "Cost a draft beer (keg → pours)", group: "Do", href: "/menu/draft-beer", hint: "beer" },
     { id: "do-ingredient", label: "New ingredient", group: "Do", href: "/ingredients/new" },
     ...STAFF_COMMANDS.filter((c) => !c.id.startsWith("help-")),
     { id: "go-setup", label: "Finish setting up", group: "Go to", href: "/welcome" },

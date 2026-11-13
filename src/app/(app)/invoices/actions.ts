@@ -5,13 +5,19 @@ import { parsePastedLines, pickOrder, suggestSupplier } from "@/domain/invoiceMa
 import { requireUser } from "@/server/auth";
 import { claudeConfigured } from "@/server/integrations/claude";
 import { db } from "@/server/db";
+import { approvalNeedsNote } from "@/domain/invoiceHistory";
+import { saveAccount, saveTaxRate } from "@/server/services/accounting";
 import {
+  approve,
   candidateOrders,
   createInvoice,
   exactDuplicate,
   extractInvoice,
   MAX_FILE_BYTES,
+  recordEvent,
   rematch,
+  reopen,
+  setAutoApprove,
   TOLERANCE_KEYS,
   updatePricesFromInvoice,
 } from "@/server/services/invoices";
@@ -187,22 +193,42 @@ export async function updateHeader(id: string, input: { field: string; value: st
 
 // ---- Approve / prices / delete ---------------------------------------------------------
 
-export async function approveInvoice(id: string) {
+const noteSchema = z.string().trim().max(500);
+
+export async function approveInvoice(id: string, note?: string) {
   const user = await requireUser("MANAGER");
-  await db.invoice.update({ where: { id }, data: { status: "APPROVED", approvedBy: user.name, approvedAt: new Date() } });
+  const n = noteSchema.safeParse(note ?? "");
+  if (!n.success) return { error: "Keep the note under 500 characters." };
+  const inv = await db.invoice.findUnique({ where: { id }, select: { status: true } });
+  if (!inv) return { error: "That invoice is gone." };
+  if (approvalNeedsNote(inv.status) && !n.data) return { error: "Add a short note on why it's OK to approve with open issues." };
+  await approve(id, user.name, n.data || null);
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/invoices");
 }
 
-export async function reopenInvoice(id: string) {
-  await requireUser("MANAGER");
-  await db.invoice.update({ where: { id }, data: { status: "NEEDS_REVIEW", approvedBy: null, approvedAt: null } });
+export async function reopenInvoice(id: string, note?: string) {
+  const user = await requireUser("MANAGER");
+  const n = noteSchema.safeParse(note ?? "");
+  await reopen(id, user.name, n.success ? n.data || null : null);
   await after(id);
 }
 
-export async function updatePrices(id: string) {
+export async function saveAutoApprove(on: boolean) {
   await requireUser("MANAGER");
+  await setAutoApprove(z.boolean().parse(on));
+  if (on) {
+    // Catch invoices that already qualify.
+    const open = await db.invoice.findMany({ where: { status: "MATCHED" }, select: { id: true } });
+    for (const i of open) await rematch(i.id);
+  }
+  revalidatePath("/invoices");
+}
+
+export async function updatePrices(id: string) {
+  const user = await requireUser("MANAGER");
   const changes = await updatePricesFromInvoice(id);
+  if (changes.length) await recordEvent(id, { by: user.name, action: "prices-updated", note: `${changes.length} price${changes.length === 1 ? "" : "s"} recorded` });
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/prices");
   revalidatePath("/menu");
@@ -212,6 +238,7 @@ export async function updatePrices(id: string) {
 export async function deleteInvoice(id: string) {
   await requireUser("MANAGER");
   await db.invoice.delete({ where: { id } });
+  await db.setting.deleteMany({ where: { key: `invoices.history.${id}` } });
   revalidatePath("/invoices");
   redirect("/invoices");
 }
@@ -233,4 +260,38 @@ export async function attachFile(id: string, form: FormData) {
   if ("error" in up) return up;
   await db.invoice.update({ where: { id }, data: { image: Buffer.from(up.bytes), imageType: up.type } });
   revalidatePath(`/invoices/${id}`);
+}
+
+// ---- Accounting export settings ---------------------------------------------------------
+
+const accountField = z.union([
+  z.enum(["billsDefault", "billsOther", "salesDefault", "salesTax", "tips", "clearing", "termsDays"]),
+  z.object({ bills: z.string().min(1).max(80) }),
+  z.object({ sales: z.string().min(1).max(80) }),
+]);
+
+export async function saveAccountField(field: z.infer<typeof accountField>, value: string) {
+  await requireUser("MANAGER");
+  const f = accountField.safeParse(field);
+  const v = z.string().trim().max(120).safeParse(value);
+  if (!f.success || !v.success) return { error: "That doesn't look right." };
+  if (f.data === "termsDays") {
+    const n = Number(v.data);
+    if (!Number.isInteger(n) || n < 0 || n > 365) return { error: "Enter whole days, 0–365." };
+  }
+  await saveAccount(f.data, v.data);
+  revalidatePath("/invoices/exports");
+}
+
+export async function saveSalesTaxRate(value: string) {
+  await requireUser("MANAGER");
+  const raw = value.trim().replace(/%$/, "");
+  if (raw === "") {
+    await saveTaxRate(null);
+  } else {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n >= 50) return { error: "Enter a percent like 8." };
+    await saveTaxRate(n === 0 ? null : n / 100);
+  }
+  revalidatePath("/invoices/exports");
 }

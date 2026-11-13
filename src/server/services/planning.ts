@@ -1,9 +1,12 @@
 import "server-only";
-import { explodeUsage } from "@/domain/costing";
-import { addDays, dateRange, ISODate, nextWeekdayOnOrAfter, parseISODate, toISODate } from "@/domain/dates";
+import { CostingContext, explodeUsage } from "@/domain/costing";
+import { addDays, dateRange, daysBetween, ISODate, nextWeekdayOnOrAfter, parseISODate, toISODate, todayIn, zonedMidnightUTC } from "@/domain/dates";
 import { DayForecast, forecastSeries } from "@/domain/forecast";
-import { estimateOnHand, OrderSuggestion, suggestLine } from "@/domain/ordering";
+import { CutoffRule, cutoffRule, estimateOnHand, hoursUntil, nextCutoff, OrderSuggestion, shouldAutoDraft, suggestLine } from "@/domain/ordering";
+import { dayDate } from "@/lib/format";
+import { Prisma } from "@prisma/client";
 import { db, num } from "../db";
+import { env } from "../env";
 import { buildContext, loadCostingSnapshot, priceAsOf } from "./costing";
 import { businessToday, salesByRecipe } from "./sales";
 
@@ -37,22 +40,28 @@ export interface ItemForecast {
 
 export async function forecastItems(dates: ISODate[]) {
   const today = businessToday();
-  const { demandDrivers } = await import("./forecasting");
-  const [{ byRecipe, openDays }, drivers, recipes] = await Promise.all([
-    salesByRecipe(addDays(today, -HISTORY_DAYS), today),
+  const { demandDrivers, pastEventDays, seasonalFactors } = await import("./forecasting");
+  const from = addDays(today, -HISTORY_DAYS);
+  const [{ byRecipe, openDays }, drivers, recipes, eventDays, seasonal] = await Promise.all([
+    salesByRecipe(from, today),
     demandDrivers(dates),
     db.recipe.findMany({ where: { active: true, kind: { in: ["MENU", "MODIFIER"] } }, select: { id: true, name: true } }),
+    pastEventDays(from, today),
+    seasonalFactors(dates),
   ]);
-  // Events, weather and manual tweaks move item demand the same way they move sales.
-  const adjustments = new Map([...drivers].map(([d, x]) => [d, x.total]));
+  // Past event days (festivals, closures, big games) would skew a "usual Saturday", so they're left out of baselines.
+  const baselineDays = new Set([...openDays].filter((d) => !eventDays.has(d)));
+  // Events, weather and manual tweaks move item demand the same way they move sales;
+  // item history is too short for its own seasonality, so it borrows the store's.
+  const adjustments = new Map([...drivers].map(([d, x]) => [d, x.total * (seasonal.factors.get(d) ?? 1)]));
   const items: ItemForecast[] = recipes
     .map((r) => {
-      const days = forecastSeries({ history: byRecipe.get(r.id) ?? new Map(), openDays, asOf: today, dates, adjustments });
+      const days = forecastSeries({ history: byRecipe.get(r.id) ?? new Map(), openDays: baselineDays, asOf: today, dates, adjustments });
       return { recipeId: r.id, name: r.name, days, total: days.reduce((s, d) => s + d.qty, 0) };
     })
     .filter((i) => i.total > 0)
     .sort((a, b) => b.total - a.total);
-  return { items, adjustments: await getAdjustments(), drivers, hasHistory: openDays.size > 0, historyDays: openDays.size };
+  return { items, adjustments: await getAdjustments(), drivers, hasHistory: openDays.size > 0, historyDays: openDays.size, eventDaysExcluded: openDays.size - baselineDays.size, seasonal: seasonal.active };
 }
 
 // ---- Order plan ---------------------------------------------------------------
@@ -82,7 +91,13 @@ export async function buildOrderPlan(supplierId: string, override?: { deliveryDa
     where: { id: supplierId },
     include: { products: { where: { active: true, ingredientId: { not: null } }, include: { ingredient: true } } },
   });
-  const win = deliveryWindow(supplier, today);
+  // Default to the next delivery whose order cutoff hasn't passed (falls back to lead time alone).
+  let win = deliveryWindow(supplier, today);
+  if (!override?.deliveryDate) {
+    const now = localNow();
+    const next = now.date === today ? nextCutoff(supplier.deliveryDays, cutoffRule((await loadCutoffRules())[supplier.id], supplier.leadTimeDays), now.date, now.time) : null;
+    if (next) win = { deliveryDate: next.deliveryDate, coverUntil: nextWeekdayOnOrAfter(addDays(next.deliveryDate, 1), supplier.deliveryDays) ?? addDays(next.deliveryDate, 7) };
+  }
   const deliveryDate = override?.deliveryDate ?? win.deliveryDate;
   const coverUntil = override?.coverUntil ?? win.coverUntil;
 
@@ -97,22 +112,15 @@ export async function buildOrderPlan(supplierId: string, override?: { deliveryDa
 
   const snap = await loadCostingSnapshot();
   const ctx = buildContext(snap, today);
-  const problems: string[] = [];
-
-  // Usage per serving of every recipe, exploded to raw ingredients.
-  const perServing = new Map<string, Map<string, number>>();
-  for (const r of ctx.recipes.values()) {
-    const { usage, problems: p } = explodeUsage(ctx, r.id, 1);
-    perServing.set(r.id, usage);
-    problems.push(...p);
-  }
-
-  // Earliest count among these ingredients bounds how much actual history we need.
-  const lastCounts = await latestCounts(ingredientIds);
-  const earliestCount = [...lastCounts.values()].map((c) => c.date).sort()[0] ?? today;
+  const { perServing, problems } = usagePerServing(ctx);
 
   const forecastDates = dateRange(today, coverUntil);
-  const [{ items }, { byRecipe }] = await Promise.all([forecastItems(forecastDates), salesByRecipe(earliestCount, today)]);
+  const [{ items }, stock, incoming, pars] = await Promise.all([
+    forecastItems(forecastDates),
+    estimateStock(ingredientIds, perServing, today),
+    incomingBy(ingredientIds, deliveryDate),
+    loadPars(),
+  ]);
 
   const usageBetween = (ingredientId: string, from: ISODate, to: ISODate) => {
     let total = 0;
@@ -123,34 +131,13 @@ export async function buildOrderPlan(supplierId: string, override?: { deliveryDa
     }
     return total;
   };
-  const actualUsageSince = (ingredientId: string, from: ISODate) => {
-    let total = 0;
-    for (const [recipeId, series] of byRecipe) {
-      const per = perServing.get(recipeId)?.get(ingredientId);
-      if (!per) continue;
-      for (const [date, qty] of series) if (date >= from && date < today) total += qty * per;
-    }
-    return total;
-  };
-
-  const [received, waste, incoming] = await Promise.all([
-    receivedSince(ingredientIds, lastCounts),
-    wasteSince(ingredientIds, lastCounts),
-    incomingBy(ingredientIds, deliveryDate),
-  ]);
 
   const onHandNotes = new Map<string, string>();
   const lines: OrderSuggestion[] = [];
   for (const [ingredientId, product] of byIngredient) {
     const ing = product.ingredient!;
-    const count = lastCounts.get(ingredientId);
-    const onHand = estimateOnHand({
-      lastCountQty: count?.qty ?? null,
-      receivedSinceCount: received.get(ingredientId) ?? 0,
-      usageSinceCount: count ? actualUsageSince(ingredientId, count.date) : 0,
-      wasteSinceCount: waste.get(ingredientId) ?? 0,
-    });
-    onHandNotes.set(ingredientId, count ? `counted ${count.date}` : "not counted yet");
+    const st = stock.get(ingredientId)!;
+    onHandNotes.set(ingredientId, st.countedOn ? `counted ${st.countedOn}` : "not counted yet");
     lines.push(
       suggestLine(
         {
@@ -164,16 +151,21 @@ export async function buildOrderPlan(supplierId: string, override?: { deliveryDa
           safetyPct: ing.safetyPct.toNumber(),
         },
         {
-          onHandNow: onHand.qty,
-          onHandKnown: count != null,
+          onHandNow: st.qty,
+          onHandKnown: st.known,
           usageUntilDelivery: usageBetween(ingredientId, today, deliveryDate),
           usageDuringCover: usageBetween(ingredientId, deliveryDate, coverUntil),
           incomingBeforeDelivery: incoming.get(ingredientId) ?? 0,
+          parLevel: pars[ingredientId] ?? null,
+          dailyUsage: forecastDates.map((d) => usageBetween(ingredientId, d, addDays(d, 1))),
+          daysUntilDelivery: Math.max(0, daysBetween(today, deliveryDate)),
+          coverDays: Math.max(0, daysBetween(deliveryDate, coverUntil)),
         },
       ),
     );
   }
-  lines.sort((a, b) => (b.suggestedUnits > 0 ? 1 : 0) - (a.suggestedUnits > 0 ? 1 : 0) || a.ingredientName.localeCompare(b.ingredientName));
+  const rank = (l: OrderSuggestion) => (l.status === "runs-out" ? 2 : l.suggestedUnits > 0 ? 1 : 0);
+  lines.sort((a, b) => rank(b) - rank(a) || a.ingredientName.localeCompare(b.ingredientName));
 
   return {
     supplier: { id: supplier.id, name: supplier.name, email: supplier.email, minOrder: num(supplier.minOrder) },
@@ -182,7 +174,7 @@ export async function buildOrderPlan(supplierId: string, override?: { deliveryDa
     coverUntil,
     lines,
     total: lines.reduce((s, l) => s + (l.lineCost ?? 0), 0),
-    problems: [...new Set(problems)],
+    problems,
     onHandNotes,
   };
 }
@@ -201,17 +193,40 @@ async function latestCounts(ingredientIds: string[]) {
   return out;
 }
 
+/**
+ * Deliveries since each ingredient's last count: checked-in PO lines, plus
+ * approved invoices that weren't billed against a checked-in order (an invoice
+ * with no PO is the only record those goods arrived). Invoices count as
+ * received at midday on the invoice date.
+ */
 async function receivedSince(ingredientIds: string[], counts: Map<string, { at: Date }>) {
-  const rows = await db.purchaseOrderLine.findMany({
-    where: { order: { status: "RECEIVED" }, product: { ingredientId: { in: ingredientIds } } },
-    include: { order: { select: { receivedAt: true } }, product: { select: { ingredientId: true, packQtyBase: true } } },
-  });
+  const [rows, invoiceLines] = await Promise.all([
+    db.purchaseOrderLine.findMany({
+      where: { order: { status: "RECEIVED" }, product: { ingredientId: { in: ingredientIds } } },
+      include: { order: { select: { receivedAt: true } }, product: { select: { ingredientId: true, packQtyBase: true } } },
+    }),
+    db.invoiceLine.findMany({
+      where: {
+        invoice: { status: "APPROVED", OR: [{ orderId: null }, { order: { status: { not: "RECEIVED" } } }] },
+        product: { ingredientId: { in: ingredientIds } },
+      },
+      include: { invoice: { select: { invoiceDate: true } }, product: { select: { ingredientId: true, packQtyBase: true } } },
+    }),
+  ]);
   const out = new Map<string, number>();
-  for (const r of rows) {
-    const id = r.product.ingredientId!;
+  const add = (id: string, at: Date, qtyBase: number) => {
     const since = counts.get(id)?.at;
-    if (!since || !r.order.receivedAt || r.order.receivedAt <= since) continue;
-    out.set(id, (out.get(id) ?? 0) + (num(r.receivedQty) ?? r.qty.toNumber()) * (num(r.product.packQtyBase) ?? 0));
+    if (!since || at <= since) return;
+    out.set(id, (out.get(id) ?? 0) + qtyBase);
+  };
+  for (const r of rows) {
+    if (!r.order.receivedAt) continue;
+    add(r.product.ingredientId!, r.order.receivedAt, (num(r.receivedQty) ?? r.qty.toNumber()) * (num(r.product.packQtyBase) ?? 0));
+  }
+  for (const l of invoiceLines) {
+    if (!l.product?.ingredientId) continue;
+    const at = new Date(zonedMidnightUTC(toISODate(l.invoice.invoiceDate), env.BUSINESS_TIMEZONE).getTime() + 12 * 3600_000);
+    add(l.product.ingredientId, at, l.qty.toNumber() * (num(l.product.packQtyBase) ?? 0));
   }
   return out;
 }
@@ -229,7 +244,8 @@ async function wasteSince(ingredientIds: string[], counts: Map<string, { at: Dat
 
 async function incomingBy(ingredientIds: string[], deliveryDate: ISODate) {
   const rows = await db.purchaseOrderLine.findMany({
-    where: { order: { status: "SENT", deliveryDate: { lte: parseISODate(deliveryDate) } }, product: { ingredientId: { in: ingredientIds } } },
+    // An approved invoice against a sent order means it arrived (and counts as received), so it's no longer incoming.
+    where: { order: { status: "SENT", deliveryDate: { lte: parseISODate(deliveryDate) }, invoices: { none: { status: "APPROVED" } } }, product: { ingredientId: { in: ingredientIds } } },
     include: { product: { select: { ingredientId: true, packQtyBase: true } } },
   });
   const out = new Map<string, number>();
@@ -238,4 +254,213 @@ async function incomingBy(ingredientIds: string[], deliveryDate: ISODate) {
     out.set(id, (out.get(id) ?? 0) + r.qty.toNumber() * (num(r.product.packQtyBase) ?? 0));
   }
   return out;
+}
+
+// ---- Estimated stock on hand ------------------------------------------------------
+
+/** Raw-ingredient usage per serving of every recipe. */
+export function usagePerServing(ctx: CostingContext) {
+  const perServing = new Map<string, Map<string, number>>();
+  const problems = new Set<string>();
+  for (const r of ctx.recipes.values()) {
+    const { usage, problems: p } = explodeUsage(ctx, r.id, 1);
+    perServing.set(r.id, usage);
+    for (const x of p) problems.add(x);
+  }
+  return { perServing, problems: [...problems] };
+}
+
+export interface StockEstimate {
+  qty: number; // base units
+  known: boolean;
+  countedOn: ISODate | null;
+}
+
+/**
+ * Last count + received since (POs and PO-less approved invoices) − theoretical
+ * usage from sales − logged waste, per ingredient.
+ */
+export async function estimateStock(ingredientIds: string[], perServing: Map<string, Map<string, number>>, today: ISODate): Promise<Map<string, StockEstimate>> {
+  const lastCounts = await latestCounts(ingredientIds);
+  const earliestCount = [...lastCounts.values()].map((c) => c.date).sort()[0] ?? today;
+  const [{ byRecipe }, received, waste] = await Promise.all([
+    salesByRecipe(earliestCount, today),
+    receivedSince(ingredientIds, lastCounts),
+    wasteSince(ingredientIds, lastCounts),
+  ]);
+  const usageSince = (ingredientId: string, from: ISODate) => {
+    let total = 0;
+    for (const [recipeId, series] of byRecipe) {
+      const per = perServing.get(recipeId)?.get(ingredientId);
+      if (!per) continue;
+      for (const [date, qty] of series) if (date >= from && date < today) total += qty * per;
+    }
+    return total;
+  };
+  const out = new Map<string, StockEstimate>();
+  for (const id of ingredientIds) {
+    const count = lastCounts.get(id);
+    const est = estimateOnHand({
+      lastCountQty: count?.qty ?? null,
+      receivedSinceCount: received.get(id) ?? 0,
+      usageSinceCount: count ? usageSince(id, count.date) : 0,
+      wasteSinceCount: waste.get(id) ?? 0,
+    });
+    out.set(id, { qty: est.qty, known: count != null, countedOn: count?.date ?? null });
+  }
+  return out;
+}
+
+/** Estimated on hand for every active ingredient (the /ingredients column). */
+export async function estimatedOnHandAll(): Promise<Map<string, StockEstimate>> {
+  const today = businessToday();
+  const [snap, ings] = await Promise.all([loadCostingSnapshot(), db.ingredient.findMany({ where: { active: true }, select: { id: true } })]);
+  const { perServing } = usagePerServing(buildContext(snap, today));
+  return estimateStock(ings.map((i) => i.id), perServing, today);
+}
+
+// ---- Par levels (min on hand for items no recipe uses) ------------------------------
+
+const PAR_KEY = "ordering.minOnHand";
+
+/** Minimum on hand per ingredient, in base units. */
+export async function loadPars(): Promise<Record<string, number>> {
+  const s = await db.setting.findUnique({ where: { key: PAR_KEY } });
+  if (!s) return {};
+  try {
+    const v = JSON.parse(s.value) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(v).filter(([, x]) => typeof x === "number" && x > 0)) as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+export async function setPar(ingredientId: string, qtyBase: number | null) {
+  const pars = await loadPars();
+  if (qtyBase == null || qtyBase <= 0) delete pars[ingredientId];
+  else pars[ingredientId] = qtyBase;
+  const value = JSON.stringify(pars);
+  await db.setting.upsert({ where: { key: PAR_KEY }, create: { key: PAR_KEY, value }, update: { value } });
+}
+
+// ---- Order cutoffs and auto-drafts ----------------------------------------------------
+
+const CUTOFF_KEY = "ordering.cutoffs";
+
+export async function loadCutoffRules(): Promise<Record<string, Partial<CutoffRule>>> {
+  const s = await db.setting.findUnique({ where: { key: CUTOFF_KEY } });
+  if (!s) return {};
+  try {
+    return JSON.parse(s.value) as Record<string, Partial<CutoffRule>>;
+  } catch {
+    return {};
+  }
+}
+
+export async function saveCutoffRule(supplierId: string, patch: Partial<CutoffRule>) {
+  const all = await loadCutoffRules();
+  all[supplierId] = { ...all[supplierId], ...patch };
+  const value = JSON.stringify(all);
+  await db.setting.upsert({ where: { key: CUTOFF_KEY }, create: { key: CUTOFF_KEY, value }, update: { value } });
+}
+
+const clock = (t: string) => {
+  const h = Number(t.slice(0, 2));
+  return `${h % 12 === 0 ? 12 : h % 12}${t.slice(3) === "00" ? "" : `:${t.slice(3)}`}${h < 12 ? "am" : "pm"}`;
+};
+
+/** Business-local date and "HH:MM" right now. */
+export function localNow(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: env.BUSINESS_TIMEZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
+  const get = (t: string) => (parts.find((p) => p.type === t)?.value ?? "00").padStart(2, "0");
+  return { date: todayIn(env.BUSINESS_TIMEZONE, now), time: `${get("hour")}:${get("minute")}` };
+}
+
+export interface SupplierCutoff {
+  supplierId: string;
+  name: string;
+  rule: CutoffRule;
+  next: { deliveryDate: ISODate; cutoffDate: ISODate; cutoffTime: string } | null;
+  hoursToCutoff: number | null;
+  draftId: string | null;
+}
+
+/** Each active supplier's cutoff rule, next order deadline and any order already in for that delivery. */
+export async function supplierCutoffs(now = new Date()): Promise<SupplierCutoff[]> {
+  const { date, time } = localNow(now);
+  const [suppliers, rules] = await Promise.all([db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }), loadCutoffRules()]);
+  const nexts = suppliers.map((s) => {
+    const rule = cutoffRule(rules[s.id], s.leadTimeDays);
+    return { s, rule, next: nextCutoff(s.deliveryDays, rule, date, time) };
+  });
+  const deliveries = [...new Set(nexts.map((n) => n.next?.deliveryDate).filter((d): d is string => Boolean(d)))];
+  const existing = deliveries.length
+    ? await db.purchaseOrder.findMany({ where: { deliveryDate: { in: deliveries.map(parseISODate) } }, select: { id: true, supplierId: true, deliveryDate: true, status: true } })
+    : [];
+  return nexts.map(({ s, rule, next }) => ({
+    supplierId: s.id,
+    name: s.name,
+    rule,
+    next,
+    hoursToCutoff: next ? hoursUntil(date, time, next.cutoffDate, next.cutoffTime) : null,
+    draftId: next ? existing.find((o) => o.supplierId === s.id && toISODate(o.deliveryDate) === next.deliveryDate)?.id ?? null : null,
+  }));
+}
+
+/**
+ * Daily job: for each supplier whose order cutoff falls in the next 36 hours,
+ * build the suggested order and save it as a DRAFT purchase order — unless an
+ * order for that delivery already exists or there's nothing to order. Safe to
+ * run repeatedly. Never throws; failures are reported per supplier.
+ */
+export async function autoDraftOrders(now = new Date()) {
+  const results: { supplier: string; deliveryDate?: ISODate; status: "drafted" | "skipped" | "error"; reason?: string; orderId?: string; lines?: number }[] = [];
+  let cutoffs: SupplierCutoff[];
+  try {
+    cutoffs = await supplierCutoffs(now);
+  } catch (e) {
+    return { results: [{ supplier: "*", status: "error" as const, reason: e instanceof Error ? e.message : String(e) }] };
+  }
+  for (const c of cutoffs) {
+    if (!c.next) {
+      results.push({ supplier: c.name, status: "skipped", reason: "no delivery days" });
+      continue;
+    }
+    if (!shouldAutoDraft({ rule: c.rule, hoursToCutoff: c.hoursToCutoff ?? 0, hasOrderForDelivery: Boolean(c.draftId) })) {
+      results.push({ supplier: c.name, deliveryDate: c.next.deliveryDate, status: "skipped", reason: c.draftId ? "already ordered" : !c.rule.autoDraft ? "auto-draft off" : "cutoff not near" });
+      continue;
+    }
+    try {
+      const s = await db.supplier.findUniqueOrThrow({ where: { id: c.supplierId }, select: { deliveryDays: true } });
+      const coverUntil = nextWeekdayOnOrAfter(addDays(c.next.deliveryDate, 1), s.deliveryDays) ?? addDays(c.next.deliveryDate, 7);
+      const plan = await buildOrderPlan(c.supplierId, { deliveryDate: c.next.deliveryDate, coverUntil });
+      const lines = plan.lines.filter((l) => l.suggestedUnits > 0);
+      if (lines.length === 0) {
+        results.push({ supplier: c.name, deliveryDate: c.next.deliveryDate, status: "skipped", reason: "nothing to order" });
+        continue;
+      }
+      const runsOut = plan.lines.filter((l) => l.status === "runs-out").length;
+      const po = await db.purchaseOrder.create({
+        data: {
+          supplierId: c.supplierId,
+          deliveryDate: parseISODate(plan.deliveryDate),
+          coverUntil: parseISODate(plan.coverUntil),
+          notes: `Auto-drafted ahead of the ${clock(c.next.cutoffTime)} ${dayDate(c.next.cutoffDate)} cutoff. Review and send.${runsOut ? ` ${runsOut} item${runsOut === 1 ? " runs" : "s run"} out before delivery.` : ""}`,
+          lines: {
+            create: lines.map((l) => ({
+              supplierProductId: l.supplierProductId,
+              suggestedQty: new Prisma.Decimal(l.suggestedUnits),
+              qty: new Prisma.Decimal(l.suggestedUnits),
+              unitPrice: l.unitPrice == null ? null : new Prisma.Decimal(l.unitPrice.toFixed(2)),
+            })),
+          },
+        },
+      });
+      results.push({ supplier: c.name, deliveryDate: plan.deliveryDate, status: "drafted", orderId: po.id, lines: lines.length });
+    } catch (e) {
+      console.error("autoDraftOrders failed", c.name, e);
+      results.push({ supplier: c.name, deliveryDate: c.next.deliveryDate, status: "error", reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { results };
 }

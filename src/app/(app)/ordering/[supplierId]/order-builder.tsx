@@ -30,9 +30,11 @@ export function OrderBuilder(props: {
   const ordering = props.lines.filter((l) => (qtys[l.supplierProductId] ?? 0) > 0).length;
   const visible = props.lines.filter((l) => showCovered || l.status !== "covered" || (qtys[l.supplierProductId] ?? 0) > 0);
   const hidden = props.lines.length - visible.length;
+  const runsOut = props.lines.filter((l) => l.status === "runs-out");
 
   const go = (delivery: string, until: string) => router.push(`?delivery=${delivery}&until=${until}`);
   const packs = (base: number, l: Line) => (l.packQtyBase ? base / l.packQtyBase : null);
+  const cover = (d: number) => (d >= 30 ? "30+ days" : d < 1 ? "under a day" : `${qty(d, d < 10 ? 1 : 0)} day${Math.round(d * 10) === 10 ? "" : "s"}`);
 
   return (
     <div className="pb-24">
@@ -57,11 +59,21 @@ export function OrderBuilder(props: {
         </Card>
       )}
 
+      {runsOut.length > 0 && (
+        <Card className="mb-6 border-bad/30 bg-bad-bg p-4 text-sm text-bad">
+          <div className="font-medium">
+            {runsOut.length} item{runsOut.length === 1 ? " runs" : "s run"} out before this delivery arrives
+          </div>
+          <p className="mt-0.5 text-ink-2">{runsOut.slice(0, 4).map((l) => l.ingredientName).join(", ")}{runsOut.length > 4 ? ` and ${runsOut.length - 4} more` : ""}. They&apos;re on this order, but you&apos;ll need to borrow, buy locally or ask for an earlier drop to bridge the gap.</p>
+        </Card>
+      )}
+
       <Card className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-[0.75rem] text-muted">
               <th className="px-4 py-2.5 text-left font-medium">Item</th>
+              <th className="hidden px-4 py-2.5 text-right font-medium lg:table-cell"><span className="inline-flex items-center gap-1">Days of cover <HelpTip id="ordering.builder.daysOfCover" /></span></th>
               <th className="hidden px-4 py-2.5 text-right font-medium md:table-cell" data-tour="ordering.on-hand"><span className="inline-flex items-center gap-1">On hand at delivery <HelpTip id="ordering.builder.onHand" /></span></th>
               <th className="hidden px-4 py-2.5 text-right font-medium sm:table-cell"><span className="inline-flex items-center gap-1">Needed <HelpTip id="ordering.builder.needed" /></span></th>
               <th className="px-4 py-2.5 text-right font-medium">Order</th>
@@ -79,6 +91,12 @@ export function OrderBuilder(props: {
                     <div className="text-xs text-muted">{l.description} · {money(l.unitPrice)}/{l.purchaseUnit}</div>
                     {l.status === "needs-setup" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="warn">Set pack size</Badge><HelpTip id="ordering.builder.needsSetup" /></span>}
                     {l.status === "needs-count" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="warn">Count to auto-order</Badge><HelpTip id="ordering.builder.needsCount" /></span>}
+                    {l.status === "runs-out" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="bad">Runs out before delivery</Badge><HelpTip id="ordering.builder.runsOut" /></span>}
+                    {l.byPar && <span className="mt-1 flex items-center gap-1.5"><Badge>Min on hand</Badge><HelpTip id="ordering.builder.par" /></span>}
+                    {l.daysOfCover != null && <div className={cx("mt-0.5 text-xs lg:hidden", l.status === "runs-out" ? "text-bad" : "text-muted")}>{cover(l.daysOfCover)} of stock</div>}
+                  </td>
+                  <td className={cx("num hidden px-4 py-3 text-right lg:table-cell", l.status === "runs-out" ? "font-medium text-bad" : l.daysOfCover != null && l.daysOfCover < 3 ? "text-warn" : "")}>
+                    {l.status === "needs-count" ? <span className="text-muted">?</span> : l.daysOfCover == null ? <span className="text-muted">—</span> : cover(l.daysOfCover)}
                   </td>
                   <td className="num hidden px-4 py-3 text-right md:table-cell">
                     {l.status === "needs-count" ? <span className="text-muted">?</span> : packs(Math.max(0, l.projectedAtDelivery), l) == null ? "—" : `${qty(packs(Math.max(0, l.projectedAtDelivery), l), 1)} ${l.purchaseUnit}`}

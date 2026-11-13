@@ -4,8 +4,12 @@ import { shiftPaidHours, weekStartOf } from "@/domain/schedule";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessToday } from "@/server/services/sales";
-import { employeeForUser, instantAt, shiftView } from "@/server/services/scheduling";
+import { sickBalances } from "@/server/services/payroll";
+import { employeeForUser, instantAt, listAnnouncements, shiftView } from "@/server/services/scheduling";
+import { getOpeningHours } from "@/server/services/labor-rules";
+import { AnnouncementsFeed } from "../team/announcements";
 import { MyApp, type MyShift } from "./my-app";
+import { PushToggle } from "@/components/push-toggle";
 
 export const metadata = { title: "My shifts" };
 
@@ -25,7 +29,7 @@ export default async function MyPage() {
   const now = new Date();
   const today = businessToday();
   const myPositions = me.positions.map((p) => p.positionId);
-  const [mine, open, board, timeOff, team] = await Promise.all([
+  const [mine, open, board, timeOff, team, notes, sick, opening] = await Promise.all([
     db.shift.findMany({ where: { employeeId: me.id, published: true, end: { gte: now } }, orderBy: { start: "asc" }, take: 40, include: { position: true, swaps: { where: { status: "PENDING" }, include: { taker: { select: { name: true } } } } } }),
     db.shift.findMany({ where: { employeeId: null, published: true, start: { gte: now }, positionId: { in: myPositions } }, orderBy: { start: "asc" }, take: 30, include: { position: true } }),
     db.shiftSwap.findMany({
@@ -35,6 +39,9 @@ export default async function MyPage() {
     }),
     db.timeOffRequest.findMany({ where: { employeeId: me.id, endDate: { gte: new Date(`${addDays(today, -30)}T00:00:00Z`) } }, orderBy: { startDate: "asc" } }),
     db.employee.findMany({ where: { active: true, id: { not: me.id } }, select: { id: true, name: true, positions: { select: { positionId: true } } }, orderBy: { name: "asc" } }),
+    listAnnouncements(),
+    sickBalances(today, [me.id]),
+    getOpeningHours(),
   ]);
 
   const toShift = (s: (typeof open)[number]): MyShift => {
@@ -47,16 +54,23 @@ export default async function MyPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title="My shifts" description={`Hi ${me.name.split(" ")[0]}. Your schedule, open shifts you can pick up, and time off.`} />
+      <PageHeader title="My shifts" description={`Hi ${me.name.split(" ")[0]}. Your schedule, open shifts you can pick up, time off and sick leave, and when you can work.`} />
+      <div className="mb-10 empty:hidden">
+        <AnnouncementsFeed items={notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() }))} />
+      </div>
       <MyApp
         today={today}
         weekHours={weekHours}
         mine={mine.map((s) => ({ ...toShift(s), swap: s.swaps[0] ? { id: s.swaps[0].id, taker: s.swaps[0].taker?.name ?? null } : null }))}
         open={open.map(toShift)}
         board={board.map((b) => ({ swapId: b.id, from: b.requester.name, ...toShift(b.shift) }))}
-        timeOff={timeOff.map((t) => ({ id: t.id, start: toISODate(t.startDate), end: toISODate(t.endDate), note: t.note, status: t.status }))}
+        timeOff={timeOff.map((t) => ({ id: t.id, start: toISODate(t.startDate), end: toISODate(t.endDate), note: t.note, status: t.status, type: t.type, hours: t.hours?.toNumber() ?? null }))}
+        sick={sick.get(me.id) ?? null}
+        availability={(me.availability ?? null) as Record<string, [string, string][]> | null}
+        openingHours={opening}
         team={team.map((t) => ({ id: t.id, name: t.name, positionIds: t.positions.map((p) => p.positionId) }))}
       />
+      <div className="mt-10"><PushToggle /></div>
     </div>
   );
 }

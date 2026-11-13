@@ -7,7 +7,7 @@
  */
 
 import { addDays, dateRange, ISODate, parseISODate, toISODate, weekday } from "./dates";
-import { LaborRules, payForWeek, PositionRule, staffingCurve } from "./labor";
+import { LaborRules, payForWeek, PositionRule, ruleOn, staffingCurve } from "./labor";
 
 // ---- Weeks ----------------------------------------------------------------------
 
@@ -148,6 +148,33 @@ export function availabilityLabel(a: Availability | undefined, wd: number): stri
  */
 export const intensityFromSlider = (v: number) => Number((1.3 - (0.6 * Math.max(0, Math.min(100, v))) / 100).toFixed(3));
 
+/** Inverse of intensityFromSlider (rounded to a whole slider step). */
+export const sliderFromIntensity = (i: number) => Math.max(0, Math.min(100, Math.round(((1.3 - i) / 0.6) * 100)));
+
+/**
+ * The most generous slider position (0–100) whose plan stays at or under the
+ * labor % target. `laborPctAt(slider)` builds the plan and returns its labor %
+ * (null when there are no sales). Labor % falls as the slider moves lean, so
+ * this is a binary search. Returns `{ slider: 0, reachable: false }` when even
+ * the leanest plan is over target.
+ */
+export function fitSliderToTarget(laborPctAt: (slider: number) => number | null, target: number): { slider: number; reachable: boolean } {
+  const ok = (v: number) => {
+    const p = laborPctAt(v);
+    return p == null || p <= target + 1e-9;
+  };
+  if (!ok(0)) return { slider: 0, reachable: false };
+  if (ok(100)) return { slider: 100, reachable: true };
+  let lo = 0; // ok
+  let hi = 100; // not ok
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (ok(mid)) lo = mid;
+    else hi = mid;
+  }
+  return { slider: lo, reachable: true };
+}
+
 /** Hours the building needs staff: an hour before opening to set up, an hour after closing to close down. */
 export function staffedHours(open: [number, number] | undefined, padHours = 1): boolean[] {
   return Array.from({ length: 24 }, (_, h) => !!open && h >= Math.max(0, open[0] - padHours) && h < Math.min(24, open[1] + padHours));
@@ -247,15 +274,18 @@ export interface ScheduleSummary {
   sales: number;
   laborPct: number | null;
   overtimeHours: number;
+  /** Paid-but-unworked hours from short shifts topped up to the call-in minimum. */
+  callInHours: number;
   openShifts: number;
   openHours: number;
   missingRates: number;
 }
 
 /**
- * Hours, labor cost (wages incl. overtime and spread-of-hours, plus employer
- * burden) and labor % for a week of shifts. Open shifts count toward hours
- * and are costed at the position's rate if one is given, but not toward OT.
+ * Hours, labor cost (wages incl. overtime, spread-of-hours and call-in pay for
+ * short shifts, plus employer burden) and labor % for a week of shifts. Open
+ * shifts count toward hours and are costed at the position's rate if one is
+ * given, but not toward OT.
  */
 export function summarizeSchedule(
   shifts: ScheduledShift[],
@@ -270,9 +300,15 @@ export function summarizeSchedule(
     assigned.map((s) => ({ employeeId: s.employeeId!, start: at(s, s.startMin), end: at(s, s.endMin), breakMinutes: s.breakMinutes, rate: s.rate })),
     rules,
     toISODate,
+    { callIn: true },
   );
   const open = shifts.filter((s) => !s.employeeId);
-  const openWages = open.reduce((a, s) => a + shiftPaidHours(s) * (s.rate ?? 0), 0);
+  const callIn = ruleOn(rules, "call-in");
+  const openCallIn = (s: ScheduledShift) => {
+    const h = shiftPaidHours(s);
+    return callIn && h > 0 && h < rules.callInMinHours ? rules.callInMinHours - h : 0;
+  };
+  const openWages = open.reduce((a, s) => a + shiftPaidHours(s) * (s.rate ?? 0) + openCallIn(s) * rules.minimumWage, 0);
   const wages = pay.reduce((a, p) => a + p.wages, 0) + openWages;
   const base = shifts.reduce((a, s) => a + shiftPaidHours(s) * (s.rate ?? 0), 0);
   const scale = base > 0 ? wages / base : 1; // spreads OT/spread premiums across days pro rata
@@ -295,6 +331,7 @@ export function summarizeSchedule(
     sales,
     laborPct: sales > 0 ? cost / sales : null,
     overtimeHours: pay.reduce((a, p) => a + p.overtimeHours, 0),
+    callInHours: pay.reduce((a, p) => a + p.callInHours, 0) + open.reduce((a, s) => a + openCallIn(s), 0),
     openShifts: open.length,
     openHours: open.reduce((a, s) => a + shiftPaidHours(s), 0),
     missingRates: shifts.filter((s) => s.employeeId && s.rate == null).length,
@@ -323,3 +360,48 @@ export function splitLongBlocks<T extends { startHour: number; endHour: number }
   }
   return out;
 }
+
+// ---- Hourly staffing vs demand ------------------------------------------------------
+
+export interface HourDemand {
+  hour: number;
+  need: number;
+  have: number;
+}
+
+/**
+ * People needed vs scheduled for each hour of one day, summed over positions,
+ * trimmed to the hours where anything happens.
+ */
+export function staffVsDemand(need: number[][], shifts: { startMin: number; endMin: number }[]): HourDemand[] {
+  const totalNeed = new Array(24).fill(0);
+  for (const curve of need) curve.forEach((n, h) => (totalNeed[h] += n));
+  const have = coverage(shifts);
+  const rows = totalNeed.map((n, h) => ({ hour: h, need: n, have: have[h] }));
+  const first = rows.findIndex((r) => r.need > 0 || r.have > 0);
+  if (first < 0) return [];
+  let last = rows.length - 1;
+  while (last > first && rows[last].need === 0 && rows[last].have === 0) last--;
+  return rows.slice(first, last + 1);
+}
+
+// ---- Time-off coverage ------------------------------------------------------------
+
+export interface DayCoverage {
+  date: ISODate;
+  /** Other people with approved time off that day. */
+  off: string[];
+  /** Other people asking for that day off (pending). */
+  asking: string[];
+  scheduledHours: number;
+  neededHours: number;
+  /** Paid hours of the requester's own shifts that day (lost if opened up). */
+  theirHours: number;
+}
+
+/**
+ * "Short" when scheduled hours minus what the requester would drop fall under
+ * 90% of what's needed. A day with nothing scheduled yet isn't short: it
+ * hasn't been built.
+ */
+export const coverageShort = (d: DayCoverage) => d.scheduledHours > 0 && d.neededHours > 0 && d.scheduledHours - d.theirHours < d.neededHours * 0.9;

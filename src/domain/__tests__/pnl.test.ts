@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addInputs, costTone, hourlyShape, mondayOf, periodRange, proratedBudget, salesTone, splitCents, summarize, toCsv } from "../pnl";
+import { addInputs, costTone, gapTone, hourlyShape, mondayOf, periodRange, projectClose, proratedBudget, salesTone, splitCents, summarize, theoreticalByDay, toCsv } from "../pnl";
 
 describe("periodRange", () => {
   const today = "2026-11-13"; // Friday
@@ -76,5 +76,64 @@ describe("hourlyShape / splitCents", () => {
 describe("toCsv", () => {
   it("quotes only what needs quoting", () => {
     expect(toCsv([["Name", "Hours"], ['Ann "AJ" Lee, Jr', 40], [null, 1.5]])).toBe('Name,Hours\n"Ann ""AJ"" Lee, Jr",40\n,1.5\n');
+  });
+});
+
+describe("gapTone", () => {
+  it("rates actual against theoretical cost", () => {
+    expect(gapTone(0.3, 0.295)).toBe("good");
+    expect(gapTone(0.32, 0.3)).toBe("warn");
+    expect(gapTone(0.34, 0.3)).toBe("bad");
+    expect(gapTone(null, 0.3)).toBe("neutral");
+  });
+});
+
+describe("projectClose", () => {
+  const forecast = new Array(24).fill(0);
+  forecast[17] = 200;
+  forecast[18] = 400;
+  forecast[19] = 400;
+  it("adds the rest of the forecast to sales so far", () => {
+    const actual = new Array(24).fill(0);
+    actual[17] = 250;
+    const p = projectClose(actual, forecast, 18, 0);
+    expect(p.soFar).toBe(250);
+    expect(p.forecastSoFar).toBe(200);
+    expect(p.pace).toBeCloseTo(1.25);
+    expect(p.projected).toBe(250 + 800);
+    expect(p.forecastDay).toBe(1000);
+  });
+  it("counts the current hour as partly gone and doesn't double count a busy hour", () => {
+    const actual = new Array(24).fill(0);
+    actual[18] = 100;
+    // Half way through 6pm: 200 expected so far, 200 left this hour.
+    expect(projectClose(actual, forecast, 18, 30).projected).toBe(100 + 200 + 400 + 0);
+    actual[18] = 350; // already 150 over this hour's half share
+    expect(projectClose(actual, forecast, 18, 30).projected).toBe(350 + 50 + 400);
+  });
+  it("has no pace before anything was expected", () => {
+    expect(projectClose(new Array(24).fill(0), forecast, 9, 0).pace).toBeNull();
+  });
+});
+
+describe("theoreticalByDay", () => {
+  it("costs each day at that day's recipe cost and splits by class", () => {
+    const cost = (id: string, date: string) => (id === "burger" ? { cost: date < "2026-11-05" ? 3 : 4, incomplete: false } : id === "pint" ? { cost: 1.2, incomplete: false } : null);
+    const cls = (id: string): "beer" | "food" => (id === "pint" ? "beer" : "food");
+    const { byDay, uncosted } = theoreticalByDay(
+      [
+        { date: "2026-11-04", recipeId: "burger", qty: 10, sales: 190 },
+        { date: "2026-11-06", recipeId: "burger", qty: 10, sales: 190 },
+        { date: "2026-11-06", recipeId: "pint", qty: 20, sales: 160 },
+        { date: "2026-11-06", recipeId: "mystery", qty: 1, sales: 9 },
+      ],
+      cost,
+      cls,
+    );
+    expect(byDay.get("2026-11-04")!.food.cogs).toBe(30);
+    expect(byDay.get("2026-11-06")!.food.cogs).toBe(40);
+    expect(byDay.get("2026-11-06")!.food.sales).toBe(199);
+    expect(byDay.get("2026-11-06")!.beer).toEqual({ sales: 160, cogs: 24 });
+    expect([...uncosted]).toEqual(["mystery"]);
   });
 });

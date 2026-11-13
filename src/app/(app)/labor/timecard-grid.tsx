@@ -24,6 +24,8 @@ export interface CardRow {
   cost: number;
   source: "SQUARE" | "MANUAL";
   open: boolean;
+  /** Changed in Ops; the Square sync keeps our version. */
+  edited: boolean;
 }
 
 type Opt = { value: string; label: string };
@@ -49,10 +51,11 @@ export function WeekPicker({ week, label }: { week: string; label: string }) {
   );
 }
 
-export function TimecardGrid({ cards, employees, positions, days, defaultDay }: { cards: CardRow[]; employees: Opt[]; positions: Opt[]; days: Opt[]; defaultDay: string }) {
+export function TimecardGrid({ cards, employees, positions, days, defaultDay, locked = false }: { cards: CardRow[]; employees: Opt[]; positions: Opt[]; days: Opt[]; defaultDay: string; locked?: boolean }) {
   const confirm = useConfirm();
   const [, start] = useTransition();
   const posOptions = [{ value: "", label: "—" }, ...positions];
+  if (locked) return <LockedCards cards={cards} employees={employees} positions={positions} days={days} />;
   return (
     <div className="overflow-x-auto">
       <table className="w-full table-fixed border-collapse text-sm sm:table-auto">
@@ -78,7 +81,7 @@ export function TimecardGrid({ cards, employees, positions, days, defaultDay }: 
                   <div className="min-w-0 flex-1 sm:min-w-32">
                     <GridSelect value={c.employeeId} options={employees} onSave={setTimecardField.bind(null, c.id, "employeeId")} ariaLabel="Person" />
                   </div>
-                  {c.source === "SQUARE" && <Badge className="hidden xl:inline-flex" tone="neutral">Square</Badge>}
+                  {c.source === "SQUARE" && <Badge className="hidden xl:inline-flex" tone="neutral">{c.edited ? "Square · edited" : "Square"}</Badge>}
                 </div>
                 <div className="px-2 text-xs text-muted sm:hidden">{days.find((d) => d.value === c.date)?.label}</div>
               </td>
@@ -108,7 +111,7 @@ export function TimecardGrid({ cards, employees, positions, days, defaultDay }: 
                   aria-label="Delete timecard"
                   className="grid size-10 place-items-center rounded-md text-muted hover:bg-bad-bg hover:text-bad sm:size-8"
                   onClick={async () => {
-                    if (await confirm({ title: "Delete this timecard?", body: c.source === "SQUARE" ? "It came from Square and will come back on the next sync unless it's removed there too." : undefined, confirmLabel: "Delete", danger: true })) start(async () => { await deleteTimecard(c.id); });
+                    if (await confirm({ title: "Delete this timecard?", body: c.source === "SQUARE" ? "It came from Square and will come back on the next sync unless it's removed there too. To fix it instead, edit the times: edited cards are kept." : undefined, confirmLabel: "Delete", danger: true })) start(async () => { await deleteTimecard(c.id); });
                   }}
                 >
                   <Trash2 className="size-3.5" />
@@ -153,6 +156,47 @@ function AddTimecard({ employees, positions, days, defaultDay }: { employees: Op
         <Button variant="primary" disabled={pending} className="col-span-2 sm:col-span-1">{pending ? "Adding…" : "Add"}</Button>
       </form>
       {error && <p className="mt-2 text-sm text-bad">{error}</p>}
+    </div>
+  );
+}
+
+/** Read-only view for an approved pay period. */
+function LockedCards({ cards, employees, positions, days }: { cards: CardRow[]; employees: Opt[]; positions: Opt[]; days: Opt[] }) {
+  const label = (opts: Opt[], v: string | null) => opts.find((o) => o.value === v)?.label ?? "—";
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr>
+            <th className={cx(th, "text-left")}>Person</th>
+            <th className={cx(th, "hidden text-left lg:table-cell")}>Position</th>
+            <th className={cx(th, "hidden text-left sm:table-cell")}>Day</th>
+            <th className={cx(th, "text-left")}>In</th>
+            <th className={cx(th, "text-left")}>Out</th>
+            <th className={cx(th, "hidden text-right md:table-cell")}>Break</th>
+            <th className={cx(th, "text-right")}>Hours</th>
+            <th className={cx(th, "hidden text-right sm:table-cell")}>Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cards.map((c) => (
+            <tr key={c.id}>
+              <td className={cx(td, "px-3 py-2.5")}>
+                <span className="font-medium">{label(employees, c.employeeId)}</span>
+                {c.edited && <Badge className="ml-2 hidden sm:inline-flex">Edited</Badge>}
+                <div className="text-xs text-muted sm:hidden">{label(days, c.date)}</div>
+              </td>
+              <td className={cx(td, "hidden px-3 lg:table-cell")}>{label(positions, c.positionId)}</td>
+              <td className={cx(td, "hidden px-3 sm:table-cell")}>{label(days, c.date)}</td>
+              <td className={cx(td, "num px-3")}>{c.inLabel}</td>
+              <td className={cx(td, "num px-3", !c.outLabel && "text-warn")}>{c.outLabel ?? "Open"}</td>
+              <td className={cx(td, "num hidden px-3 text-right md:table-cell")}>{c.breakMinutes}m</td>
+              <td className={cx(td, "num px-3 text-right")}>{c.hours.toFixed(2)}</td>
+              <td className={cx(td, "num hidden px-3 text-right sm:table-cell", c.rate == null && "text-warn")}>{c.rate == null ? "No rate" : money(c.cost)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

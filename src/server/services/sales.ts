@@ -2,21 +2,52 @@ import "server-only";
 import { addDays, businessDate, dateRange, ISODate, parseISODate, toISODate, todayIn, zonedMidnightUTC } from "@/domain/dates";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
-import { env, squareConfigured } from "../env";
+import { env } from "../env";
 import { listOrders, listSellables } from "../integrations/square";
+import { readSettingJSON, recordSquareSync, requireSquareClient, writeSettingJSON } from "./square";
 
 export const businessToday = () => todayIn(env.BUSINESS_TIMEZONE);
 
-/** Pull the Square catalog into SquareMapping (new rows unmapped; names refreshed). */
+export interface CatalogMeta {
+  baseName: string;
+  price: number | null;
+  category: string | null;
+  archived: boolean;
+  /** No longer in the Square catalog. */
+  deleted: boolean;
+}
+
+export const CATALOG_META_KEY = "square.catalog";
+
+/** Square price, category and archived/deleted flags per Square id (kept beside SquareMapping). */
+export async function squareCatalogMeta(): Promise<Record<string, CatalogMeta>> {
+  return (await readSettingJSON<Record<string, CatalogMeta>>(CATALOG_META_KEY)) ?? {};
+}
+
+/** Pull the Square catalog into SquareMapping (new rows unmapped; names refreshed) plus price/category metadata. */
 export async function syncCatalog() {
-  const sellables = await listSellables();
-  for (const s of sellables) {
-    await db.squareMapping.upsert({
-      where: { squareId: s.squareId },
-      create: s,
-      update: { squareName: s.squareName, squareType: s.squareType },
-    });
+  const client = await requireSquareClient();
+  const sellables = await listSellables(client);
+  const existing = await db.squareMapping.findMany({ select: { squareId: true, squareName: true, squareType: true } });
+  const known = new Map(existing.map((m) => [m.squareId, m]));
+  const creates = sellables.filter((s) => !known.has(s.squareId));
+  const updates = sellables.filter((s) => {
+    const k = known.get(s.squareId);
+    return k && (k.squareName !== s.squareName || k.squareType !== s.squareType);
+  });
+  if (creates.length) {
+    await db.squareMapping.createMany({ data: creates.map((s) => ({ squareId: s.squareId, squareName: s.squareName, squareType: s.squareType })), skipDuplicates: true });
   }
+  for (const s of updates) await db.squareMapping.update({ where: { squareId: s.squareId }, data: { squareName: s.squareName, squareType: s.squareType } });
+
+  const meta: Record<string, CatalogMeta> = {};
+  const live = new Set(sellables.map((s) => s.squareId));
+  for (const m of existing) {
+    if (!live.has(m.squareId)) meta[m.squareId] = { baseName: m.squareName, price: null, category: null, archived: false, deleted: true };
+  }
+  for (const s of sellables) meta[s.squareId] = { baseName: s.baseName, price: s.price, category: s.category, archived: s.archived, deleted: false };
+  await writeSettingJSON(CATALOG_META_KEY, meta);
+  await recordSquareSync("catalog", sellables.length, `${creates.length} new`);
   return sellables.length;
 }
 
@@ -26,17 +57,19 @@ export async function syncCatalog() {
  */
 export async function syncSales(from: ISODate, toExclusive: ISODate) {
   const tz = env.BUSINESS_TIMEZONE;
-  const { units, orders } = await listOrders(zonedMidnightUTC(from, tz).toISOString(), zonedMidnightUTC(toExclusive, tz).toISOString());
+  const client = await requireSquareClient();
+  const { units, orders } = await listOrders(client, zonedMidnightUTC(from, tz).toISOString(), zonedMidnightUTC(toExclusive, tz).toISOString());
 
-  const hourly = new Map<string, { date: ISODate; hour: number; netSales: number; orders: number; tips: number }>();
+  const hourly = new Map<string, { date: ISODate; hour: number; netSales: number; orders: number; tips: number; tax: number }>();
   for (const o of orders) {
     const date = businessDate(o.closedAt, tz);
     const hour = localHour(new Date(o.closedAt), tz);
     const k = `${date}|${hour}`;
-    const cur = hourly.get(k) ?? { date, hour, netSales: 0, orders: 0, tips: 0 };
+    const cur = hourly.get(k) ?? { date, hour, netSales: 0, orders: 0, tips: 0, tax: 0 };
     cur.netSales += o.netSales;
     cur.orders += 1;
     cur.tips += o.tips;
+    cur.tax += o.tax;
     hourly.set(k, cur);
   }
 
@@ -68,40 +101,25 @@ export async function syncSales(from: ISODate, toExclusive: ISODate) {
     ...tipRows(hourly),
     db.setting.upsert({ where: { key: "square.lastSync" }, create: { key: "square.lastSync", value: new Date().toISOString() }, update: { value: new Date().toISOString() } }),
   ]);
-  return { orderLines: units.length, days: dateRange(from, toExclusive).length };
+  await recordSquareSync("sales", orders.length, `${from} → ${addDays(toExclusive, -1)}`);
+  return { orderLines: units.length, orders: orders.length, days: dateRange(from, toExclusive).length };
 }
 
-/** Card tips per business day, kept for tip pooling. */
-function tipRows(hourly: Map<string, { date: ISODate; tips: number }>) {
-  const byDay = new Map<ISODate, number>();
-  for (const h of hourly.values()) byDay.set(h.date, (byDay.get(h.date) ?? 0) + h.tips);
-  return [...byDay].map(([date, tips]) =>
-    db.setting.upsert({ where: { key: `tips.${date}` }, create: { key: `tips.${date}`, value: tips.toFixed(2) }, update: { value: tips.toFixed(2) } }),
-  );
+/** Card tips (for tip pooling) and sales tax (for the accounting journal) per business day. */
+function tipRows(hourly: Map<string, { date: ISODate; tips: number; tax: number }>) {
+  const byDay = new Map<ISODate, { tips: number; tax: number }>();
+  for (const h of hourly.values()) {
+    const d = byDay.get(h.date) ?? { tips: 0, tax: 0 };
+    d.tips += h.tips;
+    d.tax += h.tax;
+    byDay.set(h.date, d);
+  }
+  const put = (key: string, value: string) => db.setting.upsert({ where: { key }, create: { key, value }, update: { value } });
+  return [...byDay].flatMap(([date, d]) => [put(`tips.${date}`, d.tips.toFixed(2)), put(`tax.${date}`, d.tax.toFixed(2))]);
 }
 
 export const localHour = (d: Date, timeZone: string) =>
   Number(new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", hourCycle: "h23" }).format(d));
-
-/** Daily job: catalog + the last 3 days (late-closed tabs, refunds). */
-export async function dailySync() {
-  if (!squareConfigured()) return { skipped: "Square is not configured" };
-  const today = businessToday();
-  const catalog = await syncCatalog();
-  const sales = await syncSales(addDays(today, -3), addDays(today, 1));
-  return { catalog, ...sales };
-}
-
-/** One-time history import, in two-week chunks to keep each request small. */
-export async function backfillSales(days: number) {
-  const today = businessToday();
-  let total = 0;
-  for (let start = addDays(today, -days); start <= today; start = addDays(start, 14)) {
-    const end = addDays(start, 14) > addDays(today, 1) ? addDays(today, 1) : addDays(start, 14);
-    total += (await syncSales(start, end)).orderLines;
-  }
-  return total;
-}
 
 /**
  * Sales history per recipe (mapped Square objects only), plus the set of
@@ -130,4 +148,35 @@ export async function salesByRecipe(from: ISODate, toExclusive: ISODate) {
 export async function lastSquareSync() {
   const s = await db.setting.findUnique({ where: { key: "square.lastSync" } });
   return s ? new Date(s.value) : null;
+}
+
+/**
+ * Net sales for business dates [from, toExclusive): every completed order
+ * (before tax, tips and service charges; gift card loads excluded), minus
+ * items marked "Ignore" on the Sales page (merch, gift cards, retail…).
+ */
+export async function netSalesExcludingIgnored(from: ISODate, toExclusive: ISODate): Promise<number> {
+  const range = { gte: parseISODate(from), lt: parseISODate(toExclusive) };
+  const ignored = await db.squareMapping.findMany({ where: { ignored: true }, select: { squareId: true } });
+  const [all, minus] = await Promise.all([
+    db.hourlySale.aggregate({ _sum: { netSales: true }, where: { date: range } }),
+    ignored.length
+      ? db.dailySale.aggregate({ _sum: { netSales: true }, where: { date: range, squareId: { in: ignored.map((i) => i.squareId) } } })
+      : Promise.resolve({ _sum: { netSales: null } }),
+  ]);
+  return (all._sum.netSales?.toNumber() ?? 0) - (minus._sum.netSales?.toNumber() ?? 0);
+}
+
+/** Same as netSalesExcludingIgnored, per business date. */
+export async function dailyNetSalesExcludingIgnored(from: ISODate, toExclusive: ISODate): Promise<Map<ISODate, number>> {
+  const range = { gte: parseISODate(from), lt: parseISODate(toExclusive) };
+  const ignored = await db.squareMapping.findMany({ where: { ignored: true }, select: { squareId: true } });
+  const [all, minus] = await Promise.all([
+    db.hourlySale.groupBy({ by: ["date"], _sum: { netSales: true }, where: { date: range } }),
+    ignored.length ? db.dailySale.groupBy({ by: ["date"], _sum: { netSales: true }, where: { date: range, squareId: { in: ignored.map((i) => i.squareId) } } }) : Promise.resolve([]),
+  ]);
+  const out = new Map<ISODate, number>();
+  for (const r of all) out.set(toISODate(r.date), r._sum.netSales?.toNumber() ?? 0);
+  for (const r of minus) out.set(toISODate(r.date), (out.get(toISODate(r.date)) ?? 0) - (r._sum.netSales?.toNumber() ?? 0));
+  return out;
 }

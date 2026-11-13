@@ -3,6 +3,7 @@ import { NY_DEFAULT_RULES as R } from "../labor";
 import {
   availabilityConflicts, availabilityLabel, clipAvailability, coverage, dayRequirement, formatMinutes, hourlySalesOrFallback, inclusiveDates, intensityFromSlider, localParts,
   parseAvailability, parseHHMM, shiftLabel, splitLongBlocks, staffedHours, summarizeSchedule, timeOptions, weekDates, weekStartOf, zonedInstant,
+  coverageShort, fitSliderToTarget, sliderFromIntensity, staffVsDemand,
 } from "../schedule";
 
 const NY = "America/New_York";
@@ -147,5 +148,34 @@ describe("summarizeSchedule", () => {
     expect(s.overtimeHours).toBe(5);
     expect(s.wages).toBeCloseTo(40 * 20 + 5 * 30);
     expect(s.laborPct).toBeNull();
+  });
+});
+
+describe("labor budget, call-in cost and hourly demand", () => {
+  it("costs short shifts up to the call-in minimum", () => {
+    const dates = ["2026-11-09"];
+    const s = summarizeSchedule([{ employeeId: "a", positionId: "p", date: dates[0], startMin: 960, endMin: 1080, breakMinutes: 0, rate: 20 }], dates, new Map(), new Map(), R);
+    expect(s.callInHours).toBe(2);
+    expect(s.wages).toBeCloseTo(40 + 2 * R.minimumWage);
+  });
+  it("fits the slider to a labor % target", () => {
+    const pctAt = (v: number) => 0.2 + v / 1000; // 20% lean … 30% generous
+    expect(fitSliderToTarget(pctAt, 0.25)).toEqual({ slider: 50, reachable: true });
+    expect(fitSliderToTarget(pctAt, 0.5)).toEqual({ slider: 100, reachable: true });
+    expect(fitSliderToTarget(pctAt, 0.1)).toEqual({ slider: 0, reachable: false });
+    expect(sliderFromIntensity(intensityFromSlider(37))).toBe(37);
+  });
+  it("compares people needed and scheduled per hour", () => {
+    const need = [Array.from({ length: 24 }, (_, h) => (h >= 16 && h < 20 ? 2 : 0)), Array.from({ length: 24 }, (_, h) => (h === 18 ? 1 : 0))];
+    const rows = staffVsDemand(need, [{ startMin: 960, endMin: 1260 }]);
+    expect(rows.map((r) => r.hour)).toEqual([16, 17, 18, 19, 20]);
+    expect(rows.find((r) => r.hour === 18)).toEqual({ hour: 18, need: 3, have: 1 });
+    expect(staffVsDemand([], [])).toEqual([]);
+  });
+  it("says when time off leaves a day short", () => {
+    const day = { date: "2026-11-13", off: [], asking: [], scheduledHours: 40, neededHours: 40, theirHours: 8 };
+    expect(coverageShort(day)).toBe(true);
+    expect(coverageShort({ ...day, theirHours: 0 })).toBe(false);
+    expect(coverageShort({ ...day, scheduledHours: 0, theirHours: 0 })).toBe(false); // not built yet
   });
 });

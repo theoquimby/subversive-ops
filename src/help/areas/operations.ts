@@ -42,7 +42,7 @@ export const ordering: HelpEntry[] = [
     article: `### How the suggestion is worked out
 For each ingredient:
 
-1. **On hand at delivery** = your last count + deliveries checked in since − what sales and logged waste used since − what forecast sales will use before the truck arrives + anything already on a sent order.
+1. **On hand at delivery** = your last count + deliveries since (checked-in orders, plus approved invoices that had no checked-in order) − what sales and logged waste used since − what forecast sales will use before the truck arrives + anything already on a sent order.
 2. **Needed** = forecast usage from this delivery until the next one × (1 + the ingredient's order buffer).
 3. **Order** = needed − on hand at delivery, rounded **up** to whole packs. Never below zero.
 
@@ -53,7 +53,11 @@ For each ingredient:
 
 ### Badges
 - **Count to auto-order** — this item has never been counted, so stock is unknown. Rather than guess a full case, it suggests 0. Count it once.
-- **Set pack size** — the product's pack size isn't known, so a quantity can't be turned into cases.`,
+- **Set pack size** — the product's pack size isn't known, so a quantity can't be turned into cases.
+- **Runs out before delivery** (red) — what's on the shelf plus what's already coming won't last until this truck. It's still on the order, but you'll need a bridge: borrow, buy locally or ask for an earlier drop.
+- **Min on hand** — no recipe uses this item, so it's ordered back up to the minimum set on [Ingredients](/ingredients).
+
+**Days of cover** shows how long today's stock lasts at the forecast rate of use.`,
     related: ["ordering.builder.formula", "ordering.builder.onHand", "ordering.builder.needed", "ingredients.buffer", "count.home"],
     keywords: ["suggested order", "par", "how much to order"],
   },
@@ -120,6 +124,42 @@ The fresher the count, the better the order. "Not counted yet" means there's no 
     title: "Count to auto-order",
     body: "This item has never been counted, so the app doesn't know what's on the shelf and won't guess. Count it once and it'll be suggested from then on.",
     related: ["count.home"],
+  },
+  {
+    id: "ordering.builder.runsOut",
+    area: "ordering",
+    route: "/ordering",
+    title: "Runs out before delivery",
+    body: "Stock on hand plus anything already on its way won't last until this delivery. Order it, and plan a bridge: borrow, buy locally or ask for an earlier drop.",
+    related: ["ordering.builder.daysOfCover", "ordering.cutoffs"],
+  },
+  {
+    id: "ordering.builder.daysOfCover",
+    area: "ordering",
+    route: "/ordering",
+    title: "Days of cover",
+    body: "How many days the estimated stock on hand lasts at the forecast rate of use, from today. Red when it runs out before the delivery.",
+    related: ["ordering.builder.onHand", "ingredients.onHand"],
+  },
+  {
+    id: "ordering.builder.par",
+    area: "ordering",
+    route: "/ordering",
+    title: "Min on hand",
+    body: "No recipe uses this item, so the forecast can't tell how fast it goes. It's ordered back up to the minimum on hand set on the Ingredients page.",
+    related: ["ingredients.minOnHand"],
+  },
+  {
+    id: "ordering.cutoffs",
+    area: "ordering",
+    route: "/ordering",
+    title: "Order cutoffs and auto-drafts",
+    body: "When each supplier needs your order: a time and how many days before delivery. With auto-draft on, the suggested order is saved as a draft the day before the cutoff. Review it and send it.",
+    article: `Type the time ("2pm" or "14:00") and the days before delivery. Days before starts at the supplier's lead time.
+
+Each morning, any supplier whose cutoff falls in the next 36 hours gets a **draft** order built from the forecast, unless an order for that delivery already exists. Drafts are never sent on their own. They show up on the [weekly brief](/brief) and under Recent orders, marked "Auto-drafted".`,
+    related: ["ordering.builder", "brief.page", "settings.suppliers"],
+    keywords: ["deadline", "cutoff", "auto order", "draft"],
   },
   {
     id: "ordering.builder.needsSetup",
@@ -344,17 +384,22 @@ export const variance: HelpEntry[] = [
 - **Logged waste** = what staff recorded.
 - **Unexplained** = actually used − should have used − logged waste.
 
-### The four numbers at the top
-- **Food cost if recipes were followed** — theoretical food cost for the period.
-- **Actual food cost** — from what really left the shelves. Red when it's more than 1.5 points over theoretical.
-- **Logged waste** — accounted for.
-- **Unexplained** — dollars nobody can account for, and what share of food sales that is.
+### Food, beverage or both
+Use **All / Food / Beverage** to filter. Each ingredient sits under whichever sales used most of it: a keg goes with beer, ground beef with food.
 
-### Reading it
-- **Positive** (more went out): heavy portions, waste nobody logged, theft, or a Square item not linked to its recipe.
+### The four numbers at the top
+- **Cost if recipes were followed** — theoretical cost for the period, as a share of sales.
+- **Actual cost** — from what really left the shelves. Orange when it's more than a point over theoretical, red beyond 2.5.
+- **Logged waste** — accounted for.
+- **Unexplained** — dollars nobody can account for, and what share of sales that is.
+
+### Reading a line
+Notable gaps get a plain-English line, e.g. "5.3 lb more than recipes explain — about 0.5 oz extra per Subversive burger". The gap is spread over the items that use the ingredient in proportion to their recipes, so it reads as "each portion is this much heavy".
+
+- **Positive** (more went out): heavy portions or pours, waste nobody logged, comps not rung in, or a Square item not linked to its recipe.
 - **Negative** (less went out): a delivery that wasn't checked in, or a counting slip.
 
-Both columns use today's prices, so price changes don't show up as gaps.`,
+Both columns use prices as of the closing count, so price changes don't show up as gaps.`,
     related: ["variance.unexplained", "variance.period", "count.home", "sales.mapping"],
     keywords: ["variance", "theoretical vs actual", "shrink", "leak", "loss"],
   },
@@ -377,16 +422,16 @@ Both columns use today's prices, so price changes don't show up as gaps.`,
     id: "variance.theoretical",
     area: "variance",
     route: "/variance",
-    title: "Food cost if recipes were followed",
-    body: "What food should have cost given what sold, as a share of food sales.",
+    title: "Cost if recipes were followed",
+    body: "What food and drink should have cost given what sold, as a share of sales. Filter to Food or Beverage to see each on its own.",
     related: ["overview.foodCost"],
   },
   {
     id: "variance.actual",
     area: "variance",
     route: "/variance",
-    title: "Actual food cost",
-    body: "What really left the shelves — opening count + deliveries − closing count — as a share of food sales.",
+    title: "Actual cost",
+    body: "What really left the shelves — opening count + deliveries − closing count — as a share of sales.",
   },
   {
     id: "variance.waste",
@@ -418,7 +463,7 @@ A negative number usually means a delivery wasn't checked in, or a count was off
     area: "variance",
     route: "/variance",
     title: "By ingredient",
-    body: "Biggest dollar gaps first. Badges mark gaps over 10% and at least $5; red is over-use, orange is under-use.",
+    body: "Biggest dollar gaps first, each with a plain-English line on what it means per plate or pour. Badges mark gaps over 10% and at least $5; red is over-use, orange is under-use.",
   },
   {
     id: "variance.skipped",
@@ -443,44 +488,64 @@ export const sales: HelpEntry[] = [
   {
     id: "sales.connect",
     area: "sales",
-    route: "/sales",
+    route: "/settings/square",
     title: "Connecting Square",
-    body: "Square is connected with an access token and location ID set as environment variables where the app is hosted. Once set, sales sync every night.",
-    article: `1. Go to **developer.squareup.com**, sign in with the restaurant's Square account and create an app.
-2. Open **Production** credentials and copy the **access token**.
-3. On the **Locations** tab, copy the **location ID** for Subversive.
-4. In the hosting project (Vercel → Settings → Environment Variables) set \`SQUARE_ACCESS_TOKEN\` and \`SQUARE_LOCATION_ID\`, then redeploy.
-5. In the app, open [Sales](/sales) → **Import last 6 months**, then link Square items to recipes.
+    body: "Open Settings → Square and press Connect with Square: sign in with the restaurant's Square account and approve read access. Sales, the menu and timecards then flow in on their own.",
+    article: `1. Open [Settings → Square](/settings/square) and press **Connect with Square**.
+2. Sign in with the restaurant's Square account (the owner's login) and press **Allow**. The app only asks to *read*: business profile, items, orders, payments, team, timecards and inventory.
+3. Back in the app, check the **Locations** — every active location is picked. Keep your Square Online location picked if you sell online.
+4. Run the **First import** (6 months is a good start), then match Square items to recipes on [Menu from Square](/sales/square-menu).
 
-The token is a password for your sales data — keep it out of emails and chats. Whoever manages the hosting usually does steps 2–4.`,
-    related: ["sales.backfill", "sales.mapping"],
-    keywords: ["square", "pos", "token", "api", "connect", "integration"],
+**No Connect button?** One-click connect needs the Square app's ID and secret in the hosting settings (whoever manages hosting sets \`SQUARE_APPLICATION_ID\` and \`SQUARE_APPLICATION_SECRET\`). Until then, press **Paste an access token instead**: in the Square Developer Dashboard open your app → **Credentials** → **Production** and copy the **Access token**. The app checks it with Square before saving and stores it encrypted.
+
+The token is a password for your sales data — keep it out of emails and chats. **Disconnect** on the same page stops syncing and revokes the app's access.`,
+    related: ["settings.square", "sales.backfill", "sales.mapping", "sales.squareMenu"],
+    keywords: ["square", "pos", "token", "api", "connect", "integration", "oauth", "sign in"],
   },
   {
     id: "sales.sync",
     area: "sales",
     route: "/sales",
     title: "Sync now",
-    body: "Pulls the latest orders, refunds and catalog items from Square. It also runs on its own every night.",
+    body: "Pulls the latest menu, the last three days of orders and refunds, and recent timecards from Square. You rarely need it: today's numbers top up on their own every 15 minutes while the app is in use, and everything re-syncs nightly.",
   },
   {
     id: "sales.backfill",
     area: "sales",
-    route: "/sales",
-    title: "Import last 6 months",
-    body: "Pulls six months of Square sales in one go so the forecast has history to work from. Run it once after connecting.",
+    route: "/settings/square",
+    title: "First import",
+    body: "Brings in 3, 6 or 12 months of Square sales and timecards, a week at a time with a progress bar. You can leave the page and press Resume later; re-running just replaces days already imported.",
+    related: ["settings.square"],
+    keywords: ["import", "history", "backfill"],
+  },
+  {
+    id: "sales.squareMenu",
+    area: "sales",
+    route: "/sales/square-menu",
+    title: "Menu from Square",
+    body: "Matches Square items to recipes for you, starts recipes for items you don't have yet (with Square's price and category), and shows where Square's price differs from the recipe's menu price.",
+    article: `- **Suggested matches** — recipes whose names closely match a Square item. Check the list and press **Accept all**, or accept one at a time.
+- **Create recipes** — pick unmatched items and press **Create**. Each becomes a menu item (modifiers become add-ons) with Square's name, price and category. They show **Needs ingredients** on [Menu costs](/menu) until you add lines.
+- **Price differences** — where Square charges something other than the recipe's menu price. **Use Square price** updates the recipe so food cost % is right.
+
+Drinks bought in, merch and gift cards: pick them and press **Ignore selected**.`,
+    related: ["sales.mapping", "sales.connect"],
+    keywords: ["menu", "match", "recipes", "price", "import menu"],
   },
   {
     id: "sales.forecast",
     area: "sales",
     route: "/sales",
     title: "Forecast",
-    body: "Expected sales per item per day, from the same weekday over the last weeks (recent weeks count more), nudged by the recent trend and any adjustments.",
-    article: `For each menu item and day:
+    body: "Expected sales and orders per day, and items sold per day, from the same weekday over recent weeks (recent weeks count more), the season once there's a year of history, the recent trend and any adjustments.",
+    article: `For each day (and each menu item):
 
-- **Baseline** — a recency-weighted average of the same weekday over recent weeks, skipping days you were closed.
-- **Trend** — the last four weeks against the four before, softened and capped so one odd week doesn't swing it.
+- **Baseline** — a recency-weighted average of the same weekday over recent weeks, skipping days you were closed and past event days.
+- **Season** — once there's a year of history: how the same week last year compared with this point last year, blended toward no change so one odd week can't swing it. This catches the summer and foliage-season ramp weeks before recent averages would. Item forecasts borrow the store's seasonal factor.
+- **Trend** — the last four weeks against the four before, softened and capped. With a year of history it's measured against the same weeks last year, so the seasonal ramp isn't counted twice.
 - **Adjustments** — events, weather and your manual tweaks for that day.
+
+**Orders** (Square checks, the closest thing to covers) are forecast the same way, so you can see the average check and staff for the door as well as the till.
 
 It's deliberately simple so you can always see why a number is what it is. Ordering uses it to know how much product the coming days need.`,
     related: ["sales.adjust", "ordering.builder.needed"],
@@ -520,19 +585,17 @@ An unlinked item still uses product but doesn't count as a sale, which shows up 
     id: "sales.forecast5w",
     area: "sales",
     route: "/sales",
-    draft: true,
     title: "Five-week forecast",
     body: "Sales expected for each of the next five weeks, day by day, built from history and adjusted for weather, events and your own changes.",
     article: `The forecast looks five weeks out so ordering, scheduling and budgets all work from the same numbers.
 
-Each day shows what moved it: the weather forecast (rainy days learn their own effect from your history), events on the [events calendar](/events), and any manual change you made. Tap a day to see the breakdown or override it.`,
+Each day shows what moved it: the season (once there's a year of history), the weather forecast (rainy days learn their own effect from your history), events on the [events calendar](/events), and any manual change you made. Tap a day to see the breakdown, the expected number of orders and the hourly shape, or to override it.`,
     related: ["sales.weather", "sales.events", "sales.accuracy", "events.page"],
   },
   {
     id: "sales.weather",
     area: "sales",
     route: "/sales",
-    draft: true,
     title: "Weather",
     body: "The weather forecast for Catskill feeds the sales forecast. How much rain changes your sales is learned from your own history.",
     related: ["sales.forecast5w"],
@@ -541,7 +604,6 @@ Each day shows what moved it: the weather forecast (rainy days learn their own e
     id: "sales.events",
     area: "sales",
     route: "/sales",
-    draft: true,
     title: "Events in the forecast",
     body: "Days with something on the events calendar are adjusted by that event's expected impact.",
     related: ["events.impact"],
@@ -550,7 +612,6 @@ Each day shows what moved it: the weather forecast (rainy days learn their own e
     id: "sales.manual",
     area: "sales",
     route: "/sales",
-    draft: true,
     title: "Manual adjustments",
     body: "Your own % change for a day, on top of weather and events. Use it for what nothing else can know — a buyout, a closure, a road closure.",
   },
@@ -558,7 +619,6 @@ Each day shows what moved it: the weather forecast (rainy days learn their own e
     id: "sales.accuracy",
     area: "sales",
     route: "/sales",
-    draft: true,
     title: "Forecast accuracy",
     body: "How close past forecasts were to what actually sold. The closer it is, the more you can trust orders and schedules built on it.",
   },
@@ -612,6 +672,23 @@ Re-importing the same sheet later only updates what changed — it doesn't make 
 // ---- Settings ------------------------------------------------------------------
 
 export const settings: HelpEntry[] = [
+  {
+    id: "settings.square",
+    area: "settings",
+    route: "/settings/square",
+    title: "Square connection",
+    body: "Who's connected, which locations are read, the first import, when each part last synced and anything that went wrong.",
+    article: `- **Connection** — the Square business and whether it's production or sandbox. **Test connection** checks the token still works. Sign-in connections renew their access by themselves.
+- **Locations** — orders and timecards are read from every location picked.
+- **First import** — past sales and timecards, a week at a time.
+- **Data we have** — how far back sales go and how many timecards are in.
+- **Sync** — the last menu, sales and timecard sync. With webhooks on, new orders and clock-ins arrive within seconds; otherwise today's numbers top up every 15 minutes while someone is using the app, and everything re-syncs nightly.
+- **Recent problems** — the last 20 errors from Square, newest first.
+
+Timecards you corrected here, or that are in an approved week, are never overwritten by a sync.`,
+    related: ["sales.connect", "sales.backfill"],
+    keywords: ["square", "sync", "webhook", "locations", "disconnect"],
+  },
   {
     id: "settings.team",
     area: "settings",
