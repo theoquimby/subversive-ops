@@ -33,7 +33,7 @@ describe("estimateOnHand", () => {
   });
 });
 
-import { cutoffRule, daysOfCover, daysOfCoverDaily, hoursUntil, nextCutoff, shouldAutoDraft } from "../ordering";
+import { cutoffRule, deadlineFor, daysOfCover, daysOfCoverDaily, hoursUntil, nextCutoff, shouldAutoDraft } from "../ordering";
 describe("runs out before delivery", () => {
   it("flags red when stock plus open orders won't last until the truck", () => {
     const s = suggestLine(product, { onHandNow: 2000, usageUntilDelivery: 6000, usageDuringCover: 20000, incomingBeforeDelivery: 1000, daysUntilDelivery: 3, coverDays: 4 });
@@ -97,5 +97,27 @@ describe("order cutoffs", () => {
     expect(shouldAutoDraft({ rule, hoursToCutoff: 31, hasOrderForDelivery: true })).toBe(false);
     expect(shouldAutoDraft({ rule, hoursToCutoff: 60, hasOrderForDelivery: false })).toBe(false);
     expect(shouldAutoDraft({ rule: { ...rule, autoDraft: false }, hoursToCutoff: 5, hasOrderForDelivery: false })).toBe(false);
+  });
+});
+
+describe("per-delivery-day deadlines", () => {
+  // 2026-11-16 is a Monday.
+  const rule = cutoffRule({ perDay: { 5: { day: 3, time: "17:00" } } }, 1);
+  it("uses the deadline set for that delivery day (Fri delivery ← Wed 5pm)", () => {
+    expect(nextCutoff([5], rule, "2026-11-16", "09:00")).toEqual({ deliveryDate: "2026-11-20", cutoffDate: "2026-11-18", cutoffTime: "17:00" });
+  });
+  it("rolls to the next week once the deadline has passed", () => {
+    expect(nextCutoff([5], rule, "2026-11-18", "17:30")).toEqual({ deliveryDate: "2026-11-27", cutoffDate: "2026-11-25", cutoffTime: "17:00" });
+  });
+  it("mixes per-day deadlines with the default for other days", () => {
+    const r = cutoffRule({ time: "14:00", daysBefore: 1, perDay: { 5: { day: 3, time: "17:00" } } }, 1);
+    // Wed delivery uses the default (Tue 2pm); on Monday that's sooner than Friday's.
+    expect(nextCutoff([3, 5], r, "2026-11-16", "09:00")).toEqual({ deliveryDate: "2026-11-18", cutoffDate: "2026-11-17", cutoffTime: "14:00" });
+  });
+  it("ignores malformed saved deadlines", () => {
+    expect(cutoffRule({ perDay: { 5: { day: 9, time: "25:00" } } } as never, 1).perDay).toBeUndefined();
+  });
+  it("same-day deadline means 0 days before", () => {
+    expect(deadlineFor(cutoffRule({ perDay: { 2: { day: 2, time: "06:00" } } }, 1), 2)).toEqual({ daysBefore: 0, time: "06:00" });
   });
 });

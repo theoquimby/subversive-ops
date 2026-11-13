@@ -153,9 +153,15 @@ The fresher the count, the better the order. "Not counted yet" means there's no 
     id: "ordering.cutoffs",
     area: "ordering",
     route: "/ordering",
-    title: "Order cutoffs and auto-drafts",
-    body: "When each supplier needs your order: a time and how many days before delivery. With auto-draft on, the suggested order is saved as a draft the day before the cutoff. Review it and send it.",
-    article: `Type the time ("2pm" or "14:00") and the days before delivery. Days before starts at the supplier's lead time.
+    title: "Deliveries and order deadlines",
+    body: "When each truck comes and when its order has to be in. Press Edit deadlines on a supplier, tick its delivery days, and for each one pick the deadline — e.g. Friday delivery, order by Wednesday 5pm. \"Guessed\" means none is set yet.",
+    article: `**Edit deadlines** is on every supplier card on Ordering and in the table below them.
+
+1. Tick the days the truck comes.
+2. For each delivery day, pick the day and time the order has to be in. Every delivery day can have its own deadline (Decrescente: Friday delivery, order by Wednesday 5pm).
+3. Leave **Draft the order for me** on to have the suggested order waiting about a day before each deadline, with a reminder. Nothing is sent until you press Send.
+
+Until you set them, deadlines are guessed from the supplier's lead time (marked "guessed").
 
 Each morning, any supplier whose cutoff falls in the next 36 hours gets a **draft** order built from the forecast, unless an order for that delivery already exists. Drafts are never sent on their own. They show up on the [weekly brief](/brief) and under Recent orders, marked "Auto-drafted".`,
     related: ["ordering.builder", "brief.page", "settings.suppliers"],

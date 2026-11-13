@@ -99,3 +99,23 @@ export async function saveCutoff(supplierId: string, field: string, value: strin
   }
   revalidatePath("/ordering");
 }
+
+const scheduleSchema = z.object({
+  deliveryDays: z.array(z.number().int().min(0).max(6)).max(7),
+  perDay: z.record(z.string().regex(/^[0-6]$/), z.object({ day: z.number().int().min(0).max(6), time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) })),
+  autoDraft: z.boolean(),
+});
+
+/** Delivery days and an order deadline for each: "Friday delivery → order by Wednesday 5pm". */
+export async function saveDeliverySchedule(supplierId: string, input: z.input<typeof scheduleSchema>): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const v = scheduleSchema.safeParse(input);
+  if (!v.success) return { error: "Something in that schedule doesn't look right." };
+  const days = [...new Set(v.data.deliveryDays)].sort();
+  const perDay = Object.fromEntries(Object.entries(v.data.perDay).filter(([k]) => days.includes(Number(k))).map(([k, x]) => [Number(k), x]));
+  await db.supplier.update({ where: { id: supplierId }, data: { deliveryDays: days } });
+  await saveCutoffRule(supplierId, { perDay, autoDraft: v.data.autoDraft });
+  revalidatePath("/ordering");
+  revalidatePath("/settings", "layout");
+  return {};
+}

@@ -9,7 +9,8 @@ import { deliveryWindow, supplierCutoffs } from "@/server/services/planning";
 import { businessToday } from "@/server/services/sales";
 import Link from "next/link";
 import { HelpTip, HelpZone } from "@/components/help";
-import { AutoDraftCell, CutoffDaysCell, CutoffTimeCell } from "./cutoff-cells";
+import { DeadlineEditor } from "./deadline-editor";
+import { deadlineFor } from "@/domain/ordering";
 
 const hm = (t: string) => {
   const h = Number(t.slice(0, 2));
@@ -57,9 +58,9 @@ export default async function OrderingPage() {
             const w = deliveryWindow(s, today);
             const c = cutoffBy.get(s.id);
             return (
-              <Link key={s.id} href={`/ordering/${s.id}`} data-tour="ordering.supplier-card">
-                <Card className="h-full p-4 transition-colors hover:border-border-strong">
-                  <div className="text-sm font-medium">{s.name}</div>
+              <div key={s.id} data-tour="ordering.supplier-card">
+                <Card className="relative h-full p-4 transition-colors hover:border-border-strong">
+                  <Link href={`/ordering/${s.id}`} className="text-sm font-medium after:absolute after:inset-0 after:content-['']">{s.name}</Link>
                   <div className="mt-1 text-xs text-muted">
                     {s.deliveryDays.length ? `Delivers ${s.deliveryDays.map((d) => WEEKDAYS[d]).join(", ")}` : "No delivery days set"} · {s._count.products} item{s._count.products === 1 ? "" : "s"}
                   </div>
@@ -70,14 +71,20 @@ export default async function OrderingPage() {
                     </div>
                     <span className="text-sm text-ink-2">Build order →</span>
                   </div>
-                  {c?.next && (
-                    <div className="mt-3 border-t border-border pt-2.5 text-xs text-muted">
-                      Order by {hm(c.next.cutoffTime)} {dayDate(c.next.cutoffDate)} for {dayDate(c.next.deliveryDate)}
-                      {c.draftId ? <span className="text-good"> · drafted</span> : c.hoursToCutoff != null && c.hoursToCutoff <= 36 ? <span className="text-warn"> · {untilText(c.hoursToCutoff)} left</span> : null}
-                    </div>
-                  )}
+                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2 text-xs text-muted">
+                    <span className="min-w-0">
+                      {c?.next ? (
+                        <>
+                          Order by <b className="font-medium text-ink-2">{hm(c.next.cutoffTime)} {dayDate(c.next.cutoffDate)}</b> for {dayDate(c.next.deliveryDate)}
+                          {!c.rule.perDay && <span className="text-warn"> · guessed</span>}
+                          {c.draftId ? <span className="text-good"> · drafted</span> : c.hoursToCutoff != null && c.hoursToCutoff <= 36 ? <span className="text-warn"> · {untilText(c.hoursToCutoff)} left</span> : null}
+                        </>
+                      ) : s.deliveryDays.length ? "No deadline coming up" : "Set delivery days and deadlines"}
+                    </span>
+                    {c && <DeadlineEditor supplierId={s.id} name={s.name} deliveryDays={s.deliveryDays} rule={c.rule} />}
+                  </div>
                 </Card>
-              </Link>
+              </div>
             );
           })}
         </div>
@@ -85,44 +92,62 @@ export default async function OrderingPage() {
       </HelpZone>
       <Section
         help="ordering.cutoffs"
-        title={<span className="inline-flex items-center gap-1.5">Order cutoffs <HelpTip id="ordering.cutoffs" /></span>}
-        description="When each supplier needs the order. With auto-draft on, the suggested order is saved as a draft the day before the cutoff, ready for you to review and send."
+        title={<span className="inline-flex items-center gap-1.5">Deliveries &amp; order deadlines <HelpTip id="ordering.cutoffs" /></span>}
+        description="When each truck comes and when its order has to be in. Press Edit deadlines to change them — each delivery day can have its own deadline."
       >
         <Table>
           <thead>
             <tr>
               <Th>Supplier</Th>
-              <Th className="w-24 px-2 sm:w-28 sm:px-4">Order by</Th>
-              <Th className="w-24 px-2 sm:w-32 sm:px-4"><span className="hidden sm:inline">Days before delivery</span><span className="sm:hidden">Days before</span></Th>
-              <Th className="hidden w-36 sm:table-cell">Auto-draft</Th>
-              <Th className="hidden md:table-cell">Next cutoff</Th>
+              <Th>Deadlines</Th>
+              <Th className="hidden md:table-cell">Next</Th>
+              <Th align="right"><span className="sr-only">Edit</span></Th>
             </tr>
           </thead>
           <tbody>
-            {cutoffs.map((c) => (
-              <Tr key={c.supplierId}>
-                <Td>
-                  <div className="font-medium">{c.name}</div>
-                  <div className="text-xs text-muted md:hidden">{c.next ? `Next ${hm(c.next.cutoffTime)} ${shortDate(c.next.cutoffDate)}` : "No delivery days"}</div>
-                </Td>
-                <td className="border-b border-border px-2 py-1 [tr:last-child_&]:border-b-0"><CutoffTimeCell supplierId={c.supplierId} time={c.rule.time} /></td>
-                <td className="border-b border-border px-2 py-1 [tr:last-child_&]:border-b-0"><CutoffDaysCell supplierId={c.supplierId} days={c.rule.daysBefore} /></td>
-                <td className="hidden border-b border-border px-2 py-1 sm:table-cell [tr:last-child_&]:border-b-0"><AutoDraftCell supplierId={c.supplierId} on={c.rule.autoDraft} /></td>
-                <Td className="hidden md:table-cell">
-                  {!c.next ? (
-                    <span className="text-muted">Set delivery days in Settings</span>
-                  ) : (
-                    <>
-                      <span className="num">{hm(c.next.cutoffTime)} {dayDate(c.next.cutoffDate)}</span>
-                      <span className="text-muted"> for {shortDate(c.next.deliveryDate)}</span>
-                      {c.draftId && (
-                        <Link href={`/ordering/po/${c.draftId}`} className="ml-2 text-ink-2 hover:text-ink hover:underline">Order in →</Link>
-                      )}
-                    </>
-                  )}
-                </Td>
-              </Tr>
-            ))}
+            {suppliers.map((s) => {
+              const c = cutoffBy.get(s.id);
+              if (!c) return null;
+              return (
+                <Tr key={s.id}>
+                  <Td>
+                    <div className="font-medium">{s.name}</div>
+                    <div className="text-xs text-muted">{c.rule.autoDraft ? "Drafts the order for you" : "No auto-draft"}</div>
+                  </Td>
+                  <Td>
+                    {s.deliveryDays.length === 0 ? (
+                      <span className="text-muted">No delivery days</span>
+                    ) : (
+                      <ul className="space-y-0.5 text-sm">
+                        {[...s.deliveryDays].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((wd) => {
+                          const d = deadlineFor(c.rule, wd);
+                          return (
+                            <li key={wd} className="whitespace-nowrap">
+                              <span className="font-medium">{WEEKDAYS[wd]}</span>
+                              <span className="text-muted"> ← order by </span>
+                              {WEEKDAYS[(wd - d.daysBefore + 70) % 7]} {hm(d.time)}
+                              {!c.rule.perDay?.[wd] && <span className="text-warn"> (guessed)</span>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </Td>
+                  <Td className="hidden md:table-cell">
+                    {c.next ? (
+                      <>
+                        <span className="num">{hm(c.next.cutoffTime)} {dayDate(c.next.cutoffDate)}</span>
+                        <span className="text-muted"> for {shortDate(c.next.deliveryDate)}</span>
+                        {c.draftId && <Link href={`/ordering/po/${c.draftId}`} className="ml-2 text-ink-2 hover:text-ink hover:underline">Order in →</Link>}
+                      </>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </Td>
+                  <Td align="right"><DeadlineEditor supplierId={s.id} name={s.name} deliveryDays={s.deliveryDays} rule={c.rule} /></Td>
+                </Tr>
+              );
+            })}
           </tbody>
         </Table>
       </Section>

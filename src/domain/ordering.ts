@@ -13,7 +13,7 @@
  * person placing the order can see *why* and override confidently.
  */
 
-import { addDays, ISODate, nextWeekdayOnOrAfter } from "./dates";
+import { addDays, ISODate } from "./dates";
 
 export interface OrderableProduct {
   supplierProductId: string;
@@ -161,6 +161,23 @@ export interface CutoffRule {
   daysBefore: number;
   /** Draft automatically ahead of the cutoff (default true). */
   autoDraft: boolean;
+  /**
+   * Deadlines set per delivery weekday (0 = Sunday): "Friday delivery → order
+   * by Wednesday 5pm". When a delivery day has one, it wins over daysBefore/time.
+   */
+  perDay?: Partial<Record<number, { day: number; time: string }>>;
+}
+
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Days from the deadline weekday back from the delivery weekday (same day = 0). */
+export const daysBetween = (deadlineDay: number, deliveryDay: number) => (deliveryDay - deadlineDay + 7) % 7;
+
+/** The deadline (days before, time) for a delivery on `weekday`. */
+export function deadlineFor(rule: CutoffRule, weekday: number): { daysBefore: number; time: string } {
+  const d = rule.perDay?.[weekday];
+  if (d) return { daysBefore: daysBetween(d.day, weekday), time: d.time };
+  return { daysBefore: rule.daysBefore, time: rule.time };
 }
 
 export const DEFAULT_CUTOFF_TIME = "14:00";
@@ -168,7 +185,12 @@ export const DEFAULT_CUTOFF_TIME = "14:00";
 export function cutoffRule(saved: Partial<CutoffRule> | undefined, leadTimeDays: number): CutoffRule {
   const time = saved?.time && /^([01]\d|2[0-3]):[0-5]\d$/.test(saved.time) ? saved.time : DEFAULT_CUTOFF_TIME;
   const daysBefore = Number.isInteger(saved?.daysBefore) && saved!.daysBefore! >= 0 ? saved!.daysBefore! : Math.max(0, leadTimeDays);
-  return { time, daysBefore, autoDraft: saved?.autoDraft !== false };
+  const perDay: CutoffRule["perDay"] = {};
+  for (const [k, v] of Object.entries(saved?.perDay ?? {})) {
+    const wd = Number(k);
+    if (Number.isInteger(wd) && wd >= 0 && wd <= 6 && v && Number.isInteger(v.day) && v.day >= 0 && v.day <= 6 && TIME.test(v.time)) perDay[wd] = { day: v.day, time: v.time };
+  }
+  return { time, daysBefore, autoDraft: saved?.autoDraft !== false, ...(Object.keys(perDay).length ? { perDay } : {}) };
 }
 
 /**
@@ -177,11 +199,14 @@ export function cutoffRule(saved: Partial<CutoffRule> | undefined, leadTimeDays:
  */
 export function nextCutoff(deliveryDays: readonly number[], rule: CutoffRule, nowDate: ISODate, nowTime: string): { deliveryDate: ISODate; cutoffDate: ISODate; cutoffTime: string } | null {
   if (deliveryDays.length === 0) return null;
-  let d = nextWeekdayOnOrAfter(addDays(nowDate, rule.daysBefore), deliveryDays);
-  for (let i = 0; d && i < 3; i++) {
-    const cutoffDate = addDays(d, -rule.daysBefore);
-    if (cutoffDate > nowDate || (cutoffDate === nowDate && nowTime < rule.time)) return { deliveryDate: d, cutoffDate, cutoffTime: rule.time };
-    d = nextWeekdayOnOrAfter(addDays(d, 1), deliveryDays);
+  // The soonest delivery whose own deadline is still ahead.
+  for (let i = 0; i <= 28; i++) {
+    const d = addDays(nowDate, i);
+    const wd = new Date(`${d}T12:00:00Z`).getUTCDay();
+    if (!deliveryDays.includes(wd)) continue;
+    const { daysBefore, time } = deadlineFor(rule, wd);
+    const cutoffDate = addDays(d, -daysBefore);
+    if (cutoffDate > nowDate || (cutoffDate === nowDate && nowTime < time)) return { deliveryDate: d, cutoffDate, cutoffTime: time };
   }
   return null;
 }
