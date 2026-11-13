@@ -87,6 +87,11 @@ body {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+/* Text fields show focus with their own border instead of an outline. */
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
 
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {

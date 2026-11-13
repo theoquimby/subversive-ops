@@ -93,3 +93,61 @@ export function forecastSeries(input: ForecastInput, opts: ForecastOptions = {})
     return { date, qty: baseline * trend * adjustment, baseline, trend, adjustment, samples };
   });
 }
+
+// ---- Hourly shape ------------------------------------------------------------
+
+/**
+ * Share of a day's sales falling in each hour (sums to 1), learned from the
+ * same weekday over recent weeks. Days with no sales are ignored.
+ */
+export function hourlyShares(rows: { date: ISODate; hour: number; netSales: number }[], targetWeekday: number, asOf: ISODate, weeksBack = 8): number[] {
+  const shares = new Array(24).fill(0);
+  const byDate = new Map<ISODate, number[]>();
+  for (const r of rows) {
+    if (r.date >= asOf || r.date < addDays(asOf, -7 * weeksBack) || weekday(r.date) !== targetWeekday) continue;
+    const arr = byDate.get(r.date) ?? new Array(24).fill(0);
+    arr[r.hour] += r.netSales;
+    byDate.set(r.date, arr);
+  }
+  let days = 0;
+  for (const arr of byDate.values()) {
+    const total = arr.reduce((a, b) => a + b, 0);
+    if (total <= 0) continue;
+    days++;
+    arr.forEach((v, h) => (shares[h] += v / total));
+  }
+  return days ? shares.map((s) => s / days) : shares;
+}
+
+// ---- Weather -----------------------------------------------------------------
+
+export interface WeatherObs {
+  date: ISODate;
+  precipMm: number;
+  tempMaxC: number;
+}
+
+export const isWet = (w: WeatherObs) => w.precipMm >= 5;
+
+/**
+ * How much rain moves sales here: ratio of (actual ÷ same-weekday baseline) on
+ * wet days vs dry days. Needs a few wet days of history; otherwise a mild default.
+ */
+export function learnRainFactor(
+  dailySales: ReadonlyMap<ISODate, number>,
+  weather: ReadonlyMap<ISODate, WeatherObs>,
+  openDays: ReadonlySet<ISODate>,
+): { factor: number; wetSamples: number } {
+  const ratios = { wet: [] as number[], dry: [] as number[] };
+  for (const d of openDays) {
+    const w = weather.get(d);
+    const actual = dailySales.get(d);
+    if (!w || actual == null) continue;
+    const [base] = forecastSeries({ history: dailySales, openDays, asOf: d, dates: [d] }, { trendDampening: 0 });
+    if (!base || base.baseline <= 0 || base.samples < 3) continue;
+    (isWet(w) ? ratios.wet : ratios.dry).push(actual / base.baseline);
+  }
+  const mean = (a: number[]) => a.reduce((s, x) => s + x, 0) / a.length;
+  if (ratios.wet.length < 3 || ratios.dry.length < 5) return { factor: 0.93, wetSamples: ratios.wet.length };
+  return { factor: Math.min(1.1, Math.max(0.7, mean(ratios.wet) / mean(ratios.dry))), wetSamples: ratios.wet.length };
+}

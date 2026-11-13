@@ -5,6 +5,7 @@ import { FIELD_LABELS, fieldsFor, type ImportPlan, type Mapping, type TableKind 
 import type { ApplyResult } from "@/server/services/bulkImport";
 import { FileSpreadsheet, Link2, ClipboardPaste } from "lucide-react";
 import { useRef, useState, useTransition } from "react";
+import { FileDrop, type FileDropHandle } from "@/components/file-drop";
 import { previewPlan, readSource, runImport, type DetectedTable } from "./actions";
 
 type Source = "file" | "paste" | "link";
@@ -19,7 +20,7 @@ export function ImportFlow() {
   const [result, setResult] = useState<ApplyResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<FileDropHandle>(null);
   const [paste, setPaste] = useState("");
   const [pasteName, setPasteName] = useState("");
   const [link, setLink] = useState("");
@@ -29,7 +30,7 @@ export function ImportFlow() {
       setError(null);
       setPlan(null);
       const fd = new FormData();
-      if (source === "file" && fileRef.current?.files?.[0]) fd.set("file", fileRef.current.files[0]);
+      if (source === "file" && fileRef.current?.file) fd.set("file", fileRef.current.file);
       if (source === "paste") { fd.set("paste", paste); fd.set("pasteName", pasteName); }
       if (source === "link") fd.set("link", link);
       const res = await readSource(fd);
@@ -83,7 +84,7 @@ export function ImportFlow() {
           {source === "file" && (
             <>
               <p className="text-sm text-muted">The whole workbook is read — every tab. In Google Sheets: File → Download → Microsoft Excel (.xlsx).</p>
-              <input ref={fileRef} type="file" accept=".xlsx,.xls,.ods,.csv" className="block h-11 w-full rounded-lg border border-border-strong bg-surface text-sm file:mr-3 file:h-full file:border-0 file:border-r file:border-border file:bg-surface-2 file:px-4 file:text-sm file:text-ink" />
+              <FileDrop ref={fileRef} accept=".xlsx,.xls,.ods,.csv" hint="Excel, Google Sheets download, or CSV" />
             </>
           )}
           {source === "paste" && (

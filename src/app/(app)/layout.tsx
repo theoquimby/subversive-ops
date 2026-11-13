@@ -1,4 +1,5 @@
 import { CommandPalette, type Command } from "@/components/command-palette";
+import { ConfirmProvider } from "@/components/dialog";
 import { Nav } from "@/components/nav";
 import { logout, requireUser } from "@/server/auth";
 import { db } from "@/server/db";
@@ -49,6 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
   const commands = session.role === "MANAGER" ? await managerCommands() : STAFF_COMMANDS;
   return (
+    <ConfirmProvider>
     <div className="min-h-dvh">
       <Nav role={session.role} name={session.name} logout={signOut} />
       <CommandPalette commands={commands} />
@@ -56,5 +58,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 lg:py-12">{children}</div>
       </main>
     </div>
+    </ConfirmProvider>
   );
 }

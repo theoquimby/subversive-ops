@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Field, Input, Select } from "@/components/ui";
+import { Button, Combobox, Field, Input, Select } from "@/components/ui";
 import { useActionState } from "react";
 import { saveIngredient } from "../actions";
 
@@ -22,11 +22,9 @@ export function IngredientForm({ v, units, categories, areas }: { v: IngredientF
     <form action={action} className="space-y-4">
       <Field label="Name"><Input name="name" defaultValue={v.name} required /></Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Category"><Input name="category" defaultValue={v.category} list="categories" /></Field>
-        <Field label="Storage area"><Input name="storageArea" defaultValue={v.storageArea} list="areas" /></Field>
+        <Field label="Category"><Combobox name="category" defaultValue={v.category} suggestions={categories} /></Field>
+        <Field label="Storage area"><Combobox name="storageArea" defaultValue={v.storageArea} suggestions={areas} /></Field>
       </div>
-      <datalist id="categories">{categories.map((c) => <option key={c} value={c} />)}</datalist>
-      <datalist id="areas">{areas.map((c) => <option key={c} value={c} />)}</datalist>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Measured by" hint="Every quantity is stored in this unit">
           <Select name="baseUnit" defaultValue={v.baseUnit}>

@@ -37,11 +37,14 @@ export interface ItemForecast {
 
 export async function forecastItems(dates: ISODate[]) {
   const today = businessToday();
-  const [{ byRecipe, openDays }, adjustments, recipes] = await Promise.all([
+  const { demandDrivers } = await import("./forecasting");
+  const [{ byRecipe, openDays }, drivers, recipes] = await Promise.all([
     salesByRecipe(addDays(today, -HISTORY_DAYS), today),
-    getAdjustments(),
+    demandDrivers(dates),
     db.recipe.findMany({ where: { active: true, kind: { in: ["MENU", "MODIFIER"] } }, select: { id: true, name: true } }),
   ]);
+  // Events, weather and manual tweaks move item demand the same way they move sales.
+  const adjustments = new Map([...drivers].map(([d, x]) => [d, x.total]));
   const items: ItemForecast[] = recipes
     .map((r) => {
       const days = forecastSeries({ history: byRecipe.get(r.id) ?? new Map(), openDays, asOf: today, dates, adjustments });
@@ -49,7 +52,7 @@ export async function forecastItems(dates: ISODate[]) {
     })
     .filter((i) => i.total > 0)
     .sort((a, b) => b.total - a.total);
-  return { items, adjustments, hasHistory: openDays.size > 0, historyDays: openDays.size };
+  return { items, adjustments: await getAdjustments(), drivers, hasHistory: openDays.size > 0, historyDays: openDays.size };
 }
 
 // ---- Order plan ---------------------------------------------------------------

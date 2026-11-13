@@ -3,7 +3,7 @@ import { addDays, businessDate, dateRange, ISODate, parseISODate, toISODate, tod
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { env, squareConfigured } from "../env";
-import { listSellables, listSoldUnits } from "../integrations/square";
+import { listOrders, listSellables } from "../integrations/square";
 
 export const businessToday = () => todayIn(env.BUSINESS_TIMEZONE);
 
@@ -26,7 +26,19 @@ export async function syncCatalog() {
  */
 export async function syncSales(from: ISODate, toExclusive: ISODate) {
   const tz = env.BUSINESS_TIMEZONE;
-  const units = await listSoldUnits(zonedMidnightUTC(from, tz).toISOString(), zonedMidnightUTC(toExclusive, tz).toISOString());
+  const { units, orders } = await listOrders(zonedMidnightUTC(from, tz).toISOString(), zonedMidnightUTC(toExclusive, tz).toISOString());
+
+  const hourly = new Map<string, { date: ISODate; hour: number; netSales: number; orders: number; tips: number }>();
+  for (const o of orders) {
+    const date = businessDate(o.closedAt, tz);
+    const hour = localHour(new Date(o.closedAt), tz);
+    const k = `${date}|${hour}`;
+    const cur = hourly.get(k) ?? { date, hour, netSales: 0, orders: 0, tips: 0 };
+    cur.netSales += o.netSales;
+    cur.orders += 1;
+    cur.tips += o.tips;
+    hourly.set(k, cur);
+  }
 
   const agg = new Map<string, { date: ISODate; squareId: string; name: string; qty: number; netSales: number }>();
   for (const u of units) {
@@ -49,10 +61,27 @@ export async function syncSales(from: ISODate, toExclusive: ISODate) {
         netSales: new Prisma.Decimal(r.netSales.toFixed(2)),
       })),
     }),
+    db.hourlySale.deleteMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(toExclusive) } } }),
+    db.hourlySale.createMany({
+      data: [...hourly.values()].map((h) => ({ date: parseISODate(h.date), hour: h.hour, netSales: new Prisma.Decimal(h.netSales.toFixed(2)), orders: h.orders })),
+    }),
+    ...tipRows(hourly),
     db.setting.upsert({ where: { key: "square.lastSync" }, create: { key: "square.lastSync", value: new Date().toISOString() }, update: { value: new Date().toISOString() } }),
   ]);
   return { orderLines: units.length, days: dateRange(from, toExclusive).length };
 }
+
+/** Card tips per business day, kept for tip pooling. */
+function tipRows(hourly: Map<string, { date: ISODate; tips: number }>) {
+  const byDay = new Map<ISODate, number>();
+  for (const h of hourly.values()) byDay.set(h.date, (byDay.get(h.date) ?? 0) + h.tips);
+  return [...byDay].map(([date, tips]) =>
+    db.setting.upsert({ where: { key: `tips.${date}` }, create: { key: `tips.${date}`, value: tips.toFixed(2) }, update: { value: tips.toFixed(2) } }),
+  );
+}
+
+export const localHour = (d: Date, timeZone: string) =>
+  Number(new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", hourCycle: "h23" }).format(d));
 
 /** Daily job: catalog + the last 3 days (late-closed tabs, refunds). */
 export async function dailySync() {

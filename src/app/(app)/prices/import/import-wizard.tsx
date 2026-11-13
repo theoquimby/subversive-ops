@@ -1,6 +1,7 @@
 "use client";
 
-import { Badge, Button, Card, cx, Field, Input, LinkButton, Select, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, Button, Card, cx, DatePicker, Field, LinkButton, Select, Table, Td, Th, Tr } from "@/components/ui";
+import { FileDrop, type FileDropHandle } from "@/components/file-drop";
 import type { ColumnMapping } from "@/domain/priceSheet";
 import { money, signedPct } from "@/lib/format";
 import type { ImportPreview } from "@/server/services/priceImport";
@@ -16,7 +17,7 @@ const FIELDS: { key: keyof ColumnMapping; label: string; required: boolean }[] =
 ];
 
 export function ImportWizard({ suppliers, today }: { suppliers: { id: string; name: string; kind: string }[]; today: string }) {
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<FileDropHandle>(null);
   const [supplierId, setSupplierId] = useState(suppliers.find((s) => s.kind === "DISTRIBUTOR")?.id ?? suppliers[0]?.id ?? "");
   const [effectiveDate, setEffectiveDate] = useState(today);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -28,7 +29,7 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
   const runPreview = (override?: Partial<ColumnMapping>) =>
     start(async () => {
       setError(null);
-      const file = fileRef.current?.files?.[0];
+      const file = fileRef.current?.file;
       if (!file) return setError("Choose a file first.");
       const fd = new FormData();
       fd.set("file", file);
@@ -43,7 +44,7 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
   const commit = () =>
     start(async () => {
       if (!preview) return;
-      const res = await commitPriceSheet({ supplierId, filename: fileRef.current?.files?.[0]?.name ?? "upload", effectiveDate, mapping: mapping as ColumnMapping, rows: preview.rows });
+      const res = await commitPriceSheet({ supplierId, filename: fileRef.current?.file?.name ?? "upload", effectiveDate, mapping: mapping as ColumnMapping, rows: preview.rows });
       setDone(res);
     });
 
@@ -66,17 +67,17 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
   return (
     <div className="space-y-6">
       <Card className="p-5">
-        <div className="grid gap-4 sm:grid-cols-[1fr_1fr_10rem_auto] sm:items-end">
+        <div className="grid gap-4 sm:grid-cols-[1fr_1.4fr_12rem_auto] sm:items-end">
           <Field label="Supplier">
             <Select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setPreview(null); }}>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
           </Field>
           <Field label="File (.xlsx or .csv)">
-            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={() => setPreview(null)} className="block h-9 w-full rounded-lg border border-border-strong bg-surface text-sm file:mr-3 file:h-full file:border-0 file:border-r file:border-border file:bg-surface-2 file:px-3 file:text-sm file:text-ink" />
+            <FileDrop ref={fileRef} accept=".csv,.xlsx,.xls" hint="Excel or CSV, as downloaded" onFile={() => setPreview(null)} />
           </Field>
           <Field label="Prices effective">
-            <Input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} />
+            <DatePicker value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} aria-label="Prices effective" />
           </Field>
           <Button variant="primary" onClick={() => runPreview()} disabled={pending}>{pending && !preview ? "Reading…" : "Preview"}</Button>
         </div>

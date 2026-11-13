@@ -16,6 +16,7 @@
 import clsx from "clsx";
 import { Check } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { Select } from "./select";
 
 type SaveResult = void | { error?: string } | undefined;
 
@@ -134,7 +135,7 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
           });
         }}
         className={clsx(
-          "h-10 w-full rounded-md border border-transparent bg-transparent text-sm text-ink transition-colors sm:h-8",
+          "h-10 w-full rounded-md border border-transparent bg-transparent text-base text-ink transition-colors sm:h-8 sm:text-sm",
           "hover:border-border focus:border-ink-2 focus:bg-surface focus:outline-none",
           type === "number" && "num",
           align === "right" ? "text-right" : "text-left",
@@ -150,15 +151,18 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
 }
 
 /** A select that saves the moment it changes. */
-export function GridSelect({ value, options, onSave, ariaLabel, className }: { value: string; options: { value: string; label: string }[]; onSave: (v: string) => Promise<SaveResult>; ariaLabel: string; className?: string }) {
+export function GridSelect({ value, options, onSave, ariaLabel, className }: { value: string; options: { value: string; label: string; group?: string }[]; onSave: (v: string) => Promise<SaveResult>; ariaLabel: string; className?: string }) {
   const [v, setV] = useState(value);
   const [pending, start] = useTransition();
   useEffect(() => setV(value), [value]);
   return (
-    <select
+    <Select
+      variant="cell"
       aria-label={ariaLabel}
       value={v}
+      options={options}
       disabled={pending}
+      className={clsx(pending && "opacity-60", className)}
       onChange={(e) => {
         const next = e.target.value;
         const prev = v;
@@ -168,9 +172,6 @@ export function GridSelect({ value, options, onSave, ariaLabel, className }: { v
           if (res && res.error) setV(prev);
         });
       }}
-      className={clsx("h-10 w-full rounded-md border border-transparent bg-transparent px-1.5 text-sm text-ink hover:border-border focus:border-ink-2 focus:outline-none sm:h-8", pending && "opacity-60", className)}
-    >
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
+    />
   );
 }

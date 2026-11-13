@@ -105,25 +105,22 @@ export function Button({ variant = "secondary", size = "md", className, ...rest 
   return <button className={clsx(buttonBase, buttonVariant[variant], buttonSize[size], className)} {...rest} />;
 }
 
+export { DatePicker } from "./date-picker";
+export { Combobox } from "./combobox";
+
 export function LinkButton({ variant = "secondary", size = "md", className, ...rest }: ComponentProps<typeof Link> & { variant?: Variant; size?: keyof typeof buttonSize }) {
   return <Link className={clsx(buttonBase, buttonVariant[variant], buttonSize[size], className)} {...rest} />;
 }
 
 // ---- Forms --------------------------------------------------------------------
 
-const control = "h-9 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-ink placeholder:text-muted/70 focus:border-ink-2 focus:outline-none";
+const control = "h-10 w-full rounded-lg border border-border-strong bg-surface px-3 text-base sm:h-9 sm:text-sm text-ink placeholder:text-muted/70 focus:border-ink-2 focus:outline-none";
 
 export function Input({ className, ...rest }: ComponentProps<"input">) {
   return <input className={clsx(control, className)} {...rest} />;
 }
 
-export function Select({ className, children, ...rest }: ComponentProps<"select">) {
-  return (
-    <select className={clsx(control, "appearance-none bg-[length:12px] bg-[right_0.7rem_center] bg-no-repeat pr-8", className)} style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%2385837c' stroke-width='1.5'/%3E%3C/svg%3E\")" }} {...rest}>
-      {children}
-    </select>
-  );
-}
+export { Select } from "./select";
 
 export function Textarea({ className, ...rest }: ComponentProps<"textarea">) {
   return <textarea className={clsx(control, "h-auto min-h-20 py-2", className)} {...rest} />;

@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Card, cx, Input } from "@/components/ui";
+import { Button, Card, cx, Input, Select } from "@/components/ui";
 import { BaseUnit, CustomConversion, toBase } from "@/domain/units";
 import { Check } from "lucide-react";
 import { useMemo, useRef, useState, useTransition } from "react";
+import { useConfirm } from "@/components/dialog";
 import { discardCount, finishCount, saveCountLine } from "../actions";
 
 interface Item { id: string; name: string; area: string; category: string; base: BaseUnit; units: string[]; conversions: CustomConversion[]; savedBase: number | null }
@@ -25,6 +26,7 @@ export function CountSheet({ countId, items }: { countId: string; items: Item[] 
   );
   const [status, setStatus] = useState<Record<string, "saving" | "saved" | "error">>(() => Object.fromEntries(items.filter((i) => i.savedBase != null).map((i) => [i.id, "saved"])));
   const [finishing, start] = useTransition();
+  const confirm = useConfirm();
   // Saves fire on blur; tapping "Finish" blurs the last field, so wait for in-flight saves first.
   const inFlight = useRef(new Set<Promise<unknown>>());
 
@@ -85,14 +87,13 @@ export function CountSheet({ countId, items }: { countId: string; items: Item[] 
                   className="num h-11 w-20 text-right text-base"
                   aria-label={`${item.name} quantity`}
                 />
-                <select
+                <Select
                   value={units[item.id]}
+                  options={item.units.map((u) => ({ value: u, label: u }))}
                   onChange={(e) => { setUnits((u) => ({ ...u, [item.id]: e.target.value })); if (values[item.id]) save(item, values[item.id], e.target.value); }}
-                  className="h-11 w-20 rounded-lg border border-border-strong bg-surface px-2 text-sm"
+                  className="!h-11 !w-24"
                   aria-label={`${item.name} unit`}
-                >
-                  {item.units.map((u) => <option key={u}>{u}</option>)}
-                </select>
+                />
               </div>
             ))}
           </Card>
@@ -102,7 +103,7 @@ export function CountSheet({ countId, items }: { countId: string; items: Item[] 
         <div className="mx-auto flex max-w-xl items-center justify-between gap-3 px-4 py-3">
           <span className="num text-sm text-muted">{done} of {items.length} counted</span>
           <div className="flex gap-2">
-            <Button variant="ghost" disabled={finishing} onClick={() => { if (confirm("Throw away this count?")) start(() => discardCount(countId)); }}>Discard</Button>
+            <Button variant="ghost" disabled={finishing} onClick={async () => { if (await confirm({ title: "Discard this count?", body: "Everything counted so far will be thrown away.", confirmLabel: "Discard", danger: true })) start(() => discardCount(countId)); }}>Discard</Button>
             <Button variant="primary" size="lg" disabled={finishing || done === 0} onClick={() => start(async () => { await Promise.all(inFlight.current); await finishCount(countId); })}>{finishing ? "Saving…" : "Finish count"}</Button>
           </div>
         </div>

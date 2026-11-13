@@ -97,8 +97,18 @@ interface OrderLine {
 interface Order {
   id: string;
   closed_at?: string;
+  total_money?: Money;
+  total_tax_money?: Money;
+  total_tip_money?: Money;
+  total_service_charge_money?: Money;
   line_items?: OrderLine[];
   returns?: { return_line_items?: OrderLine[] }[];
+}
+
+export interface OrderTotal {
+  closedAt: string;
+  netSales: number; // dollars, after discounts, before tax & tips
+  tips: number;
 }
 
 export interface SoldUnit {
@@ -109,9 +119,14 @@ export interface SoldUnit {
   netSales: number; // dollars
 }
 
-/** All units sold (items and modifiers) in completed orders closed in [start, end). */
+/** All units sold (items and modifiers) in completed orders closed in [start, end), plus per-order totals. */
 export async function listSoldUnits(startISO: string, endISO: string): Promise<SoldUnit[]> {
+  return (await listOrders(startISO, endISO)).units;
+}
+
+export async function listOrders(startISO: string, endISO: string): Promise<{ units: SoldUnit[]; orders: OrderTotal[] }> {
   const out: SoldUnit[] = [];
+  const totals: OrderTotal[] = [];
   let cursor: string | undefined;
   do {
     const page = await call<{ orders?: Order[]; cursor?: string }>("/orders/search", {
@@ -131,6 +146,12 @@ export async function listSoldUnits(startISO: string, endISO: string): Promise<S
     });
     for (const order of page.orders ?? []) {
       if (!order.closed_at) continue;
+      const cents = (m?: Money) => m?.amount ?? 0;
+      totals.push({
+        closedAt: order.closed_at,
+        netSales: (cents(order.total_money) - cents(order.total_tax_money) - cents(order.total_tip_money) - cents(order.total_service_charge_money)) / 100,
+        tips: cents(order.total_tip_money) / 100,
+      });
       const push = (lines: OrderLine[] | undefined, sign: 1 | -1) => {
         for (const li of lines ?? []) {
           const qty = Number(li.quantity) || 0;
@@ -160,5 +181,5 @@ export async function listSoldUnits(startISO: string, endISO: string): Promise<S
     }
     cursor = page.cursor;
   } while (cursor);
-  return out;
+  return { units: out, orders: totals };
 }
