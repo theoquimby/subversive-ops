@@ -22,6 +22,8 @@ const blanks = (n: number) => Array.from({ length: n }, blank);
 const isBlank = (r: Row) => !r.sku && !r.description && !r.qty && !r.unitPrice;
 const toNum = (s: string) => (s.trim() === "" ? NaN : Number(s.replace(/[$,]/g, "")));
 
+const NEW_SUPPLIER = "__new";
+
 export function NewInvoice({ suppliers: initialSuppliers, orders, today, canRead, initialSupplierId, initialOrderId }: { suppliers: { id: string; name: string }[]; orders: Order[]; today: string; canRead: boolean; initialSupplierId: string | null; initialOrderId: string | null }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -193,16 +195,26 @@ export function NewInvoice({ suppliers: initialSuppliers, orders, today, canRead
                   {suppliers.length > 0 && <Button type="button" variant="ghost" onClick={() => { setAdding(false); setNewName(""); }}>Cancel</Button>}
                 </form>
               ) : (
-                <Select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setOrderTouched(false); }} options={suppliers.map((s) => ({ value: s.id, label: s.name }))} placeholder="Choose supplier…" aria-label="Supplier" />
+                <Select
+                  value={supplierId}
+                  onChange={(e) => {
+                    if (e.target.value === NEW_SUPPLIER) { setAdding(true); return; }
+                    setSupplierId(e.target.value);
+                    setOrderTouched(false);
+                  }}
+                  options={[...suppliers.map((s) => ({ value: s.id, label: s.name })), { value: NEW_SUPPLIER, label: "+ Add a new supplier…", hint: "a distributor, or a store like Price Chopper" }]}
+                  placeholder="Choose supplier…"
+                  aria-label="Supplier"
+                />
               )}
               {readSupplier && !supplierId ? (
                 <Button type="button" size="sm" variant="secondary" className="mt-2" disabled={addingPending} onClick={() => addSupplier(readSupplier)}>
                   <Plus className="size-3.5" /> Add “{readSupplier}” as a supplier
                 </Button>
               ) : !adding && suppliers.length > 0 ? (
-                <button type="button" onClick={() => setAdding(true)} className="mt-1.5 inline-flex items-center gap-1 text-xs text-muted hover:text-ink">
-                  <Plus className="size-3" /> New supplier
-                </button>
+                <Button type="button" size="sm" variant="ghost" className="mt-1.5 px-1.5" onClick={() => setAdding(true)}>
+                  <Plus className="size-3.5" /> Add a new supplier
+                </Button>
               ) : !suppliers.length ? (
                 <p className="mt-1.5 text-xs text-muted">No suppliers yet — type the first one (a distributor or a store like Price Chopper).</p>
               ) : null}
