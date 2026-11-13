@@ -242,6 +242,7 @@ function Stepper({ steps, parts, startAt }: { steps: Step[]; parts?: { id: strin
     const n = steps.findIndex((s) => !s.done && !s.optional);
     return n < 0 ? 0 : n;
   });
+  const [showAll, setShowAll] = useState(false);
   // A link to a step (…#square-instant) opens on it.
   useEffect(() => {
     const n = steps.findIndex((s) => s.id === window.location.hash.slice(1));
@@ -253,96 +254,86 @@ function Stepper({ steps, parts, startAt }: { steps: Step[]; parts?: { id: strin
   const reduced = useReducedMotion();
   const go = (n: number) => {
     setI(n);
+    setShowAll(false);
     const r = top.current?.getBoundingClientRect();
     if (r && r.top < 64) top.current?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
   };
-  const groups = parts ?? [{ id: "", title: "", note: "" }];
+
+  // Progress counts only the steps of the part you're in, so it reads "Step 2 of 5", not "2 of 8".
   const part = parts?.find((p) => p.id === step.part);
+  const inPart = steps.map((s, n) => ({ s, n })).filter(({ s }) => !parts || s.part === step.part);
+  const pos = inPart.findIndex(({ n }) => n === i);
+  const next = steps[i + 1];
+  const nextPart = next && parts && next.part !== step.part ? parts.find((p) => p.id === next.part) : null;
+  const requiredDone = steps.filter((s) => !s.optional).every((s) => s.done);
 
   return (
     <div ref={top} className="scroll-mt-20">
-      {/* Step list: grouped by part, each a numbered chip. */}
-      <nav aria-label="Steps" className="border-b border-border bg-surface-2/50 px-5 py-4">
-        <div className={cx("grid gap-4", parts && parts.length > 1 && "lg:grid-cols-[auto_auto_auto] lg:justify-start lg:gap-8")}>
-          {groups.map((g) => {
-            const items = steps.map((s, n) => ({ s, n })).filter(({ s }) => !parts || s.part === g.id);
-            if (!items.length) return null;
-            return (
-              <div key={g.id} className="min-w-0">
-                {g.title && (
-                  <div className="mb-2 flex flex-wrap items-baseline gap-x-2 text-xs">
-                    <span className="font-semibold text-ink">{g.title}</span>
-                    <span className="text-muted">{g.note}</span>
-                  </div>
-                )}
-                <ol className="-mx-5 flex gap-1.5 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-                  {items.map(({ s, n }) => (
-                    <li key={s.id} className="shrink-0">
-                      <button
-                        ref={n === i ? centerInRow : undefined}
-                        type="button"
-                        onClick={() => go(n)}
-                        aria-current={n === i ? "step" : undefined}
-                        title={s.title}
-                        className={cx(
-                          "inline-flex h-10 items-center gap-1.5 rounded-full border pr-3 pl-1.5 text-sm transition-colors sm:h-8",
-                          n === i ? "border-ink bg-ink text-surface" : "border-border-strong bg-surface text-ink-2 hover:bg-surface-2 hover:text-ink",
-                        )}
-                      >
-                        <span className={cx("grid size-6 place-items-center rounded-full text-xs font-semibold sm:size-5", n === i ? "bg-surface/15" : s.done ? "bg-good-bg text-good" : "bg-surface-2")}>
-                          {s.done ? <Check className="size-3.5" strokeWidth={3} /> : n + 1}
-                        </span>
-                        <span className="max-w-[11rem] truncate">{s.title}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            );
-          })}
+      {/* One quiet line of progress: where you are, how far along. */}
+      <div className="px-5 pt-5">
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span className="min-w-0 truncate font-medium text-ink-2">
+            {part ? <>{part.title}{part.optional && <span className="font-normal text-muted"> · optional</span>}</> : "Steps"}
+          </span>
+          <button type="button" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll} className="shrink-0 text-muted underline-offset-2 hover:text-ink hover:underline">
+            Step {pos + 1} of {inPart.length}
+          </button>
         </div>
-      </nav>
+        <div className="mt-2 flex gap-1" aria-hidden>
+          {inPart.map(({ s, n }) => (
+            <span key={s.id} className={cx("h-1 flex-1 rounded-full transition-colors duration-180", n === i ? "bg-ink" : s.done || n < i ? "bg-ink/35" : "bg-border")} />
+          ))}
+        </div>
+        {showAll && (
+          <ol className="mt-3 animate-fade-in space-y-0.5 rounded-xl border border-border bg-surface p-1.5 text-sm">
+            {steps.map((s, n) => {
+              const p = parts?.find((x) => x.id === s.part);
+              const first = n === 0 || steps[n - 1].part !== s.part;
+              return (
+                <li key={s.id}>
+                  {p && first && <div className="px-2.5 pt-2 pb-1 text-[11px] font-medium text-muted">{p.title}{p.optional && " · optional"}</div>}
+                  <button type="button" onClick={() => go(n)} aria-current={n === i ? "step" : undefined} className={cx("flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left", n === i ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:bg-surface-2/70")}>
+                    <span className={cx("grid size-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold", s.done ? "bg-good-bg text-good" : "bg-surface-2 text-muted")}>{s.done ? <Check className="size-3" strokeWidth={3} /> : n + 1}</span>
+                    {s.title}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
 
-      <div key={step.id} id={step.id} className="grid animate-fade-in gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-8">
-        <div className="min-w-0">
-          {part && (
-            <div className="mb-1 text-xs font-medium text-muted">
-              {part.title}
-              {part.optional && " · optional"}
-            </div>
-          )}
-          <h3 className="flex items-center gap-2 text-[1.05rem] font-semibold">
-            <span className="text-muted">Step {i + 1}.</span> {step.title}
+      <div key={step.id} id={step.id} className="grid animate-fade-in gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start lg:gap-8">
+        {step.art && <div className="min-w-0 rounded-xl bg-surface-2/60 p-3 sm:p-4 lg:order-2">{step.art}</div>}
+        <div className="min-w-0 lg:order-1 lg:pt-1">
+          <h3 className="flex flex-wrap items-center gap-2 text-lg font-semibold tracking-tight">
+            {step.title}
             {step.done && <Badge tone="good">Done</Badge>}
           </h3>
-          <div className="mt-3 space-y-4 text-sm leading-relaxed text-ink-2">{step.body}</div>
+          <div className="mt-2.5 space-y-4 text-[0.95rem] leading-relaxed text-ink-2">{step.body}</div>
         </div>
-        {step.art && <div className="min-w-0 self-start rounded-xl bg-surface-2/60 p-3 sm:p-4">{step.art}</div>}
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-4">
         <Button variant="ghost" disabled={i === 0} onClick={() => go(i - 1)}>
           <ArrowLeft className="size-4" /> Back
         </Button>
-        {i < steps.length - 1 ? (
-          <Button variant={step.done || !step.optional ? "primary" : "secondary"} onClick={() => go(i + 1)} className="min-w-0">
-            <span className="truncate">Next: {steps[i + 1].title}</span> <ArrowRight className="size-4 shrink-0" />
-          </Button>
+        {next && !(nextPart?.optional && !requiredDone) ? (
+          nextPart?.optional ? (
+            <Button variant="secondary" onClick={() => go(i + 1)}>
+              Optional: {nextPart.title} <ArrowRight className="size-4" />
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={() => go(i + 1)}>
+              {nextPart ? `Next: ${nextPart.title}` : "Next"} <ArrowRight className="size-4" />
+            </Button>
+          )
         ) : (
-          <span className="text-sm text-muted">{steps.every((s) => s.done || s.optional) ? "All done." : "That's the last step."}</span>
+          <span className="text-sm text-muted">{requiredDone ? "All set." : "Finish this step to carry on."}</span>
         )}
       </div>
     </div>
   );
-}
-
-/** Keep the current step's chip visible in the sideways-scrolling row on phones (never scrolls the page). */
-function centerInRow(el: HTMLButtonElement | null) {
-  const row = el?.closest("ol");
-  if (!el || !row || row.scrollWidth <= row.clientWidth) return;
-  const r = el.getBoundingClientRect();
-  const o = row.getBoundingClientRect();
-  row.scrollLeft += r.left - o.left - (o.width - r.width) / 2;
 }
 
 // ---- Building blocks -------------------------------------------------------------------
@@ -557,7 +548,17 @@ function TestButton({ run, last, label = "Test connection", disabled, disabledNo
   );
 }
 
-const Ol = ({ children }: { children: ReactNode }) => <ol className="list-decimal space-y-1.5 pl-5 marker:text-muted">{children}</ol>;
+/** Extra detail, hidden until asked for — keeps each step to one instruction. */
+function More({ children }: { children: ReactNode }) {
+  return (
+    <details className="group text-sm text-muted">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 select-none hover:text-ink [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="size-3.5 transition-transform duration-180 group-open:rotate-90" /> More detail
+      </summary>
+      <div className="mt-1.5 pl-[1.125rem] leading-relaxed">{children}</div>
+    </details>
+  );
+}
 
 // ---- Square ---------------------------------------------------------------------------
 
@@ -578,12 +579,9 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
       art: <Art.SquareSignIn />,
       body: (
         <>
-          <p>Square calls apps like this one &ldquo;applications&rdquo;. Registering one is free and takes a few minutes — anyone with a Square login can do it, not just Max.</p>
-          <Ol>
-            <li>Open Square&apos;s developer site and press <b>Sign in</b> (1). Use your normal Square login.</li>
-            <li>Press the big <b>+</b> tile (2), &ldquo;Create your first application&rdquo;. If you already have one, press <b>+</b> next to Applications.</li>
-          </Ol>
-          <Outbound href="https://developer.squareup.com/apps">Open developer.squareup.com</Outbound>
+          <p>Open Square&apos;s site for apps and sign in with any Square login. Then press the big <b>+</b>.</p>
+          <Outbound href="https://developer.squareup.com/apps">Open Square&apos;s site</Outbound>
+          <More>This is free and only done once. It doesn&apos;t have to be Max — anyone with a Square login can do it. If you already have an app there, press the <b>+</b> next to Applications instead.</More>
         </>
       ),
     },
@@ -595,8 +593,9 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
       art: <Art.SquareName />,
       body: (
         <>
-          <p>Type a name (1) — this is what Max sees when he approves it later — then press <b>Save</b> (2). If Square asks what you&apos;re building, any answer is fine.</p>
-          <CopyChip label="Name to type" value="Subversive Ops" />
+          <p>Name it <b>Subversive Ops</b> and press <b>Save</b>.</p>
+          <CopyChip label="Name" value="Subversive Ops" />
+          <More>Max sees this name when he connects later. If Square asks what you&apos;re building, any answer is fine.</More>
         </>
       ),
     },
@@ -608,8 +607,8 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
       art: <Art.SquareProduction />,
       body: (
         <>
-          <p>At the top of your new app&apos;s page there&apos;s a switch between <b>Sandbox</b> (Square&apos;s practice mode with fake data) and <b>Production</b> (your real restaurant). Pick <b>Production</b> (1).</p>
-          <Note>Everything in the next two steps must be done with Production selected — the codes are different in Sandbox.</Note>
+          <p>At the top of the page, switch to <b>Production</b>.</p>
+          <More><b>Sandbox</b> is Square&apos;s practice mode with fake data. Keep <b>Production</b> on for the next two steps — the codes are different in Sandbox.</More>
         </>
       ),
     },
@@ -621,13 +620,9 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
       art: <Art.SquareRedirect />,
       body: (
         <>
-          <p>This tells Square where to send Max back after he presses Allow.</p>
-          <Ol>
-            <li>In the left menu, press <b>OAuth</b> (1).</li>
-            <li>Copy the address below and paste it into <b>Redirect URL</b> (2).</li>
-            <li>Press <b>Save</b> (3).</li>
-          </Ol>
-          <CopyChip label="Return address (Redirect URL)" value={d.redirectUrl} />
+          <p>Press <b>OAuth</b> on the left. Paste this address into <b>Redirect URL</b>, then press <b>Save</b>.</p>
+          <CopyChip label="Address to paste" value={d.redirectUrl} />
+          <More>This tells Square where to send Max back after he connects.</More>
           {localWarn}
         </>
       ),
@@ -640,10 +635,10 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
       art: <Art.SquareCredentials />,
       body: (
         <>
-          <p>In the left menu press <b>Credentials</b> (1), with <b>Production</b> still selected. Copy each code and paste it below — each one checks itself and saves.</p>
+          <p>Press <b>Credentials</b> on the left. Copy the two codes and paste them here. They save by themselves.</p>
           <SecretField name="SQUARE_APPLICATION_ID" status={s.SQUARE_APPLICATION_ID} label="Application ID" placeholder="sq0idp-…" hint="At the top of the Credentials page (2). Starts with sq0idp-." sensitive={false} />
           <SecretField name="SQUARE_APPLICATION_SECRET" status={s.SQUARE_APPLICATION_SECRET} label="Application secret" placeholder="sq0csp-…" hint="Press Show next to it first (3). Starts with sq0csp-. Treat it like a password." />
-          {part1 && <Note tone="good">Part 1 is done — it never needs doing again. Next, Max connects his Square.</Note>}
+          {part1 && <Note tone="good">Done — this never needs doing again. Next, Max connects.</Note>}
         </>
       ),
     },
@@ -667,20 +662,15 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
         </>
       ) : (
         <>
-          <p>This part is for whoever owns the restaurant&apos;s Square account. It takes a minute:</p>
-          <Ol>
-            <li>Press <b>Connect with Square</b> below.</li>
-            <li>Sign in with the restaurant&apos;s Square login (1).</li>
-            <li>Press <b>Allow</b> (2). The app can only <i>read</i> — it never changes anything in Square.</li>
-          </Ol>
+          <p>Max presses the button, signs in to Square, and presses <b>Allow</b>. That&apos;s it.</p>
           {part1 || d.square.oauthReady ? (
             <a href="/api/square/oauth/start?back=/settings/connections" className="inline-flex h-11 items-center justify-center gap-1.5 rounded-lg bg-primary px-5 text-[0.95rem] font-medium text-primary-ink transition-opacity hover:opacity-90">
               Connect with Square <ArrowRight className="size-4" />
             </a>
           ) : (
-            <Note tone="warn">Finish Part 1 first — the Connect button appears once both codes are saved.</Note>
+            <Note tone="warn">The button appears once the two codes from the step before are saved.</Note>
           )}
-          <p className="text-xs text-muted">Already have an access code from Square? You can paste it on the <Link href="/settings/square" className="text-ink underline underline-offset-2">Square page</Link> instead.</p>
+          <More>The app can only <i>read</i> from Square — it never changes anything there. Already have an access code from Square? You can paste it on the <Link href="/settings/square" className="text-ink underline underline-offset-2">Square page</Link> instead.</More>
         </>
       ),
     },
@@ -693,13 +683,8 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
       art: <Art.SquareWebhook />,
       body: (
         <>
-          <p>Without this, today&apos;s numbers refresh every 15 minutes while someone has the app open, and everything catches up overnight. With it, Square tells the app about each sale and clock-in within seconds.</p>
-          <Ol>
-            <li>Back on Square&apos;s developer site, with <b>Production</b> selected, press <b>Webhooks</b> → <b>Subscriptions</b> (1) → <b>Add subscription</b>.</li>
-            <li>Paste the address below into <b>Notification URL</b> (2), and pick the API version shown.</li>
-            <li>Tick the events listed below (3) — you can search for each one.</li>
-            <li>Press <b>Save</b> (4).</li>
-          </Ol>
+          <p>On Square&apos;s site press <b>Webhooks</b> → <b>Add subscription</b>. Paste the three things below, tick the events, and press <b>Save</b>.</p>
+          <More>This is optional. Without it, numbers refresh every 15 minutes while the app is open and catch up overnight. With it, each sale and clock-in shows up within seconds. You can search for each event by name.</More>
           <CopyChip label="Notification URL" value={d.webhookUrl} />
           <div className="grid gap-3 sm:grid-cols-[11rem_1fr]">
             <CopyChip label="API version" value={d.squareVersion} />
@@ -719,7 +704,7 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
       art: <Art.SquareSignatureKey />,
       body: (
         <>
-          <p>Open the subscription you just saved and press <b>Show</b> next to <b>Signature key</b> (1). Paste it here — the app uses it to check each update really came from Square.</p>
+          <p>Open the subscription you just saved, press <b>Show</b> next to <b>Signature key</b>, and paste it here.</p>
           <SecretField name="SQUARE_WEBHOOK_SIGNATURE_KEY" status={s.SQUARE_WEBHOOK_SIGNATURE_KEY} label="Signature key" placeholder="Paste the signature key" hint="About 22 letters and numbers." />
           {s.SQUARE_WEBHOOK_SIGNATURE_KEY.set && (
             <Note tone={d.square.webhookSeen ? "good" : "neutral"}>
@@ -734,9 +719,9 @@ function SquareGuide({ d }: { d: ConnectionsData }) {
     <Stepper
       steps={steps}
       parts={[
-        { id: "p1", title: "Part 1 — Register the app", note: "one time · anyone with a Square login · ~5 min" },
-        { id: "p2", title: "Part 2 — Connect", note: "Max · 1 minute" },
-        { id: "p3", title: "Instant updates", note: "optional · ~3 min", optional: true },
+        { id: "p1", title: "Register the app · one time", note: "" },
+        { id: "p2", title: "Max connects", note: "" },
+        { id: "p3", title: "Instant updates", note: "", optional: true },
       ]}
     />
   );
@@ -756,8 +741,8 @@ function EmailGuide({ d }: { d: ConnectionsData }) {
       art: <Art.ResendSignup />,
       body: (
         <>
-          <p>The app sends email through <b>Resend</b>, a sending service. It&apos;s free for up to 3,000 emails a month — far more than a restaurant needs.</p>
-          <p>Sign up with your email and a password (1), then confirm the email Resend sends you.</p>
+          <p>Sign up for a free <b>Resend</b> account, then confirm the email they send you.</p>
+          <More>Resend is the service that sends the app&apos;s emails. It&apos;s free for up to 3,000 emails a month — far more than a restaurant needs.</More>
           <Outbound href="https://resend.com/signup">Open resend.com</Outbound>
         </>
       ),
@@ -769,13 +754,11 @@ function EmailGuide({ d }: { d: ConnectionsData }) {
       art: <Art.ResendDomain />,
       body: (
         <>
-          <p>So suppliers see emails from <b>you</b> (and they don&apos;t land in spam), Resend checks you own your website&apos;s address — the part after the @ in your work email, like <i>yourrestaurant.com</i>.</p>
-          <Ol>
-            <li>Press <b>Domains</b> (1) → <b>Add domain</b> (2) and type your domain.</li>
-            <li>Resend shows three short records (3). Copy each one into wherever your domain is managed — GoDaddy, Squarespace, Wix, Google… (look for &ldquo;DNS&rdquo; settings). Whoever built your website can do this in two minutes.</li>
-            <li>Back in Resend, press <b>Verify</b>. It turns from Pending to <b>Verified</b> (4), usually within an hour.</li>
-          </Ol>
-          <Note>No website domain? Email stays off and everything still works — orders can be copied, downloaded or opened in your own mail app.</Note>
+          <p>Press <b>Domains</b> → <b>Add domain</b> and type your website address (like <i>yourrestaurant.com</i>).</p>
+          <More>
+            This is so emails come from <b>you</b> and don&apos;t land in spam. Resend then shows three short records: copy them into wherever your website address is managed (GoDaddy, Squarespace, Wix, Google — look for &ldquo;DNS&rdquo;). Whoever built your website can do it in two minutes. Back in Resend, press <b>Verify</b> — it usually turns <b>Verified</b> within an hour.
+          </More>
+          <More>No website address? Skip email — everything still works. Orders can be copied, downloaded or opened in your own mail app.</More>
         </>
       ),
     },
@@ -786,11 +769,7 @@ function EmailGuide({ d }: { d: ConnectionsData }) {
       art: <Art.ResendKey />,
       body: (
         <>
-          <Ol>
-            <li>Press <b>API Keys</b> (1) → <b>Create API key</b> (2).</li>
-            <li>Name it <i>Subversive Ops</i>, choose <b>Sending access</b>, press <b>Add</b>.</li>
-            <li>Press <b>Copy</b> (3) — the key is only shown once — and paste it below.</li>
-          </Ol>
+          <p>Press <b>API Keys</b> → <b>Create API key</b>. Name it <i>Subversive Ops</i>, press <b>Add</b>, then <b>Copy</b> and paste it here.</p>
           <SecretField name="RESEND_API_KEY" status={s.RESEND_API_KEY} label="Email service key" placeholder="re_…" hint="Starts with re_." />
         </>
       ),
@@ -801,7 +780,8 @@ function EmailGuide({ d }: { d: ConnectionsData }) {
       done: s.EMAIL_FROM.set,
       body: (
         <>
-          <p>The name and address suppliers and staff see. It must be at the domain you verified. It doesn&apos;t need to be a real inbox — replies go to each manager&apos;s own email.</p>
+          <p>Type the name and address people will see, like <i>Subversive &lt;orders@yourrestaurant.com&gt;</i>.</p>
+          <More>It must use the website address you verified. It doesn&apos;t need to be a real inbox — replies go to each manager&apos;s own email.</More>
           <SecretField name="EMAIL_FROM" status={s.EMAIL_FROM} label="Send emails from" placeholder={`${d.google.businessName} <orders@yourrestaurant.com>`} hint={<>For example <span className="font-mono text-[0.8rem]">{d.google.businessName} &lt;orders@yourrestaurant.com&gt;</span></>} sensitive={false} />
         </>
       ),
@@ -923,8 +903,8 @@ function AIGuide({ d }: { d: ConnectionsData }) {
       art: <Art.ClaudeSignup />,
       body: (
         <>
-          <p>AI features run on <b>Claude</b>, made by Anthropic. You pay only for what you use — typically a few dollars a month for a restaurant.</p>
-          <p>Open the Claude Console and sign up (1) with Google or your email. This is separate from a Claude chat subscription.</p>
+          <p>Open the Claude Console and sign up with Google or your email.</p>
+          <More>AI features run on Claude, made by Anthropic. You pay only for what you use — usually a few dollars a month. This is separate from a Claude chat subscription.</More>
           <Outbound href="https://console.anthropic.com">Open the Claude Console</Outbound>
         </>
       ),
@@ -936,11 +916,8 @@ function AIGuide({ d }: { d: ConnectionsData }) {
       art: <Art.ClaudeBilling />,
       body: (
         <>
-          <Ol>
-            <li>Open <b>Settings</b> → <b>Billing</b> (1).</li>
-            <li>Press <b>Buy credits</b> (2), add a card and choose an amount (3). <b>$5</b> is plenty to start.</li>
-          </Ol>
-          <Note>Tip: turn off auto-reload if you&apos;d rather top up by hand — features simply pause if credit runs out.</Note>
+          <p>Go to <b>Settings</b> → <b>Billing</b> → <b>Buy credits</b>. <b>$5</b> is plenty to start.</p>
+          <More>You can turn off auto-reload and top up by hand — AI features simply pause if credit runs out.</More>
         </>
       ),
     },
@@ -951,10 +928,7 @@ function AIGuide({ d }: { d: ConnectionsData }) {
       art: <Art.ClaudeKey />,
       body: (
         <>
-          <Ol>
-            <li>Open <b>API keys</b> (1) → <b>Create key</b> (2).</li>
-            <li>Name it <i>Subversive Ops</i>, press <b>Add</b>, then <b>Copy</b> (3) — it&apos;s only shown once.</li>
-          </Ol>
+          <p>Go to <b>API keys</b> → <b>Create key</b>. Name it <i>Subversive Ops</i>, then <b>Copy</b> and paste it here.</p>
           <SecretField name="ANTHROPIC_API_KEY" status={s.ANTHROPIC_API_KEY} label="Claude key" placeholder="sk-ant-…" hint="Starts with sk-ant-." />
         </>
       ),
@@ -995,11 +969,8 @@ function GoogleGuide({ d }: { d: ConnectionsData }) {
       art: <Art.GoogleProject />,
       body: (
         <>
-          <p>Google lets apps read reviews through <b>Google Cloud</b>. Sign in with any Google account.</p>
-          <Ol>
-            <li>Open the project picker at the top (1).</li>
-            <li>Press <b>New project</b> (2), name it <i>Subversive Ops</i>, press <b>Create</b> (3).</li>
-          </Ol>
+          <p>Open Google Cloud, sign in with any Google account, and create a project called <i>Subversive Ops</i>.</p>
+          <More>Google Cloud is how Google lets apps read your reviews. Use the project picker at the top → <b>New project</b> → <b>Create</b>.</More>
           <Outbound href="https://console.cloud.google.com/projectcreate">Open Google Cloud</Outbound>
         </>
       ),
@@ -1012,7 +983,7 @@ function GoogleGuide({ d }: { d: ConnectionsData }) {
       body: (
         <>
           <p>Search the top bar for <b>Places API (New)</b> (1), open it and press <b>Enable</b> (2).</p>
-          <Note>Google asks for a billing card the first time. Reading reviews once a day costs nothing in practice — it&apos;s well inside Google&apos;s free monthly allowance.</Note>
+          <More>Google asks for a card the first time. Reading reviews once a day stays inside Google&apos;s free allowance, so it costs nothing in practice.</More>
           <Outbound href="https://console.cloud.google.com/apis/library/places.googleapis.com">Open Places API (New)</Outbound>
         </>
       ),
@@ -1024,11 +995,7 @@ function GoogleGuide({ d }: { d: ConnectionsData }) {
       art: <Art.GoogleKey />,
       body: (
         <>
-          <Ol>
-            <li>In the left menu open <b>Credentials</b> (1).</li>
-            <li>Press <b>Create credentials</b> → <b>API key</b> (2).</li>
-            <li>Copy the key (3) and paste it below.</li>
-          </Ol>
+          <p>Go to <b>Credentials</b> → <b>Create credentials</b> → <b>API key</b>. Copy it and paste it here.</p>
           <SecretField name="GOOGLE_PLACES_API_KEY" status={s.GOOGLE_PLACES_API_KEY} label="Google key" placeholder="AIza…" hint="Starts with AIza, 39 characters." />
         </>
       ),
