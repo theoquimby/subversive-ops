@@ -1,7 +1,7 @@
 import { HelpZone } from "@/components/help";
 import { GridCell } from "@/components/grid";
 import { LineChart } from "@/components/line-chart";
-import { Badge, Card, cx, EmptyState, PageHeader, Section, Stat } from "@/components/ui";
+import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
 import { addDays } from "@/domain/dates";
 import { OpsDay, operationalHint, rollingRating, themeCounts, themeLabel } from "@/domain/reviews";
 import { money, pct, relativeTime, shortDate, signedPct } from "@/lib/format";
@@ -61,7 +61,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
         help="reviews.page"
         title="Reviews"
         description={`What guests are saying, lined up against what happened on the floor and in the kitchen that day.${settings.googleConfigured && settings.placeId ? ` Google checked ${relativeTime(lastSync)}, and every morning.` : ""}`}
-        actions={<HelpZone id="reviews.import" className="flex flex-wrap items-center gap-2"><ImportActions googleReady={settings.googleConfigured && Boolean(settings.placeId)} googleHint={!settings.googleConfigured ? "Google import needs a Google Maps API key set up on the server — ask whoever manages your hosting" : "Add your Google Place ID at the bottom of this page"} /></HelpZone>}
+        actions={<HelpZone id="reviews.import" className="flex flex-wrap items-center gap-2"><ImportActions googleReady={settings.googleConfigured && Boolean(settings.placeId)} googleHint={!settings.googleConfigured ? "Turn on Google reviews in Settings → Connections first" : "Pick your business in Settings → Connections → Google reviews first"} /></HelpZone>}
       />
 
       {reviews.length === 0 ? (
@@ -145,7 +145,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
 
           <Section
             title="Reviews"
-            description={settings.claude ? "Themes and reply drafts by Claude, in your voice. Edit before posting." : "Themes from keywords and simple reply drafts. Add the Claude API key for written-for-you replies."}
+            description={settings.claude ? "Themes and reply drafts written by AI, in your voice. Edit before posting." : "Themes from keywords and simple reply drafts. Turn on AI features in Settings → Connections for written-for-you replies."}
             actions={<HelpZone id="reviews.list" className="hidden sm:block"><FilterTabs show={show} openCount={open.length} className="flex" /></HelpZone>}
           >
             {/* On a phone the tabs get their own full-width row instead of squeezing beside the title. */}
@@ -165,17 +165,23 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
 
       <Section help="reviews.settings" title="Review settings">
         <Card className="divide-y divide-border">
-          <div className="grid gap-1 px-4 py-3 sm:grid-cols-[14rem_1fr] sm:items-center sm:gap-4">
-            <div>
-              <div className="text-sm font-medium">Google Place ID</div>
-              <div className="text-xs text-muted">{settings.googleConfigured ? "Find it with Google's Place ID finder" : "Google import also needs a Google Maps API key, added on the server by whoever manages your hosting"}</div>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Google reviews</div>
+              <div className="text-xs text-muted">
+                {settings.googleConfigured && settings.placeId
+                  ? `On${settings.placeName ? ` · ${settings.placeName}` : ""} · checked every morning`
+                  : settings.googleConfigured
+                    ? "Almost there — pick your business so new Google reviews come in by themselves."
+                    : "Off. A 5-minute guide with pictures turns it on."}
+              </div>
             </div>
-            <GridCell grid="review-settings" col="v" value={settings.placeId} onSave={saveSetting.bind(null, "placeId")} placeholder="ChIJ…" ariaLabel="Google Place ID" className="border-b border-border sm:border-0" />
+            <LinkButton href="/settings/connections?open=google" size="sm">{settings.googleConfigured && settings.placeId ? "Change" : "Set up"}</LinkButton>
           </div>
           <div className="grid gap-1 px-4 py-3 sm:grid-cols-[14rem_1fr] sm:items-center sm:gap-4">
             <div>
               <div className="text-sm font-medium">Tone notes for replies</div>
-              <div className="text-xs text-muted">Used when Claude drafts replies</div>
+              <div className="text-xs text-muted">Used when the AI drafts replies</div>
             </div>
             <GridCell grid="review-settings" col="v" value={settings.toneNotes} onSave={saveSetting.bind(null, "tone")} placeholder="e.g. Sign as Max. Mention the trivia night. Never offer comps in public." ariaLabel="Tone notes" className="border-b border-border sm:border-0" />
           </div>

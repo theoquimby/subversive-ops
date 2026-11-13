@@ -2,7 +2,7 @@ import { HelpTip, HelpZone } from "@/components/help";
 import { EmptyState, PageHeader, Section } from "@/components/ui";
 import { requireUser } from "@/server/auth";
 import { documentList, teamPeopleData } from "@/server/services/people";
-import { claudeConfigured } from "@/server/integrations/claude";
+import { claudeReady } from "@/server/integrations/claude";
 import { AckMatrix, DocumentGrid, UploadDocument } from "./documents-client";
 
 export const metadata = { title: "Documents" };
@@ -19,7 +19,7 @@ export default async function DocumentsPage() {
         back={{ href: "/team", label: "Team" }}
       />
       <HelpZone id="team.documents.upload">
-        <Section title={<span className="inline-flex items-center gap-1.5">Add a document <HelpTip id="team.documents" /></span>} description={claudeConfigured() ? "PDFs are read automatically, scans included." : "Text is read from most PDFs. For scans or Word files, paste the text after uploading."}>
+        <Section title={<span className="inline-flex items-center gap-1.5">Add a document <HelpTip id="team.documents" /></span>} description={(await claudeReady()) ? "PDFs are read automatically, scans included." : "Text is read from most PDFs. For scans or Word files, paste the text after uploading."}>
           <UploadDocument />
         </Section>
       </HelpZone>

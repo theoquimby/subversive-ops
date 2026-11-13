@@ -469,7 +469,7 @@ function SquareStep({ connected }: { connected: boolean }) {
           <Plug className="size-5 text-ink-2" strokeWidth={1.75} />
           <div>
             <div className="text-sm font-semibold">{connected ? "Square is connected" : "Not connected yet"}</div>
-            <div className="text-sm text-muted">{connected ? "Next: import past sales and match Square items to recipes." : "Sign in with the restaurant's Square account and approve read access."}</div>
+            <div className="text-sm text-muted">{connected ? "Next: bring in past sales and match Square items to recipes." : "Sign in with the restaurant's Square account and press Allow. The app can only read."}</div>
           </div>
         </div>
         <Badge tone={connected ? "good" : "warn"}>{connected ? "Live" : "Setup needed"}</Badge>
@@ -477,13 +477,16 @@ function SquareStep({ connected }: { connected: boolean }) {
       <Card className="p-5 text-sm leading-relaxed text-ink-2">
         {connected ? (
           <ol className="list-decimal space-y-1.5 pl-5">
-            <li>Under <Link href="/settings/square#import" className="text-ink underline-offset-2 hover:underline">Settings → Square</Link>, run the <b>first import</b> (6 months is a good start).</li>
+            <li>Under <Link href="/settings/square#import" className="text-ink underline-offset-2 hover:underline">Settings → Square</Link>, run the <b>first import</b> of past sales (6 months is a good start).</li>
             <li>On <Link href="/sales/square-menu" className="text-ink underline-offset-2 hover:underline">Menu from Square</Link>, accept the suggested matches and create recipes for the rest. Mark drinks, merch and gift cards as <b>Ignore</b>.</li>
           </ol>
         ) : (
           <>
-            <p>Connecting takes a minute: press the button, sign in to Square and approve. If one-click connect isn&apos;t set up yet, you can paste an access token from the Square Developer Dashboard on the same page.</p>
-            <LinkButton href="/settings/square" variant="primary" className="mt-4">Connect Square</LinkButton>
+            <p>There are two short parts, with pictures for every click: first the app is registered with Square (one time, about 5 minutes — anyone with a Square login can do it), then you sign in to Square and press Allow (1 minute).</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <LinkButton href="/settings/connections?open=square" variant="primary">Open the Square guide</LinkButton>
+              <LinkButton href="/settings/square" variant="ghost">Square page</LinkButton>
+            </div>
           </>
         )}
       </Card>

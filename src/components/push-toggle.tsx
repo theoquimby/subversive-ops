@@ -115,7 +115,7 @@ function DeviceToggle({ config, onChanged }: { config: PushConfig; onChanged?: (
   const on = state === "on";
 
   let note: string | null = null;
-  if (!config.pushReady) note = "Push notifications aren't set up yet. Email still works if it's set up.";
+  if (!config.pushReady) note = "Phone notifications aren't turned on for the app yet — a manager turns them on in Settings → Connections (one tap). Email still works if it's set up.";
   else if (state === "ios-install") note = "On iPhone, add this app to your Home Screen first (Share → Add to Home Screen), then open it from there and turn notifications on.";
   else if (state === "unsupported") note = "This browser can't show notifications.";
   else if (state === "blocked") note = "Notifications are blocked for this site. Allow them in your browser or phone settings, then come back.";

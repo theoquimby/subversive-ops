@@ -190,9 +190,9 @@ Each morning, any supplier whose cutoff falls in the next 36 hours gets a **draf
     area: "ordering",
     route: "/ordering",
     title: "Sending an order",
-    body: "Copy the order as text, download a CSV, or email it to the supplier. Then press Mark as sent so its quantities count as incoming.",
+    body: "Copy the order as text, download it as a spreadsheet file, or email it to the supplier. Then press Mark as sent so its quantities count as incoming.",
     article: `- **Copy as text** — paste into a text, email or the distributor's order notes.
-- **Download CSV** — for distributor sites that take an upload.
+- **Download spreadsheet** — a .csv file, for distributor sites that take an upload.
 - **Email** — opens your mail app with the order filled in (needs the supplier's email in Settings).
 - **Mark as sent** — the order now counts as on its way, so the next order won't double up.
 
@@ -560,17 +560,18 @@ export const sales: HelpEntry[] = [
   {
     id: "sales.connect",
     area: "sales",
-    route: "/settings/square",
+    route: "/settings/connections",
     title: "Connecting Square",
-    body: "Open Settings → Square and press Connect with Square: sign in with the restaurant's Square account and approve read access. Sales, the menu and timecards then flow in on their own.",
-    article: `1. Open [Settings → Square](/settings/square) and press **Connect with Square**.
-2. Sign in with the restaurant's Square account (the owner's login) and press **Allow**. The app only asks to *read*: business profile, items, orders, payments, team, timecards and inventory.
-3. Back in the app, check the **Locations** — every active location is picked. Keep your Square Online location picked if you sell online.
-4. Run the **First import** (6 months is a good start), then match Square items to recipes on [Menu from Square](/sales/square-menu).
+    body: "Settings → Connections → Square walks you through it with pictures: first the app is registered with Square (once, about 5 minutes), then you sign in to Square and press Allow. Sales, the menu and timecards then flow in by themselves.",
+    article: `1. Open [Settings → Connections → Square](/settings/connections?open=square). The guide has two parts.
+2. **Part 1 — Register the app** (one time, ~5 minutes, anyone with a Square login): create an app on Square's developer site and copy two codes back. Every click is shown in a picture.
+3. **Part 2 — Connect** (1 minute): press **Connect with Square**, sign in with the restaurant's Square login and press **Allow**. The app only asks to *read*: business profile, items, orders, payments, team, timecards and inventory.
+4. On the [Square page](/settings/square), check the **Locations** — every active location is picked. Keep your Square Online location picked if you sell online.
+5. Run the **First import** (6 months is a good start), then match Square items to recipes on [Menu from Square](/sales/square-menu).
 
-**No Connect button?** One-click connect needs the Square app's ID and secret in the hosting settings (whoever manages hosting sets \`SQUARE_APPLICATION_ID\` and \`SQUARE_APPLICATION_SECRET\`). Until then, press **Paste an access token instead**: in the Square Developer Dashboard open your app → **Credentials** → **Production** and copy the **Access token**. The app checks it with Square before saving and stores it encrypted.
+**Another way:** on the Square page, **Paste an access code instead** takes the long code (it starts with EAAA) from your Square app's **Credentials** page. It works like a password for your sales data — keep it out of emails and chats.
 
-The token is a password for your sales data — keep it out of emails and chats. **Disconnect** on the same page stops syncing and revokes the app's access.`,
+**Disconnect** on the Square page stops new data coming in and removes the app's access.`,
     related: ["settings.square", "sales.backfill", "sales.mapping", "sales.squareMenu"],
     keywords: ["square", "pos", "token", "api", "connect", "integration", "oauth", "sign in"],
   },
@@ -819,7 +820,7 @@ Re-importing the same sheet later only updates what changed — it doesn't make 
     area: "import",
     route: "/import",
     title: "File, paste or link",
-    body: "Upload an .xlsx or .csv (every tab is read), paste cells copied from a sheet (include the header row), or paste a Google Sheets link shared as \"Anyone with the link\".",
+    body: "Upload an Excel or .csv spreadsheet file (every tab is read), paste cells copied from a sheet (include the header row), or paste a Google Sheets link shared as \"Anyone with the link\".",
   },
   {
     id: "import.tabs",
@@ -859,16 +860,98 @@ Re-importing the same sheet later only updates what changed — it doesn't make 
 
 export const settings: HelpEntry[] = [
   {
+    id: "settings.connections",
+    area: "settings",
+    route: "/settings/connections",
+    title: "Connections",
+    body: "Link Square, email, phone notifications, AI features and Google reviews. Each card says what it turns on and opens a step-by-step guide with pictures. Keys you paste are stored locked (encrypted) and never shown again.",
+    article: `Every connection is optional — the app works without them, each one just turns more on.
+
+- **Square** — sales, the menu and timecards, brought in by themselves. About 6 minutes.
+- **Email** — orders to suppliers, schedules and the weekly brief by email. About 10 minutes plus a short wait.
+- **Phone notifications** — alerts on phones. One tap, then a minute per phone.
+- **AI features** — invoice reading, review replies and Ask. About 3 minutes.
+- **Google reviews** — new Google reviews every morning. About 5 minutes.
+
+Press **Set up** on a card. The guide shows exactly where to click on the other site (numbered circles), gives you copy buttons for anything you need to paste there, and a box to paste what you bring back. Each box checks the value as you paste it and says plainly if it looks wrong — for example a code pasted into the wrong box.
+
+**Test connection** on each card tries the service for real and tells you what happened. If the place the app is hosted blocks outside connections, the test says so — what you saved stays saved.
+
+**Is it safe?** Keys are encrypted before they're saved, only the last four characters are ever shown, and only managers can open this page. **Replace** swaps a key; **Remove** turns that feature off.
+
+Whoever hosts the app can still set the same keys as hosting settings instead; a key pasted here takes priority.`,
+    related: ["settings.connections.square", "settings.connections.email", "settings.connections.push", "settings.connections.ai", "settings.connections.google"],
+    keywords: ["api key", "keys", "integrations", "connect", "setup", "resend", "anthropic", "claude", "google", "vapid", "environment variables", "env"],
+  },
+  {
+    id: "settings.connections.square",
+    area: "settings",
+    route: "/settings/connections",
+    title: "Connecting Square",
+    body: "Two parts. Part 1 registers the app with Square — once, about 5 minutes, anyone with a Square login. Part 2 is Max signing in to Square and pressing Allow. Instant updates are optional.",
+    article: `**Part 1 — Register the app (one time, ~5 min).** On Square's developer site, create an application called Subversive Ops, switch to **Production**, paste the return address the guide gives you under **OAuth → Redirect URL** (Square's sign-in settings), then copy the **Application ID** and **Application secret** from **Credentials** into the guide.
+
+**Part 2 — Connect (Max, 1 minute).** Press **Connect with Square**, sign in with the restaurant's Square login and press **Allow**. The app can only read — it never changes anything in Square.
+
+**Instant updates (optional).** Add a subscription under **Webhooks → Subscriptions** (Square's name for instant updates) with the address, API version and event list the guide gives you (each has a copy button), then paste the **Signature key** back. New sales and clock-ins then arrive within seconds instead of every 15 minutes.
+
+After connecting, bring in your sales history on the [Square page](/settings/square).`,
+    related: ["sales.connect", "settings.square", "sales.backfill"],
+    keywords: ["square", "oauth", "redirect", "webhook", "application id", "secret", "signature key"],
+  },
+  {
+    id: "settings.connections.email",
+    area: "settings",
+    route: "/settings/connections",
+    title: "Setting up email",
+    body: "Email goes out through Resend, a free sending service. Sign up, prove you own your website's domain (copy three records into your domain provider), paste the key, choose the sending address, then send yourself a test.",
+    related: ["settings.notify.email"],
+    keywords: ["resend", "email", "domain", "dns", "from address"],
+  },
+  {
+    id: "settings.connections.push",
+    area: "settings",
+    route: "/settings/connections",
+    title: "Phone notifications",
+    body: "One tap turns them on for the app — no account needed. Then each person turns them on for their own phone. The guide shows the steps for iPhone (add to Home Screen first), Android or a computer.",
+    related: ["settings.notify.device", "app.phone"],
+    keywords: ["push", "notifications", "iphone", "android", "home screen", "vapid"],
+  },
+  {
+    id: "settings.connections.ai",
+    area: "settings",
+    route: "/settings/connections",
+    title: "AI features",
+    body: "Reads invoices from a photo, drafts review replies in your tone and answers questions in Ask. Needs a Claude key: create an account in the Claude Console, add a little credit and paste the key.",
+    keywords: ["claude", "anthropic", "ai", "api key", "invoice reading"],
+  },
+  {
+    id: "settings.connections.google",
+    area: "settings",
+    route: "/settings/connections",
+    title: "Google reviews",
+    body: "Brings in new Google reviews every morning. Create a free Google Cloud project, turn on Places API (New), paste the key, then use Find my business — no Place ID needed. The search doubles as the test.",
+    related: ["reviews.import"],
+    keywords: ["google", "places", "place id", "reviews", "maps"],
+  },
+  {
+    id: "settings.connections.more",
+    area: "settings",
+    route: "/settings/connections",
+    title: "Keeping keys safe",
+    body: "Keys are encrypted before they're saved and only their last four characters are ever shown. Only managers can open Connections. Treat keys like passwords: don't email or text them.",
+  },
+  {
     id: "settings.square",
     area: "settings",
     route: "/settings/square",
     title: "Square connection",
     body: "Who's connected, which locations are read, the first import, when each part last synced and anything that went wrong.",
-    article: `- **Connection** — the Square business and whether it's production or sandbox. **Test connection** checks the token still works. Sign-in connections renew their access by themselves.
+    article: `- **Connection** — the Square business, and whether it's the real account or a test one. **Test connection** checks Square still answers. Connections made with **Connect with Square** stay signed in by themselves.
 - **Locations** — orders and timecards are read from every location picked.
 - **First import** — past sales and timecards, a week at a time.
 - **Data we have** — how far back sales go and how many timecards are in.
-- **Sync** — the last menu, sales and timecard sync. With webhooks on, new orders and clock-ins arrive within seconds; otherwise today's numbers top up every 15 minutes while someone is using the app, and everything re-syncs nightly.
+- **Sync** — the last menu, sales and timecard sync. With instant updates on, new orders and clock-ins arrive within seconds; otherwise today's numbers top up every 15 minutes while someone is using the app, and everything re-syncs nightly.
 - **Recent problems** — the last 20 errors from Square, newest first.
 
 Timecards you corrected here, or that are in an approved week, are never overwritten by a sync.`,
@@ -916,7 +999,8 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     area: "settings",
     route: "/settings",
     title: "Settings",
-    body: "Notifications, the Square connection, team logins, suppliers, the food cost target, labor rules and clearing data — the things you set once and rarely touch.",
+    body: "Connections to outside services, notifications, the Square connection, team logins, suppliers, the food cost target, labor rules and clearing data — the things you set once and rarely touch.",
+    article: `Start with **Connections**: it links Square, email, phone notifications, AI features and Google reviews, each with a step-by-step guide.`,
     related: ["settings.team", "settings.suppliers", "settings.laborRules"],
   },
   {
@@ -948,7 +1032,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     area: "settings",
     route: "/settings/notifications",
     title: "Email",
-    body: "Whether the app can send email. When it's set up, notifications and orders to suppliers (with the CSV attached) go out from the address shown. Without it everything still works — orders can be copied or downloaded.",
+    body: "Whether the app can send email. When it's set up, notifications and orders to suppliers (with a spreadsheet file attached) go out from the address shown. Without it everything still works — orders can be copied or downloaded.",
   },
   {
     id: "settings.notify.push",
@@ -1006,7 +1090,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     area: "settings",
     route: "/settings/square",
     title: "Sync",
-    body: "When each kind of data — sales, the menu, timecards and so on — last came in from Square and how much. Today's numbers top up through the day and everything re-syncs nightly; with webhooks on, new orders arrive as they happen.",
+    body: "When each kind of data — sales, the menu, timecards and so on — last came in from Square and how much. Today's numbers top up through the day and everything re-syncs nightly; with instant updates on, new orders arrive as they happen.",
     related: ["sales.sync"],
   },
   {

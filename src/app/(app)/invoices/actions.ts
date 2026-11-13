@@ -3,7 +3,7 @@
 import { parseISODate } from "@/domain/dates";
 import { parsePastedLines, pickOrder, suggestSupplier } from "@/domain/invoiceMatch";
 import { requireUser } from "@/server/auth";
-import { claudeConfigured } from "@/server/integrations/claude";
+import { claudeReady, CLAUDE_NOT_SET_UP } from "@/server/integrations/claude";
 import { db } from "@/server/db";
 import { approvalNeedsNote } from "@/domain/invoiceHistory";
 import { sendCreditRequest } from "@/server/email/outbound";
@@ -41,7 +41,7 @@ async function readUpload(form: FormData): Promise<{ bytes: Uint8Array; type: st
 /** Read an invoice photo/PDF with Claude and suggest the supplier and order. */
 export async function readInvoice(form: FormData) {
   await requireUser("MANAGER");
-  if (!claudeConfigured()) return { error: "Automatic reading turns on once the Claude API key is added." };
+  if (!(await claudeReady())) return { error: CLAUDE_NOT_SET_UP };
   const up = await readUpload(form);
   if (!up) return { error: "Choose a photo or PDF first." };
   if ("error" in up) return up;

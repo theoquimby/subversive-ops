@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { toISODate } from "@/domain/dates";
 import { creditItems } from "@/domain/invoiceMatch";
 import { db, num } from "../db";
-import { emailConfigured, emailDeliveryStatus, isEmail, sendEmail, type DeliveryEvent } from "../integrations/email";
+import { emailReady, emailDeliveryStatus, isEmail, sendEmail, type DeliveryEvent } from "../integrations/email";
 import { loadOrder, orderAsCsv } from "../services/orders";
 import { loadTolerance } from "../services/invoices";
 import { emailForUser } from "../services/notify";
@@ -46,7 +46,7 @@ export const csvFilename = (supplier: string, deliveryDate: Date) => `${supplier
 export type OutboundResult = { ok: true; to: string; cc: string[] } | { skipped: string } | { error: string };
 
 export async function sendPurchaseOrder(args: { orderId: string; to: string; copyMe: boolean; by: { userId: string; name: string } }): Promise<OutboundResult> {
-  if (!emailConfigured()) return { skipped: "Email isn't set up yet" };
+  if (!(await emailReady())) return { skipped: "Email isn't set up yet" };
   const o = await loadOrder(args.orderId);
   if (!o) return { error: "That order doesn't exist anymore." };
   if (o.status === "RECEIVED") return { error: "This order was already checked in." };
@@ -99,7 +99,7 @@ export async function recordManualSend(orderId: string, by: { userId: string; na
  * For the invoices feature to call from its own action (e.g. a "Send" button in CreditSheet).
  */
 export async function sendCreditRequest(args: { invoiceId: string; to?: string; copyMe?: boolean; by: { userId: string; name: string } }): Promise<OutboundResult> {
-  if (!emailConfigured()) return { skipped: "Email isn't set up yet" };
+  if (!(await emailReady())) return { skipped: "Email isn't set up yet" };
   const inv = await db.invoice.findUnique({ where: { id: args.invoiceId }, omit: { image: true }, include: { supplier: true, lines: { orderBy: { id: "asc" } } } });
   if (!inv) return { error: "That invoice doesn't exist anymore." };
   const to = (args.to ?? inv.supplier.email ?? "").trim();

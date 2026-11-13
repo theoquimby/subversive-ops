@@ -84,12 +84,12 @@ export function squareCall<T>(client: Pick<SquareClient, "accessToken" | "enviro
 /** Plain-English version of a Square failure for the UI. */
 export function friendlySquareError(e: unknown): string {
   if (e instanceof SquareError) {
-    if (e.status === 401) return "Square didn't accept that access token. Check it was copied in full and is for the right environment (production vs sandbox).";
-    if (e.status === 403) return "That Square token is missing a permission this app needs. Reconnect and approve all the requested permissions.";
-    if (e.status === 429) return "Square is rate-limiting us right now. Try again in a minute.";
-    if (e.status === 0) return "Couldn't reach Square. Check the internet connection and try again.";
+    if (e.status === 401) return "Square didn't accept the sign-in. Press Connect with Square again (or, if you pasted a code, check it was copied in full and is the Production one).";
+    if (e.status === 403) return "Square is missing a permission this app needs. Press Connect with Square again and press Allow on every permission.";
+    if (e.status === 429) return "Square says we're asking too often. Try again in a minute.";
+    if (e.status === 0) return "Couldn't reach Square from the server. The internet connection may be down, or the place this app is hosted may block outside connections. Try again later.";
     if (e.status >= 500) return "Square is having trouble right now. Try again in a few minutes.";
-    return e.message;
+    return e.message.replace(/^Square \d+: /, "Square said: ");
   }
-  return (e as Error)?.message || "Something went wrong talking to Square.";
+  return (e as Error)?.message || "Something went wrong talking to Square. Try again in a minute.";
 }

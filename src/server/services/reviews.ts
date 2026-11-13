@@ -26,8 +26,8 @@ import {
 import { z } from "zod";
 import { db, num } from "../db";
 import { env } from "../env";
-import { claudeConfigured, claudeJSON } from "../integrations/claude";
-import { fetchGoogleReviews, googlePlacesConfigured } from "../integrations/google-places";
+import { claudeReady, claudeJSON } from "../integrations/claude";
+import { fetchGoogleReviews, GOOGLE_NOT_SET_UP, googlePlacesReady } from "../integrations/google-places";
 import { buildContext, loadCostingSnapshot, safeCost } from "./costing";
 import { dailySalesHistory } from "./forecasting";
 import { targetFoodCost } from "./insights";
@@ -42,9 +42,9 @@ const tz = () => env.BUSINESS_TIMEZONE;
 export const reviewDate = (d: Date) => businessDate(d, tz());
 
 export async function reviewSettings() {
-  const rows = await db.setting.findMany({ where: { key: { in: [SETTING_PLACE_ID, SETTING_TONE] } } });
+  const rows = await db.setting.findMany({ where: { key: { in: [SETTING_PLACE_ID, SETTING_TONE, "reviews.googlePlaceName"] } } });
   const get = (k: string) => rows.find((r) => r.key === k)?.value ?? "";
-  return { placeId: get(SETTING_PLACE_ID), toneNotes: get(SETTING_TONE), googleConfigured: googlePlacesConfigured(), claude: claudeConfigured() };
+  return { placeId: get(SETTING_PLACE_ID), placeName: get("reviews.googlePlaceName"), toneNotes: get(SETTING_TONE), googleConfigured: await googlePlacesReady(), claude: await claudeReady() };
 }
 
 export async function saveReviewSetting(key: typeof SETTING_PLACE_ID | typeof SETTING_TONE, value: string) {
@@ -152,7 +152,7 @@ interface AnalyzableReview {
 }
 
 async function analyzeOne(r: AnalyzableReview, ops: OpsDay | undefined, toneNotes: string) {
-  if (claudeConfigured()) {
+  if (await claudeReady()) {
     const res = await claudeJSON({
       schema: analysisSchema,
       effort: "low",
@@ -243,8 +243,8 @@ export async function importPastedReviews(text: string, defaultSource: ReviewSou
 
 export async function importGoogleReviews() {
   const { placeId } = await reviewSettings();
-  if (!googlePlacesConfigured()) return { error: "Google import turns on once GOOGLE_PLACES_API_KEY is added." };
-  if (!placeId) return { error: "Add your Google Place ID below first." };
+  if (!(await googlePlacesReady())) return { error: GOOGLE_NOT_SET_UP };
+  if (!placeId) return { error: "Pick your business first: Settings → Connections → Google reviews → Find my business." };
   try {
     const rows = await fetchGoogleReviews(placeId);
     const created: string[] = [];
@@ -289,8 +289,8 @@ export async function unrepliedNegative(sinceDays = 60) {
  */
 export async function importGoogleReviewsDaily(): Promise<{ skipped: string } | { added: number; fetched: number } | { error: string }> {
   const { placeId } = await reviewSettings();
-  if (!googlePlacesConfigured()) return { skipped: "GOOGLE_PLACES_API_KEY not set" };
-  if (!placeId) return { skipped: "No Google Place ID saved" };
+  if (!(await googlePlacesReady())) return { skipped: "No Google key saved" };
+  if (!placeId) return { skipped: "No Google business picked" };
   try {
     return await importGoogleReviews();
   } catch (e) {
@@ -387,7 +387,7 @@ export async function generateWhatToFix(useClaude = true): Promise<WhatToFix> {
 
   let result: WhatToFix = { month: today.slice(0, 7), generatedAt: new Date().toISOString(), by: "rules", reviewCount: rows.length, actions: whatToFixFallback({ themes, recentThemes, rootCauses: causes }) };
 
-  if (useClaude && claudeConfigured() && critical.length > 0) {
+  if (useClaude && (await claudeReady()) && critical.length > 0) {
     const res = await claudeJSON({
       schema: fixSchema,
       effort: "medium",
@@ -425,5 +425,5 @@ export async function whatToFixThisMonth(): Promise<{ fix: WhatToFix; stale: boo
   const cached = await loadWhatToFix();
   if (cached && cached.month === businessToday().slice(0, 7)) return { fix: cached, stale: false };
   const fix = await generateWhatToFix(false);
-  return { fix, stale: claudeConfigured() };
+  return { fix, stale: await claudeReady() };
 }

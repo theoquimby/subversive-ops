@@ -8,7 +8,7 @@
 import { addDays, ISODate } from "./dates";
 import { weekStartOf } from "./schedule";
 
-export type AskToolName = "period_kpis" | "menu_margins" | "price_moves" | "margin_gap" | "schedule_week" | "order_plans" | "waste_summary" | "cert_status";
+export type AskToolName = "period_kpis" | "menu_margins" | "price_moves" | "margin_gap" | "schedule_week" | "order_plans" | "waste_summary" | "cert_status" | "insights";
 
 export interface Period {
   from: ISODate;
@@ -80,6 +80,7 @@ export function routeQuestion(text: string, today: ISODate): RoutedQuestion | nu
   // Certificates first: "who's missing harassment training" isn't a margin gap.
   const cert = certQuestion(t);
   if (cert) return { tool: "cert_status", args: cert };
+  if (insightsQuestion(t)) return { tool: "insights", args: insightsTopic(t) ? { topic: insightsTopic(t)! } : {} };
   if (has("hours", "overtime", "schedule", "who's working", "who is working", "shifts")) {
     const wk = period ? weekStartOf(period.from) : weekStartOf(today);
     const over = /over (\d{1,2}) ?(?:h|hours)/.exec(t);
@@ -95,6 +96,25 @@ export function routeQuestion(text: string, today: ISODate): RoutedQuestion | nu
     return { tool: "period_kpis", args: { from: p.from, to: p.to } };
   }
   return null;
+}
+
+/** Questions for the Insights models: "what should I do", "biggest opportunity", "break even", "raise the price of…". */
+export function insightsQuestion(t: string): boolean {
+  return /\binsights?\b|opportunit|what should i (do|change|fix)|where (am i|are we) losing|make more money|biggest (win|lever|money)|break[- ]?even|elastic|price (response|sensitiv)|what if i raise|raise (the )?price|menu engineering|stars?(?: and)? dogs|over-?staffed|under-?staffed|sales per labor hour|unusual|anomal|forecast range|how sure/.test(t);
+}
+
+const TOPICS: [RegExp, string][] = [
+  [/break[- ]?even|lever|fixed cost/, "drivers"],
+  [/elastic|price (response|sensitiv)|raise (the )?price|what if i raise/, "price"],
+  [/menu engineering|\bstars?\b|\bdogs?\b|puzzle|workhorse/, "menu"],
+  [/staffed|labor hour|splh/, "staffing"],
+  [/unusual|anomal|weird day|odd day/, "anomalies"],
+  [/forecast range|how sure/, "forecast"],
+  [/order (size|quantit)|how much to order/, "orders"],
+];
+
+export function insightsTopic(t: string): string | null {
+  return TOPICS.find(([re]) => re.test(t))?.[1] ?? null;
 }
 
 /** Certificate words that make a question about training, with the type and status it names (if any). */
@@ -138,6 +158,7 @@ export const SUGGESTED_QUESTIONS: SuggestedQuestion[] = [
   { label: "What do I need to order next?", route: () => ({ tool: "order_plans", args: {} }) },
   { label: "What did we throw out in the last 30 days?", route: () => ({ tool: "waste_summary", args: { days: 30 } }) },
   { label: "Whose certificates are expiring or expired?", route: () => ({ tool: "cert_status", args: { status: "attention" } }) },
+  { label: "What's my biggest money opportunity?", route: () => ({ tool: "insights", args: {} }) },
 ];
 
 /** Validate and clamp dates the model or a link passes in: YYYY-MM-DD, from < to, at most a year. */

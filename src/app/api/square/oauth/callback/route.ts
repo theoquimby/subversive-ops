@@ -7,16 +7,20 @@ import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 const STATE_COOKIE = "so_square_state";
+const BACK_COOKIE = "so_square_back";
 
 const sameState = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-/** Square redirects here after the owner approves (or declines) access. */
+/** Square redirects here after the owner presses Allow (or declines). */
 export async function GET(req: NextRequest) {
-  const back = new URL("/settings/square", req.url);
+  const fromConnections = req.cookies.get(BACK_COOKIE)?.value === "/settings/connections";
+  const back = new URL(fromConnections ? "/settings/connections" : "/settings/square", req.url);
+  if (fromConnections) back.searchParams.set("open", "square");
   const done = (params: Record<string, string>) => {
     for (const [k, v] of Object.entries(params)) back.searchParams.set(k, v);
     const res = NextResponse.redirect(back);
     res.cookies.set(STATE_COOKIE, "", { path: "/api/square/oauth", maxAge: 0 });
+    res.cookies.set(BACK_COOKIE, "", { path: "/api/square/oauth", maxAge: 0 });
     return res;
   };
 
@@ -27,15 +31,15 @@ export async function GET(req: NextRequest) {
   const expected = req.cookies.get(STATE_COOKIE)?.value ?? "";
   const state = q.get("state") ?? "";
   if (!expected || !state || !sameState(expected, state)) {
-    return done({ error: "That Square sign-in link expired or didn't come from this app. Try Connect again." });
+    return done({ error: "That Square sign-in took too long or was opened in a different browser. Press Connect with Square again." });
   }
   const err = q.get("error");
   if (err) {
-    const msg = err === "access_denied" ? "Square access wasn't granted." : q.get("error_description") || err;
+    const msg = err === "access_denied" ? "Square wasn't connected because Allow wasn't pressed. Press Connect with Square to try again." : `Square said: ${q.get("error_description") || err}. Press Connect with Square to try again.`;
     return done({ error: msg });
   }
   const code = q.get("code");
-  if (!code) return done({ error: "Square didn't send an authorization code. Try Connect again." });
+  if (!code) return done({ error: "Square didn't finish the sign-in. Press Connect with Square again." });
 
   try {
     const r = await connectWithOAuthCode(code);

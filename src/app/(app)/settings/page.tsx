@@ -5,7 +5,8 @@ import { db } from "@/server/db";
 import { targetFoodCost } from "@/server/services/insights";
 import { relativeTime } from "@/lib/format";
 import { squareStatus } from "@/server/services/square";
-import { ChevronRight } from "lucide-react";
+import { secretStatus } from "@/server/services/secrets";
+import { ChevronRight, Plug } from "lucide-react";
 import Link from "next/link";
 import { lastSquareSync } from "@/server/services/sales";
 import { loadDemoData, resetPin, saveTarget, toggleUser } from "./actions";
@@ -22,13 +23,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const me = await requireUser("MANAGER");
   const { welcome } = await searchParams;
   const empty = (await db.ingredient.count()) === 0 && (await db.recipe.count()) === 0;
-  const [users, suppliers, target, lastSync, square] = await Promise.all([
+  const [users, suppliers, target, lastSync, square, secrets, placeId] = await Promise.all([
     db.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }),
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     targetFoodCost(),
     lastSquareSync(),
     squareStatus(),
+    secretStatus(),
+    db.setting.findUnique({ where: { key: "reviews.googlePlaceId" } }),
   ]);
+  const has = (n: string) => secrets.some((x) => x.name === n && x.set);
+  const linked = [
+    square.connected,
+    has("RESEND_API_KEY") && has("EMAIL_FROM"),
+    has("VAPID_PUBLIC_KEY") && has("VAPID_PRIVATE_KEY"),
+    has("ANTHROPIC_API_KEY"),
+    has("GOOGLE_PLACES_API_KEY") && !!placeId,
+  ].filter(Boolean).length;
 
   return (
     <>
@@ -45,6 +56,21 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </Card></HelpZone>
       )}
 
+      <HelpZone id="settings.connections" className="mb-3"><Link href="/settings/connections" className="group block" data-tour="settings.connections">
+        <Card className="flex items-center justify-between gap-3 p-5 transition-colors group-hover:border-border-strong">
+          <div className="flex min-w-0 items-center gap-3">
+            <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-[0.65rem] bg-area/10 text-area ring-1 ring-area/15 ring-inset"><Plug className="size-[1.1rem]" strokeWidth={1.9} /></span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-base font-semibold">Connections</span>
+                <Badge tone={linked === 5 ? "good" : linked ? "neutral" : "warn"}>{linked} of 5 on</Badge>
+              </div>
+              <div className="mt-1 text-sm text-muted">Square, email, phone notifications, AI features and Google reviews — each with a step-by-step guide.</div>
+            </div>
+          </div>
+          <ChevronRight className="size-5 shrink-0 text-muted group-hover:text-ink" />
+        </Card>
+      </Link></HelpZone>
       <HelpZone id="settings.notifications" className="mb-3"><Link href="/settings/notifications" className="group block">
         <Card className="flex items-center justify-between gap-3 p-5 transition-colors group-hover:border-border-strong">
           <div className="min-w-0">
@@ -60,12 +86,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-base font-semibold">Square</span>
               <Badge tone={square.connected ? "good" : "warn"}>{square.connected ? "Live" : "Setup needed"}</Badge>
-              {square.connected && square.environment === "sandbox" && <Badge tone="warn">Sandbox</Badge>}
+              {square.connected && square.environment === "sandbox" && <Badge tone="warn">Test account</Badge>}
             </div>
             <div className="mt-1 text-sm text-muted">
               {square.connected
                 ? `${square.merchantName ?? "Connected"} · ${square.selectedCount} location${square.selectedCount === 1 ? "" : "s"} · last sync ${relativeTime(lastSync)}`
-                : "Connect Square to bring in sales, the menu and timecards."}
+                : "Connect Square to bring in sales, the menu and timecards. The guide is under Connections."}
             </div>
           </div>
           <ChevronRight className="size-5 shrink-0 text-muted group-hover:text-ink" />

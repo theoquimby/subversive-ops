@@ -654,7 +654,7 @@ Products you don't use in recipes (cleaning supplies, to-go boxes) can stay unli
     route: "/prices/import",
     tour: "prices",
     title: "Import a price sheet",
-    body: "Upload the distributor's download exactly as it comes — Excel or CSV. You'll see every price change before anything is saved.",
+    body: "Upload the distributor's download exactly as it comes — an Excel or .csv spreadsheet file. You'll see every price change before anything is saved.",
     article: `1. **Pick the supplier.**
 2. **Drop the file** (.xlsx, .xls or .csv) — no need to tidy it up first.
 3. **Prices effective** — usually today; set a future date if the sheet is next week's pricing.
@@ -677,7 +677,7 @@ Plate costs update straight away. New products then need linking to ingredients.
     area: "prices",
     route: "/prices/import",
     title: "Price sheet file",
-    body: "Drag the file here or tap to choose it. Excel and CSV both work, as downloaded from the distributor's site.",
+    body: "Drag the file here or tap to choose it. Excel and .csv spreadsheet files both work, as downloaded from the distributor's site.",
   },
   {
     id: "prices.import.effective",
@@ -695,7 +695,7 @@ Plate costs update straight away. New products then need linking to ingredients.
     body: "Which column holds the item number, description and price (required), and pack size and unit (optional). They're detected for you and remembered for this supplier.",
     article: `The importer looks at the header row and guesses:
 
-- **Item number** — "Item #", "SKU", "SUPC", "Product code"…
+- **Item number** — "Item #", "SKU" (stock code), "SUPC", "Product code"…
 - **Description** — "Description", "Item name"…
 - **Price** — "Case price", "Unit price", "Cost"…
 - **Pack / size** — "Pack/Size", "Pk/Sz". Text like \`6/32 OZ\`, \`4/1 GAL\`, \`25 LB\` or \`200 CT\` is turned into a pack size automatically.

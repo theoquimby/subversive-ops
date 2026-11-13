@@ -38,3 +38,18 @@ describe("ask routing", () => {
     expect(clampPeriod("2020-01-01", "2026-01-01", today).from).toBe("2024-12-31");
   });
 });
+
+describe("insights questions", () => {
+  const today = "2026-11-13";
+  it("routes opportunity and model questions to the insights tool", () => {
+    expect(routeQuestion("What should I do to make more money?", today)).toEqual({ tool: "insights", args: {} });
+    expect(routeQuestion("What's my break-even?", today)).toEqual({ tool: "insights", args: { topic: "drivers" } });
+    expect(routeQuestion("What if I raise the price of the burger?", today)).toEqual({ tool: "insights", args: { topic: "price" } });
+    expect(routeQuestion("Am I overstaffed on Saturdays?", today)).toEqual({ tool: "insights", args: { topic: "staffing" } });
+    expect(routeQuestion("Which menu items are stars and dogs?", today)).toEqual({ tool: "insights", args: { topic: "menu" } });
+  });
+  it("leaves supplier price and schedule questions alone", () => {
+    expect(routeQuestion("What went up in price lately?", today)?.tool).toBe("price_moves");
+    expect(routeQuestion("Who's over 35 hours this week?", today)?.tool).toBe("schedule_week");
+  });
+});

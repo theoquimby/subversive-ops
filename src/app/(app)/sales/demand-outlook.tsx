@@ -30,7 +30,7 @@ export async function DemandOutlook() {
       description={
         seasonalOn
           ? "Includes the seasonal swing from the same weeks last year."
-          : `Seasonality switches on once there's a year of history${needed > 0 && historyDays > 0 ? ` (about ${needed} more days, or backfill from Square)` : ""}. Until then the forecast follows recent weeks.`
+          : `Seasonality switches on once there's a year of history${needed > 0 && historyDays > 0 ? ` (about ${needed} more days, or bring in more history from Square)` : ""}. Until then the forecast follows recent weeks.`
       }
     >
       <Table>

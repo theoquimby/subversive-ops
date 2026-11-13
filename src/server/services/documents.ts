@@ -3,7 +3,7 @@ import { z } from "zod";
 import { searchPolicies, type PolicyPassage } from "@/domain/policySearch";
 import { tidyText } from "@/domain/pdfText";
 import { pdfTextLocal } from "./pdf-text";
-import { claudeConfigured, claudeJSON, pdfBlock } from "../integrations/claude";
+import { claudeReady, claudeJSON, pdfBlock } from "../integrations/claude";
 import { db } from "../db";
 
 /**
@@ -41,7 +41,7 @@ export async function extractDocumentText(bytes: Uint8Array, mime: string): Prom
   const local = pdfTextLocal(bytes);
   // Fewer than ~40 letters means a scan or an encoding we can't read.
   if ((local.match(/[A-Za-z]/g)?.length ?? 0) >= 40) return { text: local.slice(0, 400_000), via: "local" };
-  if (!claudeConfigured()) return { text: null, via: null };
+  if (!(await claudeReady())) return { text: null, via: null };
   const r = await claudeJSON({
     schema: extracted,
     system: "You transcribe documents. Copy the text exactly; do not summarize, add or leave out anything.",
@@ -90,7 +90,7 @@ export async function answerPolicyQuestion(question: string, role: "MANAGER" | "
   const passages = searchPolicies(docs, question, 8);
   const base = { searched: docs.length, passages: passages.slice(0, 4) };
   if (docs.length === 0) return { mode: "search", answer: null, citations: [], ...base };
-  if (!claudeConfigured()) return { mode: "search", answer: null, citations: [], ...base };
+  if (!(await claudeReady())) return { mode: "search", answer: null, citations: [], ...base };
 
   // Small libraries go in whole (better answers); big ones send the best passages.
   const total = docs.reduce((a, d) => a + d.text.length, 0);

@@ -5,7 +5,7 @@ import { addDays, weekday } from "@/domain/dates";
 import { dayDate, money, pct, shortDate, signedPct } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { weeklyBrief, WeeklyBrief } from "@/server/services/brief";
-import { BadgeCheck, CalendarDays, ChevronRight, ClipboardList, Gavel, History, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Star, Tag, Trash2, TrendingUp, Unlink, UtensilsCrossed } from "lucide-react";
+import { BadgeCheck, CalendarDays, ChevronRight, ClipboardList, Gavel, History, Lightbulb, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Star, Tag, Trash2, TrendingUp, Unlink, UtensilsCrossed } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CreateOrderButton } from "./create-order-button";
@@ -55,6 +55,7 @@ export default async function BriefPage() {
 
       {b.lastWeek && <LastWeekCard r={b.lastWeek} />}
       <DecisionsCard items={b.decisions} />
+      <InsightsCard items={b.insights} />
       <ForecastCard b={b} />
 
       {todo.length > 0 && (
@@ -152,6 +153,39 @@ function DecisionsCard({ items }: { items: WeeklyBrief["decisions"] }) {
           ))}
         </div>
       )}
+    </Card></HelpZone>
+  );
+}
+
+function InsightsCard({ items }: { items: WeeklyBrief["insights"] }) {
+  if (!items.length) return null;
+  const conf = (c: number) => (c >= 0.65 ? "solid" : c >= 0.4 ? "fair" : "rough");
+  return (
+    <HelpZone id="insights.brief" className="mb-6"><Card className="overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2">
+        <span className="flex items-center gap-2 text-[0.8rem] font-medium text-muted">
+          <Lightbulb className="size-4" strokeWidth={1.75} />
+          3 things worth your attention
+        </span>
+        <Link href="/insights" className="relative text-xs text-muted hover:text-ink after:absolute after:-inset-2 after:content-['']">All insights</Link>
+      </div>
+      <ol className="divide-y divide-border border-t border-border">
+        {items.map((it, i) => (
+          <li key={it.key}>
+            <Link href={it.href} className="flex min-h-11 items-start gap-3 px-5 py-3 hover:bg-surface-2/60">
+              <span className="num mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-surface-2 text-[11px] font-semibold text-ink-2">{i + 1}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-ink">{it.title}</span>
+                <span className="mt-0.5 block text-xs text-muted">{it.action}</span>
+              </span>
+              <span className="shrink-0 text-right">
+                <span className="num block text-sm font-medium text-ink">{it.oneOff ? money(it.oneOff, { whole: true }) : `${money(it.monthly, { whole: true })}/mo`}</span>
+                <span className="block text-[11px] text-muted">{conf(it.confidence)}</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ol>
     </Card></HelpZone>
   );
 }

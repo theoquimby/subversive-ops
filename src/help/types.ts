@@ -28,7 +28,8 @@ export type HelpAreaId =
   | "reviews"
   | "budgets"
   | "brief"
-  | "training";
+  | "training"
+  | "insights";
 
 export type Audience = "manager" | "staff" | "all";
 

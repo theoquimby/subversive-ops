@@ -63,7 +63,7 @@ export function ConnectionActions({ connected, source, oauthAvailable }: { conne
       <div className="space-y-3">
         <div className="flex flex-wrap gap-2">
           <Button disabled={pending} onClick={() => start(async () => setMsg(await testConnection()))}>{pending ? "Checking…" : "Test connection"}</Button>
-          {source !== "env" && oauthAvailable && <a href="/api/square/oauth/start" className="inline-flex h-9 items-center rounded-lg px-3.5 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink">Reconnect</a>}
+          {source !== "env" && oauthAvailable && <a href="/api/square/oauth/start?back=/settings/square" className="inline-flex h-9 items-center rounded-lg px-3.5 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink">Reconnect</a>}
           {source !== "env" && (
             <Button
               variant="danger"
@@ -71,7 +71,7 @@ export function ConnectionActions({ connected, source, oauthAvailable }: { conne
               onClick={async () => {
                 const ok = await confirm({
                   title: "Disconnect Square?",
-                  body: "Syncing stops until you connect again. Sales, timecards and item links already imported stay.",
+                  body: "New sales and timecards stop coming in until you connect again. Everything already imported stays.",
                   confirmLabel: "Disconnect",
                   danger: true,
                 });
@@ -91,17 +91,17 @@ export function ConnectionActions({ connected, source, oauthAvailable }: { conne
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         {oauthAvailable ? (
-          <a href="/api/square/oauth/start" className="inline-flex h-11 items-center justify-center rounded-lg bg-primary px-5 text-[0.95rem] font-medium text-primary-ink hover:opacity-90">Connect with Square</a>
+          <a href="/api/square/oauth/start?back=/settings/square" className="inline-flex h-11 items-center justify-center rounded-lg bg-primary px-5 text-[0.95rem] font-medium text-primary-ink hover:opacity-90">Connect with Square</a>
         ) : (
-          <Button variant="primary" size="lg" disabled title="Needs SQUARE_APPLICATION_ID and SQUARE_APPLICATION_SECRET">Connect with Square</Button>
+          <LinkButton href="/settings/connections?open=square" variant="primary" size="lg">Set up Square</LinkButton>
         )}
         <Button variant="ghost" size="lg" onClick={() => setShowToken((v) => !v)} aria-expanded={showToken}>
-          {showToken ? "Hide" : "Paste an access token instead"}
+          {showToken ? "Hide" : "Paste an access code instead"}
         </Button>
       </div>
       {!oauthAvailable && (
         <p className="text-sm text-muted">
-          One-click connect needs the Square app&apos;s ID and secret set where Subversive Ops is hosted (see Help → Connecting Square). Until then, paste an access token.
+          The one-click Connect button appears after a 5-minute, one-time step: registering the app with Square. The set-up guide walks you through it with pictures.
         </p>
       )}
       {showToken && <TokenForm onDone={() => router.refresh()} />}
@@ -125,7 +125,7 @@ function TokenForm({ onDone }: { onDone: () => void }) {
   return (
     <Card className="space-y-4 bg-surface-2/40 p-4">
       <p className="text-sm text-ink-2">
-        In the <b>Square Developer Dashboard</b>, open your app → <b>Credentials</b>, switch to <b>Production</b> and copy the <b>Access token</b>. We check it with Square before saving, and store it encrypted.
+        On Square&apos;s developer site (developer.squareup.com), open your app → <b>Credentials</b>, switch to <b>Production</b> and copy the <b>Access token</b> — a long code starting with EAAA. We check it with Square before saving, and store it locked (encrypted). It works like a password, so don&apos;t share it.
       </p>
       <form
         className="space-y-4"
@@ -141,12 +141,12 @@ function TokenForm({ onDone }: { onDone: () => void }) {
           });
         }}
       >
-        <Field label="Access token">
+        <Field label="Access code (access token)">
           <Input type="password" autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAA…" className="font-mono" />
         </Field>
         <div>
-          <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">Environment</div>
-          <Chips value={environment} onChange={setEnvironment} ariaLabel="Square environment" options={[{ value: "production", label: "Production" }, { value: "sandbox", label: "Sandbox (testing)" }]} />
+          <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">Which Square account</div>
+          <Chips value={environment} onChange={setEnvironment} ariaLabel="Which Square account" options={[{ value: "production", label: "The real one" }, { value: "sandbox", label: "A test account" }]} />
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="primary" disabled={pending || !token.trim()}>{pending ? "Checking with Square…" : "Check and save"}</Button>
@@ -237,7 +237,7 @@ export function BackfillPanel({ initial, connected }: { initial: BackfillState |
       while (!stop.current) {
         const r = await importStep();
         if (r.busy) {
-          if (++busyTries > 20) return setError("Another Square sync is running. Try again in a minute.");
+          if (++busyTries > 20) return setError("Square is already busy bringing data in. Try again in a minute.");
           await sleep(3000);
           continue;
         }

@@ -4,6 +4,7 @@ import { autoDraftOrders } from "@/server/services/planning";
 import { importGoogleReviewsDaily } from "@/server/services/reviews";
 import { autoDraftNextWeek } from "@/server/services/scheduling";
 import { certificateReminders } from "@/server/services/training";
+import { refreshAnalytics } from "@/server/services/analytics";
 import { weekday } from "@/domain/dates";
 import { businessToday } from "@/server/services/sales";
 
@@ -15,7 +16,8 @@ export const maxDuration = 300;
  * ones), alert managers to supplier price increases over the threshold that
  * haven't been sent yet, remind people and managers about certificates
  * expiring in 30/7 days or just expired, and (Fri/Sat) draft next
- * week's schedule if auto-draft is on. Each job is isolated
+ * week's schedule if auto-draft is on, and last, recompute Insights (the
+ * Python analytics service) on the fresh data. Each job is isolated
  * so one failing doesn't stop the others.
  */
 export async function GET(req: Request) {
@@ -39,5 +41,6 @@ export async function GET(req: Request) {
   );
   // Next week's schedule is drafted at the end of the week (only if that's switched on and it's still empty).
   if ([5, 6].includes(weekday(businessToday()))) Object.assign(results, await run("schedule", () => autoDraftNextWeek()));
+  Object.assign(results, await run("insights", () => refreshAnalytics()));
   return Response.json(results);
 }

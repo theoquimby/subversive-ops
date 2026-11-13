@@ -155,7 +155,7 @@ export function NewInvoice({ suppliers, orders, today, canRead, initialSupplierI
           {!canRead ? (
             <Card className="flex gap-3 p-4 text-sm text-ink-2">
               <Sparkles className="mt-0.5 size-4 shrink-0 text-muted" />
-              <div><span className="font-medium text-ink">Automatic reading turns on once the Claude API key is added.</span> Until then, attach the photo for the record and type or paste the lines.</div>
+              <div><span className="font-medium text-ink">Automatic reading turns on with AI features (Settings → Connections).</span> Until then, attach the photo for the record and type or paste the lines.</div>
             </Card>
           ) : readNote ? (
             <Card className="flex gap-3 p-4 text-sm text-ink-2"><Sparkles className="mt-0.5 size-4 shrink-0 text-muted" />{readNote}</Card>

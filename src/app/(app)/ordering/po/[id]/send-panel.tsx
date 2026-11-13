@@ -64,7 +64,7 @@ function SendSheet({ id, supplierName, supplierEmail, myEmail, emailReady, subje
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/30 p-3 backdrop-blur-[2px] sm:items-center" onMouseDown={onClose}>
       <div role="dialog" aria-modal="true" aria-label="Send to supplier" onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-2xl">
         <div className="text-base font-semibold">Send to {supplierName}</div>
-        <p className="mt-1 text-sm text-muted">{items} item{items === 1 ? "" : "s"} · the order as a table plus a CSV attachment.{isDraft ? " It's marked as sent once it goes." : ""}</p>
+        <p className="mt-1 text-sm text-muted">{items} item{items === 1 ? "" : "s"} · the order as a table, with a spreadsheet file attached.{isDraft ? " It's marked as sent once it goes." : ""}</p>
 
         <label className="mt-4 block">
           <span className="mb-1.5 block text-[0.8rem] font-medium text-ink-2">To</span>
@@ -86,7 +86,7 @@ function SendSheet({ id, supplierName, supplierEmail, myEmail, emailReady, subje
           <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" onClick={async () => { await navigator.clipboard.writeText(`Subject: ${subject}\n\n${text}`); setCopied(true); setTimeout(() => setCopied(false), 1500); }}><Copy className="size-4" />{copied ? "Copied" : "Copy as text"}</Button>
             {fallbackMailto && <LinkButton size="sm" href={fallbackMailto}><Mail className="size-4" />Open in mail app</LinkButton>}
-            <LinkButton size="sm" href={`/ordering/po/${id}/csv`} prefetch={false}><Download className="size-4" />CSV</LinkButton>
+            <LinkButton size="sm" href={`/ordering/po/${id}/csv`} prefetch={false}><Download className="size-4" />Spreadsheet</LinkButton>
           </div>
         )}
 

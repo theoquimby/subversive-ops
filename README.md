@@ -14,7 +14,7 @@ for shifts, time off, counts and waste.
 | **Weekly brief** | Last week against budget, what needs a decision (requests, auto-drafts, invoice issues, low reviews), next week's forecast, then one-tap cards: orders to place, the schedule, price increases, items over target, Square items with no recipe, the margin gap, counts and waste. Emailed and pushed to managers on Sunday. |
 | **Live P&L** | Sales − theoretical cost of goods − labor by day and by hour, split food and beverage, with budget and forecast comparisons. Actual cost of goods from counts. |
 | **Budgets** | Weekly sales, food cost % and labor % targets with red/amber/green. The P&L, Overview, schedule and brief all measure against them. |
-| **Sales & forecast** | Square sync (OAuth connect, webhooks, near-live refresh, resumable history import), item → recipe matching, and a 5-week forecast by day and hour. It accounts for weekdays, seasonality, weather, holidays and events, and you can adjust any day. |
+| **Sales & forecast** | Square sync (one-click connect, instant updates, near-live refresh, resumable history import), item → recipe matching, and a 5-week forecast by day and hour. It accounts for weekdays, seasonality, weather, holidays and events, and you can adjust any day. |
 | **Menu costs** | Recipes with sub-recipes, add-ons (Square modifiers), yield loss and any units. Plate cost, food cost %, margin and "price to hit target", recalculated live, with cost history. Draft beer costing. |
 | **Ingredients & prices** | A spreadsheet-style ingredient grid with archive and restore. Distributor price sheets (.xlsx/.csv) are imported with column detection, and every price is kept with its date. Managers get alerts when a price rises past the threshold. |
 | **Ordering** | Per supplier: forecast usage + buffer − expected stock, rounded to packs. Delivery days, cutoffs and minimums apply. Drafts can be saved automatically before a cutoff. Orders go out by email with a CSV attached. |
@@ -25,6 +25,7 @@ for shifts, time off, counts and waste.
 | **Labor, tips & payroll** | Timecards from Square, protected once edited or approved. Pay-period approval, NY sick leave accrual, tip pools by hours or points, adjustments, and a payroll CSV with an exceptions list. |
 | **Reviews** | Google import plus paste from Yelp, TripAdvisor and OpenTable. Themes, sentiment, reply drafts, "what to fix this month" and rating-drop alerts. New 1–2★ reviews notify managers. |
 | **Events** | An events calendar and holidays that feed the forecast. |
+| **Connections** | Settings → Connections: Square, email, phone notifications, AI features and Google reviews, each with an illustrated step-by-step guide, paste boxes that check what you paste, and a Test button. Keys are stored encrypted in the database. |
 | **Notifications** | Email (Resend) and web push (VAPID) with per-person preferences. Covers the schedule, shift changes, request decisions, the weekly brief, price spikes, invoice issues, staff requests and low reviews. |
 
 Power-user bits: **⌘K / `/`** command bar everywhere · inline grid editing
@@ -76,8 +77,10 @@ npm run typecheck && npm run lint
 
 ## Deploy
 
-Vercel + Postgres (Neon). `npm run build` runs migrations. Every environment
-variable is listed with comments in `.env.example`.
+Vercel + Postgres (Neon). `npm run build` runs migrations. Only
+`DATABASE_URL`, `SESSION_SECRET` and `CRON_SECRET` are needed at hosting level;
+every outside-service key can be pasted in Settings → Connections instead.
+Every environment variable is listed with comments in `.env.example`.
 
 ### Scheduled jobs (`vercel.json`)
 
@@ -94,17 +97,28 @@ schedule**. Times are UTC.
 
 ### External accounts
 
-Everything works without these; each one turns a feature on.
+Everything works without these; each one turns a feature on. **All of them are
+set up from inside the app — Settings → Connections** — by a manager, with a
+picture for every click. Keys pasted there are stored in the `Setting` table
+encrypted with AES-256-GCM (key derived from `SESSION_SECRET`, the same helper
+the Square connection uses) and never reach the browser; the page only shows
+"saved · ends in …ab12". The environment variables below still work as a
+fallback, and a value saved in the app takes priority.
 
-| Account | Variables | Turns on | Without it |
+| Account | Set in the app (or env var) | Turns on | Without it |
 |---|---|---|---|
-| Square Developer app (Production) | `SQUARE_APPLICATION_ID`, `SQUARE_APPLICATION_SECRET`, `SQUARE_WEBHOOK_SIGNATURE_KEY`, `SQUARE_WEBHOOK_URL` | "Connect with Square" and webhooks (near-live sales and labor) | Paste an access token in Settings → Square. Data refreshes on page views and nightly. |
-| Vercel | `CRON_SECRET` | The scheduled jobs above | Nothing runs on schedule. |
-| Anthropic | `ANTHROPIC_API_KEY` | Invoice reading, review analysis and reply drafts, "what to fix" | Invoices typed by hand. Reviews use keyword themes and template replies. |
-| Google Cloud (Places API (New)) | `GOOGLE_PLACES_API_KEY` + a Place ID saved on /reviews | Google review import, daily | Paste reviews in. |
-| Resend (verified domain) | `RESEND_API_KEY`, `EMAIL_FROM` | Emailing POs and credit requests, notification emails | Copy, `mailto:` or download instead. Notification emails are skipped. |
-| Web push (self-generated) | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Push notifications (staff on iPhone add the app to the Home Screen) | Push toggles show "not set up". |
-| — | `APP_URL` (optional on Vercel) | Correct links in emails and pushes | Falls back to the Vercel URL. |
+| Square Developer app (Production) | Connections → Square: Application ID + secret, optional signature key (`SQUARE_APPLICATION_ID`, `SQUARE_APPLICATION_SECRET`, `SQUARE_WEBHOOK_SIGNATURE_KEY`) | "Connect with Square" and instant updates (webhooks) | Paste an access code on Settings → Square. Data refreshes on page views and nightly. |
+| Resend (verified domain) | Connections → Email: key + sending address (`RESEND_API_KEY`, `EMAIL_FROM`) | Emailing orders and credit requests, notification emails | Copy, `mailto:` or download instead. Notification emails are skipped. |
+| Web push (self-generated) | Connections → Phone notifications: one tap generates the keys (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, optional `VAPID_SUBJECT`) | Push notifications (staff on iPhone add the app to the Home Screen) | Push toggles say it isn't turned on. |
+| Anthropic | Connections → AI features (`ANTHROPIC_API_KEY`) | Invoice reading, review analysis and reply drafts, "what to fix", Ask | Invoices typed by hand. Reviews use keyword themes and template replies. |
+| Google Cloud (Places API (New)) | Connections → Google reviews: key + **Find my business** (Places Text Search, so nobody needs a Place ID) (`GOOGLE_PLACES_API_KEY`) | Google review import, daily | Paste reviews in. |
+| Vercel | `CRON_SECRET` (hosting only) | The scheduled jobs above | Nothing runs on schedule. |
+| — | `APP_URL` (optional on Vercel) | Correct links in emails and pushes; the redirect and webhook addresses shown in the Square guide | Falls back to the address you're using / the Vercel URL. |
+
+Each card's **Test connection** makes a real call (Square: business name and
+locations; Resend: a test email to you; Claude: a free model lookup; Google:
+the business search). If the host blocks outbound connections, the test says
+so in plain English and the saved key is kept.
 
 Also check before going live: the payroll CSV columns against your payroll
 provider's import, and the account names on Invoices → Exports against your
@@ -112,60 +126,48 @@ chart of accounts.
 
 ### Connecting Square
 
-Square is connected **from inside the app** (Settings → Square). The
-connection — tokens, merchant, chosen locations — is stored in the database
-encrypted with AES-256-GCM (key derived from `SESSION_SECRET`; tokens never
-reach the browser). Rotating `SESSION_SECRET` therefore disconnects Square.
+Square is connected **from inside the app**: Settings → **Connections** →
+**Square** (the guide), with Settings → **Square** as the detailed page
+(locations, history import, sync status, problems). The connection — access
+tokens, merchant, chosen locations — is stored in the database encrypted with
+AES-256-GCM (key derived from `SESSION_SECRET`; tokens never reach the
+browser). Rotating `SESSION_SECRET` therefore disconnects Square and forgets
+every key pasted in Connections.
 
-**1. Create the Square app (once, by whoever manages hosting)**
+**Part 1 — Register the app (once, ~5 min, anyone with a Square login).** The
+guide shows each screen of developer.squareup.com/apps: create an application,
+switch to **Production**, paste the redirect URL it shows
+(`https://<your-domain>/api/square/oauth/callback`, with a copy button) under
+**OAuth**, then paste the **Application ID** and **Application secret** from
+**Credentials** into the app. They're checked as you paste (`sq0idp-…`,
+`sq0csp-…`). An Application ID starting with `sandbox-` switches the app to
+Square's sandbox hosts.
 
-1. Go to **developer.squareup.com/apps**, sign in with the restaurant's Square
-   account and press **+ / Create an application**. Name it "Subversive Ops".
-2. Switch the toggle at the top to **Production**.
-3. **OAuth** page → **Redirect URL**:
-   `https://subversive-ops.vercel.app/api/square/oauth/callback` → Save.
-   Copy the **Application ID** and the **Application secret** (press Show).
-4. **Webhooks → Subscriptions → Add subscription** (Production):
-   - URL: `https://subversive-ops.vercel.app/api/webhooks/square`
-   - API version: `2025-10-16`
-   - Events: `order.created`, `order.updated`, `payment.created`,
-     `payment.updated`, `refund.created`, `refund.updated`,
-     `labor.timecard.created`, `labor.timecard.updated`,
-     `labor.timecard.deleted`, `catalog.version.updated`
-   - Save, then copy the subscription's **Signature key**.
-5. In Vercel → Project → Settings → Environment Variables (Production), set:
+**Part 2 — Connect (the owner, 1 minute).** **Connect with Square** → sign in
+→ **Allow**. Every active location is selected; deselect any you don't want on
+Settings → Square (keep the Square Online location if you sell online). OAuth
+access tokens last 30 days and are renewed automatically when fewer than 7 days
+remain; **Disconnect** revokes the app's access.
 
-   | Variable | Value |
-   |---|---|
-   | `SQUARE_ENVIRONMENT` | `production` |
-   | `SQUARE_APPLICATION_ID` | Application ID from step 3 |
-   | `SQUARE_APPLICATION_SECRET` | Application secret from step 3 |
-   | `SQUARE_WEBHOOK_SIGNATURE_KEY` | Signature key from step 4 |
-   | `SQUARE_WEBHOOK_URL` | `https://subversive-ops.vercel.app/api/webhooks/square` (exactly as registered) |
-   | `CRON_SECRET` | any long random string (protects the scheduled jobs) |
-
-   Redeploy.
+**Instant updates (optional).** The guide gives the notification URL
+(`https://<your-domain>/api/webhooks/square`, derived from `APP_URL` or the
+address you're using), API version and the event list as copy-able blocks;
+paste the subscription's **Signature key** back. Signatures are accepted for
+`SQUARE_WEBHOOK_URL` (if set), the `APP_URL`-derived URL and the request's own
+URL. The card shows when the last update arrived.
 
 Scopes requested on connect (read-only): `MERCHANT_PROFILE_READ ITEMS_READ
 ORDERS_READ PAYMENTS_READ EMPLOYEES_READ TIMECARDS_READ
 TIMECARDS_SETTINGS_READ INVENTORY_READ`.
 
-**2. Connect (the owner, in the app)**
-
-Settings → **Square** → **Connect with Square** → sign in to Square → **Allow**.
-Every active location is selected; deselect any you don't want (keep the
-Square Online location if you sell online). OAuth access tokens last 30 days
-and are renewed automatically when fewer than 7 days remain; **Disconnect**
-revokes the app's access.
-
-**Alternative: paste a token.** Without the OAuth variables, use **Paste an
-access token instead** with the **Production → Access token** from the
-app's **Credentials** page. It is checked against `/v2/merchants/me` before
+**Alternative: paste an access code.** Without Part 1, use **Paste an access
+code instead** on Settings → Square with the **Production → Access token** from
+the app's **Credentials** page. It is checked against `/v2/merchants/me` before
 it's saved. (Personal access tokens don't expire.) Legacy
 `SQUARE_ACCESS_TOKEN` + `SQUARE_LOCATION_ID` env vars still work as a
 fallback when nothing is connected in the app.
 
-**3. First import**
+**First import**
 
 Settings → Square → **First import**: pick 3, 6 or 12 months → **Start
 import**. It runs a week at a time (menu and team first, then sales and
@@ -179,8 +181,8 @@ background when the last refresh is over 15 minutes old; the nightly cron
 re-syncs the catalog, the last 3 days of sales and labor. Timecards a manager
 edited or approved in the app are never overwritten.
 
-**Sandbox.** Set `SQUARE_ENVIRONMENT=sandbox`, use the app's **Sandbox**
-Application ID/secret, add the same redirect URL on the Sandbox OAuth page, and
+**Sandbox.** Paste the app's **Sandbox** Application ID/secret in Connections
+(or set `SQUARE_ENVIRONMENT=sandbox` with env vars), add the same redirect URL on the Sandbox OAuth page, and
 open the sandbox test account's dashboard (Developer Dashboard → Sandbox test
 accounts → Open) before pressing Connect. All Square hosts switch to
 `connect.squareupsandbox.com`.

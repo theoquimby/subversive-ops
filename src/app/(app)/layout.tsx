@@ -57,7 +57,7 @@ async function managerCommands(): Promise<Command[]> {
     { id: "go-team", label: "Team & positions", group: "Go to", href: "/team" },
     { id: "go-reviews", label: "Reviews", group: "Go to", href: "/reviews" },
     { id: "go-budgets", label: "Budgets & targets", group: "Go to", href: "/budgets" },
-    { id: "do-payroll", label: "Download payroll CSV (this week)", group: "Do", href: "/labor/payroll", hint: "csv" },
+    { id: "do-payroll", label: "Download payroll spreadsheet (this week)", group: "Do", href: "/labor/payroll", hint: "csv" },
     { id: "do-labor-sync", label: "Sync team & timecards from Square", group: "Do", href: "/team" },
     { id: "do-paste-reviews", label: "Import reviews (paste)", group: "Do", href: "/reviews", hint: "reviews" },
     { id: "do-reply-reviews", label: "Reply to reviews", group: "Do", href: "/reviews?show=open" },

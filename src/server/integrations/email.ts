@@ -2,9 +2,14 @@ import "server-only";
 
 /**
  * Minimal Resend client (https://resend.com/docs/api-reference/emails/send-email).
- * Plain fetch, no SDK. When RESEND_API_KEY / EMAIL_FROM aren't set every send is a
- * no-op that returns `{ skipped }`, so callers can fall back to copy/mailto.
+ * Plain fetch, no SDK. The key and sender come from Settings → Connections
+ * (or the RESEND_API_KEY / EMAIL_FROM environment variables). When they aren't
+ * set every send is a no-op that returns `{ skipped }`, so callers can fall
+ * back to copy/mailto.
  */
+
+import { getSecrets } from "../services/secrets";
+import { NO_NETWORK } from "./network";
 
 const API = "https://api.resend.com";
 export const EMAIL_NOT_SET_UP = "Email isn't set up yet";
@@ -32,10 +37,17 @@ export interface EmailMessage {
 
 export type SendResult = { ok: true; id: string } | { skipped: string } | { error: string };
 
-export const emailConfigured = () => Boolean(process.env.RESEND_API_KEY?.trim() && process.env.EMAIL_FROM?.trim());
+async function emailConfig(): Promise<{ key: string; from: string } | null> {
+  const s = await getSecrets(["RESEND_API_KEY", "EMAIL_FROM"] as const);
+  return s.RESEND_API_KEY && s.EMAIL_FROM ? { key: s.RESEND_API_KEY, from: s.EMAIL_FROM } : null;
+}
 
-/** The address part of EMAIL_FROM ("Subversive Ops <ops@x.com>" → "ops@x.com"). */
-export const emailFromAddress = () => /<([^>]+)>/.exec(process.env.EMAIL_FROM ?? "")?.[1] ?? process.env.EMAIL_FROM?.trim() ?? null;
+/** Whether email can be sent (key + sender saved in Settings → Connections, or set in the environment). */
+export const emailReady = async () => (await emailConfig()) !== null;
+
+/** The address part of the sender ("Subversive Ops <ops@x.com>" → "ops@x.com"). */
+export const senderAddress = (from: string | null | undefined) => (from ? (/<([^>]+)>/.exec(from)?.[1] ?? from.trim()) : null);
+export const emailFromAddress = async () => senderAddress((await getSecrets(["EMAIL_FROM"] as const)).EMAIL_FROM);
 
 const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
 export const isEmail = (s: string | null | undefined): s is string => !!s && EMAIL_RE.test(s.trim());
@@ -43,14 +55,16 @@ export const isEmail = (s: string | null | undefined): s is string => !!s && EMA
 const b64 = (c: string | Uint8Array) => Buffer.from(typeof c === "string" ? Buffer.from(c, "utf8") : c).toString("base64");
 const tagSafe = (s: string) => s.replace(/[^\w-]/g, "_").slice(0, 256);
 
-export async function sendEmail(msg: EmailMessage): Promise<SendResult> {
-  if (!emailConfigured()) return { skipped: EMAIL_NOT_SET_UP };
+/** `config` overrides the saved key/sender (used to test values before saving). */
+export async function sendEmail(msg: EmailMessage, config?: { key: string; from: string }): Promise<SendResult> {
+  const cfg = config ?? (await emailConfig());
+  if (!cfg) return { skipped: EMAIL_NOT_SET_UP };
   const to = (Array.isArray(msg.to) ? msg.to : [msg.to]).map((s) => s.trim()).filter(Boolean);
   if (to.length === 0 || !to.every(isEmail)) return { error: "That email address doesn't look right." };
   const cc = (msg.cc ?? []).map((s) => s.trim()).filter(isEmail).filter((a) => !to.includes(a));
 
   const body = {
-    from: process.env.EMAIL_FROM!.trim(),
+    from: cfg.from.trim(),
     to,
     ...(cc.length ? { cc } : {}),
     ...(msg.replyTo ? { reply_to: msg.replyTo } : {}),
@@ -67,7 +81,7 @@ export async function sendEmail(msg: EmailMessage): Promise<SendResult> {
     const res = await fetch(`${API}/emails`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY!.trim()}`,
+        Authorization: `Bearer ${cfg.key.trim()}`,
         "Content-Type": "application/json",
         ...(msg.idempotencyKey ? { "Idempotency-Key": msg.idempotencyKey.slice(0, 256) } : {}),
       },
@@ -82,12 +96,14 @@ export async function sendEmail(msg: EmailMessage): Promise<SendResult> {
     return { ok: true, id: json.id };
   } catch (e) {
     console.error("resend: request failed", e);
-    return { error: "Couldn't reach the email service. Try again in a minute." };
+    return { error: NO_NETWORK("the email service (Resend)") };
   }
 }
 
 function friendlyError(status: number, message?: string) {
-  if (status === 401 || status === 403) return "The email service rejected our key — check RESEND_API_KEY and that the sending domain is verified.";
+  if (status === 401) return "The email service didn't accept the saved key. Replace it in Settings → Connections → Email.";
+  if (status === 403 && message && /domain/i.test(message)) return "The sending address's domain isn't verified yet. In Resend, open Domains and finish the DNS step (it can take up to an hour), then try again.";
+  if (status === 403) return `The email service refused to send${message ? `: ${message}` : ""}. Check the sending address's domain is verified in Resend.`;
   if (status === 422 && message) return `The email service said: ${message}`;
   if (status === 429) return "Too many emails at once. Try again in a minute.";
   return message ? `Email didn't send: ${message}` : "Email didn't send. Try again in a minute.";
@@ -97,10 +113,11 @@ function friendlyError(status: number, message?: string) {
 export type DeliveryEvent = "queued" | "scheduled" | "sent" | "delivered" | "delivery_delayed" | "bounced" | "complained" | "opened" | "clicked" | "canceled" | "failed";
 
 export async function emailDeliveryStatus(id: string): Promise<DeliveryEvent | null> {
-  if (!emailConfigured()) return null;
+  const cfg = await emailConfig();
+  if (!cfg) return null;
   try {
     const res = await fetch(`${API}/emails/${encodeURIComponent(id)}`, {
-      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY!.trim()}` },
+      headers: { Authorization: `Bearer ${cfg.key.trim()}` },
       signal: AbortSignal.timeout(5_000),
       cache: "no-store",
     });

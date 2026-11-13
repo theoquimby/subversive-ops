@@ -81,7 +81,7 @@ export const labor: HelpEntry[] = [
     area: "labor",
     route: "/labor",
     title: "Timecards and payroll",
-    body: "Timecards from Square, a ranked list of problems to fix, adjustments, and a payroll file you approve before it goes to your payroll provider. The buttons at the top change the pay period, sync from Square and download the CSV.",
+    body: "Timecards from Square, a ranked list of problems to fix, adjustments, and a payroll file you approve before it goes to your payroll provider. The buttons at the top change the pay period, sync from Square and download the payroll spreadsheet.",
     article: `### Timecards
 Clock-ins and outs come over from Square. Fix a missed punch in place: type 4p, 16:30 or 10:15pm. Any card you change is marked edited, and the Square sync leaves it as you set it from then on. Square's own record isn't changed.
 
@@ -131,7 +131,7 @@ These rules are pre-filled for New York and editable in Settings. The app applie
     area: "labor",
     route: "/labor",
     title: "Approve a pay period",
-    body: "Locks the period's timecards and adjustments and freezes the payroll file. Unlock to change anything, then approve again. Until then the CSV is marked DRAFT.",
+    body: "Locks the period's timecards and adjustments and freezes the payroll file. Unlock to change anything, then approve again. Until then the payroll spreadsheet is marked DRAFT.",
     related: ["labor.export"],
   },
   {
@@ -170,7 +170,7 @@ These rules are pre-filled for New York and editable in Settings. The app applie
     area: "labor",
     route: "/labor",
     title: "Payroll export",
-    body: "A CSV per pay period: regular and overtime hours, spread-of-hours, call-in, sick and PTO pay, adjustments, gross wages, tips and sick balance per person, keyed by Square team member ID.",
+    body: "A spreadsheet file per pay period: regular and overtime hours, spread-of-hours, call-in, sick and PTO pay, adjustments, gross wages, tips and sick balance per person, keyed by Square team member ID.",
     related: ["tips.page", "labor.approve"],
   },
   {
@@ -208,7 +208,7 @@ These rules are pre-filled for New York and editable in Settings. The app applie
     area: "labor",
     route: "/labor",
     title: "Payroll",
-    body: "What goes to payroll for each person: hours, overtime, call-in and leave pay, adjustments, gross, tips and sick balance. Once approved it shows exactly what the CSV contains.",
+    body: "What goes to payroll for each person: hours, overtime, call-in and leave pay, adjustments, gross, tips and sick balance. Once approved it shows exactly what the payroll spreadsheet contains.",
     related: ["labor.export", "labor.approve"],
   },
   {
@@ -481,7 +481,7 @@ Only tip-eligible positions are in the pool (set on the Team page). Check the sp
     area: "tips",
     route: "/tips",
     title: "Saved periods",
-    body: "Tip periods you've saved, with the total and how they were split. Tap one to open it, download its CSV, or delete it if it isn't finalized.",
+    body: "Tip periods you've saved, with the total and how they were split. Tap one to open it, download it as a spreadsheet, or delete it if it isn't finalized.",
   },
 ];
 
@@ -662,7 +662,7 @@ export const invoices: HelpEntry[] = [
     route: "/invoices",
     title: "Invoices",
     body: "Snap a photo of a delivery invoice. It's checked against what you ordered and checked in, differences are flagged, and changed prices flow into costing.",
-    article: `1. **Snap** the invoice when the truck arrives. Claude reads the lines when the API key is set; otherwise type or paste them.
+    article: `1. **Snap** the invoice when the truck arrives. Claude reads the lines once AI features are on (Settings → Connections); otherwise type or paste them.
 2. It's **matched** line by line to the order and its check-in. Price and quantity differences over your tolerance are flagged.
 3. **Approve.** A clean match is one tap. Approving with open issues needs a short note. Every approval and reopen is kept in the invoice's history.
 4. **Request a credit** for anything shorted or overcharged. A ready-to-send message is drafted.
@@ -676,7 +676,7 @@ Approved invoices with no checked-in order count as received stock for ordering.
     area: "invoices",
     route: "/invoices",
     title: "Snap an invoice",
-    body: "Take a photo or upload a PDF. Lines, quantities and prices are read for you when the Claude API key is set.",
+    body: "Take a photo or upload a PDF. Lines, quantities and prices are read for you once AI features are on in Settings → Connections.",
   },
   {
     id: "invoices.match",
@@ -873,8 +873,8 @@ export const reviews: HelpEntry[] = [
     route: "/reviews",
     title: "Reviews",
     body: "Guest reviews grouped into themes and lined up against what happened that day, with reply drafts and a monthly list of what to fix. Import from Google, or paste reviews from anywhere.",
-    article: `- **Google** reviews come in every morning once the Places API key and your Place ID are set. Google only shares the five most relevant at a time. **Yelp, TripAdvisor and others**: paste them in.
-- **What to fix this month**: up to three concrete fixes from the last 90 days of themes and what operations looked like on those days. Claude writes it when the API key is set; otherwise it comes from the most-mentioned complaints. Refresh it any time.
+    article: `- **Google** reviews come in every morning once Google reviews is set up in [Settings → Connections](/settings/connections?open=google). Google only shares the five most relevant at a time. **Yelp, TripAdvisor and others**: paste them in.
+- **What to fix this month**: up to three concrete fixes from the last 90 days of themes and what operations looked like on those days. Claude writes it once AI features are on; otherwise it comes from the most-mentioned complaints. Refresh it any time.
 - **Rating is slipping**: shown here and in the weekly brief when the last 30 days average 0.3★ or more below the 90 days before.`,
     related: ["reviews.themes", "reviews.reply", "brief.page"],
     keywords: ["google", "yelp", "feedback", "ratings", "what to fix"],
@@ -898,7 +898,7 @@ export const reviews: HelpEntry[] = [
     area: "reviews",
     route: "/reviews",
     title: "Bring reviews in",
-    body: "Import from Google fetches the latest Google reviews once a Place ID is set (they're also checked every morning). Paste reviews adds ones copied from Yelp, TripAdvisor or anywhere else.",
+    body: "Import from Google fetches the latest Google reviews once your business is picked in Settings → Connections (they're also checked every morning). Paste reviews adds ones copied from Yelp, TripAdvisor or anywhere else.",
   },
   {
     id: "reviews.average",
@@ -964,7 +964,7 @@ export const reviews: HelpEntry[] = [
     area: "reviews",
     route: "/reviews",
     title: "Review settings",
-    body: "Your Google Place ID, so Google reviews can be imported, and tone notes Claude follows when drafting replies — like how to sign off or what never to offer in public.",
+    body: "Whether Google reviews are coming in (set up in Settings → Connections), and tone notes the AI follows when drafting replies — like how to sign off or what never to offer in public.",
   },
 ];
 

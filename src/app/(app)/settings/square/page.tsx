@@ -1,18 +1,19 @@
-import { Badge, Card, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, Card, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import { qty, relativeTime, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
-import { env } from "@/server/env";
-import { squareStatus, squareStreams, squareSyncLog } from "@/server/services/square";
+import { lastWebhookSeen, squareStatus, squareStreams, squareSyncLog, squareWebhookKey } from "@/server/services/square";
+import { publicOrigin, SQUARE_WEBHOOK_PATH } from "@/server/services/public-url";
 import { dataCoverage, getBackfill } from "@/server/services/square-sync";
+import Link from "next/link";
 import { BackfillPanel, ClearLogButton, ConnectionActions, LocationPicker } from "./square-client";
 
 export const metadata = { title: "Square" };
 // The first-import steps run as server actions from this page.
 export const maxDuration = 60;
 
-const SOURCE_LABEL = { oauth: "Signed in with Square", token: "Personal access token", env: "Hosting settings" } as const;
+const SOURCE_LABEL = { oauth: "Signed in with Square", token: "Pasted access code", env: "Set up by whoever hosts the app" } as const;
 const STREAMS = [
-  { id: "catalog", label: "Menu (catalog)", unit: "items" },
+  { id: "catalog", label: "Menu", unit: "items" },
   { id: "sales", label: "Sales", unit: "orders" },
   { id: "labor", label: "Timecards", unit: "timecards" },
   { id: "live", label: "Today refresh", unit: "" },
@@ -21,8 +22,8 @@ const STREAMS = [
 export default async function SquareSettingsPage({ searchParams }: { searchParams: Promise<{ connected?: string; error?: string }> }) {
   await requireUser("MANAGER");
   const { connected: justConnected, error } = await searchParams;
-  const [status, streams, log, coverage, backfill] = await Promise.all([squareStatus(), squareStreams(), squareSyncLog(), dataCoverage(), getBackfill()]);
-  const webhooksOn = !!env.SQUARE_WEBHOOK_SIGNATURE_KEY;
+  const [status, streams, log, coverage, backfill, webhookKey, origin, lastWebhook] = await Promise.all([squareStatus(), squareStreams(), squareSyncLog(), dataCoverage(), getBackfill(), squareWebhookKey(), publicOrigin(), lastWebhookSeen()]);
+  const webhooksOn = !!webhookKey;
 
   return (
     <>
@@ -31,6 +32,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
         back={{ href: "/settings", label: "Settings" }}
         title="Square"
         description="Sales, the menu and timecards come from Square. Once connected it keeps itself up to date — through the day and every night."
+        actions={<LinkButton href="/settings/connections?open=square">Set-up guide</LinkButton>}
       />
 
       {(justConnected || error) && (
@@ -49,16 +51,16 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
                   ? [
                       status.source && SOURCE_LABEL[status.source],
                       status.connectedAt && `connected ${relativeTime(new Date(status.connectedAt))}`,
-                      status.expiresAt && `access renews automatically (current one good until ${shortDate(status.expiresAt.slice(0, 10))})`,
+                      status.expiresAt && `stays signed in by itself (next renewal before ${shortDate(status.expiresAt.slice(0, 10))})`,
                     ].filter(Boolean).join(" · ")
                   : "Connect the restaurant's Square account so sales, the menu and timecards flow in."}
               </div>
               {status.source === "env" && (
-                <div className="mt-1 text-sm text-muted">Connected through the hosting settings. Connect with Square here to manage it from the app instead.</div>
+                <div className="mt-1 text-sm text-muted">Connected by whoever hosts the app. Connect with Square here to manage it from the app instead.</div>
               )}
             </div>
             <div className="flex items-center gap-2">
-              {status.connected && status.environment === "sandbox" && <Badge tone="warn">Sandbox</Badge>}
+              {status.connected && status.environment === "sandbox" && <Badge tone="warn">Test account</Badge>}
               <Badge tone={status.connected ? "good" : "warn"}>{status.connected ? "Live" : "Setup needed"}</Badge>
             </div>
           </div>
@@ -79,7 +81,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
           title="Locations"
           description={
             status.source === "env"
-              ? "Set by SQUARE_LOCATION_ID (comma-separate several)."
+              ? "Chosen by whoever hosts the app. Connect with Square here to pick them yourself."
               : "Sales and timecards are read from every location picked here. Square Online orders often use their own location — include it if you sell online."
           }
         >
@@ -102,7 +104,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
         </div>
       </Section>
 
-      <Section help="settings.square.sync" title="Sync" description={webhooksOn ? "Square tells us about new orders and clock-ins as they happen (webhooks are on). Pages also top up today's numbers if they're more than 15 minutes old." : "Pages top up today's numbers when they're more than 15 minutes old, and everything re-syncs nightly. Turn on webhooks for instant updates (see Help)."}>
+      <Section help="settings.square.sync" title="Sync" description={webhooksOn ? "Square tells us about new orders and clock-ins as they happen (instant updates are on). Pages also top up today's numbers if they're more than 15 minutes old." : "Pages top up today's numbers when they're more than 15 minutes old, and everything re-syncs nightly. Turn on instant updates in the set-up guide to get new orders within seconds."}>
         <Table>
           <thead>
             <tr><Th>What</Th><Th>Last run</Th><Th align="right">Count</Th><Th className="hidden sm:table-cell">Range</Th></tr>
@@ -122,7 +124,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
           </tbody>
         </Table>
         <p className="mt-3 text-sm text-muted">
-          Webhooks: {webhooksOn ? <span className="text-good">on</span> : "off"} · notification URL <span className="font-mono text-[0.8rem] break-all text-ink-2">{env.SQUARE_WEBHOOK_URL || "https://<your app>/api/webhooks/square"}</span>
+          Instant updates: {webhooksOn ? <span className="text-good">on{lastWebhook ? ` · last one ${relativeTime(lastWebhook)}` : " · none received yet"}</span> : <>off · <Link href="/settings/connections?open=square#square-instant" className="text-ink underline underline-offset-2">turn on</Link></>} · Square sends them to <span className="font-mono text-[0.8rem] break-all text-ink-2">{process.env.SQUARE_WEBHOOK_URL || `${origin}${SQUARE_WEBHOOK_PATH}`}</span>
         </p>
       </Section>
 

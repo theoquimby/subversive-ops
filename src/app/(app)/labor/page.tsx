@@ -82,7 +82,7 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
           <>
             <HelpZone id="labor.period"><PeriodPicker start={period.start} prev={payPeriodFor(addDays(period.start, -1), rules).start} next={addDays(period.end, 1)} label={label} /></HelpZone>
             <HelpZone id="labor.squareSync" className="flex flex-wrap items-center gap-2"><SquareSyncButton periodStart={period.start} connected={squareConnected} /></HelpZone>
-            <HelpZone id="labor.export"><LinkButton href={`/labor/payroll?start=${period.start}`} prefetch={false}><Download className="size-3.5" />{approved ? "Payroll CSV" : "Draft CSV"}</LinkButton></HelpZone>
+            <HelpZone id="labor.export"><LinkButton href={`/labor/payroll?start=${period.start}`} prefetch={false}><Download className="size-3.5" />{approved ? "Payroll spreadsheet" : "Draft spreadsheet"}</LinkButton></HelpZone>
           </>
         }
       />
@@ -137,7 +137,7 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
         </Card>
       </Section>
 
-      <Section help="labor.payroll" title="Payroll" description={approved ? "As approved. This is what the CSV contains." : "What goes to payroll. Tips come from finalized tip pools; sick and PTO hours from approved requests."}>
+      <Section help="labor.payroll" title="Payroll" description={approved ? "As approved. This is what the payroll spreadsheet contains." : "What goes to payroll. Tips come from finalized tip pools; sick and PTO hours from approved requests."}>
         {rows.length === 0 ? (
           <EmptyState title="Nothing to pay yet">Totals appear once there are timecards in this period.</EmptyState>
         ) : (

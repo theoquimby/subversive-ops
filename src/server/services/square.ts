@@ -2,7 +2,8 @@ import "server-only";
 import { decryptJSON, deriveKey, encryptJSON } from "@/domain/squareSecurity";
 import { tokenNeedsRefresh } from "@/domain/squareSync";
 import { db } from "../db";
-import { env, squareOAuthConfigured } from "../env";
+import { env } from "../env";
+import { getSecret, getSecrets } from "./secrets";
 import { exchangeCode, fetchLocations, fetchMerchant, refreshAccessToken, revokeToken, SquareLocation } from "../integrations/square-auth";
 import { friendlySquareError, SquareClient, SquareEnvironment } from "../integrations/square-http";
 import { relativeTime } from "@/lib/format";
@@ -40,6 +41,40 @@ const SYNC_LOG_KEY = "square.syncLog";
 const STREAMS_KEY = "square.streams";
 
 const cryptoKey = () => deriveKey(env.SESSION_SECRET, "square.connection");
+
+/**
+ * The Square app's ID and secret ("Part 1" in Settings → Connections), saved
+ * in the app or set as environment variables. Null until both are there.
+ */
+export async function squareAppCredentials(): Promise<{ applicationId: string; applicationSecret: string } | null> {
+  const s = await getSecrets(["SQUARE_APPLICATION_ID", "SQUARE_APPLICATION_SECRET"] as const);
+  return s.SQUARE_APPLICATION_ID && s.SQUARE_APPLICATION_SECRET ? { applicationId: s.SQUARE_APPLICATION_ID, applicationSecret: s.SQUARE_APPLICATION_SECRET } : null;
+}
+
+/** One-click "Connect with Square" is available once the app's ID and secret are saved. */
+export const squareOAuthReady = async () => (await squareAppCredentials()) !== null;
+
+/** Which Square to talk to: the Application ID says it (sandbox IDs start with "sandbox-"), else SQUARE_ENVIRONMENT. */
+export async function squareEnvironment(): Promise<SquareEnvironment> {
+  const id = await getSecret("SQUARE_APPLICATION_ID");
+  if (id?.startsWith("sandbox-")) return "sandbox";
+  if (id) return "production";
+  return env.SQUARE_ENVIRONMENT;
+}
+
+/** The webhook signature key ("Instant updates", optional). */
+export const squareWebhookKey = () => getSecret("SQUARE_WEBHOOK_SIGNATURE_KEY");
+
+const WEBHOOK_SEEN_KEY = "square.lastWebhook";
+/** Remember when Square last sent a correctly signed update (shown on the Connections card). */
+export async function recordWebhookSeen() {
+  const value = new Date().toISOString();
+  await db.setting.upsert({ where: { key: WEBHOOK_SEEN_KEY }, create: { key: WEBHOOK_SEEN_KEY, value }, update: { value } });
+}
+export async function lastWebhookSeen(): Promise<Date | null> {
+  const r = await db.setting.findUnique({ where: { key: WEBHOOK_SEEN_KEY } });
+  return r ? new Date(r.value) : null;
+}
 
 // ---- Settings helpers ------------------------------------------------------------
 
@@ -98,15 +133,16 @@ export async function getSquareConnection(): Promise<SquareConnection | null> {
   if (!s) return envConnection();
   const now = new Date();
   const recentlyFailed = s.refreshFailedAt && now.getTime() - Date.parse(s.refreshFailedAt) < 3_600_000;
-  if (s.source === "oauth" && s.refreshToken && squareOAuthConfigured() && !recentlyFailed && tokenNeedsRefresh(s.expiresAt, now)) {
+  const app = s.source === "oauth" && s.refreshToken && !recentlyFailed && tokenNeedsRefresh(s.expiresAt, now) ? await squareAppCredentials() : null;
+  if (app && s.refreshToken) {
     try {
-      const t = await refreshAccessToken(s.environment, env.SQUARE_APPLICATION_ID, env.SQUARE_APPLICATION_SECRET, s.refreshToken);
+      const t = await refreshAccessToken(s.environment, app.applicationId, app.applicationSecret, s.refreshToken);
       s = { ...s, accessToken: t.access_token, refreshToken: t.refresh_token ?? s.refreshToken, expiresAt: t.expires_at ?? null, refreshFailedAt: null };
       await writeStored(s);
     } catch (e) {
       s = { ...s, refreshFailedAt: now.toISOString() };
       await writeStored(s);
-      await logSquareError("auth", `Couldn't renew the Square access token: ${friendlySquareError(e)}`);
+      await logSquareError("auth", `Couldn't renew the Square sign-in: ${friendlySquareError(e)}`);
     }
   }
   return {
@@ -130,7 +166,7 @@ export async function isSquareConnected(): Promise<boolean> {
 
 export class SquareNotConnectedError extends Error {
   constructor() {
-    super("Square isn't connected. Connect it under Settings → Square.");
+    super("Square isn't connected yet. Connect it in Settings → Connections → Square.");
   }
 }
 
@@ -157,19 +193,19 @@ export interface SquareStatus {
 }
 
 export async function squareStatus(): Promise<SquareStatus> {
-  const c = await getSquareConnection();
+  const [c, oauthAvailable, environment] = await Promise.all([getSquareConnection(), squareOAuthReady(), squareEnvironment()]);
   const locs = c?.locations.length ? c.locations : (c?.locationIds ?? []).map((id) => ({ id, name: id, active: true, timezone: null }));
   return {
     connected: !!c && c.locationIds.length > 0,
     source: c?.source ?? null,
-    environment: c?.environment ?? env.SQUARE_ENVIRONMENT,
+    environment: c?.environment ?? environment,
     merchantName: c?.merchantName ?? null,
     merchantId: c?.merchantId ?? null,
     locations: locs.map((l) => ({ id: l.id, name: l.name, active: l.active, selected: !!c?.locationIds.includes(l.id) })),
     selectedCount: c?.locationIds.length ?? 0,
     expiresAt: c?.expiresAt ?? null,
     connectedAt: c?.connectedAt ?? null,
-    oauthAvailable: squareOAuthConfigured(),
+    oauthAvailable,
     envFallback: !!env.SQUARE_ACCESS_TOKEN,
   };
 }
@@ -208,9 +244,11 @@ async function saveNew(source: "oauth" | "token", environment: SquareEnvironment
 }
 
 export async function connectWithOAuthCode(code: string) {
-  if (!squareOAuthConfigured()) throw new Error("Square OAuth isn't set up: add SQUARE_APPLICATION_ID and SQUARE_APPLICATION_SECRET.");
-  const t = await exchangeCode(env.SQUARE_ENVIRONMENT, env.SQUARE_APPLICATION_ID, env.SQUARE_APPLICATION_SECRET, code);
-  return saveNew("oauth", env.SQUARE_ENVIRONMENT, t.access_token, { refreshToken: t.refresh_token, expiresAt: t.expires_at });
+  const app = await squareAppCredentials();
+  if (!app) throw new Error("Finish Part 1 first: save the Square app's Application ID and secret in Settings → Connections → Square.");
+  const environment = await squareEnvironment();
+  const t = await exchangeCode(environment, app.applicationId, app.applicationSecret, code);
+  return saveNew("oauth", environment, t.access_token, { refreshToken: t.refresh_token, expiresAt: t.expires_at });
 }
 
 /** Validates a pasted personal access token against /v2/merchants/me before saving it. */
@@ -222,9 +260,10 @@ export async function connectWithToken(token: string, environment: SquareEnviron
 export async function disconnectSquare(): Promise<{ revokeError?: string }> {
   const s = await readStored();
   let revokeError: string | undefined;
-  if (s?.source === "oauth" && squareOAuthConfigured()) {
+  const app = s?.source === "oauth" ? await squareAppCredentials() : null;
+  if (s && app) {
     try {
-      await revokeToken(s.environment, env.SQUARE_APPLICATION_ID, env.SQUARE_APPLICATION_SECRET, s.accessToken);
+      await revokeToken(s.environment, app.applicationId, app.applicationSecret, s.accessToken);
     } catch (e) {
       revokeError = friendlySquareError(e);
     }
@@ -245,7 +284,7 @@ export async function testSquareConnection() {
 
 export async function setSquareLocations(ids: string[]) {
   const s = await readStored();
-  if (!s) throw new Error(env.SQUARE_ACCESS_TOKEN ? "Locations are fixed in the hosting settings while Square is connected that way." : "Connect Square first.");
+  if (!s) throw new Error(env.SQUARE_ACCESS_TOKEN ? "Locations are fixed by the hosting settings while Square is connected that way. Connect with Square here to choose them in the app." : "Connect Square first.");
   const known = new Set(s.locations.map((l) => l.id));
   const picked = ids.filter((id) => known.has(id));
   if (!picked.length) throw new Error("Pick at least one location.");

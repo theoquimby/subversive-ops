@@ -2,9 +2,9 @@
 
 import { requireUser } from "@/server/auth";
 import { EVENT_KEYS, eventsFor, NOTIFY_EVENTS, type NotifyEvent, type NotifyPrefs } from "@/server/email/prefs";
-import { emailConfigured, isEmail } from "@/server/integrations/email";
+import { emailReady, isEmail } from "@/server/integrations/email";
 import { emailForUser, loadPrefs, savePrefs, sendTestNotification } from "@/server/services/notify";
-import { deviceLabel, listSubscriptions, pushConfigured, removeSubscription, saveSubscription, subscriptionSchema, vapidPublicKey } from "@/server/services/push";
+import { deviceLabel, listSubscriptions, pushReady, removeSubscription, saveSubscription, subscriptionSchema, vapidPublicKey } from "@/server/services/push";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { z } from "zod";
@@ -23,11 +23,11 @@ export interface PushConfig {
 
 export async function pushConfig(): Promise<PushConfig> {
   const s = await requireUser();
-  const [prefs, email, subs] = await Promise.all([loadPrefs(s.userId), emailForUser(s.userId), listSubscriptions(s.userId)]);
+  const [prefs, email, subs, publicKey, canPush, canEmail] = await Promise.all([loadPrefs(s.userId), emailForUser(s.userId), listSubscriptions(s.userId), vapidPublicKey(), pushReady(), emailReady()]);
   return {
-    vapidPublicKey: vapidPublicKey(),
-    pushReady: pushConfigured(),
-    emailReady: emailConfigured(),
+    vapidPublicKey: publicKey,
+    pushReady: canPush,
+    emailReady: canEmail,
     email,
     events: eventsFor(s.role).map((k) => ({ key: k, label: NOTIFY_EVENTS[k].label, hint: NOTIFY_EVENTS[k].hint, ...prefs.events[k] })),
     devices: subs.length,

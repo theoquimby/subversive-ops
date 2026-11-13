@@ -100,7 +100,7 @@ export function TipPool({ from, to, shares, excludedHours, synced, saved, period
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {saved && !dirty && <LinkButton href={`/tips/${saved.id}/csv`} prefetch={false} size="sm" className="max-sm:h-10"><Download className="size-3.5" /> CSV</LinkButton>}
+            {saved && !dirty && <LinkButton href={`/tips/${saved.id}/csv`} prefetch={false} size="sm" className="max-sm:h-10"><Download className="size-3.5" /> Spreadsheet</LinkButton>}
             {!locked && (
               <Button
                 size="sm"
@@ -190,7 +190,7 @@ export function TipPool({ from, to, shares, excludedHours, synced, saved, period
                   <div className="num text-xs text-muted">{money(p.total)} · {p.people} people · by {p.method === "HOURS" ? "hours" : "points"}</div>
                 </button>
                 {p.finalized ? <Badge tone="good">Finalized</Badge> : <Badge>Draft</Badge>}
-                <LinkButton href={`/tips/${p.id}/csv`} prefetch={false} variant="ghost" size="sm" aria-label="Download CSV" className="max-sm:size-10"><Download className="size-3.5" /></LinkButton>
+                <LinkButton href={`/tips/${p.id}/csv`} prefetch={false} variant="ghost" size="sm" aria-label="Download spreadsheet" className="max-sm:size-10"><Download className="size-3.5" /></LinkButton>
                 {!p.finalized && (
                   <Button
                     variant="ghost"

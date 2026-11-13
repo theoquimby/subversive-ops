@@ -6,7 +6,7 @@ import { businessDateTime, money, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { db, num } from "@/server/db";
 import { env } from "@/server/env";
-import { emailConfigured } from "@/server/integrations/email";
+import { emailReady } from "@/server/integrations/email";
 import { currentApproval } from "@/domain/invoiceHistory";
 import { candidateOrders, loadHistory, loadInvoice, loadTolerance, pendingPriceChanges, STATUS_META } from "@/server/services/invoices";
 import { InvoiceStatus } from "@prisma/client";
@@ -104,7 +104,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             flagged={flagged}
             priceChanges={priceChanges}
             invoiceDate={date}
-            credit={credit && { ...credit, count: credits.length, email: inv.supplier.email, canSend: emailConfigured(), lastSent: lastCredit }}
+            credit={credit && { ...credit, count: credits.length, email: inv.supplier.email, canSend: (await emailReady()), lastSent: lastCredit }}
           /></HelpZone>
         }
       />

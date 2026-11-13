@@ -8,6 +8,7 @@ import { env } from "../env";
 import { laborByDay, loadTargets } from "./budgets";
 import { loadCostingSnapshot } from "./costing";
 import { dailySalesForecast } from "./forecasting";
+import { insightFeed } from "./analytics";
 import { costTargets, menuCosts, recentPriceMoves } from "./insights";
 import { periodKpis } from "./kpis";
 import { buildOrderPlan } from "./planning";
@@ -187,6 +188,14 @@ export async function weeklyBrief() {
   const lastWasteDate = lastWaste ? businessDate(lastWaste.loggedAt, env.BUSINESS_TIMEZONE) : null;
   const daysSinceWaste = lastWasteDate ? daysBetween(lastWasteDate, today) : null;
 
+  // The three findings worth most from Insights (same ranking as the Overview and the Sunday digest).
+  const insights = await insightFeed({ limit: 3 })
+    .then((r) => r.items.map((i) => ({ key: i.key, title: i.title, action: i.action, monthly: i.monthly, oneOff: i.oneOff ?? null, confidence: i.confidence, href: i.href })))
+    .catch((e) => {
+      console.error("brief: insights failed", e);
+      return [];
+    });
+
   const decide = decisions({
     timeOff,
     swaps,
@@ -216,6 +225,7 @@ export async function weeklyBrief() {
     reviews: { unreplied: reviews, alerts },
     waste: { last: lastWasteDate, daysSince: daysSinceWaste, quiet: daysSinceWaste == null || daysSinceWaste > 7 },
     training,
+    insights,
   };
 }
 

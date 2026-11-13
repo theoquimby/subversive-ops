@@ -1,20 +1,31 @@
 import { verifySquareSignature } from "@/domain/squareSecurity";
 import { webhookStream, webhookTimestamp } from "@/domain/squareSync";
 import { env } from "@/server/env";
-import { logSquareError } from "@/server/services/square";
+import { logSquareError, recordWebhookSeen, squareWebhookKey } from "@/server/services/square";
+import { SQUARE_WEBHOOK_PATH } from "@/server/services/public-url";
 import { businessDateOf, processPending, queueSquareWork } from "@/server/services/square-sync";
 import { after } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** The URL Square signed: the configured one, else this request's public URL. */
-function notificationUrl(req: Request) {
-  if (env.SQUARE_WEBHOOK_URL) return env.SQUARE_WEBHOOK_URL;
+/**
+ * The URLs Square may have signed: an explicit SQUARE_WEBHOOK_URL, the one
+ * derived from APP_URL (what Settings → Connections shows to copy), and this
+ * request's own public URL. A signature matching any of them is accepted.
+ */
+function notificationUrls(req: Request): string[] {
   const u = new URL(req.url);
-  const proto = req.headers.get("x-forwarded-proto") ?? u.protocol.replace(":", "");
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? u.host;
-  return `${proto}://${host}${u.pathname}${u.search}`;
+  const proto = (req.headers.get("x-forwarded-proto") ?? u.protocol.replace(":", "")).split(",")[0].trim();
+  const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? u.host).split(",")[0].trim();
+  const app = process.env.APP_URL?.trim().replace(/\/+$/, "");
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  return [
+    env.SQUARE_WEBHOOK_URL,
+    app && `${app}${SQUARE_WEBHOOK_PATH}`,
+    `${proto}://${host}${u.pathname}${u.search}`,
+    vercel && `https://${vercel}${SQUARE_WEBHOOK_PATH}`,
+  ].filter((x, i, all): x is string => !!x && all.indexOf(x) === i);
 }
 
 interface SquareEvent {
@@ -30,11 +41,14 @@ interface SquareEvent {
  * after the response (a short wait lets a burst of events collapse).
  */
 export async function POST(req: Request) {
-  if (!env.SQUARE_WEBHOOK_SIGNATURE_KEY) return new Response("Webhooks are not configured", { status: 503 });
+  const key = await squareWebhookKey();
+  if (!key) return new Response("Instant updates aren't turned on (no signature key saved)", { status: 503 });
   const raw = await req.text();
-  if (!verifySquareSignature(env.SQUARE_WEBHOOK_SIGNATURE_KEY, notificationUrl(req), raw, req.headers.get("x-square-hmacsha256-signature"))) {
+  const sig = req.headers.get("x-square-hmacsha256-signature");
+  if (!notificationUrls(req).some((url) => verifySquareSignature(key, url, raw, sig))) {
     return new Response("Invalid signature", { status: 401 });
   }
+  await recordWebhookSeen().catch(() => undefined);
   let event: SquareEvent;
   try {
     event = JSON.parse(raw) as SquareEvent;

@@ -77,8 +77,8 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
           </Field>
           </HelpZone>
           <HelpZone id="prices.import.file" tour="prices.import.file">
-          <Field label="File (.xlsx or .csv)">
-            <FileDrop ref={fileRef} accept=".csv,.xlsx,.xls" hint="Excel or CSV, as downloaded" onFile={() => setPreview(null)} />
+          <Field label="Spreadsheet file">
+            <FileDrop ref={fileRef} accept=".csv,.xlsx,.xls" hint="Excel or .csv, as downloaded from the distributor" onFile={() => setPreview(null)} />
           </Field>
           </HelpZone>
           <HelpZone id="prices.import.effective" tour="prices.import.effective">

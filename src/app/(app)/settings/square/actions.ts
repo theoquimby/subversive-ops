@@ -15,7 +15,7 @@ const refresh = () => {
 };
 
 const tokenSchema = z.object({
-  token: z.string().trim().min(20, "That doesn't look like a Square access token — it should be a long string starting with EAAA.").max(500),
+  token: z.string().trim().min(20, "That doesn't look like a Square access code — it's a long string starting with EAAA, on the Credentials page.").max(500),
   environment: z.enum(["production", "sandbox"]),
 });
 
@@ -37,7 +37,7 @@ export async function disconnect(): Promise<Result> {
   await requireUser("MANAGER");
   const r = await disconnectSquare();
   refresh();
-  return r.revokeError ? { message: `Disconnected here. Square couldn't confirm the revoke (${r.revokeError}) — you can also remove the app under Square Dashboard → Apps.` } : { message: "Disconnected." };
+  return r.revokeError ? { message: `Disconnected here. Square didn't confirm it (${r.revokeError}) — to be sure, remove the app in your Square Dashboard under Apps.` } : { message: "Disconnected." };
 }
 
 export async function testConnection(): Promise<Result> {

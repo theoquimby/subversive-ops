@@ -212,7 +212,7 @@ Typing a minimum wage in the rules below switches the table off, so your own fig
     body: "Ask about your numbers in plain English — food cost last week, items that lost margin, who's over 35 hours. Answers use live data and link to the page behind them.",
     article: `**Suggested questions** always work: each runs a fixed report (P&L for a period, menu margins, price changes, margin gap, the week's schedule, suggested orders, waste).
 
-**Typed questions** use Claude when the API key is set: it picks the reports it needs, reads the results and answers in a sentence or two. Every number comes from those reports, which are shown under the answer with links. Without the key, simple questions are matched to the closest report.
+**Typed questions** use Claude once AI features are on ([Settings → Connections](/settings/connections?open=ai)): it picks the reports it needs, reads the results and answers in a sentence or two. Every number comes from those reports, which are shown under the answer with links. Without the key, simple questions are matched to the closest report.
 
 Ask only reads data; it never changes anything.`,
     related: ["overview.page", "pnl.page", "variance.page"],
@@ -231,7 +231,7 @@ Ask only reads data; it never changes anything.`,
     area: "overview",
     route: "/ask",
     title: "Ask your own question",
-    body: "Type a question in plain English and press Enter. With the Claude API key set it picks the right reports and answers; without it, simple questions are matched to the closest report.",
+    body: "Type a question in plain English and press Enter. With AI features on it picks the right reports and answers; without them, simple questions are matched to the closest report.",
     related: ["ask.page"],
   },
   {

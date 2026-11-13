@@ -12,13 +12,15 @@ import type { RenderedEmail } from "../email/layout";
 import { DEFAULT_PREFS, NotifyEvent, NotifyPrefs, parsePrefs, prefsKey } from "../email/prefs";
 import { badReviewEmail, certReminderEmail, invoiceIssueEmail, priceSpikesEmail, schedulePublishedEmail, shiftUpdateEmail, staffRequestEmail, weeklyBriefEmail, type CertReminderItem, type PriceSpike, type ShiftUpdate, type StaffRequest } from "../email/templates";
 import { certReminderSummary } from "../email/templates/certificates";
+import { insightsDigestEmail, insightsDigestSummary } from "../email/templates/insights-digest";
+import { insightFeed } from "./analytics";
 import { badReviewSummary, staffRequestSummary } from "../email/templates/manager-requests";
 import { shiftUpdatePush } from "../email/templates/shift-update";
-import { emailConfigured, isEmail, sendEmail } from "../integrations/email";
+import { emailReady, isEmail, sendEmail } from "../integrations/email";
 import { weeklyBrief } from "./brief";
 import { recentPriceMoves } from "./insights";
 import { loadTolerance, STATUS_META } from "./invoices";
-import { PushPayload, pushConfigured, sendPush } from "./push";
+import { PUSH_NOT_SET_UP, PushPayload, pushReady, sendPush } from "./push";
 import { businessToday } from "./sales";
 import { instantAt, shiftView } from "./scheduling";
 
@@ -98,10 +100,9 @@ export async function emailForUser(userId: string): Promise<string | null> {
 export async function notify(event: NotifyEvent, deliveries: Delivery[]): Promise<NotifyResult> {
   const out: NotifyResult = { event, recipients: deliveries.length, emailed: 0, pushed: 0, skipped: [], errors: [] };
   const skip = (s: string) => !out.skipped.includes(s) && out.skipped.push(s);
-  const canEmail = emailConfigured();
-  const canPush = pushConfigured();
+  const [canEmail, canPush] = await Promise.all([emailReady(), pushReady()]);
   if (!canEmail) skip("Email isn't set up yet");
-  if (!canPush) skip("Push notifications aren't set up yet");
+  if (!canPush) skip(PUSH_NOT_SET_UP);
 
   await Promise.all(
     deliveries.map(async (d) => {
@@ -274,6 +275,25 @@ export function notifyWeeklyBrief() {
       to: m,
       email: weeklyBriefEmail({ name: m.name, digest, baseUrl: base }),
       push: { title: "Your weekly brief", body: n ? `${n} thing${n === 1 ? " needs" : "s need"} you: ${digest.todo.slice(0, 2).map((t) => t.title).join(", ")}${n > 2 ? "…" : ""}` : "Nothing urgent this week.", url: "/brief", tag: `brief-${digest.week}` },
+    }));
+  });
+}
+
+/**
+ * "3 things worth your attention" from Insights to every manager (Sunday, with the brief).
+ * Uses the feed's novelty ranking and records what was sent, so next week's digest moves on.
+ */
+export function notifyInsightsDigest() {
+  return safely("insights", async () => {
+    const { items } = await insightFeed({ limit: 3, remember: true });
+    if (!items.length) return [];
+    const digest = items.map((i) => ({ title: i.title, action: i.action, monthly: i.monthly, oneOff: i.oneOff ?? null, confidence: i.confidence, href: i.href }));
+    const base = appUrl();
+    const s = insightsDigestSummary(digest);
+    return (await managers()).map((m) => ({
+      to: m,
+      email: insightsDigestEmail({ name: m.name, items: digest, baseUrl: base }),
+      push: { title: s.title, body: s.body.slice(0, 180), url: "/insights", tag: "insights-digest" },
     }));
   });
 }

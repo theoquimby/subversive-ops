@@ -85,7 +85,7 @@ export function ImportFlow() {
           {source === "file" && (
             <>
               <p className="text-sm text-muted">The whole workbook is read — every tab. In Google Sheets: File → Download → Microsoft Excel (.xlsx).</p>
-              <FileDrop ref={fileRef} accept=".xlsx,.xls,.ods,.csv" hint="Excel, Google Sheets download, or CSV" />
+              <FileDrop ref={fileRef} accept=".xlsx,.xls,.ods,.csv" hint="Excel, or a Google Sheets download (.csv works too)" />
             </>
           )}
           {source === "paste" && (

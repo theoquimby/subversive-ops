@@ -4,7 +4,7 @@ import { z } from "zod";
 import { AskToolName, clampPeriod, routeQuestion } from "@/domain/ask";
 import { addDays, ISODate } from "@/domain/dates";
 import { shiftPaidHours, weekStartOf } from "@/domain/schedule";
-import { CLAUDE_MODEL, claudeClient, claudeConfigured } from "../integrations/claude";
+import { CLAUDE_MODEL, claudeClient, claudeReady } from "../integrations/claude";
 import { db } from "../db";
 import { buildContext, loadCostingSnapshot } from "./costing";
 import { menuCosts, recentPriceMoves } from "./insights";
@@ -14,6 +14,8 @@ import { businessToday } from "./sales";
 import { loadWeek } from "./scheduling";
 import { certStatusRows } from "./training";
 import { lastCountPeriod, varianceReport } from "./variance";
+import { insightFeed } from "./analytics";
+import { MODEL_IDS, type ModelId } from "@/domain/analytics";
 
 /**
  * "Ask": a fixed set of read-only data tools. Claude chooses which to call
@@ -233,6 +235,35 @@ async function certStatusTool(args: { cert?: unknown; status?: unknown }): Promi
   };
 }
 
+async function insightsTool(args: { topic?: unknown }): Promise<ToolResult> {
+  const topic = MODEL_IDS.find((m) => m === args.topic) as ModelId | undefined;
+  const { items, run } = await insightFeed({ limit: 5, novelty: false });
+  if (!run) return { tool: "insights", title: "Insights", facts: ["Insights haven't been worked out yet — they update overnight, or press Refresh on the Insights page."], links: [{ label: "Insights", href: "/insights" }] };
+  const age = Math.round((Date.now() - new Date(run.computedAt).getTime()) / 3_600_000);
+  if (topic) {
+    const r = run.results[topic];
+    if (!r) return { tool: "insights", title: "Insights", facts: ["That model hasn't run yet."], links: [{ label: "Insights", href: "/insights" }] };
+    return {
+      tool: "insights",
+      title: r.title,
+      facts: [r.headline + ".", r.action, `Confidence: ${r.confidence.note}.`, ...r.how.slice(0, 2)],
+      table: r.inputs.length ? { columns: ["Input", "Value"], align: ["left", "right"], rows: r.inputs.slice(0, 10).map((i) => [i.label, i.value]) } : undefined,
+      links: [{ label: r.title, href: `/insights#${topic}` }],
+    };
+  }
+  const conf = (c: number) => (c >= 0.65 ? "solid" : c >= 0.4 ? "fair" : "rough");
+  return {
+    tool: "insights",
+    title: "Top opportunities",
+    facts: [
+      items.length ? `The biggest: ${items[0].title}. ${items[0].action}` : "Nothing worth chasing right now — everything checked is in line.",
+      `Worked out ${age <= 1 ? "within the last hour" : `${age} hours ago`} from your own sales, costs and timecards; each figure is a cautious estimate with a range.`,
+    ],
+    table: items.length ? { columns: ["Finding", "$/month", "Confidence"], align: ["left", "right", "left"], rows: items.map((i) => [i.title, i.oneOff ? `${$(i.oneOff, true)} once` : $(i.monthly, true), conf(i.confidence)]) } : undefined,
+    links: [{ label: "Insights", href: "/insights" }, ...items.slice(0, 2).map((i) => ({ label: i.title.slice(0, 40), href: i.href }))],
+  };
+}
+
 const RUNNERS: Record<AskToolName, (args: Record<string, unknown>) => Promise<ToolResult>> = {
   period_kpis: periodKpisTool,
   menu_margins: menuMarginsTool,
@@ -242,6 +273,7 @@ const RUNNERS: Record<AskToolName, (args: Record<string, unknown>) => Promise<To
   order_plans: orderPlansTool,
   waste_summary: wasteSummaryTool,
   cert_status: certStatusTool,
+  insights: insightsTool,
 };
 
 export async function runAskTool(tool: AskToolName, args: Record<string, unknown>): Promise<ToolResult> {
@@ -251,6 +283,11 @@ export async function runAskTool(tool: AskToolName, args: Record<string, unknown
 // ---- Claude -------------------------------------------------------------------
 
 const TOOLS: Anthropic.Beta.BetaTool[] = [
+  {
+    name: "insights",
+    description: "The Insights models' conclusions: the top money opportunities ($/month with confidence), or one model's answer — menu engineering (stars/dogs, what to reprice), price response (what +$1 does), forecast ranges, order quantities, staffing by hour, profit drivers & break-even, unusual days. Use for 'what should I do', 'biggest opportunity', 'break even', 'what if I raise the price', 'am I overstaffed'.",
+    input_schema: { type: "object", properties: { topic: { type: "string", enum: ["menu", "price", "forecast", "orders", "staffing", "drivers", "anomalies"], description: "One model; omit for the top opportunities." } } },
+  },
   {
     name: "period_kpis",
     description: "Net sales, food cost %, beverage cost %, labor %, prime cost % and profit before overhead for a date range of business days. Use for any question about sales, food cost, labor cost or how a period went.",
@@ -291,16 +328,17 @@ const MAX_TURNS = 6;
 
 export async function ask(question: string): Promise<AskResponse> {
   const today = businessToday();
-  if (!claudeConfigured()) {
+  if (!(await claudeReady())) {
     const r = routeQuestion(question, today);
-    if (!r) return { answer: null, results: [], mode: "rules", error: "I can't tell which numbers that needs. Try one of the suggested questions, or turn on Claude for free-form questions." };
+    if (!r) return { answer: null, results: [], mode: "rules", error: "I can't tell which numbers that needs. Try one of the suggested questions, or turn on AI features in Settings → Connections to ask anything." };
     return { answer: null, results: [await runAskTool(r.tool, r.args)], mode: "rules" };
   }
   const results: ToolResult[] = [];
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: question }];
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const res = await claudeClient().beta.messages.create({
+      const client = await claudeClient();
+      const res = await client.beta.messages.create({
         model: CLAUDE_MODEL,
         max_tokens: 8000,
         betas: ["server-side-fallback-2026-07-01"],
@@ -310,7 +348,7 @@ export async function ask(question: string): Promise<AskResponse> {
         tools: TOOLS,
         messages,
       });
-      if (res.stop_reason === "refusal") return { answer: null, results, mode: "claude", error: "Claude wouldn't answer that one." };
+      if (res.stop_reason === "refusal") return { answer: null, results, mode: "claude", error: "Claude wouldn't answer that one. Try asking it another way." };
       const uses = res.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
       if (res.stop_reason !== "tool_use" || uses.length === 0) {
         const text = res.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
@@ -336,7 +374,7 @@ export async function ask(question: string): Promise<AskResponse> {
     }
     return { answer: null, results: dedupe(results), mode: "claude", error: "That took too many steps. Try a narrower question." };
   } catch (e) {
-    if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) return { answer: null, results, mode: "claude", error: "The Claude API key was rejected. Check it in the environment settings." };
+    if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) return { answer: null, results, mode: "claude", error: "Claude didn't accept the saved key. Replace it in Settings → Connections → AI features." };
     if (e instanceof Anthropic.RateLimitError) return { answer: null, results, mode: "claude", error: "Claude is busy right now. Try again in a minute." };
     if (e instanceof Anthropic.APIError) return { answer: null, results, mode: "claude", error: "Couldn't reach Claude just now. Try again shortly." };
     console.error("ask failed", e);

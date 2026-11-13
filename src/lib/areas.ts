@@ -22,6 +22,7 @@ import {
   FolderOpen, GraduationCap,
   HandCoins,
   LayoutGrid,
+  Lightbulb,
   MessageSquareText,
   Receipt,
   Scale,
@@ -71,6 +72,7 @@ export const MANAGER_NAV: NavGroup[] = [
     item("people", "/my", "My shifts", CalendarCheck),
   ] },
   { title: "Numbers", area: "numbers", items: [
+    item("numbers", "/insights", "Insights", Lightbulb),
     item("numbers", "/pnl", "P&L", TrendingUp),
     item("numbers", "/sales", "Sales & forecast", ChartLine),
     item("numbers", "/events", "Events", CalendarDays),

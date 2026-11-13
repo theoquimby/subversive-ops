@@ -11,6 +11,7 @@ import { counts, importing, ordering, sales, settings, variance, waste } from ".
 import { upcoming } from "./areas/upcoming";
 import { finalParity } from "./areas/final";
 import { training } from "./areas/training";
+import { insights } from "./areas/insights";
 import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
 
@@ -28,7 +29,7 @@ export const AREAS: HelpArea[] = [
   { id: "variance", title: "Margin gap", description: "Theoretical vs actual usage between two counts." },
   { id: "sales", title: "Sales & forecast", description: "Square sync, item links and the forecast." },
   { id: "import", title: "Importing sheets", description: "Bringing in your existing spreadsheets." },
-  { id: "settings", title: "Settings", description: "Team logins, suppliers, food cost target, data." },
+  { id: "settings", title: "Settings", description: "Connections (Square, email, phone alerts, AI, Google), team logins, suppliers, food cost target, data." },
   { id: "team", title: "Team", description: "Positions, employees, availability, logins and announcements." },
   { id: "schedule", title: "Schedule", description: "Forecast-driven schedules with NY compliance checks." },
   { id: "my", title: "My shifts", description: "For staff: shifts, pickups, swaps, time off, sick leave and availability." },
@@ -40,6 +41,7 @@ export const AREAS: HelpArea[] = [
   { id: "invoices", title: "Invoices", description: "Snap, match, approve, request credits, export to QuickBooks or Xero." },
   { id: "reviews", title: "Reviews", description: "Themes, reply drafts, what to fix this month." },
   { id: "brief", title: "Weekly brief", description: "Next week in a page, with one-tap actions." },
+  { id: "insights", title: "Insights", description: "What the numbers say to do: menu, prices, forecast ranges, orders, staffing, break-even and the insight feed." },
   { id: "training", title: "Training & certificates", description: "ATAP, ServSafe and other certificates, expiry reminders and onboarding checklists." },
 ];
 
@@ -59,6 +61,7 @@ export const HELP: HelpEntry[] = [
   ...upcoming,
   ...finalParity,
   ...training,
+  ...insights,
 ];
 
 const BY_ID = new Map(HELP.map((e) => [e.id, e]));
