@@ -67,6 +67,12 @@ export function priceAsOf(list: { date: ISODate; price: number }[] | undefined, 
  * if set, otherwise the linked product with the most recent price.
  */
 function ingredientCostPerBase(snap: CostingSnapshot, ing: CostingSnapshot["ingredients"][number], asOf: ISODate) {
+  const src = ingredientCostSource(snap, ing, asOf);
+  return src ? src.price / src.pack : null;
+}
+
+/** Which supplier product (and which price on which date) an ingredient's cost comes from. */
+export function ingredientCostSource(snap: CostingSnapshot, ing: CostingSnapshot["ingredients"][number], asOf: ISODate): { productId: string; price: number; date: ISODate; pack: number } | null {
   const candidates = ing.products
     .filter((p) => p.packQtyBase && p.packQtyBase.toNumber() > 0)
     .map((p) => {
@@ -79,7 +85,7 @@ function ingredientCostPerBase(snap: CostingSnapshot, ing: CostingSnapshot["ingr
   if (candidates.length === 0) return null;
   const preferred = candidates.find((c) => c.id === ing.preferredProductId);
   const chosen = preferred ?? candidates.sort((a, b) => b.lastDate.localeCompare(a.lastDate))[0];
-  return chosen.price! / chosen.pack;
+  return { productId: chosen.id, price: chosen.price!, date: chosen.lastDate, pack: chosen.pack };
 }
 
 export function buildContext(snap: CostingSnapshot, asOf: ISODate): CostingContext {

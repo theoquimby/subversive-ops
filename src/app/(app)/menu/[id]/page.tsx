@@ -3,8 +3,8 @@ import { Card, PageHeader, Section } from "@/components/ui";
 import { usableCostPerBase } from "@/domain/costing";
 import { STANDARD_UNITS_BY_BASE } from "@/domain/units";
 import { requireUser } from "@/server/auth";
-import { num } from "@/server/db";
-import { buildContext, costHistory, loadCostingSnapshot, safeCost } from "@/server/services/costing";
+import { db, num } from "@/server/db";
+import { buildContext, costHistory, ingredientCostSource, loadCostingSnapshot, safeCost } from "@/server/services/costing";
 import { targetFoodCost } from "@/server/services/insights";
 import { businessToday } from "@/server/services/sales";
 import { notFound } from "next/navigation";
@@ -26,6 +26,13 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
   const recipe = isNew ? null : snap.recipes.find((r) => r.id === id);
   if (!isNew && !recipe) notFound();
 
+  // Where each ingredient's cost comes from: the supplier product and the price used.
+  const sources = new Map(snap.ingredients.map((i) => [i.id, ingredientCostSource(snap, i, today)] as const));
+  const productIds = [...sources.values()].flatMap((x) => (x ? [x.productId] : []));
+  const products = new Map(
+    (await db.supplierProduct.findMany({ where: { id: { in: productIds } }, select: { id: true, sku: true, description: true, packText: true, purchaseUnit: true, supplier: { select: { name: true } } } })).map((p) => [p.id, p]),
+  );
+
   // Everything the editor needs to recalculate cost live as lines change.
   const catalog: EditorCatalog = {
     ingredients: snap.ingredients.map((i) => {
@@ -39,6 +46,11 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
         conversions: c.conversions,
         units: [...STANDARD_UNITS_BY_BASE[c.baseUnit], ...c.conversions.map((x) => x.unit)],
         packQtyBase: num(pref?.packQtyBase),
+        source: (() => {
+          const src = sources.get(i.id);
+          const p = src && products.get(src.productId);
+          return src && p ? { supplier: p.supplier.name, sku: p.sku, description: p.description, pack: p.packText, purchaseUnit: p.purchaseUnit, price: src.price, date: src.date } : null;
+        })(),
       };
     }),
     recipes: snap.recipes
@@ -50,7 +62,7 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
         try {
           perBase = "error" in cost ? null : cost.totalCost / recipeYieldInBase(cr);
         } catch {}
-        return { id: r.id, name: r.name, baseUnit: cr.yieldBase, costPerBase: perBase, units: STANDARD_UNITS_BY_BASE[cr.yieldBase] };
+        return { id: r.id, name: r.name, baseUnit: cr.yieldBase, costPerBase: perBase, units: STANDARD_UNITS_BY_BASE[cr.yieldBase], batchCost: "error" in cost ? null : cost.totalCost, yieldQty: cr.yieldQty, yieldUnit: cr.yieldUnit };
       }),
     defaultTarget: await targetFoodCost(),
   };

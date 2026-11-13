@@ -2,7 +2,8 @@
 
 import { Badge, Button, Card, cx, Field, Input, Select } from "@/components/ui";
 import { BaseUnit, CustomConversion, standardUnit, STANDARD_UNITS_BY_BASE, toBase } from "@/domain/units";
-import { money, pct } from "@/lib/format";
+import { money, pct, qty, shortDate } from "@/lib/format";
+import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -12,8 +13,12 @@ import { archiveRecipe, saveRecipe } from "../actions";
 import { HelpTip, HelpZone } from "@/components/help";
 
 export interface EditorCatalog {
-  ingredients: { id: string; name: string; baseUnit: BaseUnit; costPerUsableBase: number | null; conversions: CustomConversion[]; units: string[]; packQtyBase: number | null }[];
-  recipes: { id: string; name: string; baseUnit: BaseUnit; costPerBase: number | null; units: string[] }[];
+  ingredients: {
+    id: string; name: string; baseUnit: BaseUnit; costPerUsableBase: number | null; conversions: CustomConversion[]; units: string[]; packQtyBase: number | null;
+    /** The supplier product and price this ingredient's cost comes from (null: no price yet). */
+    source?: { supplier: string; sku: string; description: string; pack: string | null; purchaseUnit: string; price: number; date: string } | null;
+  }[];
+  recipes: { id: string; name: string; baseUnit: BaseUnit; costPerBase: number | null; units: string[]; batchCost?: number | null; yieldQty?: number; yieldUnit?: string }[];
   defaultTarget: number;
 }
 
@@ -240,6 +245,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
                   <button type="button" onClick={() => setR((cur) => ({ ...cur, lines: cur.lines.filter((x) => x.key !== l.key) }))} className="relative rounded-md p-1.5 text-muted after:absolute after:-inset-1.5 after:content-[''] hover:bg-surface-2 hover:text-ink" aria-label="Remove line">
                     <X className="size-4" />
                   </button>
+                  <CostSource line={l} cost={c.cost} ing={l.ingredientId ? ingById.get(l.ingredientId) : undefined} rec={l.subRecipeId ? recById.get(l.subRecipeId) : undefined} />
                 </div>
               );
             })}
@@ -334,5 +340,42 @@ function Summary({ label, value, note, tone }: { label: React.ReactNode; value: 
       <div className={cx("num mt-1 text-xl font-semibold tracking-tight", tone === "bad" && "text-bad", tone === "good" && "text-good")}>{value}</div>
       {note && <div className="mt-1">{note}</div>}
     </Card>
+  );
+}
+
+/**
+ * Under each line: where its cost comes from — the supplier product, the price
+ * used and when it was set, and what that works out to per unit. Tap to open
+ * the ingredient (or prep recipe) and change it.
+ */
+function CostSource({ line, cost, ing, rec }: { line: Line; cost: number | null; ing?: EditorCatalog["ingredients"][number]; rec?: EditorCatalog["recipes"][number] }) {
+  if (!ing && !rec) return null;
+  const perUnit = cost != null && line.qty > 0 ? `${money(cost / line.qty)} ${/^(each|ea)$/i.test(line.unit) ? "each" : `per ${line.unit}`}` : null;
+  const cls = "col-span-full -mt-1 flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-xs text-muted hover:text-ink";
+  if (rec) {
+    return (
+      <Link href={`/menu/${rec.id}`} className={cls}>
+        <span className="font-medium text-ink-2">Prep recipe</span>
+        {rec.batchCost != null && rec.yieldQty ? <span>· {money(rec.batchCost)} a {qty(rec.yieldQty)} {rec.yieldUnit} batch</span> : <span>· batch cost unknown</span>}
+        {perUnit && <span>→ {perUnit}</span>}
+      </Link>
+    );
+  }
+  const src = ing!.source;
+  if (!src) {
+    return (
+      <Link href={`/ingredients/${ing!.id}`} className={cx(cls, "text-warn")}>
+        No price yet — link a supplier product or add a price →
+      </Link>
+    );
+  }
+  return (
+    <Link href={`/ingredients/${ing!.id}`} className={cls}>
+      <span className="font-medium text-ink-2">{src.supplier}</span>
+      <span>#{src.sku}</span>
+      <span className="min-w-0 truncate">· {src.description}{src.pack ? ` · ${src.pack}` : ""}</span>
+      <span>· {money(src.price)} a {src.purchaseUnit}{src.date ? ` (${shortDate(src.date)})` : ""}</span>
+      {perUnit && <span>→ {perUnit}</span>}
+    </Link>
   );
 }
