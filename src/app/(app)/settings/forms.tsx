@@ -28,8 +28,8 @@ export function SupplierForm({ v }: { v: SupplierValues }) {
     <form action={action} className="space-y-3 p-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Name"><Input name="name" defaultValue={v.name} required /></Field>
-        <Field label="Type">
-          <Select name="kind" defaultValue={v.kind}><option value="DISTRIBUTOR">Distributor (price sheet)</option><option value="LOCAL">Local (prices by hand)</option></Select>
+        <Field label="Type" hint="Just a label. Distributor: sends a price sheet (Sysco, Hudson Valley Foodservice). Local: a farm, bakery or store run like Price Chopper.">
+          <Select name="kind" defaultValue={v.kind}><option value="DISTRIBUTOR">Distributor (price sheet)</option><option value="LOCAL">Local (farm, bakery, store)</option></Select>
         </Field>
         <Field label="Order email"><Input name="email" type="email" defaultValue={v.email} placeholder="optional" /></Field>
       </div>

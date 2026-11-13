@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { db, num } from "../db";
 import { env } from "../env";
 import { friendlySquareError } from "../integrations/square-http";
+import { fetchMerchant } from "../integrations/square-auth";
 import { syncSquareTeam, syncSquareTimecards } from "./labor";
 import { businessToday, syncCatalog, syncSales } from "./sales";
 import { isSquareConnected, logSquareError, readSettingJSON, recordSquareSync, requireSquareClient, squareStreams, SquareStream, withSquareLock, writeSettingJSON } from "./square";
@@ -124,6 +125,7 @@ export async function processPending(debounceMs = 0) {
 // ---- First import ---------------------------------------------------------------------
 
 export interface BackfillState {
+  /** 0 = all history, back to when the Square account was opened. */
   months: number;
   from: ISODate;
   toExclusive: ISODate;
@@ -142,13 +144,25 @@ const BACKFILL_KEY = "square.backfill";
 
 export const getBackfill = () => readSettingJSON<BackfillState>(BACKFILL_KEY);
 
-export async function startBackfill(months: number): Promise<BackfillState> {
+/** `"all"` goes back to when the Square account was opened; after a finished import it only fetches what's older. */
+export async function startBackfill(months: number | "all"): Promise<BackfillState> {
   const today = businessToday();
-  const from = monthsBefore(today, months);
-  const toExclusive = addDays(today, 1);
+  let from: ISODate;
+  let toExclusive = addDays(today, 1);
+  if (months === "all") {
+    const client = await requireSquareClient();
+    const merchant = await fetchMerchant(client).catch(() => null);
+    from = merchant?.createdAt ? businessDate(merchant.createdAt, env.BUSINESS_TIMEZONE) : monthsBefore(today, 120);
+    const prev = await getBackfill();
+    // Already imported a recent stretch: fetch only what's before it (the nightly sync keeps recent days fresh).
+    if (prev?.phase === "done" && prev.from > from) toExclusive = prev.from;
+  } else {
+    from = monthsBefore(today, months);
+  }
+  if (from >= toExclusive) from = addDays(toExclusive, -7);
   const now = new Date().toISOString();
   const state: BackfillState = {
-    months,
+    months: months === "all" ? 0 : months,
     from,
     toExclusive,
     phase: "catalog",

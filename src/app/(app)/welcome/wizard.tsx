@@ -404,7 +404,7 @@ function SuppliersStep({ suppliers, run, pending }: { suppliers: Props["supplier
           <div className="text-sm font-medium">{suppliers.length ? "Add another" : "Add your first supplier"}</div>
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Name" className="min-w-48 flex-1"><Input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sysco, Hudson Valley Farm" /></Field>
-            <Field label="Type">
+            <Field label="Type" hint="Local = a farm, bakery or store like Price Chopper. Just a label.">
               <Segmented label="Supplier type" value={kind} onChange={setKind} options={[{ value: "DISTRIBUTOR", label: "Distributor" }, { value: "LOCAL", label: "Local" }]} />
             </Field>
           </div>

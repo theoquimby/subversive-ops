@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   try {
     const r = await connectWithOAuthCode(code);
     // Start bringing in history straight away; the Square page carries it on.
-    if (!(await getBackfill())) await startBackfill(6).catch(() => undefined);
+    if (!(await getBackfill())) await startBackfill("all").catch(() => undefined);
     back.pathname = "/settings/square";
     back.searchParams.delete("open");
     return done({ connected: r.merchantName });

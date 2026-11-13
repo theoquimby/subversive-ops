@@ -564,10 +564,10 @@ export const sales: HelpEntry[] = [
     title: "Connecting Square",
     body: "Settings → Connections → Square walks you through it with pictures: first the app is registered with Square (once, about 5 minutes), then you sign in to Square and press Allow. Sales, the menu and timecards then flow in by themselves.",
     article: `1. Open [Settings → Connections → Square](/settings/connections?open=square). The guide has two parts.
-2. **Part 1 — Register the app** (one time, ~5 minutes, anyone with a Square login): create an app on Square's developer site and copy two codes back. Every click is shown in a picture.
+2. **Part 1 — Register the app** (one time, ~5 minutes, whoever sets up the app — any Square login works): create an app on Square's developer site and copy two codes back — the **Application ID** from **Credentials** and the **Application secret** from **OAuth** (press **Show**). Every click is shown in a picture.
 3. **Part 2 — Connect** (1 minute): press **Connect with Square**, sign in with the restaurant's Square login and press **Allow**. The app only asks to *read*: business profile, items, orders, payments, team, timecards and inventory.
-4. On the [Square page](/settings/square), check the **Locations** — every active location is picked. Keep your Square Online location picked if you sell online.
-5. Run the **First import** (6 months is a good start), then match Square items to recipes on [Menu from Square](/sales/square-menu).
+4. You land on the [Square page](/settings/square), where all your past sales and timecards start coming in by themselves, newest first (**First import**). Check the **Locations** — keep your Square Online location picked if you sell online.
+5. Turn on **Instant updates** (recommended, one paste), then match Square items to recipes on [Menu from Square](/sales/square-menu).
 
 **Another way:** on the Square page, **Paste an access code instead** takes the long code (it starts with EAAA) from your Square app's **Credentials** page. It works like a password for your sales data — keep it out of emails and chats.
 
@@ -587,7 +587,7 @@ export const sales: HelpEntry[] = [
     area: "sales",
     route: "/settings/square",
     title: "First import",
-    body: "Brings in 3, 6 or 12 months of Square sales and timecards, a week at a time with a progress bar. You can leave the page and press Resume later; re-running just replaces days already imported.",
+    body: "Past Square sales and timecards. Connecting Square brings in all your history by itself, newest week first. It carries on while the Square page is open, and the nightly sync finishes anything left. After a 6- or 12-month import, All history only fetches what's older.",
     related: ["settings.square"],
     keywords: ["import", "history", "backfill"],
   },
@@ -875,6 +875,8 @@ export const settings: HelpEntry[] = [
 
 Press **Set up** on a card. The guide shows exactly where to click on the other site (numbered circles), gives you copy buttons for anything you need to paste there, and a box to paste what you bring back. Each box checks the value as you paste it and says plainly if it looks wrong — for example a code pasted into the wrong box.
 
+**Manage** on a card that's working shows what it's connected to, a **Test** button, and **Replace** or **Remove** for each key — the setup steps are one tap away under **Show the setup steps**. Square's **Manage** opens the [Square page](/settings/square).
+
 **Test connection** on each card tries the service for real and tells you what happened. If the place the app is hosted blocks outside connections, the test says so — what you saved stays saved.
 
 **Is it safe?** Keys are encrypted before they're saved, only the last four characters are ever shown, and only managers can open this page. **Replace** swaps a key; **Remove** turns that feature off.
@@ -888,16 +890,16 @@ Whoever hosts the app can still set the same keys as hosting settings instead; a
     area: "settings",
     route: "/settings/connections",
     title: "Connecting Square",
-    body: "Two parts. Part 1 registers the app with Square — once, about 5 minutes, anyone with a Square login. Part 2 is Max signing in to Square and pressing Allow. Instant updates are optional.",
-    article: `**Part 1 — Register the app (one time, ~5 min).** On Square's developer site, create an application called Subversive Ops, switch to **Production**, paste the return address the guide gives you under **OAuth → Redirect URL** (Square's sign-in settings), then copy the **Application ID** and **Application secret** from **Credentials** into the guide.
+    body: "Part 1 registers the app with Square — once, about 5 minutes, done by whoever sets up the app. Part 2 is Max signing in to Square and pressing Allow. Part 3, instant updates, is one paste and recommended.",
+    article: `**Part 1 — Register the app (one time, ~5 min).** On Square's developer site, create an application called Subversive Ops, switch to **Production**, paste the return address the guide gives you under **OAuth → Redirect URL** (Square's sign-in settings), then copy the **Application ID** (on **Credentials**) and the **Application secret** (on **OAuth** — press **Show**) into the guide. Ignore the access token for now.
 
 **Part 2 — Connect (Max, 1 minute).** Press **Connect with Square**, sign in with the restaurant's Square login and press **Allow**. The app can only read — it never changes anything in Square.
 
-**Instant updates (optional).** Add a subscription under **Webhooks → Subscriptions** (Square's name for instant updates) with the address, API version and event list the guide gives you (each has a copy button), then paste the **Signature key** back. New sales and clock-ins then arrive within seconds instead of every 15 minutes.
+**Part 3 — Instant updates (recommended, one paste).** On Square's developer site press **Credentials**, then **Show** next to **Access token**, and paste it into the guide (or the Square page). The app uses it once to ask Square to send each sale and clock-in, then throws it away — Square only lets the app's own token do this. Max doesn't need to do anything in his own Square account. New sales and clock-ins then arrive within seconds instead of every 15 minutes.
 
-After connecting, bring in your sales history on the [Square page](/settings/square).`,
+Connecting takes you to the [Square page](/settings/square), where your sales history starts coming in by itself.`,
     related: ["sales.connect", "settings.square", "sales.backfill"],
-    keywords: ["square", "oauth", "redirect", "webhook", "application id", "secret", "signature key"],
+    keywords: ["square", "oauth", "redirect", "webhook", "application id", "secret", "access token", "instant updates"],
   },
   {
     id: "settings.connections.email",
@@ -946,10 +948,11 @@ After connecting, bring in your sales history on the [Square page](/settings/squ
     area: "settings",
     route: "/settings/square",
     title: "Square connection",
-    body: "Who's connected, which locations are read, the first import, when each part last synced and anything that went wrong.",
+    body: "Managing the Square connection: who's connected, instant updates, which locations are read, the history import, when each part last synced and anything that went wrong. Disconnect is here too.",
     article: `- **Connection** — the Square business, and whether it's the real account or a test one. **Test connection** checks Square still answers. Connections made with **Connect with Square** stay signed in by themselves.
+- **Instant updates** — on or off, and when the last one arrived. Turn them on with one paste (see [Connecting Square](/settings/connections?open=square)).
 - **Locations** — orders and timecards are read from every location picked.
-- **First import** — past sales and timecards, a week at a time.
+- **First import** — past sales and timecards, a week at a time. It starts by itself when Square is connected and carries on while this page is open; the nightly sync finishes anything left.
 - **Data we have** — how far back sales go and how many timecards are in.
 - **Sync** — the last menu, sales and timecard sync. With instant updates on, new orders and clock-ins arrive within seconds; otherwise today's numbers top up every 15 minutes while someone is using the app, and everything re-syncs nightly.
 - **Recent problems** — the last 20 errors from Square, newest first.
@@ -971,8 +974,9 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     area: "settings",
     route: "/settings",
     title: "Suppliers",
-    body: "Delivery days and lead time decide when each order is due and how many days it covers. Minimum order warns you when an order is too small.",
-    article: `- **Delivery days** — the weekdays the truck comes.
+    body: "Delivery days and lead time decide when each order is due and how many days it covers. Minimum order warns you when an order is too small. You can also add a supplier straight from an invoice — including stores like Price Chopper.",
+    article: `- **Type** — just a label. **Distributor** sends a price sheet (Sysco, Hudson Valley Foodservice); **Local** is a farm, bakery or store run like Price Chopper. Nothing else changes with it.
+- **Delivery days** — the weekdays the truck comes.
 - **Lead time** — how many days before delivery the order must be in. A 1-day lead time means today's order arrives on the next delivery day from tomorrow on.
 - **Minimum order** — the order builder warns when you're under it.
 - **Email** — lets you email orders in one tap.
@@ -1084,6 +1088,15 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     title: "Data we have",
     body: "How much Square history is in the app: days of sales and their range, completed orders, timecards (and how many came from Square), and the last day with sales.",
     related: ["sales.backfill"],
+  },
+  {
+    id: "settings.square.instant",
+    area: "settings",
+    route: "/settings/square",
+    title: "Instant updates",
+    body: "With instant updates on, Square tells the app about each sale, refund and clock-in within seconds. Turning them on is one paste: the Access token from the Credentials page of the Square app (the developer site). It's used once and not kept.",
+    related: ["settings.connections.square", "settings.square.sync"],
+    keywords: ["webhook", "instant", "real time", "live", "access token"],
   },
   {
     id: "settings.square.sync",

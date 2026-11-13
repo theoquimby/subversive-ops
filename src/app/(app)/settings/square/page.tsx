@@ -78,7 +78,7 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
       </Section>
 
       {status.connected && (
-        <Section help="settings.square.sync" title="Instant updates" description={webhooksOn ? undefined : "Recommended. One paste, done by whoever set up the Square app."}>
+        <Section help="settings.square.instant" title="Instant updates" description={webhooksOn ? undefined : "Recommended. One paste, done by whoever set up the Square app."}>
           <Card className="space-y-4 p-5 text-[0.95rem] leading-relaxed text-ink-2">
             <InstantUpdates on={webhooksOn} lastSeen={lastWebhook ? new Date(lastWebhook).toISOString() : null} local={isLocalOrigin(origin)} />
           </Card>

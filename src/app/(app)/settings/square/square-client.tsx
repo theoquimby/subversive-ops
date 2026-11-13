@@ -216,7 +216,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function BackfillPanel({ initial, connected }: { initial: BackfillState | null; connected: boolean }) {
   const [state, setState] = useState<BackfillState | null>(initial);
-  const [months, setMonths] = useState<3 | 6 | 12>((initial?.months as 3 | 6 | 12) ?? 6);
+  const [months, setMonths] = useState<6 | 12 | "all">(initial?.months === 6 || initial?.months === 12 ? initial.months : "all");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(initial?.lastError ?? null);
   const stop = useRef(false);
@@ -266,7 +266,7 @@ export function BackfillPanel({ initial, connected }: { initial: BackfillState |
   if (!connected) {
     return (
       <Card className="p-5 text-sm text-muted">
-        Connect Square above first. Then import 3, 6 or 12 months of sales and timecards here — it runs a week at a time and you can leave and resume.
+        Connect Square above first. Your sales and timecards history then comes in here by itself, a week at a time.
       </Card>
     );
   }
@@ -281,9 +281,9 @@ export function BackfillPanel({ initial, connected }: { initial: BackfillState |
     <Card className="space-y-5 p-5">
       {!running && !unfinished && (
         <div className="space-y-3">
-          <div className="text-sm text-ink-2">{done ? "Import finished. Run it again any time — days already imported are simply replaced." : "How far back should we go? More history makes the forecast better."}</div>
+          <div className="text-sm text-ink-2">{done ? (state?.months === 0 ? "All your Square history is in. Running it again simply replaces days already imported." : "Import finished. Want everything? Pick All history — it only fetches what's older.") : "How far back should we go? More history makes the forecast better."}</div>
           <div className="flex flex-wrap items-center gap-3">
-            <Chips value={months} onChange={setMonths} ariaLabel="Months of history" options={[{ value: 3, label: "3 months" }, { value: 6, label: "6 months" }, { value: 12, label: "12 months" }]} />
+            <Chips value={months} onChange={setMonths} ariaLabel="Months of history" options={[{ value: "all", label: "All history" }, { value: 12, label: "12 months" }, { value: 6, label: "6 months" }]} />
             <Button variant={done ? "secondary" : "primary"} onClick={() => run(true)}>{done ? "Import again" : "Start import"}</Button>
           </div>
         </div>
@@ -301,7 +301,7 @@ export function BackfillPanel({ initial, connected }: { initial: BackfillState |
                     : state.current
                       ? `Importing ${shortDate(state.current.from)} – ${shortDate(addDays(state.current.toExclusive, -1))}`
                       : "Importing…"
-                  : `Paused · ${state.months} months from ${shortDate(state.from)}`}
+                  : `Paused · ${state.months ? `${state.months} months` : "all history"} from ${shortDate(state.from)}`}
             </span>
             <span className="num text-muted">{Math.round(pctDone * 100)}%</span>
           </div>

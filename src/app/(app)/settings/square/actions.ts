@@ -64,11 +64,15 @@ export async function saveLocations(ids: string[]): Promise<Result> {
   }
 }
 
-export async function startImport(months: number): Promise<{ error?: string; state?: BackfillState }> {
+export async function startImport(months: number | "all"): Promise<{ error?: string; state?: BackfillState }> {
   await requireUser("MANAGER");
-  const m = z.union([z.literal(3), z.literal(6), z.literal(12)]).safeParse(months);
-  if (!m.success) return { error: "Pick 3, 6 or 12 months." };
-  return { state: await startBackfill(m.data) };
+  const m = z.union([z.literal(6), z.literal(12), z.literal("all")]).safeParse(months);
+  if (!m.success) return { error: "Pick 6 months, 12 months or all history." };
+  try {
+    return { state: await startBackfill(m.data) };
+  } catch (e) {
+    return { error: friendlySquareError(e) };
+  }
 }
 
 /** One server round trip of the import (about 25 seconds of work at most). */

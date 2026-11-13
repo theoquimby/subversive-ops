@@ -57,12 +57,14 @@ export interface SquareMerchant {
   id: string;
   name: string;
   mainLocationId: string | null;
+  /** When the Square account was opened (RFC 3339), so "all history" knows where to start. */
+  createdAt: string | null;
 }
 
 export async function fetchMerchant(c: { accessToken: string; environment: SquareEnvironment }): Promise<SquareMerchant> {
-  const r = await squareCall<{ merchant?: { id: string; business_name?: string; main_location_id?: string } }>(c, "/merchants/me");
+  const r = await squareCall<{ merchant?: { id: string; business_name?: string; main_location_id?: string; created_at?: string } }>(c, "/merchants/me");
   if (!r.merchant) throw new Error("Square didn't return the business profile.");
-  return { id: r.merchant.id, name: r.merchant.business_name || "Square business", mainLocationId: r.merchant.main_location_id ?? null };
+  return { id: r.merchant.id, name: r.merchant.business_name || "Square business", mainLocationId: r.merchant.main_location_id ?? null, createdAt: r.merchant.created_at ?? null };
 }
 
 export interface SquareLocation {

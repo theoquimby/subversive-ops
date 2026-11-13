@@ -725,7 +725,7 @@ Account names must match your chart of accounts exactly. Nothing is paid or post
     area: "invoices",
     route: "/invoices/new",
     title: "Invoice details",
-    body: "Who it's from, which order it bills for, the invoice number, date and total. If the lines don't add up to the total you'll see by how much.",
+    body: "Who it's from, which order it bills for, the invoice number, date and total. If the lines don't add up to the total you'll see by how much. Not in the supplier list? Pick **+ Add a new supplier…** (a distributor or a store like Price Chopper) — and if a photo names a store that isn't set up yet, one tap adds it.",
     related: ["invoices.match"],
   },
   {
