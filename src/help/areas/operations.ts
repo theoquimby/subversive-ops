@@ -369,7 +369,7 @@ Clearing a number removes that item from the count.`,
     area: "counts",
     route: "/count",
     title: "Find an item",
-    body: "Type part of a name to show only matching items. Handy when you're standing in front of something and can't see where it is on the list.",
+    body: "Type any part of a name (\"chkn\" finds chicken). Tap an area chip to jump there — the number is what's left to count in it. \"Not counted yet\" hides what you've done, and the bar shows how far along you are.",
     audience: "all",
   },
   {

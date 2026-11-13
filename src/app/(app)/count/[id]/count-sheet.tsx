@@ -4,6 +4,7 @@ import { Button, Card, cx, Input, Select } from "@/components/ui";
 import { BaseUnit, CustomConversion, toBase } from "@/domain/units";
 import { Check } from "lucide-react";
 import { useMemo, useRef, useState, useTransition } from "react";
+import { matchScore, normalize } from "@/domain/dataTable";
 import { useConfirm } from "@/components/dialog";
 import { discardCount, finishCount, saveCountLine } from "../actions";
 import { HelpTip, HelpZone } from "@/components/help";
@@ -21,6 +22,7 @@ const fromBase = (base: number, unit: string, item: Item) => {
 
 export function CountSheet({ countId, items }: { countId: string; items: Item[] }) {
   const [filter, setFilter] = useState("");
+  const [onlyLeft, setOnlyLeft] = useState(false);
   const [units, setUnits] = useState<Record<string, string>>(() => Object.fromEntries(items.map((i) => [i.id, i.units[0]])));
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(items.filter((i) => i.savedBase != null).map((i) => [i.id, String(fromBase(i.savedBase!, i.units[0], i))])),
@@ -46,20 +48,50 @@ export function CountSheet({ countId, items }: { countId: string; items: Item[] 
     });
   };
 
+  const isDone = (id: string) => status[id] === "saved";
   const groups = useMemo(() => {
-    const f = filter.trim().toLowerCase();
-    const list = items.filter((i) => !f || i.name.toLowerCase().includes(f));
+    const f = filter.trim();
+    // Hide counted items only once you've left them, so a row doesn't vanish while you type in it.
+    const list = items.filter((i) => (!f || matchScore(f, normalize(`${i.name} ${i.category}`)) != null) && (!onlyLeft || !isDone(i.id) || document.activeElement?.getAttribute("aria-label") === `${i.name} quantity`));
     return Map.groupBy(list, (i) => i.area);
-  }, [items, filter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, filter, onlyLeft, onlyLeft ? status : null]);
   const done = Object.values(status).filter((s) => s === "saved").length;
+  const areas = useMemo(() => {
+    const m = new Map<string, { total: number; left: number }>();
+    for (const i of items) {
+      const a = m.get(i.area) ?? { total: 0, left: 0 };
+      a.total++;
+      if (!isDone(i.id)) a.left++;
+      m.set(i.area, a);
+    }
+    return [...m];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, status]);
+  const jump = (area: string) => document.getElementById(`area-${area}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
     <div className="pb-28">
       <div className="sticky top-[calc(3.25rem+env(safe-area-inset-top))] z-10 -mx-4 bg-bg/95 px-4 pb-3 backdrop-blur lg:top-0 lg:pt-2">
         <HelpZone id="count.find"><Input type="search" placeholder="Find an item" value={filter} onChange={(e) => setFilter(e.target.value)} className="h-11 text-base" /></HelpZone>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={items.length} aria-valuenow={done} aria-label="Counted so far">
+          <div className="h-full rounded-full bg-good transition-[width] duration-300" style={{ width: `${items.length ? (done / items.length) * 100 : 0}%` }} />
+        </div>
+        <div className="-mx-4 mt-2 flex gap-1.5 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none]">
+          <button type="button" aria-pressed={onlyLeft} onClick={() => setOnlyLeft((v) => !v)}
+            className={cx("h-9 shrink-0 rounded-full border px-3 text-sm font-medium whitespace-nowrap transition-colors", onlyLeft ? "border-ink bg-ink text-surface" : "border-border text-ink-2")}>
+            Not counted yet
+          </button>
+          {areas.length > 1 && areas.map(([area, a]) => (
+            <button key={area} type="button" onClick={() => jump(area)} className="h-9 shrink-0 rounded-full border border-border px-3 text-sm whitespace-nowrap text-ink-2 hover:border-border-strong">
+              {area} <span className={cx("num ml-1", a.left === 0 ? "text-good" : "text-muted")}>{a.left === 0 ? "✓" : a.left}</span>
+            </button>
+          ))}
+        </div>
       </div>
+      {onlyLeft && done === items.length && <Card className="mb-6 p-5 text-center text-sm text-good">Everything is counted. Press Finish count.</Card>}
       {[...groups].map(([area, list]) => (
-        <HelpZone key={area} id="count.area" className="mb-6"><section>
+        <HelpZone key={area} id="count.area" className="mb-6"><section id={`area-${area}`} className="scroll-mt-44">
           <h2 className="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">{area}</h2>
           <Card className="divide-y divide-border">
             {list.map((item) => (
