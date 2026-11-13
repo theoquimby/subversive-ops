@@ -18,5 +18,10 @@
       "path": "/api/cron/daily-ops",
       "schedule": "23 10 * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "wip/agents": false
+    }
+  }
 }
