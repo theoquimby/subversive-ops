@@ -344,6 +344,8 @@ model Employee {
   payAdjustments     PayAdjustment[]
   feedback           EmployeeFeedback[]
   documentAcks       DocumentAck[]
+  certifications     Certification[]
+  trainingAssignments TrainingAssignment[]
 }
 
 model EmployeePosition {
@@ -673,6 +675,7 @@ model Document {
   active      Boolean          @default(true)
   createdAt   DateTime         @default(now())
   acks        DocumentAck[]
+  trainingSteps TrainingStep[]
 }
 
 model DocumentAck {
@@ -684,4 +687,111 @@ model DocumentAck {
   ackedAt    DateTime @default(now())
 
   @@unique([documentId, employeeId])
+}
+
+// ---------------------------------------------------------------------------
+// People: training & certifications
+// ---------------------------------------------------------------------------
+
+/// A kind of certificate or required training (ATAP, ServSafe, harassment prevention…).
+model CertType {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  description       String?
+  issuer            String?
+  /// Months a certificate stays valid. Null = never expires.
+  validityMonths    Int?
+  /// Position ids whose holders must have it.
+  appliesTo         String[] @default([])
+  requiredForAll    Boolean  @default(false)
+  /// Required for anyone marked as a minor (NY working papers).
+  requiredForMinors Boolean  @default(false)
+  /// Yearly training (e.g. NY sexual harassment prevention) rather than a card.
+  isAnnualTraining  Boolean  @default(false)
+  active            Boolean  @default(true)
+  sort              Int      @default(0)
+  createdAt         DateTime @default(now())
+  certifications    Certification[]
+}
+
+/// One certificate a person holds. Renewals add a new row, so history is kept.
+model Certification {
+  id               String    @id @default(cuid())
+  employeeId       String
+  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  certTypeId       String
+  certType         CertType  @relation(fields: [certTypeId], references: [id], onDelete: Cascade)
+  number           String?
+  issuedOn         DateTime  @db.Date
+  /// From the type's validity unless expiryOverridden.
+  expiresOn        DateTime? @db.Date
+  expiryOverridden Boolean   @default(false)
+  /// Photo or PDF of the card (max 8 MB).
+  bytes            Bytes?
+  mime             String?
+  size             Int?
+  filename         String?
+  notes            String?
+  uploadedBy       String?
+  verifiedBy       String?
+  verifiedAt       DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([employeeId, certTypeId])
+  @@index([expiresOn])
+}
+
+/// An onboarding / skills checklist ("New bartender").
+model TrainingModule {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  positionIds String[] @default([])
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  steps       TrainingStep[]
+  assignments TrainingAssignment[]
+}
+
+model TrainingStep {
+  id          String         @id @default(cuid())
+  moduleId    String
+  module      TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  sort        Int            @default(0)
+  title       String
+  detail      String?
+  documentId  String?
+  document    Document?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  completions TrainingStepCompletion[]
+
+  @@index([moduleId, sort])
+}
+
+model TrainingAssignment {
+  id          String         @id @default(cuid())
+  employeeId  String
+  employee    Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  moduleId    String
+  module      TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  assignedAt  DateTime       @default(now())
+  assignedBy  String?
+  dueOn       DateTime?      @db.Date
+  completedAt DateTime?
+  signedOffBy String?
+  signedOffAt DateTime?
+  completions TrainingStepCompletion[]
+
+  @@unique([employeeId, moduleId])
+}
+
+model TrainingStepCompletion {
+  id           String             @id @default(cuid())
+  assignmentId String
+  assignment   TrainingAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  stepId       String
+  step         TrainingStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  completedAt  DateTime           @default(now())
+  completedBy  String?
+
+  @@unique([assignmentId, stepId])
 }

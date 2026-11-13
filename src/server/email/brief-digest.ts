@@ -51,6 +51,18 @@ export function briefDigest(b: WeeklyBrief): BriefDigest {
   const inv = b.decisions.find((d) => d.key === "invoiceIssues");
   if (inv) add(true, { title: "Invoice issues", status: inv.title, path: inv.href });
 
+  const t = b.training;
+  if (t && t.hasTypes) {
+    const issues = [
+      t.expired.length ? `${t.expired.length} expired` : "",
+      t.expiring.length ? `${t.expiring.length} expiring in 30 days` : "",
+      t.missing.length ? `${t.missing.length} missing` : "",
+      t.overdue.length ? `${plural(t.overdue.length, "checklist")} overdue` : "",
+    ].filter(Boolean);
+    const names = [...t.expired, ...t.expiring, ...t.missing].slice(0, 3).map((x) => `${x.person} (${x.cert})`);
+    add(issues.length > 0, { title: "Training & certificates", status: issues.length ? `${issues.join(" · ")}${names.length ? `: ${list(names)}` : ""}` : "Everyone's certificates are in date", path: "/team/training" });
+  }
+
   const c = b.counts;
   add(c.overdue, { title: c.overdue ? "Count is overdue" : "Counts", status: c.last == null ? "No completed counts yet" : c.overdue ? `Last full count was ${c.daysSince} days ago (${shortDate(c.last)})` : `Last count ${shortDate(c.last)}`, path: "/count" });
 

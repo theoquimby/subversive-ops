@@ -18,6 +18,8 @@ import {
   setEmployeeField,
   syncTeamFromSquare,
 } from "./actions";
+import type { CertStatus } from "@/domain/certs";
+import { CertChip } from "./training/cert-chip";
 
 type Result = void | { error?: string } | undefined;
 
@@ -123,6 +125,8 @@ export interface EmployeeRow {
   sickAvailable: number | null;
   /** e.g. "under $16.00 minimum" when their base rate is below the legal floor. */
   rateWarning: string | null;
+  /** Worst required certificate status, linking to /team/training. */
+  certs?: { status: CertStatus; label: string } | null;
 }
 
 export interface PositionOption {
@@ -163,6 +167,7 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
               <td className={tdCell}>
                 <GridCell grid="emp" col="name" value={e.name} onSave={setEmployeeField.bind(null, e.id, "name")} ariaLabel={`Name of ${e.name}`} className="min-w-28 font-medium" />
                 {/* The Minor badge sits under the name (the Minor column takes over on wide screens) so it never cuts the name off. */}
+                {e.certs && e.certs.status !== "not-required" && <div className="px-2 pb-1"><CertChip employeeId={e.id} chip={e.certs} /></div>}
                 {e.isMinor && (
                   <div className="px-2 pb-1 lg:hidden">
                     <Badge tone="warn">Minor</Badge>

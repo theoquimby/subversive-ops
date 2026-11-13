@@ -84,6 +84,14 @@ describe("email templates", () => {
     expect(SAMPLES["weekly-brief"].render().subject).toBe("Week of Nov 16: 3 things need you");
   });
 
+  it("certificate reminders speak to the person or roll up for managers", () => {
+    expect(SAMPLES["cert-reminder"].render().subject).toBe("Your ATAP expires this week");
+    const team = SAMPLES["cert-roundup"].render();
+    expect(team.subject).toBe("1 certificate has expired, 2 expiring");
+    expect(team.text).toContain("- Dana Russo: ATAP — expired Mon, Nov 9");
+    expect(team.html).toContain('href="https://ops.example.com/team/training"');
+  });
+
   it("credit request totals the lines", () => {
     const r = SAMPLES["credit-request"].render();
     expect(r.subject).toBe("Credit request — invoice 88123401");
@@ -109,7 +117,7 @@ describe("notification prefs", () => {
     expect(p.events.priceSpikes).toEqual(DEFAULT_PREFS.events.priceSpikes);
   });
   it("staff only see staff events", () => {
-    expect(eventsFor("STAFF")).toEqual(["schedulePublished", "shiftChanges"]);
-    expect(eventsFor("MANAGER")).toHaveLength(7);
+    expect(eventsFor("STAFF")).toEqual(["schedulePublished", "shiftChanges", "certificates"]);
+    expect(eventsFor("MANAGER")).toHaveLength(8);
   });
 });

@@ -6,6 +6,7 @@
 export const NOTIFY_EVENTS = {
   schedulePublished: { label: "Schedule published", hint: "Your shifts for the week, when a manager publishes it.", audience: "everyone" },
   shiftChanges: { label: "Shift changes", hint: "A shift moved, a swap or time off was decided.", audience: "everyone" },
+  certificates: { label: "Certificates", hint: "A certificate like ATAP or food handler expires in 30 or 7 days, or has expired.", audience: "everyone" },
   weeklyBrief: { label: "Weekly brief", hint: "What needs you before the week starts.", audience: "manager" },
   priceSpikes: { label: "Price spikes", hint: "A supplier price jumped enough to move plate costs.", audience: "manager" },
   invoiceIssues: { label: "Invoice issues", hint: "An invoice doesn't match the order or delivery.", audience: "manager" },
@@ -29,6 +30,7 @@ export const DEFAULT_PREFS: NotifyPrefs = {
   events: {
     schedulePublished: { email: true, push: true },
     shiftChanges: { email: true, push: true },
+    certificates: { email: true, push: true },
     weeklyBrief: { email: true, push: true },
     priceSpikes: { email: false, push: true },
     invoiceIssues: { email: false, push: true },

@@ -27,7 +27,8 @@ export type HelpAreaId =
   | "invoices"
   | "reviews"
   | "budgets"
-  | "brief";
+  | "brief"
+  | "training";
 
 export type Audience = "manager" | "staff" | "all";
 

@@ -1,4 +1,5 @@
 import type { RenderedEmail } from "../layout";
+import { certReminderEmail } from "./certificates";
 import { creditRequestEmail } from "./credit-request";
 import { invoiceIssueEmail, priceSpikesEmail } from "./manager-alerts";
 import { badReviewEmail, staffRequestEmail } from "./manager-requests";
@@ -7,7 +8,8 @@ import { schedulePublishedEmail } from "./schedule-published";
 import { shiftUpdateEmail } from "./shift-update";
 import { weeklyBriefEmail } from "./weekly-brief";
 
-export { badReviewEmail, creditRequestEmail, invoiceIssueEmail, priceSpikesEmail, staffRequestEmail, purchaseOrderEmail, schedulePublishedEmail, shiftUpdateEmail, weeklyBriefEmail };
+export { badReviewEmail, certReminderEmail, creditRequestEmail, invoiceIssueEmail, priceSpikesEmail, staffRequestEmail, purchaseOrderEmail, schedulePublishedEmail, shiftUpdateEmail, weeklyBriefEmail };
+export type { CertReminderEmail, CertReminderItem } from "./certificates";
 export type { CreditRequestEmail } from "./credit-request";
 export type { InvoiceIssueEmail, PriceSpike, PriceSpikesEmail } from "./manager-alerts";
 export type { BadReviewEmail, StaffRequest, StaffRequestEmail } from "./manager-requests";
@@ -174,6 +176,25 @@ export const SAMPLES = {
         name: "Max",
         baseUrl: BASE,
         reviews: [{ author: "Dana R.", rating: 2, source: "GOOGLE", date: "2026-11-12", text: "Beer was great but we waited 40 minutes for burgers and nobody checked on us." }],
+      }),
+  },
+  "cert-reminder": {
+    label: "Certificate expiring (staff)",
+    render: () =>
+      certReminderEmail({ name: "Jamie Rivera", audience: "self", baseUrl: BASE, items: [{ person: "Jamie Rivera", cert: "ATAP", expiresOn: "2026-11-20", stage: "7" }] }),
+  },
+  "cert-roundup": {
+    label: "Certificates expiring (managers)",
+    render: () =>
+      certReminderEmail({
+        name: "Max",
+        audience: "team",
+        baseUrl: BASE,
+        items: [
+          { person: "Dana Russo", cert: "ATAP", expiresOn: "2026-11-09", stage: "expired" },
+          { person: "Jamie Rivera", cert: "ATAP", expiresOn: "2026-11-20", stage: "7" },
+          { person: "Eli Park", cert: "ServSafe Food Handler", expiresOn: "2026-12-08", stage: "30" },
+        ],
       }),
   },
 } satisfies Record<string, { label: string; render: () => RenderedEmail }>;

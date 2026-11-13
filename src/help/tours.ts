@@ -146,6 +146,23 @@ export const TOURS: Tour[] = [
       { route: "/ingredients", selector: 'a[aria-label^="Open "]', title: "Everything else", body: "The arrow opens the ingredient: the products it's bought as, pack sizes, custom units like \"1 slice = 21 g\" and its cost history.", helpId: "ingredients.detail" },
     ],
   },
+  {
+    id: "training",
+    title: "Training & certificates",
+    description: "The certificate matrix, adding and verifying cards, certificate types and onboarding checklists.",
+    audience: "manager",
+    minutes: 2,
+    steps: [
+      { route: "/team/training", target: "training.stats", title: "How the team stands", body: "Required certificates in date, and how many are expiring within 30 days, expired or missing.", helpId: "training.compliant" },
+      { route: "/team/training", target: "training.matrix", title: "Everyone × every certificate", body: "Green is in date (the month it runs to), amber expires within 30 days, red is expired or missing. An amber dot means staff uploaded it and it needs verifying.", helpId: "training.matrix", touch: { body: "Each person is a card listing what they need. Green is in date, amber expires within 30 days, red is expired or missing." } },
+      { route: "/team/training", target: "training.filters", title: "Narrow it down", body: "Show one position, or only people who need attention, have something expiring, or uploaded a card that isn't verified yet.", helpId: "training.matrix" },
+      { title: "Tap a cell to add or renew", body: "Snap a photo or drop a PDF, pick the issue date and the expiry fills in. A renewal adds a new record and keeps the old one. View the photo and mark it verified from the same sheet.", helpId: "training.addCert" },
+      { route: "/team/training", target: "training.types", title: "What you track", body: "How long each certificate lasts and which positions need it. Pre-filled for New York — confirm them before relying on them.", helpId: "training.types" },
+      { route: "/team/training", target: "training.module", title: "Onboarding checklists", body: "Steps for a new hire, each with an optional linked document. Assign by position or person; staff tick steps on My shifts and you sign off.", helpId: "training.modules", ifMissing: "skip" },
+      { route: "/team/training", target: "training.new-module", title: "Start a checklist", body: "Type a name like “New bartender” and press Enter, then add the steps.", helpId: "training.modules", ifMissing: "skip" },
+      { title: "Reminders and warnings", body: "People and managers hear about certificates 30 and 7 days before they expire. The weekly brief lists what's due, and the schedule warns if someone's on a shift without a certificate their position needs.", helpId: "training.reminders" },
+    ],
+  },
 ];
 
 const BY_ID = new Map(TOURS.map((t) => [t.id, t]));
@@ -156,6 +173,7 @@ export const toursFor = (role: "MANAGER" | "STAFF") => TOURS.filter((t) => role 
 export function tourForPath(pathname: string): Tour | undefined {
   const map: [RegExp, string][] = [
     [/^\/$/, "overview"],
+    [/^\/team\/training/, "training"],
     [/^\/menu/, "menu"],
     [/^\/prices/, "prices"],
     [/^\/ordering/, "ordering"],

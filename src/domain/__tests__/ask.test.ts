@@ -20,6 +20,14 @@ describe("ask routing", () => {
     expect(routeQuestion("tell me a joke", today)).toBeNull();
   });
 
+  it("routes certificate questions before margin and schedule words", () => {
+    expect(routeQuestion("who has an expired ATAP?", today)).toEqual({ tool: "cert_status", args: { cert: "ATAP", status: "expired" } });
+    expect(routeQuestion("Who's missing harassment training?", today)).toEqual({ tool: "cert_status", args: { cert: "harassment", status: "missing" } });
+    expect(routeQuestion("food handler cards expiring soon", today)).toEqual({ tool: "cert_status", args: { cert: "Food Handler", status: "expiring" } });
+    expect(routeQuestion("are we compliant on certificates?", today)).toEqual({ tool: "cert_status", args: {} });
+    expect(routeQuestion("what went missing since the last count?", today)?.tool).toBe("margin_gap");
+  });
+
   it("every suggested question routes", () => {
     for (const q of SUGGESTED_QUESTIONS) expect(q.route(today).tool).toBeTruthy();
   });

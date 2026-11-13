@@ -153,3 +153,21 @@ describe("meal breaks, minimum wage and rule settings", () => {
     expect(p.wages).toBe(40 + 2 * R.minimumWage);
   });
 });
+
+describe("checkCompliance: certificates", () => {
+  const emps = [{ id: "a", name: "Ann", isMinor: false, maxHoursWeek: null }];
+  const shift = (o: object) => ({ id: "1", employeeId: "a", start: at(3, 16), end: at(3, 22), breakMinutes: 30, day: "2026-11-03", ...o });
+  it("warns when the person lacks a certificate the position needs", () => {
+    const v = checkCompliance([shift({ missingCerts: ["ATAP"] })], emps, R, (d) => d.getUTCHours()).filter((x) => x.rule === "uncertified");
+    expect(v).toEqual([{ shiftId: "1", employeeId: "a", level: "warn", rule: "uncertified", message: "Ann has no valid ATAP on this day" }]);
+    const two = checkCompliance([shift({ missingCerts: ["ATAP", "Sexual harassment prevention"] })], emps, R, (d) => d.getUTCHours()).find((x) => x.rule === "uncertified");
+    expect(two?.message).toBe("Ann has no valid ATAP or Sexual harassment prevention on this day");
+  });
+  it("is quiet for open shifts or nothing missing, and follows the rule setting", () => {
+    expect(checkCompliance([shift({ missingCerts: [] }), shift({ id: "2", employeeId: null, missingCerts: ["ATAP"] })], emps, R, (d) => d.getUTCHours()).some((x) => x.rule === "uncertified")).toBe(false);
+    const block = checkCompliance([shift({ missingCerts: ["ATAP"] })], emps, { ...R, ruleSettings: { uncertified: { level: "block" } } }, (d) => d.getUTCHours()).find((x) => x.rule === "uncertified");
+    expect(block?.level).toBe("block");
+    const off = checkCompliance([shift({ missingCerts: ["ATAP"] })], emps, { ...R, ruleSettings: { uncertified: { on: false } } }, (d) => d.getUTCHours());
+    expect(off.some((x) => x.rule === "uncertified")).toBe(false);
+  });
+});

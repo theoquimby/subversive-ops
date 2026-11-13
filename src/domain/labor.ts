@@ -50,6 +50,7 @@ export const RULES = {
   overtime: { label: "Overtime", level: "warn", basis: "FLSA and NY: 1.5× after 40 hours in a workweek." },
   "max-hours": { label: "Max hours preference", level: "warn", basis: "Each person's own max hours from the Team page." },
   availability: { label: "Outside availability", level: "warn", basis: "What each person says they can work." },
+  uncertified: { label: "Missing certificate", level: "warn", basis: "The position needs a certificate (e.g. ATAP, food handler) the person doesn't hold in date that day. Set on Team → Training." },
 } as const satisfies Record<string, { label: string; level: RuleLevel; basis: string }>;
 
 export type RuleId = keyof typeof RULES;
@@ -183,6 +184,8 @@ export interface ShiftLike {
   tipped?: boolean;
   /** Business day (YYYY-MM-DD) the shift belongs to. Defaults to the UTC date of `start`. */
   day?: string;
+  /** Certificates the position requires that the assigned person doesn't hold in date on this day (worked out by the caller). */
+  missingCerts?: string[];
 }
 
 export interface EmployeeLike {
@@ -208,6 +211,8 @@ export function checkCompliance(shifts: ShiftLike[], employees: EmployeeLike[], 
   return applyRuleSettings(rawCompliance(shifts, employees, rules, localHour), rules);
 }
 
+const listNames = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} or ${xs.at(-1)}`);
+
 const shiftDay = (s: ShiftLike) => s.day ?? s.start.toISOString().slice(0, 10);
 
 function rawCompliance(shifts: ShiftLike[], employees: EmployeeLike[], rules: LaborRules, localHour: (d: Date) => number): Violation[] {
@@ -226,6 +231,10 @@ function rawCompliance(shifts: ShiftLike[], employees: EmployeeLike[], rules: La
     if (s.employeeId && s.rate != null) {
       const floor = s.tipped ? rules.tippedMinimumWage : rules.minimumWage;
       if (s.rate < floor - 0.005) v.push({ shiftId: s.id, employeeId: s.employeeId, level: "warn", rule: "min-wage", message: `Paid $${s.rate.toFixed(2)}/h, under the ${s.tipped ? "tipped " : ""}minimum of $${floor.toFixed(2)}` });
+    }
+    if (s.employeeId && s.missingCerts?.length) {
+      const e = emp.get(s.employeeId);
+      v.push({ shiftId: s.id, employeeId: s.employeeId, level: "warn", rule: "uncertified", message: `${e?.name ?? "Employee"} has no valid ${listNames(s.missingCerts)} on this day` });
     }
     if (s.employeeId) byEmp.set(s.employeeId, [...(byEmp.get(s.employeeId) ?? []), s]);
   }

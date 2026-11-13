@@ -12,6 +12,7 @@ import { periodKpis } from "./kpis";
 import { buildOrderPlan } from "./planning";
 import { businessToday } from "./sales";
 import { loadWeek } from "./scheduling";
+import { certStatusRows } from "./training";
 import { lastCountPeriod, varianceReport } from "./variance";
 
 /**
@@ -207,6 +208,31 @@ async function wasteSummaryTool(args: { days?: unknown }): Promise<ToolResult> {
   };
 }
 
+const CERT_STATUS_WORD: Record<string, string> = { valid: "In date", expiring: "Expiring", expired: "Expired", missing: "Missing", "not-required": "Optional" };
+const CERT_FILTERS = ["expired", "expiring", "missing", "valid", "attention"] as const;
+
+async function certStatusTool(args: { cert?: unknown; status?: unknown }): Promise<ToolResult> {
+  const status = CERT_FILTERS.find((f) => f === args.status);
+  const cert = typeof args.cert === "string" ? args.cert.slice(0, 60) : undefined;
+  const r = await certStatusRows({ cert, status });
+  const s = r.summary;
+  const what = cert && r.matchedType ? r.types.join(", ") : "certificates";
+  const label = status === "attention" ? "needing attention" : status ? CERT_STATUS_WORD[status].toLowerCase() : "";
+  const rows = [...r.rows].sort((a, b) => (a.expiresOn ?? "0").localeCompare(b.expiresOn ?? "0") || a.person.localeCompare(b.person)).slice(0, 25);
+  const facts = [
+    cert && !r.matchedType ? `No certificate type matches “${cert}”. Tracked: ${r.types.join(", ") || "none yet"}.` : "",
+    status ? `${r.rows.length} ${what} ${label}${r.rows.length ? `: ${rows.slice(0, 6).map((x) => (cert && r.matchedType ? x.person : `${x.person} (${x.cert})`)).join(", ")}${r.rows.length > 6 ? "…" : ""}` : ""}.` : "",
+    s.required ? `Team-wide, ${s.ok} of ${s.required} required certificates are in date (${pc(s.pct, 0)}): ${s.expired} expired, ${s.expiring} expiring within 30 days, ${s.missing} missing.` : "No certificates are required yet.",
+  ].filter(Boolean);
+  return {
+    tool: "cert_status",
+    title: status ? `${cert && r.matchedType ? what : "Certificates"} ${label}` : `Certificates${cert && r.matchedType ? `: ${what}` : ""}`,
+    facts,
+    table: rows.length ? { columns: ["Person", "Certificate", "Status", "Expires"], align: ["left", "left", "left", "right"], rows: rows.map((x) => [x.person, x.cert, x.required ? CERT_STATUS_WORD[x.status] : "Optional", x.expiresOn ? sd(x.expiresOn) : "—"]) } : undefined,
+    links: [{ label: "Training & certificates", href: "/team/training" }, ...rows.slice(0, 2).map((x) => ({ label: x.person, href: `/team/training?person=${x.employeeId}` }))],
+  };
+}
+
 const RUNNERS: Record<AskToolName, (args: Record<string, unknown>) => Promise<ToolResult>> = {
   period_kpis: periodKpisTool,
   menu_margins: menuMarginsTool,
@@ -215,6 +241,7 @@ const RUNNERS: Record<AskToolName, (args: Record<string, unknown>) => Promise<To
   schedule_week: scheduleWeekTool,
   order_plans: orderPlansTool,
   waste_summary: wasteSummaryTool,
+  cert_status: certStatusTool,
 };
 
 export async function runAskTool(tool: AskToolName, args: Record<string, unknown>): Promise<ToolResult> {
@@ -239,6 +266,11 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   { name: "order_plans", description: "Suggested orders per supplier for their next delivery: item count and estimated total.", input_schema: { type: "object", properties: {} } },
   { name: "waste_summary", description: "Logged waste in the last N days at purchase cost, biggest items first.", input_schema: { type: "object", properties: { days: { type: "integer", description: "Look-back window in days (default 30)" } } } },
+  {
+    name: "cert_status",
+    description: "Staff certifications and required training (ATAP, ServSafe Food Handler, allergen, CPR, sexual harassment prevention, working papers for minors): who holds what, what's expired, expiring within 30 days or missing, and team-wide compliance. Use for 'who has an expired ATAP?', 'who's missing harassment training?'.",
+    input_schema: { type: "object", properties: { cert: { type: "string", description: "Part of the certificate name, e.g. ATAP, Food Handler, harassment. Omit for all." }, status: { type: "string", enum: ["expired", "expiring", "missing", "valid", "attention"], description: "Only people in this state; attention = expired, expiring or missing. Omit for everyone." } } },
+  },
 ];
 
 const answerSystem = (today: ISODate) => `You answer questions from the manager of Subversive, a brewery and restaurant in Catskill, NY, about their own business data.

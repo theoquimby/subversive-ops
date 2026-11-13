@@ -45,6 +45,7 @@ async function managerCommands(): Promise<Command[]> {
     { id: "go-ask", label: "Ask a question about the numbers", group: "Do", href: "/ask", hint: "ask" },
     { id: "go-allergens", label: "Allergen chart", group: "Go to", href: "/menu/allergens" },
     { id: "go-documents", label: "Documents & policies", group: "Go to", href: "/team/documents" },
+    { id: "go-training", label: "Training & certificates", group: "Go to", href: "/team/training" },
     { id: "go-schedule", label: "Schedule", group: "Go to", href: "/schedule" },
     { id: "go-tips", label: "Tips", group: "Go to", href: "/tips" },
     { id: "do-requests", label: "Approve time off & swaps", group: "Do", href: "/schedule/requests" },

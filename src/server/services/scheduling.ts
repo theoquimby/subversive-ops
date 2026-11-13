@@ -1,5 +1,6 @@
 import "server-only";
 import { addDays, ISODate, parseISODate, todayIn, toISODate, weekday } from "@/domain/dates";
+import { requiredForShift, validOn, type CertTypeLike } from "@/domain/certs";
 import { applyRuleSettings, assignShifts, Candidate, checkCompliance, curveToBlocks, defaultBreakMinutes, LaborRules, PositionRule } from "@/domain/labor";
 import {
   Availability, availabilityConflicts, clipAvailability, coverage, curveHours, dayRequirement, fitSliderToTarget, HourDemand, hourlySalesOrFallback, inclusiveDates,
@@ -180,7 +181,33 @@ export interface WeekData {
   autoDraft: boolean;
 }
 
-function complianceFor(shifts: ShiftView[], employees: EmployeeView[], positions: PositionView[], rules: LaborRules, timeOff: Map<string, Set<ISODate>>): WeekIssue[] {
+/** Active certificate types and everyone's certificates (dates only), for the "uncertified" rule. */
+export interface CertCoverage {
+  types: (CertTypeLike & { name: string })[];
+  /** employeeId|certTypeId → certificates. */
+  held: Map<string, { issuedOn: ISODate; expiresOn: ISODate | null }[]>;
+}
+
+export async function loadCertCoverage(): Promise<CertCoverage> {
+  const [types, certs] = await Promise.all([
+    db.certType.findMany({ where: { active: true }, select: { id: true, name: true, validityMonths: true, appliesTo: true, requiredForAll: true, requiredForMinors: true, active: true } }),
+    db.certification.findMany({ select: { employeeId: true, certTypeId: true, issuedOn: true, expiresOn: true } }),
+  ]);
+  const held = new Map<string, { issuedOn: ISODate; expiresOn: ISODate | null }[]>();
+  for (const c of certs) {
+    const k = `${c.employeeId}|${c.certTypeId}`;
+    held.set(k, [...(held.get(k) ?? []), { issuedOn: toISODate(c.issuedOn), expiresOn: c.expiresOn ? toISODate(c.expiresOn) : null }]);
+  }
+  return { types, held };
+}
+
+/** Names of certificates the position needs that this person doesn't hold in date on `date`. */
+export function missingCertsFor(cov: CertCoverage | undefined, employee: Pick<EmployeeView, "id" | "isMinor"> | undefined, positionId: string, date: ISODate): string[] {
+  if (!cov || !employee) return [];
+  return requiredForShift(cov.types, positionId, employee.isMinor).filter((t) => !validOn(cov.held.get(`${employee.id}|${t.id}`) ?? [], date)).map((t) => t.name);
+}
+
+function complianceFor(shifts: ShiftView[], employees: EmployeeView[], positions: PositionView[], rules: LaborRules, timeOff: Map<string, Set<ISODate>>, certs?: CertCoverage): WeekIssue[] {
   const emps = new Map(employees.map((e) => [e.id, e]));
   const pos = new Map(positions.map((p) => [p.id, p]));
   const law = checkCompliance(
@@ -193,6 +220,7 @@ function complianceFor(shifts: ShiftView[], employees: EmployeeView[], positions
       rate: s.employeeId ? rateFor(emps.get(s.employeeId), s.positionId, pos) : null,
       tipped: pos.get(s.positionId)?.tipped ?? false,
       day: s.date,
+      missingCerts: s.employeeId ? missingCertsFor(certs, emps.get(s.employeeId), s.positionId, s.date) : [],
     })),
     employees.map((e) => ({ id: e.id, name: e.name, isMinor: e.isMinor, maxHoursWeek: e.maxHoursWeek })),
     rules,
@@ -232,11 +260,12 @@ export async function loadWeek(monday: ISODate): Promise<WeekData> {
     laborTargetFor(monday),
     getAutoDraft(),
   ]);
-  const [employees, timeOff, days, pendingAll] = await Promise.all([
+  const [employees, timeOff, days, pendingAll, certs] = await Promise.all([
     loadEmployees(positions),
     approvedTimeOff(monday, dates[6]),
     forecastDays(dates, opening),
     db.timeOffRequest.count({ where: { status: "PENDING" } }),
+    loadCertCoverage(),
   ]);
   const shifts = rows.map(toView);
   const emps = new Map(employees.map((e) => [e.id, e]));
@@ -259,7 +288,7 @@ export async function loadWeek(monday: ISODate): Promise<WeekData> {
     positions,
     employees,
     shifts,
-    issues: complianceFor(shifts, employees, positions, rules, timeOff),
+    issues: complianceFor(shifts, employees, positions, rules, timeOff, certs),
     summary,
     timeOff: Object.fromEntries([...timeOff].map(([k, v]) => [k, [...v]])),
     pendingTimeOff: pendingMap,

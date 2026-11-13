@@ -10,6 +10,7 @@ import { menu, ingredients, overview, prices } from "./areas/costing";
 import { counts, importing, ordering, sales, settings, variance, waste } from "./areas/operations";
 import { upcoming } from "./areas/upcoming";
 import { finalParity } from "./areas/final";
+import { training } from "./areas/training";
 import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
 
@@ -39,6 +40,7 @@ export const AREAS: HelpArea[] = [
   { id: "invoices", title: "Invoices", description: "Snap, match, approve, request credits, export to QuickBooks or Xero." },
   { id: "reviews", title: "Reviews", description: "Themes, reply drafts, what to fix this month." },
   { id: "brief", title: "Weekly brief", description: "Next week in a page, with one-tap actions." },
+  { id: "training", title: "Training & certificates", description: "ATAP, ServSafe and other certificates, expiry reminders and onboarding checklists." },
 ];
 
 export const HELP: HelpEntry[] = [
@@ -56,6 +58,7 @@ export const HELP: HelpEntry[] = [
   ...settings,
   ...upcoming,
   ...finalParity,
+  ...training,
 ];
 
 const BY_ID = new Map(HELP.map((e) => [e.id, e]));

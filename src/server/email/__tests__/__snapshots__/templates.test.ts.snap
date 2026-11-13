@@ -17,6 +17,42 @@ Subversive · Catskill, NY",
 }
 `;
 
+exports[`email templates > cert-reminder > matches the snapshot 1`] = `
+{
+  "subject": "Your ATAP expires this week",
+  "text": "Hi Jamie,
+
+Your ATAP expires this week:
+
+- ATAP — expires Fri, Nov 20
+
+Upload a new card: https://ops.example.com/my#training
+
+—
+Subversive training
+Subversive · Catskill, NY",
+}
+`;
+
+exports[`email templates > cert-roundup > matches the snapshot 1`] = `
+{
+  "subject": "1 certificate has expired, 2 expiring",
+  "text": "Hi Max,
+
+1 certificate has expired, 2 expiring:
+
+- Dana Russo: ATAP — expired Mon, Nov 9
+- Jamie Rivera: ATAP — expires Fri, Nov 20
+- Eli Park: ServSafe Food Handler — expires Tue, Dec 8
+
+Open training: https://ops.example.com/team/training
+
+—
+Subversive training
+Subversive · Catskill, NY",
+}
+`;
+
 exports[`email templates > credit-request > matches the snapshot 1`] = `
 {
   "subject": "Credit request — invoice 88123401",

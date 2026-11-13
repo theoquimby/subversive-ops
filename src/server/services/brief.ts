@@ -14,6 +14,7 @@ import { buildOrderPlan } from "./planning";
 import { ReviewAlert, reviewAlerts, unrepliedNegative } from "./reviews";
 import { businessToday } from "./sales";
 import { getAutoDraft } from "./scheduling";
+import { trainingBrief, type TrainingBrief } from "./training";
 import { countPoints, varianceReport } from "./variance";
 
 /** The week the brief is about: this week on a Monday, otherwise next week. */
@@ -107,7 +108,7 @@ export async function weeklyBrief() {
   const dates = dateRange(week, weekEnd);
   const snap = await loadCostingSnapshot();
 
-  const [forecast, targets, orders, shifts, scheduled, moves, costs, counts, timeOff, swaps, reviews, alerts, lastWaste, lastWeek, badReviews, invoiceIssues, unmapped, autoDraft] = await Promise.all([
+  const [forecast, targets, orders, shifts, scheduled, moves, costs, counts, timeOff, swaps, reviews, alerts, lastWaste, lastWeek, badReviews, invoiceIssues, unmapped, autoDraft, training] = await Promise.all([
     dailySalesForecast(dates),
     loadTargets(week, weekEnd),
     orderDrafts(today, weekEnd),
@@ -132,6 +133,10 @@ export async function weeklyBrief() {
     db.invoice.count({ where: { status: { in: [...INVOICE_ISSUE_STATUSES] } } }),
     unmappedSelling(addDays(today, -7), addDays(today, 1)),
     getAutoDraft(),
+    trainingBrief(today).catch((e): TrainingBrief | null => {
+      console.error("brief: training failed", e);
+      return null;
+    }),
   ]);
 
   // Forecast
@@ -210,6 +215,7 @@ export async function weeklyBrief() {
     requests: { timeOff, swaps },
     reviews: { unreplied: reviews, alerts },
     waste: { last: lastWasteDate, daysSince: daysSinceWaste, quiet: daysSinceWaste == null || daysSinceWaste > 7 },
+    training,
   };
 }
 

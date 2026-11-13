@@ -10,7 +10,8 @@ import { env } from "../env";
 import { briefDigest } from "../email/brief-digest";
 import type { RenderedEmail } from "../email/layout";
 import { DEFAULT_PREFS, NotifyEvent, NotifyPrefs, parsePrefs, prefsKey } from "../email/prefs";
-import { badReviewEmail, invoiceIssueEmail, priceSpikesEmail, schedulePublishedEmail, shiftUpdateEmail, staffRequestEmail, weeklyBriefEmail, type PriceSpike, type ShiftUpdate, type StaffRequest } from "../email/templates";
+import { badReviewEmail, certReminderEmail, invoiceIssueEmail, priceSpikesEmail, schedulePublishedEmail, shiftUpdateEmail, staffRequestEmail, weeklyBriefEmail, type CertReminderItem, type PriceSpike, type ShiftUpdate, type StaffRequest } from "../email/templates";
+import { certReminderSummary } from "../email/templates/certificates";
 import { badReviewSummary, staffRequestSummary } from "../email/templates/manager-requests";
 import { shiftUpdatePush } from "../email/templates/shift-update";
 import { emailConfigured, isEmail, sendEmail } from "../integrations/email";
@@ -410,6 +411,41 @@ export function notifyBadReviews(reviewIds: string[]) {
       email: badReviewEmail({ name: m.name, reviews: bad, baseUrl: base }),
       push: { title: sum.title, body: sum.body, url: "/reviews", tag: `reviews-${bad[0].date}` },
     }));
+  });
+}
+
+// ---- Training & certificates ---------------------------------------------------------------
+
+/** A certificate reminder to send: the item plus who holds it. */
+export interface CertReminder extends CertReminderItem {
+  certId: string;
+  employee: { userId: string | null; name: string; email: string | null };
+}
+
+/**
+ * Certificates at 30 days, 7 days or just expired (see `certificateReminders()` in
+ * services/training, which works out which are due and de-dupes them). Each person
+ * with a login hears about their own; every manager gets one roundup.
+ */
+export function notifyCertificateReminders(items: CertReminder[]) {
+  return safely("certificates", async () => {
+    if (items.length === 0) return [];
+    const base = appUrl();
+    const out: Delivery[] = [];
+    const byPerson = new Map<string, CertReminder[]>();
+    for (const i of items) if (i.employee.userId) byPerson.set(i.employee.userId, [...(byPerson.get(i.employee.userId) ?? []), i]);
+    for (const mine of byPerson.values()) {
+      const emp = mine[0].employee;
+      const sum = certReminderSummary(mine, "self");
+      out.push({ to: employeeRecipient(emp), email: certReminderEmail({ name: emp.name, audience: "self", items: mine, baseUrl: base }), push: { title: sum.title, body: sum.body, url: "/my#training", tag: `certs-${mine.map((m) => m.certId).join("-").slice(0, 60)}` } });
+    }
+    const sorted = [...items].sort((a, b) => a.expiresOn.localeCompare(b.expiresOn));
+    const sum = certReminderSummary(sorted, "team");
+    // A manager who is also on the list already got their own message; they still get the roundup.
+    for (const m of await managers()) {
+      out.push({ to: m, email: certReminderEmail({ name: m.name, audience: "team", items: sorted, baseUrl: base }), push: { title: sum.title, body: sum.body, url: "/team/training", tag: "certs-roundup" } });
+    }
+    return out;
   });
 }
 

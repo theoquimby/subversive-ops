@@ -14,12 +14,12 @@ const MAX = 8;
 const clampS = (s: number) => Math.min(MAX, Math.max(MIN, s));
 
 /** Zoomable, pannable invoice photo: wheel / pinch to zoom, drag to pan, double-click to toggle. */
-export function InvoiceViewer({ src, type, invoiceId, locked }: { src: string | null; type: string | null; invoiceId: string; locked: boolean }) {
+export function InvoiceViewer({ src, type, invoiceId, locked, label = "Invoice" }: { src: string | null; type: string | null; invoiceId: string; locked: boolean; label?: string }) {
   if (!src) return <Placeholder invoiceId={invoiceId} locked={locked} />;
   if (type === "application/pdf") {
     return (
       <Card className="flex h-full flex-col overflow-hidden">
-        <iframe src={src} title="Invoice PDF" className="min-h-0 w-full flex-1 bg-surface-2" />
+        <iframe src={src} title={`${label} PDF`} className="min-h-0 w-full flex-1 bg-surface-2" />
         <div className="flex justify-end border-t border-border px-3 py-2"><a href={src} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-ink-2 hover:text-ink">Open PDF <ExternalLink className="size-3.5" /></a></div>
       </Card>
     );
@@ -121,7 +121,7 @@ function ZoomImage({ src }: { src: string }) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
-          alt="Invoice"
+          alt={label}
           draggable={false}
           className="pointer-events-none absolute inset-0 h-full w-full object-contain"
           style={{ transform: `translate(${v.x}px, ${v.y}px) scale(${v.s})`, transformOrigin: "0 0" }}

@@ -8,7 +8,7 @@
 import { addDays, ISODate } from "./dates";
 import { weekStartOf } from "./schedule";
 
-export type AskToolName = "period_kpis" | "menu_margins" | "price_moves" | "margin_gap" | "schedule_week" | "order_plans" | "waste_summary";
+export type AskToolName = "period_kpis" | "menu_margins" | "price_moves" | "margin_gap" | "schedule_week" | "order_plans" | "waste_summary" | "cert_status";
 
 export interface Period {
   from: ISODate;
@@ -77,6 +77,9 @@ export function routeQuestion(text: string, today: ISODate): RoutedQuestion | nu
   const t = text.toLowerCase();
   const period = findPeriod(t, today);
   const has = (...w: string[]) => w.some((x) => t.includes(x));
+  // Certificates first: "who's missing harassment training" isn't a margin gap.
+  const cert = certQuestion(t);
+  if (cert) return { tool: "cert_status", args: cert };
   if (has("hours", "overtime", "schedule", "who's working", "who is working", "shifts")) {
     const wk = period ? weekStartOf(period.from) : weekStartOf(today);
     const over = /over (\d{1,2}) ?(?:h|hours)/.exec(t);
@@ -92,6 +95,27 @@ export function routeQuestion(text: string, today: ISODate): RoutedQuestion | nu
     return { tool: "period_kpis", args: { from: p.from, to: p.to } };
   }
   return null;
+}
+
+/** Certificate words that make a question about training, with the type and status it names (if any). */
+const CERT_WORDS: [RegExp, string][] = [
+  [/\batap\b|alcohol training/, "ATAP"],
+  [/food handler/, "Food Handler"],
+  [/food protection|food manager/, "Food Protection"],
+  [/servsafe/, "ServSafe"],
+  [/allergen (awareness|training|cert)/, "Allergen"],
+  [/\bcpr\b|first aid/, "First aid"],
+  [/harass/, "harassment"],
+  [/working papers|employment certificate/, "Working papers"],
+];
+
+export function certQuestion(text: string): { cert?: string; status?: string } | null {
+  const t = text.toLowerCase();
+  const hit = CERT_WORDS.find(([re]) => re.test(t));
+  const generic = /\bcert(ificat(e|es|ion|ions))?s?\b|\btraining\b|\bcompliant\b|\bcompliance\b/.test(t) && !/food cost|labor|sales/.test(t);
+  if (!hit && !generic) return null;
+  const status = /expired|lapsed|out of date/.test(t) ? "expired" : /expir|renew|soon|coming up/.test(t) ? "expiring" : /missing|doesn'?t have|don'?t have|without|hasn'?t|haven'?t|need/.test(t) ? "missing" : /who('s| is)? (not|out)|problem|attention|behind/.test(t) ? "attention" : undefined;
+  return { ...(hit ? { cert: hit[1] } : {}), ...(status ? { status } : {}) };
 }
 
 export interface SuggestedQuestion {
@@ -113,6 +137,7 @@ export const SUGGESTED_QUESTIONS: SuggestedQuestion[] = [
   { label: "Where's the margin gap since the last count?", route: () => ({ tool: "margin_gap", args: {} }) },
   { label: "What do I need to order next?", route: () => ({ tool: "order_plans", args: {} }) },
   { label: "What did we throw out in the last 30 days?", route: () => ({ tool: "waste_summary", args: { days: 30 } }) },
+  { label: "Whose certificates are expiring or expired?", route: () => ({ tool: "cert_status", args: { status: "attention" } }) },
 ];
 
 /** Validate and clamp dates the model or a link passes in: YYYY-MM-DD, from < to, at most a year. */

@@ -5,7 +5,7 @@ import { addDays, weekday } from "@/domain/dates";
 import { dayDate, money, pct, shortDate, signedPct } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { weeklyBrief, WeeklyBrief } from "@/server/services/brief";
-import { CalendarDays, ChevronRight, ClipboardList, Gavel, History, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Star, Tag, Trash2, TrendingUp, Unlink, UtensilsCrossed } from "lucide-react";
+import { BadgeCheck, CalendarDays, ChevronRight, ClipboardList, Gavel, History, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Star, Tag, Trash2, TrendingUp, Unlink, UtensilsCrossed } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CreateOrderButton } from "./create-order-button";
@@ -417,6 +417,45 @@ function buildItems(b: WeeklyBrief): Item[] {
     ) : undefined,
     action: go("/sales/square-menu", u.count ? "Link recipes" : "Square menu", u.count > 0),
   });
+
+  // Training & certificates
+  const t = b.training;
+  if (t && (t.hasTypes || t.overdue.length || t.ready.length)) {
+    const certIssues = t.expired.length + t.expiring.length + t.missing.length;
+    const parts = [
+      t.expired.length ? `${t.expired.length} expired` : "",
+      t.expiring.length ? `${t.expiring.length} expiring in 30 days` : "",
+      t.missing.length ? `${t.missing.length} missing` : "",
+      t.overdue.length ? `${t.overdue.length} checklist${t.overdue.length === 1 ? "" : "s"} overdue` : "",
+      t.ready.length ? `${t.ready.length} to sign off` : "",
+    ].filter(Boolean);
+    const rows = [
+      ...t.expired.map((x) => ({ key: `x-${x.employeeId}-${x.cert}`, who: x.person, what: x.cert, note: `Expired ${x.expiresOn ? shortDate(x.expiresOn) : ""}`, tone: "text-bad" })),
+      ...t.expiring.map((x) => ({ key: `e-${x.employeeId}-${x.cert}`, who: x.person, what: x.cert, note: `Expires ${x.expiresOn ? shortDate(x.expiresOn) : ""}`, tone: "text-warn" })),
+      ...t.missing.map((x) => ({ key: `m-${x.employeeId}-${x.cert}`, who: x.person, what: x.cert, note: "Missing", tone: "text-bad" })),
+      ...t.overdue.map((x) => ({ key: `o-${x.person}-${x.module}`, who: x.person, what: x.module, note: `${x.done}/${x.total} · due ${x.dueOn ? shortDate(x.dueOn) : ""}`, tone: "text-bad" })),
+    ];
+    const needs = certIssues + t.overdue.length > 0;
+    items.push({
+      id: "training",
+      icon: BadgeCheck,
+      title: "Training & certificates",
+      status: parts.length ? parts.join(" · ") : `Everyone's certificates are in date${t.summary.nextExpiry ? ` · next expiry ${shortDate(t.summary.nextExpiry)}` : ""}`,
+      needsYou: needs,
+      body: rows.length ? (
+        <Rows>
+          {rows.slice(0, 5).map((r) => (
+            <div key={r.key} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+              <span className="min-w-0 truncate">{r.who} <span className="text-muted">· {r.what}</span></span>
+              <span className={cx("num shrink-0 text-xs", r.tone)}>{r.note}</span>
+            </div>
+          ))}
+          {rows.length > 5 && <div className="px-3 py-2 text-xs text-muted">and {rows.length - 5} more</div>}
+        </Rows>
+      ) : undefined,
+      action: go("/team/training", needs ? "Open training" : "Training", needs),
+    });
+  }
 
   // Waste log
   const w = b.waste;

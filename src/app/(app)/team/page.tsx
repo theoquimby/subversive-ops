@@ -1,6 +1,6 @@
 import { HelpZone } from "@/components/help";
 import { GridCell, GridSelect } from "@/components/grid";
-import { Card, PageHeader, Section, Th, Tr } from "@/components/ui";
+import { Card, LinkButton, PageHeader, Section, Th, Tr } from "@/components/ui";
 import { relativeTime } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { num } from "@/server/db";
@@ -10,6 +10,7 @@ import { lastLaborSync, loadTeam, squareTeamDiffs } from "@/server/services/labo
 import { getLaborRules, getOpeningHours } from "@/server/services/labor-rules";
 import { sickBalances } from "@/server/services/payroll";
 import { listAnnouncements } from "@/server/services/scheduling";
+import { teamCertChips } from "@/server/services/training";
 import { AnnouncementsManager } from "./announcements";
 import { PeopleNotesSection } from "./people-section";
 import { setPositionField } from "./actions";
@@ -28,7 +29,7 @@ const td = "border-b border-border px-2 py-1 align-middle [tr:last-child_&]:bord
 
 export default async function TeamPage() {
   await requireUser("MANAGER");
-  const [{ positions, employees, users }, openingHours, lastSync, rules, sick, notes] = await Promise.all([loadTeam(), getOpeningHours(), lastLaborSync(), getLaborRules(), sickBalances(), listAnnouncements()]);
+  const [{ positions, employees, users }, openingHours, lastSync, rules, sick, notes, certChips] = await Promise.all([loadTeam(), getOpeningHours(), lastLaborSync(), getLaborRules(), sickBalances(), listAnnouncements(), teamCertChips().catch(() => new Map())]);
   const diffs = await squareTeamDiffs();
   const differing = employees.filter((e) => diffs[e.id]?.length);
   const tipEligible = new Map(positions.map((p) => [p.id, p.tipEligible]));
@@ -110,7 +111,7 @@ export default async function TeamPage() {
         </Card>
       </Section>
 
-      <Section help="team.employees" title="People" description="Rates here are the default; a timecard or a person's rate for a specific position wins. The calendar icon opens availability and login. Sick is NY paid sick leave available this year.">
+      <Section help="team.employees" title="People" actions={<LinkButton href="/team/training" size="sm" data-tour="team.training-link">Training</LinkButton>} description="Rates here are the default; a timecard or a person's rate for a specific position wins. The calendar icon opens availability and login. Sick is NY paid sick leave available this year.">
         {differing.length > 0 && (
           <Card className="mb-3 border-warn/40 bg-warn-bg/40 p-4 text-sm">
             <div className="font-medium text-warn">Square has different details for {differing.length} {differing.length === 1 ? "person" : "people"}</div>
@@ -140,6 +141,7 @@ export default async function TeamPage() {
               availability: (e.availability ?? null) as Record<string, [string, string][]> | null,
               sickAvailable: sick.get(e.id)?.available ?? (e.active ? 0 : null),
               rateWarning: rateWarning(num(e.hourlyRate), e.positions.map((p) => p.positionId)),
+              certs: certChips.get(e.id) ?? null,
             }))}
             positions={positions.map((p) => ({ id: p.id, name: p.name, color: p.color }))}
             users={users}

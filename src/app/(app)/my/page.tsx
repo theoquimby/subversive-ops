@@ -12,6 +12,7 @@ import { AnnouncementsFeed } from "../team/announcements";
 import { MyApp, type MyShift } from "./my-app";
 import { PushToggle } from "@/components/push-toggle";
 import { MyPeopleTop, MyPolicyAsk } from "./people-section";
+import { MyTrainingSection } from "./training-section";
 
 export const metadata = { title: "My shifts" };
 
@@ -68,6 +69,7 @@ export default async function MyPage() {
         <AnnouncementsFeed items={notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() }))} />
       </HelpZone>
       <MyPeopleTop employeeId={me.id} />
+      <MyTrainingSection employeeId={me.id} />
       <MyApp
         today={today}
         weekHours={weekHours}

@@ -224,6 +224,8 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
   const { seedReviews } = await import("./demo/reviews");
   await seedReviews(db);
   await seedFinal(db);
+  const { seedTraining } = await import("./demo/training");
+  await seedTraining(db);
 
   await db.setting.create({ data: { key: "square.lastSync", value: new Date(Date.now() - 3 * 3600_000).toISOString() } });
 
