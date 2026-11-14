@@ -139,8 +139,9 @@ export const TOURS: Tour[] = [
     audience: "manager",
     minutes: 2,
     steps: [
-      { route: "/ordering", target: "ordering.suppliers", title: "Pick a supplier", body: "Each card shows delivery days and the next delivery, from the supplier's settings.", helpId: "ordering.suppliers" },
-      { route: "/ordering", target: "ordering.recent", title: "Recent orders", body: "Drafts, orders sent and waiting for the truck, and deliveries already checked in.", helpId: "ordering.recent", ifMissing: "skip" },
+      { route: "/ordering", target: "ordering.today", title: "Today", body: "Deadlines in the next 48 hours, drafts to send and deliveries to check in, each with one button.", helpId: "ordering.today" },
+      { route: "/ordering", target: "ordering.suppliers", title: "Every supplier in one table", body: "Soonest deadline first, with time left, order status and the suggested order. Edit delivery days, minimum, email and auto-draft in the row; tap a row for details.", helpId: "ordering.board" },
+      { route: "/ordering", target: "ordering.toolbar", title: "Filter, group, select", body: "Show only today's deadlines or suppliers that need an order, group by delivery day, or tick several and draft their orders at once.", helpId: "ordering.board.bulk", ifMissing: "skip" },
       { routeFrom: "ordering.supplier-card", target: "ordering.window", title: "Delivery and cover", body: "When the truck comes, and the last day this order needs to last — normally until the next delivery. Change either and the order recalculates.", helpId: "ordering.builder.window" },
       { target: "ordering.formula", title: "Where the numbers come from", body: "Forecast sales × recipes + your buffer − what you'll still have on delivery day, rounded up to whole packs.", helpId: "ordering.builder.formula" },
       { selector: '[data-tour="ordering.on-hand"]', title: "On hand at delivery", body: "Your last count, plus deliveries, minus what sales and waste used since, minus what's needed before the truck arrives. The note says when it was counted.", helpId: "ordering.builder.onHand" },

@@ -32,8 +32,11 @@ function fallback(rule: CutoffRule, wd: number) {
  * "Edit" on a supplier card: tick the days the truck comes, and for each one
  * pick when the order has to be in — "Friday delivery → order by Wednesday 5pm".
  */
-/** `learned`: what invoices and past orders suggest; offered as a one-tap fill (still saved with Save). */
-export function DeadlineEditor({ supplierId, name, deliveryDays, rule, learned }: { supplierId: string; name: string; deliveryDays: number[]; rule: CutoffRule; learned?: { days?: number[]; perDay?: Record<number, { day: number; time: string }>; note: string } }) {
+/**
+ * `learned`: what invoices and past orders suggest; offered as a one-tap fill (still saved with Save).
+ * `compact`: an icon-only button for table cells. `label` changes the button text.
+ */
+export function DeadlineEditor({ supplierId, name, deliveryDays, rule, learned, compact, label = "Edit deadlines", className }: { supplierId: string; name: string; deliveryDays: number[]; rule: CutoffRule; learned?: { days?: number[]; perDay?: Record<number, { day: number; time: string }>; note: string }; compact?: boolean; label?: string; className?: string }) {
   const [open, setOpen] = useState(false);
   const [days, setDays] = useState<number[]>(deliveryDays);
   const [per, setPer] = useState<Record<number, { day: number; time: string }>>(() =>
@@ -45,6 +48,15 @@ export function DeadlineEditor({ supplierId, name, deliveryDays, rule, learned }
   const router = useRouter();
 
   const [usedLearned, setUsedLearned] = useState(false);
+  /** Start from what's saved now: days may have changed inline since this mounted. */
+  const openEditor = () => {
+    setDays(deliveryDays);
+    setPer(Object.fromEntries(deliveryDays.map((wd) => [wd, rule.perDay?.[wd] ?? fallback(rule, wd)])));
+    setAuto(rule.autoDraft);
+    setUsedLearned(false);
+    setError(null);
+    setOpen(true);
+  };
   const fillLearned = () => {
     if (!learned) return;
     const next = learned.days ?? days;
@@ -71,12 +83,18 @@ export function DeadlineEditor({ supplierId, name, deliveryDays, rule, learned }
 
   return (
     <>
-      <Button size="sm" variant="ghost" className="relative z-10 -mr-2 px-2" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true); }}>
-        <CalendarClock className="size-4" /> Edit deadlines
-      </Button>
+      {compact ? (
+        <Button size="sm" variant="ghost" className={cx("relative z-10 size-10 shrink-0 p-0 sm:size-8", className)} onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditor(); }} aria-label={`${label}: ${name}`} title={label}>
+          <CalendarClock className="size-4" />
+        </Button>
+      ) : (
+        <Button size="sm" variant="ghost" className={cx("relative z-10 -mr-2 px-2", className)} onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditor(); }}>
+          <CalendarClock className="size-4" /> {label}
+        </Button>
+      )}
       {open &&
         createPortal(
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 sm:items-center" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label={`${name} deliveries and order deadlines`}>
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 sm:items-center" onClick={(e) => { e.stopPropagation(); setOpen(false); }} role="dialog" aria-modal="true" aria-label={`${name} deliveries and order deadlines`}>
             <div className="max-h-[88dvh] w-full max-w-lg animate-rise-in overflow-y-auto rounded-t-2xl bg-bg p-5 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>

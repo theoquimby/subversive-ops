@@ -9,10 +9,12 @@ export const ordering: HelpEntry[] = [
     route: "/ordering",
     tour: "ordering",
     title: "Ordering",
-    body: "Pick a supplier to get a suggested order for its next delivery, worked out from forecast sales, your recipes and your last count.",
-    article: `Each supplier card shows its delivery days, how many linked items it has, and the next delivery date (from delivery days and lead time in [Settings](/settings)).
+    body: "Today's deadlines, drafts and deliveries up top, then every supplier in one table with its next deadline, order status and suggested order. Orders lists every purchase order.",
+    article: `**Today** lists what needs doing now: deadlines in the next 48 hours, drafts to send, deliveries to check in and tomorrow's trucks.
 
-**Recent orders** lists saved orders and where they are: **Draft** (saved, not sent), **Sent** (waiting for delivery) or **Received** (checked in).`,
+**Suppliers** is one row per supplier: delivery days, the next delivery and its order deadline with a countdown, where the order stands, the suggested order, last order, minimum, order email and auto-draft. Edit days, minimum, email and auto-draft in the row; tap a row for the side panel; tick several to draft their orders at once.
+
+**Orders** lists purchase orders and where they are: **Draft** (saved, not sent), **Sent** (waiting for delivery) or **Received** (checked in), with quick Mark sent, Check in and Copy.`,
     related: ["ordering.builder", "ordering.po", "settings.suppliers"],
     keywords: ["purchase order", "po", "order guide"],
   },
@@ -21,7 +23,7 @@ export const ordering: HelpEntry[] = [
     area: "ordering",
     route: "/ordering",
     title: "Suppliers",
-    body: "Each card shows delivery days, how many linked items the supplier has, and its next delivery date. Tap one to build its order.",
+    body: "One row per supplier, soonest order deadline first: delivery days, next delivery, time left to order, status and the suggested order. Tap the name to build its order, or the row for details.",
     related: ["settings.suppliers"],
   },
   {
@@ -29,7 +31,7 @@ export const ordering: HelpEntry[] = [
     area: "ordering",
     route: "/ordering",
     title: "Recent orders",
-    body: "Saved orders: Draft (not sent yet), Sent (waiting for the truck) and Received (checked in). Tap one to send it or check in the delivery.",
+    body: "Every purchase order: Draft (not sent yet), Sent (waiting for the truck) and Received (checked in). Filter by status, mark drafts sent, check in as ordered or copy an order into a new draft. Tap one to open it.",
     related: ["ordering.po", "ordering.po.receive"],
   },
   {
@@ -155,7 +157,7 @@ The fresher the count, the better the order. "Not counted yet" means there's no 
     route: "/ordering",
     title: "Deliveries and order deadlines",
     body: "When each truck comes and when its order has to be in. Press Edit deadlines on a supplier, tick its delivery days, and for each one pick the deadline — e.g. Friday delivery, order by Wednesday 5pm. \"Guessed\" means none is set yet.",
-    article: `**Edit deadlines** is on every supplier card on Ordering and in the table below them.
+    article: `**Edit deadlines** is the calendar button in the Order by column on Ordering, in each supplier's side panel, and in Settings → Suppliers.
 
 1. Tick the days the truck comes.
 2. For each delivery day, pick the day and time the order has to be in. Every delivery day can have its own deadline (Decrescente: Friday delivery, order by Wednesday 5pm).
@@ -163,7 +165,7 @@ The fresher the count, the better the order. "Not counted yet" means there's no 
 
 Until you set them, deadlines are guessed from the supplier's lead time (marked "guessed").
 
-Each morning, any supplier whose cutoff falls in the next 36 hours gets a **draft** order built from the forecast, unless an order for that delivery already exists. Drafts are never sent on their own. They show up on the [weekly brief](/brief) and under Recent orders, marked "Auto-drafted".`,
+Each morning, any supplier whose cutoff falls in the next 36 hours gets a **draft** order built from the forecast, unless an order for that delivery already exists. Drafts are never sent on their own. They show up in Today on Ordering, on the [weekly brief](/brief) and under Orders, marked "Auto-drafted".`,
     related: ["ordering.builder", "brief.page", "settings.suppliers"],
     keywords: ["deadline", "cutoff", "auto order", "draft"],
   },

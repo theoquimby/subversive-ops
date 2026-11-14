@@ -8,7 +8,8 @@ import { cn } from "@/lib/cn";
 import { useMemo, useState, useTransition } from "react";
 import { AutoSwitch, SaveStatus } from "../controls";
 import { DeadlineEditor } from "../../ordering/deadline-editor";
-import { deadlineFor, type CutoffRule } from "@/domain/ordering";
+import type { CutoffRule } from "@/domain/ordering";
+import { deadlineSummary as summarizeDeadlines } from "@/domain/orderingBoard";
 import { addSupplier, saveDeliveryDays, saveSupplierCutoff, saveSupplierField, setSupplierActive } from "../setting-actions";
 
 export interface SupplierRow {
@@ -27,15 +28,10 @@ export interface SupplierRow {
 
 const KINDS = [{ value: "DISTRIBUTOR", label: "Distributor" }, { value: "LOCAL", label: "Local" }];
 const WEEK = [1, 2, 3, 4, 5, 6, 0];
-const clock = (t: string) => {
-  const h = Number(t.slice(0, 2));
-  const m = t.slice(3);
-  return `${h % 12 === 0 ? 12 : h % 12}${m === "00" ? "" : `:${m}`}${h < 12 ? "am" : "pm"}`;
-};
 const days = (d: number[]) => (d.length ? WEEK.filter((x) => d.includes(x)).map((x) => WEEKDAYS[x]).join(", ") : "No delivery days");
 
-/** Tap a day to switch it on or off; saves straight away. */
-function DayChips({ id, value, name }: { id: string; value: number[]; name: string }) {
+/** Tap a day to switch it on or off; saves straight away. Also used on Ordering. */
+export function DayChips({ id, value, name }: { id: string; value: number[]; name: string }) {
   const [v, setV] = useState(value);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -172,14 +168,5 @@ export function SuppliersTable({ rows }: { rows: SupplierRow[] }) {
   );
 }
 
-const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 /** "Fri ← Wed 5pm · Tue ← Mon 2pm" */
-function deadlineSummary(s: { deliveryDays: number[]; cutoff: CutoffRule }) {
-  return [...s.deliveryDays]
-    .sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7))
-    .map((wd) => {
-      const d = deadlineFor(s.cutoff, wd);
-      return `${WD[wd]} ← ${WD[(wd - d.daysBefore + 70) % 7]} ${clock(d.time)}`;
-    })
-    .join(" · ");
-}
+const deadlineSummary = (s: { deliveryDays: number[]; cutoff: CutoffRule }) => summarizeDeadlines(s.deliveryDays, s.cutoff);

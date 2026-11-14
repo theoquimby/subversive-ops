@@ -3,7 +3,11 @@
 import { parseISODate } from "@/domain/dates";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { saveCutoffRule } from "@/server/services/planning";
+import { deliveryWindow, draftSuggestedOrder, loadCutoffRules, localNow, saveCutoffRule, supplierCutoffs } from "@/server/services/planning";
+import { cutoffRule, nextCutoff } from "@/domain/ordering";
+import { recordManualSend, sendPurchaseOrder } from "@/server/email/outbound";
+import { businessToday } from "@/server/services/sales";
+import { currentPrices } from "./estimate";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -118,4 +122,145 @@ export async function saveDeliverySchedule(supplierId: string, input: z.input<ty
   revalidatePath("/ordering");
   revalidatePath("/settings", "layout");
   return {};
+}
+
+// ---- Ordering table: bulk and quick actions ------------------------------------------
+
+type Result = { error?: string; message?: string };
+const ids = z.array(z.string().min(1).max(40)).min(1).max(200);
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+function done() {
+  revalidatePath("/ordering");
+  revalidatePath("/brief");
+}
+
+/**
+ * "Draft orders": build each supplier's suggested order for its next delivery and save
+ * it as a draft, the same way the daily auto-draft does. Suppliers that already have an
+ * order for that delivery, have no delivery days, or need nothing are skipped (and named).
+ */
+export async function draftOrders(supplierIds: string[]): Promise<Result & { orderIds?: string[] }> {
+  await requireUser("MANAGER");
+  const v = ids.safeParse(supplierIds);
+  if (!v.success) return { error: "Pick at least one supplier." };
+  const cutoffs = new Map((await supplierCutoffs()).map((c) => [c.supplierId, c]));
+  const drafted: string[] = [];
+  const orderIds: string[] = [];
+  const skipped: string[] = [];
+  for (const id of v.data) {
+    const c = cutoffs.get(id);
+    if (!c) continue;
+    if (!c.next) { skipped.push(`${c.name} (no delivery days)`); continue; }
+    if (c.draftId) { skipped.push(`${c.name} (already ordered)`); continue; }
+    try {
+      const r = await draftSuggestedOrder(id, c.next, "Drafted from the suggested order. Review and send.");
+      if (r.status === "drafted") { drafted.push(c.name); orderIds.push(r.orderId); }
+      else skipped.push(`${c.name} (${r.reason})`);
+    } catch (e) {
+      console.error("draftOrders failed", c.name, e);
+      skipped.push(`${c.name} (couldn't build the order)`);
+    }
+  }
+  done();
+  const parts = [drafted.length ? `Drafted ${plural(drafted.length, "order")}: ${drafted.join(", ")}.` : "No drafts made.", skipped.length ? `Skipped ${skipped.join(", ")}.` : ""];
+  return drafted.length ? { message: parts.join(" ").trim(), orderIds } : { error: parts.join(" ").trim() };
+}
+
+/** Auto-draft on or off for several suppliers. */
+export async function setAutoDraft(supplierIds: string[], on: boolean): Promise<Result> {
+  await requireUser("MANAGER");
+  const v = ids.safeParse(supplierIds);
+  if (!v.success) return { error: "Pick at least one supplier." };
+  for (const id of v.data) await saveCutoffRule(id, { autoDraft: on });
+  revalidatePath("/ordering");
+  revalidatePath("/settings", "layout");
+  return { message: `Auto-draft ${on ? "on" : "off"} for ${plural(v.data.length, "supplier")}.` };
+}
+
+/** "Mark as sent" for drafts sent another way. Records who did it, like the order page. */
+export async function markOrdersSent(orderIds: string[]): Promise<Result> {
+  const s = await requireUser("MANAGER");
+  const v = ids.safeParse(orderIds);
+  if (!v.success) return { error: "Pick at least one order." };
+  let n = 0;
+  for (const id of v.data) {
+    const r = await db.purchaseOrder.updateMany({ where: { id, status: "DRAFT" }, data: { status: "SENT", sentAt: new Date() } });
+    if (r.count) { n++; await recordManualSend(id, { userId: s.userId, name: s.name }); }
+  }
+  done();
+  return n ? { message: `Marked ${plural(n, "order")} as sent.` } : { error: "Only drafts can be marked as sent." };
+}
+
+/** Email each draft to its supplier with the spreadsheet attached (needs email set up and an order email). */
+export async function emailDrafts(orderIds: string[]): Promise<Result> {
+  const s = await requireUser("MANAGER");
+  const v = ids.safeParse(orderIds);
+  if (!v.success) return { error: "Pick at least one order." };
+  const orders = await db.purchaseOrder.findMany({ where: { id: { in: v.data }, status: "DRAFT" }, include: { supplier: { select: { name: true, email: true } } } });
+  const sent: string[] = [];
+  const problems: string[] = [];
+  for (const o of orders) {
+    if (!o.supplier.email) { problems.push(`${o.supplier.name} has no order email`); continue; }
+    const r = await sendPurchaseOrder({ orderId: o.id, to: o.supplier.email, copyMe: false, by: { userId: s.userId, name: s.name } });
+    if ("ok" in r) sent.push(o.supplier.name);
+    else problems.push(`${o.supplier.name}: ${"skipped" in r ? r.skipped : r.error}`);
+  }
+  done();
+  const msg = [sent.length ? `Emailed ${sent.join(", ")}.` : "", problems.length ? `Not sent: ${problems.join("; ")}.` : ""].join(" ").trim();
+  return sent.length ? { message: msg } : { error: msg || "Only drafts can be emailed." };
+}
+
+/**
+ * Check in sent orders exactly as ordered (no shorts) — the quick version of the order
+ * page's Check in delivery. Lines already checked in keep what was entered.
+ */
+export async function receiveOrders(orderIds: string[]): Promise<Result> {
+  await requireUser("MANAGER");
+  const v = ids.safeParse(orderIds);
+  if (!v.success) return { error: "Pick at least one order." };
+  const orders = await db.purchaseOrder.findMany({ where: { id: { in: v.data }, status: "SENT" }, include: { lines: true } });
+  for (const po of orders) {
+    await db.$transaction([
+      ...po.lines.filter((l) => l.receivedQty == null).map((l) => db.purchaseOrderLine.update({ where: { id: l.id }, data: { receivedQty: l.qty } })),
+      db.purchaseOrder.update({ where: { id: po.id }, data: { status: "RECEIVED", receivedAt: new Date(), sentAt: po.sentAt ?? new Date() } }),
+    ]);
+    revalidatePath(`/ordering/po/${po.id}`);
+  }
+  done();
+  return orders.length ? { message: `Checked in ${plural(orders.length, "order")} as ordered.` } : { error: "Only sent orders can be checked in." };
+}
+
+/**
+ * Copy an order into a new draft for the supplier's next delivery, at today's prices.
+ * Returns the new order's id (the caller opens it).
+ */
+export async function duplicateOrder(orderId: string): Promise<Result & { id?: string }> {
+  await requireUser("MANAGER");
+  const v = z.string().min(1).max(40).safeParse(orderId);
+  if (!v.success) return { error: "That order doesn't exist anymore." };
+  const src = await db.purchaseOrder.findUnique({ where: { id: v.data }, include: { lines: true, supplier: true } });
+  if (!src) return { error: "That order doesn't exist anymore." };
+  const today = businessToday();
+  const now = localNow();
+  const rule = cutoffRule((await loadCutoffRules())[src.supplierId], src.supplier.leadTimeDays);
+  const next = nextCutoff(src.supplier.deliveryDays, rule, now.date, now.time);
+  const win = next ? { deliveryDate: next.deliveryDate, coverUntil: deliveryWindow({ ...src.supplier, leadTimeDays: 0 }, next.deliveryDate).coverUntil } : deliveryWindow(src.supplier, today);
+  const prices = await currentPrices(src.lines.map((l) => l.supplierProductId), today);
+  const po = await db.purchaseOrder.create({
+    data: {
+      supplierId: src.supplierId,
+      deliveryDate: parseISODate(win.deliveryDate),
+      coverUntil: parseISODate(win.coverUntil),
+      notes: "Copied from an earlier order. Review and send.",
+      lines: {
+        create: src.lines.map((l) => {
+          const p = prices.get(l.supplierProductId) ?? l.unitPrice?.toNumber() ?? null;
+          return { supplierProductId: l.supplierProductId, suggestedQty: l.qty, qty: l.qty, unitPrice: p == null ? null : new Prisma.Decimal(p.toFixed(2)) };
+        }),
+      },
+    },
+  });
+  done();
+  return { id: po.id, message: `Copied to a new draft for ${win.deliveryDate}.` };
 }

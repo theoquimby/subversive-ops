@@ -18,6 +18,7 @@ import { kegs } from "./areas/kegs";
 import { invoiceAutopilot } from "./areas/invoiceAutopilot";
 import { settingsPages } from "./areas/settings";
 import { drafting } from "./areas/drafting";
+import { orderingBoard } from "./areas/orderingBoard";
 import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
 
@@ -61,6 +62,7 @@ export const HELP: HelpEntry[] = [
   ...ingredients,
   ...prices,
   ...ordering,
+  ...orderingBoard,
   ...counts,
   ...waste,
   ...variance,
