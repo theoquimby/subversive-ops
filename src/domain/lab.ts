@@ -107,9 +107,20 @@ export interface Story {
   gain: string;
 }
 
+/** One slow day behind "slow days still get a full crew" (service 2.2+ sends them for the calendar). */
+export interface SlowDay {
+  date: ISODate;
+  foreseen: boolean;
+  trimmed: boolean;
+  /** Sales as a share of a normal day (0.64). */
+  pct?: number;
+  /** Paid hours over a trimmed day. */
+  extra?: number;
+}
+
 export type Visual =
   | { type: "hours"; rows: { label: string; sales: number; people: number; need: number; flag: boolean }[] }
-  | { type: "compare"; unit: "money" | "number"; rows: { label: string; value: number; tone?: "good" | "bad" }[] }
+  | { type: "compare"; unit: "money" | "number"; rows: { label: string; value: number; tone?: "good" | "bad" }[]; days?: SlowDay[]; since?: ISODate; through?: ISODate }
   | { type: "week"; rows: { label: string; value: number; flag?: boolean }[] };
 
 export interface LabFinding extends Opportunity {

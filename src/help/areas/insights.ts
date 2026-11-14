@@ -13,7 +13,7 @@ export const insights: HelpEntry[] = [
 
 ### Start at the top
 
-**Today's one thing** is the single best move right now — the most money, that we're most sure of, that's easiest to do. It tells you in four steps:
+**Today's one thing** is the single best move right now — the most money, that we're most sure of, that's easiest to do. A picture made for that kind of finding shows what's happening — a profit curve for a price to try, people on against people needed for an hour, a calendar of slow days, where an hour's sales go. Then it tells you in four steps:
 
 1. **What's happening** — the plain facts ("Fridays 4–5pm: $210 of sales, 4.7 people on").
 2. **Why we think so** — the comparison behind it.
@@ -28,6 +28,8 @@ Press **Do it** when you've done it (or will), **Remind me later** to see it aga
 - **How it all connects** — your month as a chain (guests → sales → food, drink and wages → what's left), with sliders to try a price rise, fewer wage hours or more guests.
 - **The Lab** — one tile per question (next two weeks, staffing, your week, your seasons, prices, menu, ordering, unusual days). Tiles that need more data list exactly what unlocks them.
 - **Your track record** — what you've done and what it was worth.
+
+On a phone, the shortcuts under the title (Today, Up next, Watching, How it connects, The Lab, Track record) jump straight to each part, and the Do it / Later / Not for us buttons stay under your thumb while you read the card. The worth of each move is always shown the same way: the monthly figure, with a bar for the likely range.
 
 ### How much history
 
@@ -138,7 +140,9 @@ Today (it isn't finished), a day whose last sync ran before closing, closed days
 3. **The time of year** — what the same weeks did last year (and the year before) with no price change, so autumn isn't blamed on a price.
 4. **What was left out** — event days, holidays like Labor Day, short days (closed early, storms) and days an item didn't sell at all (86'd, keg kicked).
 5. **The result and its likely range** — drawn on a line with "no change" marked. If the range crosses "no change", it isn't reported as a result; it goes on the **Watching** list.
-6. **How sure are we** — one line saying why.`,
+6. **How sure are we** — one line saying why.
+
+The two or three numbers that matter come first as big figures, before-and-after numbers are drawn as two dots on a line, and each finding has its own small chart (week by week, side by side, or expected against what happened). Tap any mark on a chart for its numbers.`,
     related: ["insights.page", "insights.watching", "insights.confidence"],
     keywords: ["why", "explain", "evidence", "relative", "traffic", "per 100 orders", "last year", "how sure"],
   },
@@ -158,7 +162,9 @@ So before anything becomes a card, it's checked:
 - **Timing** — a price change works the day guests see it. If the first two weeks after didn't move, a later slide is put down to something else.
 - **Size and steadiness** — the likely range has to stay clear of "no change", and staffing gaps have to show up most weeks, lately, and against other hours that bring in the same sales.
 
-What doesn't pass is listed here instead of as a to-do, with exactly what would make it count ("about 3 more weeks of sales will tell").`,
+What doesn't pass is listed here instead of as a to-do, with exactly what would make it count ("about 3 more weeks of sales will tell").
+
+The small bar on each row is the likely range drawn against a dark "no change" line (every row on the same scale). A bar that crosses the line means it could be nothing yet. Open a price change to see it before and after, next to the same weeks last year and the range we'd expect with no price change at all.`,
     related: ["insights.how", "insights.queue"],
     keywords: ["watching", "watch list", "not significant", "not sure", "why did it disappear", "traffic", "season"],
   },

@@ -6,6 +6,7 @@ import { Select } from "@/components/ui";
 import { breakEven, priceWhatIf, type PriceFit } from "@/domain/analytics";
 import { money } from "@/lib/format";
 import { saveFixedCost } from "./actions";
+import { PriceCurve } from "./graphics";
 
 const whole = (n: number) => money(n, { whole: true });
 const signed = (n: number) => `${n >= 0 ? "+" : "−"}${whole(Math.abs(n))}`;
@@ -40,9 +41,10 @@ export function PriceSlider({ fits }: { fits: PriceFit[] }) {
   const pos = ((delta - MIN) / (MAX - MIN)) * 100;
   const zero = ((0 - MIN) / (MAX - MIN)) * 100;
   return (
-    <div className="rounded-lg bg-surface-2 p-3">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Select value={id} onChange={(e) => setId(e.target.value)} options={options} aria-label="Menu item" className="min-w-0 flex-1 sm:max-w-60" />
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-8">
+      <div className="min-w-0">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Select value={id} onChange={(e) => setId(e.target.value)} options={options} aria-label="Menu item" className="min-w-0 flex-1 sm:max-w-72" />
         <span className="num text-sm text-ink-2">${fit.price.toFixed(2)} → <b className="text-ink">${(fit.price + delta).toFixed(2)}</b></span>
       </div>
       <div
@@ -60,19 +62,26 @@ export function PriceSlider({ fits }: { fits: PriceFit[] }) {
           setFrom(e.clientX);
         }}
         onPointerMove={(e: PointerEvent) => e.buttons && setFrom(e.clientX)}
-        className="relative h-10 cursor-pointer touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-focus"
+        className="relative h-11 cursor-pointer touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-focus"
       >
-        <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-border-strong" />
-        <div className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-ink" style={{ left: `${Math.min(zero, pos)}%`, width: `${Math.abs(pos - zero)}%` }} />
-        <div className="absolute top-1/2 h-3 w-px -translate-y-1/2 bg-muted" style={{ left: `${zero}%` }} />
-        <div className="absolute top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface bg-ink shadow" style={{ left: `${pos}%` }} />
+        <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-surface-2" />
+        <div className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[var(--lab-accent)]" style={{ left: `${Math.min(zero, pos)}%`, width: `${Math.abs(pos - zero)}%` }} />
+        <div className="absolute top-1/2 h-4 w-[2px] -translate-y-1/2 rounded bg-ink-2" style={{ left: `${zero}%` }} />
+        <div className="absolute top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border-strong bg-surface shadow-[0_1px_2px_rgb(0_0_0/0.12),0_4px_10px_-2px_rgb(0_0_0/0.18)]" style={{ left: `${pos}%` }}><span className="absolute inset-[7px] rounded-full bg-[var(--lab-accent)]" /></div>
       </div>
       <div className="flex justify-between text-[11px] text-muted"><span>−$2</span><span>today</span><span>+$3</span></div>
-      <div className="mt-2 text-sm text-ink">
-        <span className="num font-semibold">{signed(r.profit)}/month</span> <span className="text-muted">(likely <span className="num">{signed(r.low)} to {signed(r.high)}</span>)</span>
+      <div className="mt-5 rounded-xl bg-[var(--lab-accent-wash)] px-4 py-3" aria-live="polite">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span className="num text-[1.5rem] font-semibold tracking-tight text-ink">{signed(r.profit)}</span>
+          <span className="text-sm text-muted">a month · likely <span className="num">{signed(r.low)} to {signed(r.high)}</span></span>
+        </div>
+        <div className="mt-1 text-xs leading-relaxed text-ink-2">
+          About <span className="num">{Math.round(r.qty)}</span> sold a month instead of <span className="num">{Math.round(fit.qtyMonth)}</span> ({r.qtyChange >= 0 ? "+" : ""}{Math.round(r.qtyChange * 100)}%). {fit.source === "measured" ? "How guests react is measured from your own price changes" : "How guests react is typical for this kind of item"}{(fit as PriceFit & { costAssumed?: boolean }).costAssumed ? "; cost is a typical figure until it's linked to a recipe" : ""}.
+        </div>
       </div>
-      <div className="text-xs text-muted">
-        About <span className="num">{Math.round(r.qty)}</span> sold a month instead of <span className="num">{Math.round(fit.qtyMonth)}</span> ({r.qtyChange >= 0 ? "+" : ""}{Math.round(r.qtyChange * 100)}%). {fit.source === "measured" ? "How guests react is measured from your own price changes" : "How guests react is typical for this kind of item"}{(fit as PriceFit & { costAssumed?: boolean }).costAssumed ? "; cost is a typical figure until it's linked to a recipe" : ""}.
+      </div>
+      <div className="min-w-0">
+        <PriceCurve key={fit.id} fit={fit} mark={delta} from={-2} name={fit.name} takeaway={false} compact />
       </div>
     </div>
   );
@@ -107,8 +116,11 @@ export function FixedCostsForm({ initial, be }: { initial: { rent: number | null
     </label>
   );
   return (
-    <div className="rounded-lg bg-surface-2 p-3">
-      <div className="mb-2 text-xs font-medium text-ink-2">Fixed costs a month</div>
+    <div className="rounded-2xl border border-border bg-surface p-4 shadow-[var(--lab-card-shadow)] sm:p-6">
+      <div className="mb-3">
+        <h3 className="text-[0.98rem] font-semibold tracking-tight text-ink">Fixed costs a month</h3>
+        <p className="mt-0.5 text-sm text-muted">Add them once: the chain then shows profit after rent, and the sales you need each day to break even.</p>
+      </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {field("rent", "Rent")}
         {field("utilities", "Utilities")}

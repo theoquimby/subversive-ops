@@ -1,0 +1,130 @@
+/*
+ * Insights Lab: chart tokens and motion, loaded with the Insights components.
+ * Colours come from the app tokens (globals.css) and were checked
+ * with the dataviz validator: accent (the thing the story is about) and hot
+ * (the excess / the cost) pass every check in light and dark against the
+ * surface. Defined on :root (prefixed --lab-*) so the charts also work where
+ * they're borrowed (Sales, Overview). Context marks are a neutral grey a step off the surface. Good and
+ * bad are never the only difference between two marks: each carries a label.
+ */
+:root {
+  --lab-accent: var(--series-1);
+  --lab-accent-2: color-mix(in oklab, var(--series-1) 55%, var(--surface));
+  --lab-accent-wash: color-mix(in oklab, var(--series-1) 11%, var(--surface));
+  --lab-hot: #c06a10;
+  --lab-hot-wash: color-mix(in oklab, #c06a10 13%, var(--surface));
+  --lab-context: color-mix(in oklab, var(--ink) 20%, var(--surface));
+  --lab-context-2: color-mix(in oklab, var(--ink) 9%, var(--surface));
+  --lab-strong: color-mix(in oklab, var(--ink) 66%, var(--surface));
+  --lab-grid: var(--border);
+  --lab-gain: var(--good);
+  --lab-loss: var(--bad);
+  --lab-card-shadow: 0 1px 1px rgb(0 0 0 / 0.03), 0 2px 6px -2px rgb(0 0 0 / 0.05);
+  --lab-hero-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 40px -18px rgb(0 0 0 / 0.18);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --lab-hot: #c47f22;
+    --lab-hot-wash: color-mix(in oklab, #c47f22 16%, var(--surface));
+    --lab-accent-wash: color-mix(in oklab, var(--series-1) 18%, var(--surface));
+    --lab-context: color-mix(in oklab, var(--ink) 26%, var(--surface));
+    --lab-context-2: color-mix(in oklab, var(--ink) 11%, var(--surface));
+    --lab-strong: color-mix(in oklab, var(--ink) 52%, var(--surface));
+    --lab-card-shadow: 0 0 0 1px rgb(255 255 255 / 0.015);
+    --lab-hero-shadow: 0 0 0 1px rgb(255 255 255 / 0.02), 0 20px 50px -24px rgb(0 0 0 / 0.7);
+  }
+}
+
+/* Lines draw in left to right (pathLength="1" on the path). */
+.lab-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: lab-draw 900ms var(--motion-out) 120ms forwards;
+}
+@keyframes lab-draw {
+  to { stroke-dashoffset: 0; }
+}
+/* Bars grow from their baseline. Set transform-origin with .lab-grow-y / -x. */
+.lab-grow-y {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: lab-grow-y 620ms var(--motion-out) both;
+}
+.lab-grow-down {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: lab-grow-y 620ms var(--motion-out) both;
+}
+.lab-grow-x {
+  transform-box: fill-box;
+  transform-origin: 0% 50%;
+  animation: lab-grow-x 620ms var(--motion-out) both;
+}
+@keyframes lab-grow-y {
+  from { transform: scaleY(0); }
+}
+@keyframes lab-grow-x {
+  from { transform: scaleX(0); }
+}
+.lab-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lab-pop 420ms var(--motion-out) both;
+}
+@keyframes lab-pop {
+  from { opacity: 0; transform: scale(0.4); }
+}
+.lab-fade {
+  animation: fade-in 500ms var(--motion-out) both;
+}
+/* Cards in a list arrive one after another (set --i on each). */
+.lab-stagger {
+  animation: rise-in var(--dur-slow) var(--motion-out) both;
+  animation-delay: calc(min(var(--i, 0), 8) * 40ms);
+}
+/* Decided hero card leaves: Do it slides right, Later/Not for us slide left. */
+.lab-leave-right {
+  transition: opacity 220ms var(--motion-in-out), transform 220ms var(--motion-in-out);
+  opacity: 0;
+  transform: translateX(28px) scale(0.985);
+}
+.lab-leave-left {
+  transition: opacity 220ms var(--motion-in-out), transform 220ms var(--motion-in-out);
+  opacity: 0;
+  transform: translateX(-28px) scale(0.985);
+}
+
+/* Hover/focus lift on a chart mark: brighten, never move. */
+.lab-mark {
+  transition: opacity var(--dur-fast) var(--motion-out), filter var(--dur-fast) var(--motion-out);
+}
+.lab-dim .lab-mark:not([data-on]) {
+  opacity: 0.45;
+}
+
+/* Hide the tiny scrollbar on chip rows (they scroll sideways on phones). */
+.lab-noscroll {
+  scrollbar-width: none;
+}
+.lab-noscroll::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lab-draw {
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+  .lab-grow-y,
+  .lab-grow-down,
+  .lab-grow-x,
+  .lab-pop,
+  .lab-fade,
+  .lab-stagger {
+    animation: none;
+  }
+  .lab-leave-right,
+  .lab-leave-left {
+    transform: none;
+  }
+}
