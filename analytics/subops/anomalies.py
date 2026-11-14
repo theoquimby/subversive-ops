@@ -326,7 +326,10 @@ def slow_days(data: dict, weeks: int = 26) -> dict | None:
             f"Check sales at the halfway point of a shift. If it's well under a normal {WEEKDAYS[worst_wd]}, send one person home.",
             f"About {money(monthly)} a month.",
         ),
-        visual={"type": "compare", "unit": "number", "rows": [{"label": f"Paid hours, a normal {WEEKDAYS[worst_wd]}", "value": round(ws[0]["normalHours"], 1)}, {"label": f"A slow {WEEKDAYS[worst_wd]} (median)", "value": round(float(np.median([s['hours'] for s in ws])), 1), "tone": "bad"}, {"label": f"A slow {WEEKDAYS[worst_wd]}, trimmed", "value": round(float(np.median([s['hours'] - s['extra'] for s in ws])), 1), "tone": "good"}]},
+        visual={"type": "compare", "unit": "number", "rows": [{"label": f"Paid hours, a normal {WEEKDAYS[worst_wd]}", "value": round(ws[0]["normalHours"], 1)}, {"label": f"A slow {WEEKDAYS[worst_wd]} (median)", "value": round(float(np.median([s['hours'] for s in ws])), 1), "tone": "bad"}, {"label": f"A slow {WEEKDAYS[worst_wd]}, trimmed", "value": round(float(np.median([s['hours'] - s['extra'] for s in ws])), 1), "tone": "good"}],
+                # Each slow day, for the app's calendar (2.2+; older apps ignore it).
+                "days": [{"date": s["date"], "foreseen": s["foreseen"], "trimmed": s["extra"] <= 0.5, "pct": round(s["sales"] / s["normal"], 2), "extra": round(s["extra"], 1)} for s in slow],
+                "since": since, "through": as_of},
     )
     o["evidence"] = ev
     return o

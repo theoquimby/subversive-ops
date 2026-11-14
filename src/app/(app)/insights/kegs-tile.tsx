@@ -18,19 +18,20 @@ export async function KegsTile() {
   }
   const rows = (data?.rows ?? []).filter((r) => r.forecast.ozPerDay > 0 || r.full > 0 || r.onTap > 0);
   const first = rows[0];
-  const max = Math.max(1, ...rows.slice(0, 5).map((r) => r.plan.runOutDays ?? 0));
+  // Days-left gauges share one scale: four weeks, with a tick at two (what an order should cover).
+  const SCALE = 28;
   return (
     <HelpZone id="insights.kegs" className="h-full min-w-0">
-      <Card id="lab-kegs" className="flex h-full scroll-mt-20 flex-col p-5">
+      <Card id="lab-kegs" className="lab flex h-full scroll-mt-20 flex-col rounded-2xl p-5 shadow-[var(--lab-card-shadow)] sm:p-6">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2"><Beer className="size-4 text-area" strokeWidth={1.9} /></span>
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[color-mix(in_oklab,var(--area)_10%,var(--surface))]"><Beer className="size-[18px] text-area" strokeWidth={1.8} /></span>
             <div className="min-w-0">
-              <h3 className="truncate text-[0.95rem] font-semibold text-ink">Kegs</h3>
+              <h3 className="truncate text-[0.98rem] font-semibold tracking-tight text-ink">Kegs</h3>
               <div className="truncate text-xs text-muted">Which beer runs out first?</div>
             </div>
           </div>
-          {data && <span className="shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-xs text-ink-2">~{Math.round(data.yield.pintsPerHalf)} pints / 1/2 bbl</span>}
+          {data && <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[0.7rem] text-muted">~{Math.round(data.yield.pintsPerHalf)} pints a ½ bbl</span>}
         </div>
         {!first ? (
           <>
@@ -43,15 +44,30 @@ export async function KegsTile() {
               {first.plan.runOutDays != null ? `${first.name} runs out in ~${Math.max(1, Math.round(first.plan.runOutDays))} days; ${first.full} full in the walk-in` : `${first.name}: ${first.full} full kegs`}
             </p>
             <p className="mt-1.5 text-sm text-ink-2">{first.plan.toFill > 0 ? `Fill ${first.plan.toFill} keg${first.plan.toFill === 1 ? "" : "s"} of it to cover the next two weeks.` : "Every beer is covered for the next two weeks."}</p>
-            <ul className="mt-4 space-y-2">
-              {rows.slice(0, 5).map((r) => (
-                <li key={r.beerId} className="grid grid-cols-[7.5rem_1fr_4.5rem] items-center gap-2 text-xs">
-                  <span className="truncate text-ink-2">{r.name}</span>
-                  <span className="h-2 overflow-hidden rounded-full bg-surface-2"><span className="block h-full rounded-full" style={{ width: `${Math.min(100, ((r.plan.runOutDays ?? 0) / max) * 100)}%`, background: beerColor(r.color).bg }} /></span>
-                  <span className={`num text-right ${r.plan.tone === "bad" ? "text-bad" : "text-muted"}`}>{r.plan.runOutDays == null ? "—" : `${Math.round(r.plan.runOutDays)} days`}</span>
-                </li>
-              ))}
-            </ul>
+            <figure className="mt-5" aria-label={`Days until each beer runs out: ${rows.slice(0, 5).map((r) => `${r.name} ${r.plan.runOutDays == null ? "not known" : `${Math.round(r.plan.runOutDays)} days`}`).join(", ")}`}>
+              <ul className="flex flex-col gap-3" aria-hidden>
+                {rows.slice(0, 5).map((r, i) => {
+                  const d = r.plan.runOutDays;
+                  const pct = d == null ? 0 : Math.min(100, (d / SCALE) * 100);
+                  return (
+                    <li key={r.beerId}>
+                      <div className="mb-1 flex items-baseline justify-between gap-3 text-xs">
+                        <span className="inline-flex min-w-0 items-center gap-1.5 text-ink-2">
+                          <span className="size-2.5 shrink-0 rounded-full ring-1 ring-black/10 ring-inset" style={{ background: beerColor(r.color).bg }} />
+                          <span className="truncate">{r.name}</span>
+                        </span>
+                        <span className={`num shrink-0 font-semibold ${r.plan.tone === "bad" ? "text-bad" : "text-ink"}`}>{d == null ? "—" : d > SCALE ? `${SCALE}+ days` : `${Math.round(d)} days`}</span>
+                      </div>
+                      <div className="relative h-2.5 rounded-full bg-[var(--lab-context-2)]">
+                        <div className="lab-grow-x absolute inset-y-0 left-0 rounded-full" style={{ width: `${Math.max(pct, d == null ? 0 : 2)}%`, background: r.plan.tone === "bad" ? "var(--lab-hot)" : "var(--lab-accent)", animationDelay: `${i * 70}ms` }} />
+                        <div className="absolute -inset-y-1 left-1/2 w-[2px] rounded bg-ink-2/70" />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <figcaption className="mt-2 flex justify-between text-[11px] text-muted"><span>today</span><span>2 weeks</span><span>4 weeks</span></figcaption>
+            </figure>
           </>
         )}
         <div className="mt-auto pt-2">

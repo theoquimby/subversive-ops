@@ -19,7 +19,7 @@ export async function TopInsights({ limit = 8, title = "Today's one thing" }: { 
         title={title}
         actions={<Link href="/insights" className="relative text-sm text-muted transition-colors hover:text-ink after:absolute after:-inset-2 after:content-['']">Insights Lab →</Link>}
       >
-        <CompactHero actions={items.map(toDeck)} />
+        <CompactHero actions={items.map((a) => toDeck(a))} />
       </Section>
     </HelpZone>
   );
