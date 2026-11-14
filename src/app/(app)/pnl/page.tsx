@@ -3,19 +3,26 @@ import { Badge, Card, cx, LinkButton, PageHeader, Section, Stat, Table, Td, Th, 
 import { HelpTip, HelpZone } from "@/components/help";
 import { addDays } from "@/domain/dates";
 import { costTone, gapTone, KPI_LABELS, PERIODS, PeriodKind, periodRange, salesTone, Tone } from "@/domain/pnl";
+import { bridge, pointsChange, TYPICAL_COST_SHARE } from "@/domain/pnlStory";
 import { dayDate, money, pct, qty, shortDate, signedPct } from "@/lib/format";
 import { requireUser } from "@/server/auth";
-import { actualFromCounts, hourlyDay, pnlReport } from "@/server/services/pnl";
+import { actualFromCounts, hourlyDay, pnlReport, pnlStory } from "@/server/services/pnl";
 import { businessToday } from "@/server/services/sales";
+import { Info } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { HourlyChart } from "./hourly-chart";
 import { PeriodSwitch } from "./period-switch";
+import { bridgeSteps, chipLabel, Delta, fmt, StoryNotes } from "./story";
+import { BridgeChart, MixBar, TrendChart } from "./story-charts";
 
 export const metadata = { title: "P&L" };
 
 const isDate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const toneText: Record<Tone, string> = { good: "", warn: "text-warn", bad: "text-bad", neutral: "" };
 const ratio = (a: number | null, b: number | null) => (a != null && b != null && b > 0 ? a / b - 1 : null);
+const whole = (n: number) => money(n, { whole: true });
+const signedWhole = (n: number) => (Math.round(n) < 0 ? `−${whole(-n)}` : whole(Math.max(0, n) || 0));
 
 export default async function PnlPage({ searchParams }: { searchParams: Promise<{ period?: string; from?: string; to?: string; day?: string }> }) {
   await requireUser("MANAGER");
@@ -38,7 +45,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
   const past = report.days.filter((d) => !d.future);
   const lastWithSales = [...past].reverse().find((d) => d.sales > 0)?.date;
   const day = isDate(sp.day) && sp.day! >= from && sp.day! < toExclusive ? sp.day! : (period === "today" ? today : (lastWithSales ?? past.at(-1)?.date ?? from));
-  const hourly = await hourlyDay(day, now);
+  const [hourly, story] = await Promise.all([hourlyDay(day, now), pnlStory(report, period)]);
   const dayLabor = hourly.hours.reduce((s, h) => s + h.labor, 0);
   const daySched = hourly.hours.reduce((s, h) => s + h.scheduled, 0);
 
@@ -46,170 +53,224 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
     const q = new URLSearchParams({ period, ...(period === "custom" ? { from, to: addDays(toExclusive, -1) } : {}), ...extra });
     return `/pnl?${q}`;
   };
-  const rangeLabel = from === addDays(toExclusive, -1) ? dayDate(from) : `${shortDate(from)} – ${shortDate(addDays(toExclusive, -1))}`;
   const multiDay = report.days.length > 1;
-  const countedLabel = kpis.counted.length === 0 ? "finished days (none yet)" : kpis.counted.length === 1 ? dayDate(kpis.counted[0]) + (kpis.partial ? " so far" : "") : `${shortDate(kpis.counted[0])} – ${shortDate(kpis.counted[kpis.counted.length - 1])}`;
+  const countedLabel = nothingCounted ? "" : kpis.counted.length === 1 ? dayDate(kpis.counted[0]) + (kpis.partial ? " so far" : "") : `${shortDate(kpis.counted[0])} – ${shortDate(kpis.counted[kpis.counted.length - 1])}`;
   const vsForecast = ratio(report.salesToDate, report.forecastToDate);
-  const totalTarget = budget?.foodCostPct ?? null;
-  const muted = (v: string) => <span className="text-base font-medium text-muted">{v}</span>;
+  const b = story.bridge;
+  const prev = story.prev;
+  const year = story.year;
+  const showStory = !salesPending && !nothingCounted && t.sales > 0;
+  const unlinked = story.figures.unlinkedSales;
+  const primeTarget = budget?.foodCostPct != null && budget?.laborPct != null ? budget.foodCostPct + budget.laborPct : null;
+  const trendCurrent = new Set(kpis.counted.map((d) => d));
+  const trend = story.trend.map((w) => ({ ...w, current: [0, 1, 2, 3, 4, 5, 6].some((i) => trendCurrent.has(addDays(w.weekStart, i))) }));
 
-  const splitRows = [
-    { key: "food", label: "Food", line: split.food, target: targets.food, actual: counts?.food ?? null },
-    { key: "beverage", label: "Beverage", line: split.beverage, target: targets.beverage, actual: counts?.beverage ?? null },
-    { key: "beer", label: "of which beer", line: split.beer, target: targets.beverage, actual: null, sub: true },
-    { key: "other", label: "Other and unlinked", line: split.other, target: null, actual: null, muted: true },
-  ];
+  // Food and drink cards
+  const bevPct = split.beverage.sales > 0 && split.beverage.cogs > 0 ? split.beverage.pct : null;
+  const caveats: { text: ReactNode; tone?: "warn" }[] = [];
+  if (b.estimated && b.coverage != null) caveats.push({ text: <>{pct(1 - b.coverage, 0)} of sales ({whole(unlinked)}) are items not linked to a recipe, so their cost is estimated at a typical {pct(TYPICAL_COST_SHARE, 0)}. <Link href="/sales#sales-items" className="underline underline-offset-2 hover:text-ink">Link them</Link> to make this exact.</> });
+  if (report.uncosted.length > 0) caveats.push({ tone: "warn", text: <>Food & drink cost is a floor: {report.uncosted.slice(0, 4).join(", ")}{report.uncosted.length > 4 ? ` and ${report.uncosted.length - 4} more` : ""} {report.uncosted.length === 1 ? "is" : "are"} missing prices.</> });
+  if (report.missingRates > 0) caveats.push({ tone: "warn", text: <>{report.missingRates} timecard{report.missingRates === 1 ? " has" : "s have"} no pay rate, so labor is understated. <Link href="/team" className="underline underline-offset-2">Set rates</Link></> });
+  if (!budget) caveats.push({ text: <>No budget for {multiDay ? "these weeks" : "this week"}, so there are no targets yet. <Link href="/budgets" className="underline underline-offset-2 hover:text-ink">Budgets</Link></> });
+  if (!story.fixedMonthly) caveats.push({ text: <>Add rent and other fixed costs in <Link href="/settings/money#fixed" className="underline underline-offset-2 hover:text-ink">Settings → Money</Link> to see profit after them.</> });
 
   return (
     <>
-      <PageHeader
-        help="pnl.page"
-        title="P&L"
-        description="Live prime cost: Square sales against theoretical cost of goods (items sold × each day's recipe cost) and labor from timecards, including people still on the clock. Before rent and other overheads."
-      />
+      <PageHeader help="pnl.page" title="P&L" description="Where each dollar of sales went: food and drink, labor, and what was left." />
       <HelpZone id="pnl.period" className="mb-6">
         <PeriodSwitch period={period} from={from} to={addDays(toExclusive, -1)} />
       </HelpZone>
 
       {kpis.todayExcluded && (
-        <p className="-mt-3 mb-4 text-sm text-muted">
-          Totals cover finished days{nothingCounted ? " — none yet this period" : ` (${shortDate(kpis.counted[0])} – ${shortDate(kpis.counted[kpis.counted.length - 1])})`}. Today is still in progress. <Link href="/pnl?period=today" className="underline">See today so far</Link>
+        <p className="-mt-3 mb-5 text-sm text-muted">
+          {nothingCounted ? "No finished days yet this period." : <>Finished days only ({countedLabel}).</>} Today is still in progress. <Link href="/pnl?period=today" className="underline underline-offset-2 hover:text-ink">See today so far</Link>
         </p>
       )}
-      <HelpZone id="pnl.kpis" tour="pnl.stats" className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+
+      {/* ---- Headline: profit, margin, the bridge ---- */}
+      <HelpZone id="pnl.headline" tour="pnl.headline" className="mb-3">
+        <Card className="overflow-hidden">
+          {showStory ? (
+            <div className="grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+              <div className="border-b border-border p-5 sm:p-6 lg:border-r lg:border-b-0">
+                <div className="flex items-center gap-1.5 text-[0.8rem] font-medium text-muted">
+                  Profit before overhead{kpis.partial ? " so far" : ""} <HelpTip id="pnl.headline" />
+                </div>
+                <div className={cx("mt-2 text-[2.75rem] leading-none font-semibold tracking-tight sm:text-[3.25rem]", b.profit < 0 ? "text-bad" : "text-ink")}>{signedWhole(b.profit)}</div>
+                <p className="mt-3 text-[0.95rem] text-ink-2">
+                  {b.margin != null && b.margin > 0 ? <>You kept <b className="font-semibold text-ink">{Math.round(b.margin * 100)}¢</b> of every sales dollar{b.estimated ? " (est.)" : ""}.</> : b.margin != null ? <>Costs ran {pct(-b.margin, 0)} over sales.</> : null}
+                </p>
+                {(prev || year) && (
+                  <div className="mt-4 flex flex-col gap-1.5">
+                    {prev && <Delta value={b.profit - prev.bridge.profit} format={fmt.money} label={<>{chipLabel(prev.label)} · margin {fmt.pts(pointsChange(b.margin, prev.bridge.margin) ?? 0)}</>} />}
+                    {year && <Delta value={b.profit - year.bridge.profit} format={fmt.money} label={<>{chipLabel(year.label)} · margin {fmt.pts(pointsChange(b.margin, year.bridge.margin) ?? 0)}</>} />}
+                  </div>
+                )}
+                {b.afterFixed != null && (
+                  <div className="mt-5 rounded-lg bg-surface-2/70 px-3.5 py-3 text-sm">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-ink-2">After rent &amp; fixed costs</span>
+                      <span className={cx("num text-base font-semibold", b.afterFixed < 0 ? "text-bad" : "text-ink")}>{signedWhole(b.afterFixed)}</span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted">{whole(b.fixed!)} for {kpis.counted.length === 1 ? "this day" : `these ${kpis.counted.length} days`} of {whole(story.fixedMonthly!)} a month</div>
+                  </div>
+                )}
+              </div>
+              <div className="p-5 sm:p-6">
+                <div className="mb-4 text-[0.8rem] font-medium text-muted">From sales to profit · {countedLabel}</div>
+                <BridgeChart steps={bridgeSteps(b, { hours: t.laborHours })} sales={b.sales} />
+              </div>
+            </div>
+          ) : (
+            <div className="p-6 text-sm text-muted">
+              {salesPending ? "Today's sales arrive with the next Square sync. Labor on the clock so far: " + whole(t.labor) + "." : nothingCounted ? "No finished days in this period yet." : "No sales in this period."}
+            </div>
+          )}
+        </Card>
+      </HelpZone>
+
+      {/* ---- The four ratios ---- */}
+      {showStory && prev && <p className="mb-2 text-xs text-muted sm:hidden">Arrows compare with {prev.label}.</p>}
+      <HelpZone id="pnl.kpis" tour="pnl.stats" className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           label={KPI_LABELS.sales}
-          value={salesPending ? muted("Sales sync pending") : nothingCounted ? "—" : money(t.sales, { whole: true })}
+          value={salesPending ? "—" : nothingCounted ? "—" : whole(t.sales)}
           hint={
-            salesPending ? (
-              "Today's sales arrive with the next Square sync"
-            ) : t.sales === 0 && !report.days.some((d) => d.future === false && d.date < today) ? (
-              "Sales arrive with the Square sync"
-            ) : (
-              <span className="inline-flex flex-wrap items-center gap-1.5">
-                {budget?.sales != null && <Badge tone={salesTone(t.sales, budget.sales)}>{pct(budget.sales > 0 ? t.sales / budget.sales : null, 0)} of budget</Badge>}
-                {vsForecast != null && <Badge tone={salesTone(report.salesToDate, report.forecastToDate)}>{signedPct(vsForecast, 0)} vs forecast</Badge>}
-                {budget?.sales == null && vsForecast == null && (kpis.partial ? "so far today" : rangeLabel)}
+            showStory ? (
+              <span className="flex flex-col gap-1">
+                {prev ? <Delta value={ratio(t.sales, prev.figures.sales)} format={fmt.pct} label={chipLabel(prev.label)} compact flatBelow={0.005} /> : null}
+                {budget?.sales != null ? <span><Badge tone={salesTone(t.sales, budget.sales)}>{pct(budget.sales > 0 ? t.sales / budget.sales : null, 0)} of budget</Badge></span> : vsForecast != null ? <span><Badge tone={salesTone(report.salesToDate, report.forecastToDate)}>{signedPct(vsForecast, 0)} vs forecast</Badge></span> : !prev ? `${qty(t.orders ?? 0, 0)} orders` : null}
               </span>
-            )
+            ) : salesPending ? "Arrives with the next Square sync" : undefined
           }
         />
         <Stat
-          label={<span className="inline-flex items-center gap-1.5">{KPI_LABELS.food} <HelpTip id="pnl.split" /></span>}
-          value={salesPending ? "—" : pct(kpis.foodPct)}
+          label={<span className="inline-flex items-center gap-1.5">{KPI_LABELS.labor} <HelpTip id="pnl.labor" /></span>}
+          value={salesPending || !showStory ? "—" : pct(kpis.laborPct)}
+          tone={!kpis.partial && budget?.laborPct != null ? (costTone(kpis.laborPct, budget.laborPct) === "good" ? undefined : costTone(kpis.laborPct, budget.laborPct)) : undefined}
           hint={
-            <span className="inline-flex flex-wrap items-center gap-1.5">
-              <span>{KPI_LABELS.foodHint}</span>
-              {!salesPending && kpis.foodPct != null && <Badge tone={kpis.partial ? "neutral" : costTone(kpis.foodPct, foodTarget)}>target {pct(foodTarget, 0)}</Badge>}
-              {kpis.beveragePct != null && <span>bev {pct(kpis.beveragePct, 0)} of bev sales</span>}
-            </span>
-          }
-        />
-        <Stat
-          label={KPI_LABELS.labor}
-          value={salesPending ? "—" : pct(kpis.laborPct)}
-          hint={
-            <span className="inline-flex flex-wrap items-center gap-1.5">
-              <span>{salesPending ? `${money(t.labor, { whole: true })} so far` : `${money(t.labor, { whole: true })} · % of net sales`}</span>
-              {!salesPending && budget?.laborPct != null && kpis.laborPct != null && <Badge tone={kpis.partial ? "neutral" : costTone(kpis.laborPct, budget.laborPct)}>target {pct(budget.laborPct, 0)}</Badge>}
-              {report.scheduledToDate != null && report.scheduledToDate > 0 && (
-                <span className={report.laborToDate > report.scheduledToDate * 1.05 ? "text-warn" : undefined}>
-                  {money(report.laborToDate, { whole: true })} vs {money(report.scheduledToDate, { whole: true })} scheduled{period === "week" || period === "month" ? " to yesterday" : ""}
-                </span>
-              )}
+            <span className="flex flex-col gap-1">
+              {prev && showStory ? <Delta value={pointsChange(kpis.laborPct, prev.bridge.laborPct)} format={fmt.pts} label={chipLabel(prev.label)} compact goodWhenUp={false} flatBelow={0.0025} /> : null}
+              <span className="truncate">{whole(t.labor)} · {qty(t.laborHours, 0)} hours{budget?.laborPct != null ? ` · target ${pct(budget.laborPct, 0)}` : ""}</span>
             </span>
           }
         />
         <Stat
           label={<span className="inline-flex items-center gap-1.5">{KPI_LABELS.prime} <HelpTip id="pnl.prime" /></span>}
-          value={salesPending ? "—" : pct(kpis.primePct)}
+          value={salesPending || !showStory ? "—" : pct(b.primePct)}
+          tone={primeTarget != null && !kpis.partial && costTone(b.primePct, primeTarget) !== "good" ? costTone(b.primePct, primeTarget) : undefined}
           hint={
-            <span className="inline-flex flex-wrap items-center gap-1.5">
-              {money(t.primeCost, { whole: true })}{kpis.cogsPct != null ? ` · COGS ${pct(kpis.cogsPct, 0)} + labor` : " · COGS + labor"}
-              {!salesPending && !kpis.partial && totalTarget != null && budget?.laborPct != null && <Badge tone={costTone(kpis.primePct, totalTarget + budget.laborPct)}>target {pct(totalTarget + budget.laborPct, 0)}</Badge>}
+            <span className="flex flex-col gap-1">
+              {prev && showStory ? <Delta value={pointsChange(b.primePct, prev.bridge.primePct)} format={fmt.pts} label={chipLabel(prev.label)} compact goodWhenUp={false} flatBelow={0.0025} /> : null}
+              <span className="truncate">Food, drink &amp; labor{b.estimated ? " · incl. est." : ""}{primeTarget != null ? ` · target ${pct(primeTarget, 0)}` : ""}</span>
+            </span>
+          }
+        />
+        <Stat
+          label={<span className="inline-flex items-center gap-1.5">Sales per labor hour <HelpTip id="pnl.splh" /></span>}
+          value={salesPending || !showStory ? "—" : whole(t.salesPerLaborHour ?? 0)}
+          hint={
+            <span className="flex flex-col gap-1">
+              {prev && showStory && prev.laborHours > 0 && t.salesPerLaborHour != null ? <Delta value={ratio(t.salesPerLaborHour, prev.figures.sales / prev.laborHours)} format={fmt.pct} label={chipLabel(prev.label)} compact flatBelow={0.005} /> : null}
+              <span className="truncate">{t.ordersPerLaborHour != null ? `${qty(t.ordersPerLaborHour, 1)} orders per labor hour` : report.openCards ? `${report.openCards} on the clock now` : "net sales ÷ hours worked"}</span>
             </span>
           }
         />
       </HelpZone>
-      <HelpZone id="pnl.productivity" className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat
-          label="Profit before overhead"
-          value={salesPending ? "—" : money(t.profit, { whole: true })}
-          tone={!salesPending && !kpis.partial && t.profit < 0 ? "bad" : undefined}
-          hint={salesPending ? "waiting for today's sales" : t.sales > 0 ? `${pct(t.profit / t.sales)} of sales${kpis.partial ? " so far" : ""}` : "no sales yet"}
-        />
-        <Stat label="Labor hours" value={qty(t.laborHours, 1)} hint={report.openCards ? `${report.openCards} on the clock now` : `incl. ${Math.round(report.burdenPct * 100)}% burden in cost`} />
-        <Stat label={<span className="inline-flex items-center gap-1.5">Sales per labor hour <HelpTip id="pnl.splh" /></span>} value={salesPending ? "—" : money(t.salesPerLaborHour, { whole: true })} />
-        <Stat label="Orders per labor hour" value={salesPending || t.ordersPerLaborHour == null ? "—" : qty(t.ordersPerLaborHour, 1)} hint={report.hasHourly ? `${qty(t.orders ?? 0, 0)} orders` : "needs Square order sync"} />
-      </HelpZone>
-      <div className="mb-10 space-y-1 text-sm text-muted">
-        {!budget && <p>No budget set for {multiDay ? "these weeks" : "this week"}. Targets show here once one is. <Link href="/budgets" className="underline">Budgets</Link></p>}
-        {report.uncosted.length > 0 && <p className="text-warn">Cost of goods is a floor: {report.uncosted.slice(0, 4).join(", ")}{report.uncosted.length > 4 ? ` and ${report.uncosted.length - 4} more` : ""} {report.uncosted.length === 1 ? "is" : "are"} missing prices.</p>}
-        {split.beverage.sales > 0 && split.beverage.cogs === 0 && <p className="text-warn">Drinks have no cost yet. <Link href="/menu/draft-beer" className="underline">Set up draft beer costing</Link></p>}
-        {report.missingRates > 0 && <p className="text-warn">{report.missingRates} timecard{report.missingRates === 1 ? " has" : "s have"} no pay rate, so labor is understated. <Link href="/team" className="underline">Set rates</Link></p>}
-      </div>
 
-      <HelpZone id="pnl.split" tour="pnl.split">
-        <Section
-          title="Food and beverage"
-          description={counts ? `Theoretical for ${countedLabel}. Each line's cost % is of its own sales. Actual is from your last two counts (${shortDate(counts.from)} → ${shortDate(counts.to)}).` : `Theoretical for ${countedLabel}. Each line's cost % is of its own sales. Count twice to see actual next to it.`}
-          actions={<LinkButton href="/variance" variant="ghost" size="sm">Margin gap →</LinkButton>}
-        >
-          <Table sticky>
-            <thead>
-              <tr>
-                <Th className="px-2! sm:px-4!" />
-                <Th align="right" className="px-2! sm:px-4!">Sales</Th>
-                <Th align="right" className="px-2! sm:px-4! hidden sm:table-cell">Mix</Th>
-                <Th align="right" className="px-2! sm:px-4! hidden md:table-cell">Cost</Th>
-                <Th align="right" className="px-2! sm:px-4!">Cost %</Th>
-                <Th align="right" className="px-2! sm:px-4! hidden sm:table-cell">Target</Th>
-                <Th align="right" className="pr-4! pl-2! sm:px-4!"><span className="inline-flex items-center gap-1">Actual <HelpTip id="pnl.actual" /></span></Th>
-              </tr>
-            </thead>
-            <tbody>
-              {splitRows.map((r) => {
-                const tone = r.target != null ? costTone(r.line.pct, r.target) : "neutral";
-                return (
-                  <Tr key={r.key} className={cx(r.muted && "text-muted")}>
-                    <Td className={cx("px-2! sm:whitespace-nowrap sm:px-4!", r.sub ? "pl-5! text-muted sm:pl-7!" : "font-medium")}>{r.label}</Td>
-                    <Td align="right" className="px-2! sm:px-4!">{money(r.line.sales, { whole: true })}</Td>
-                    <Td align="right" className="px-2! sm:px-4! hidden text-muted sm:table-cell">{pct(r.line.mix, 0)}</Td>
-                    <Td align="right" className="px-2! sm:px-4! hidden md:table-cell">{r.muted ? "—" : money(r.line.cogs, { whole: true })}</Td>
-                    <Td align="right" className="px-2! sm:px-4!">{r.muted ? "—" : r.target != null && r.line.pct != null && !r.sub ? <Badge tone={tone}>{pct(r.line.pct)}</Badge> : pct(r.line.pct)}</Td>
-                    <Td align="right" className="px-2! sm:px-4! hidden text-muted sm:table-cell">{r.target != null && !r.sub ? pct(r.target, 0) : ""}</Td>
-                    <Td align="right" className="px-2! sm:px-4!">
-                      {r.actual && r.actual.actualPct != null ? (
-                        <span className="inline-flex items-center justify-end gap-1.5">
-                          <Badge tone={gapTone(r.actual.actualPct, r.actual.theoreticalPct)}>{pct(r.actual.actualPct)}</Badge>
-                          <span className="hidden text-xs text-muted lg:inline">vs {pct(r.actual.theoreticalPct)}</span>
-                        </span>
-                      ) : r.muted || r.sub ? "" : <span className="text-muted">—</span>}
-                    </Td>
-                  </Tr>
-                );
-              })}
-              <Tr className="font-medium">
-                <Td className="px-2! sm:px-4!">Total</Td>
-                <Td align="right" className="px-2! sm:px-4!">{money(split.total.sales, { whole: true })}</Td>
-                <Td align="right" className="px-2! sm:px-4! hidden sm:table-cell" />
-                <Td align="right" className="px-2! sm:px-4! hidden md:table-cell">{money(split.total.cogs, { whole: true })}</Td>
-                <Td align="right" className="px-2! sm:px-4!">{totalTarget != null && split.total.pct != null ? <Badge tone={costTone(split.total.pct, totalTarget)}>{pct(split.total.pct)}</Badge> : pct(split.total.pct)}</Td>
-                <Td align="right" className="px-2! sm:px-4! hidden text-muted sm:table-cell">{totalTarget != null ? pct(totalTarget, 0) : ""}</Td>
-                <Td />
-              </Tr>
-            </tbody>
-          </Table>
-          {counts && counts.skipped > 0 && <p className="mt-2 text-xs text-muted">{counts.skipped} ingredient{counts.skipped === 1 ? " wasn't" : "s weren't"} counted at both ends, so actual leaves {counts.skipped === 1 ? "it" : "them"} out.</p>}
-        </Section>
-      </HelpZone>
+      {/* ---- What moved ---- */}
+      {showStory && story.notes.some((n) => n.kind !== "sales" || n.prev || n.year) && (
+        <HelpZone id="pnl.notes" tour="pnl.notes">
+          <Section title="What moved" description={prev ? `Compared with ${prev.label} (${prev.from === addDays(prev.toExclusive, -1) ? dayDate(prev.from) : `${shortDate(prev.from)} – ${shortDate(addDays(prev.toExclusive, -1))}`}).` : "Only what the numbers show."}>
+            <Card className="p-5">
+              <StoryNotes notes={story.notes} />
+            </Card>
+          </Section>
+        </HelpZone>
+      )}
+
+      {/* ---- Over time ---- */}
+      {story.trend.length > 1 && (
+        <HelpZone id="pnl.trend" tour="pnl.trend">
+          <Section title="The last 12 weeks" description="Each week's sales and where they went. The weeks you picked are shaded; tap a week for its numbers.">
+            <Card className="p-4 sm:p-5">
+              <TrendChart weeks={trend} />
+            </Card>
+          </Section>
+        </HelpZone>
+      )}
+
+      {/* ---- Food and drink ---- */}
+      {showStory && (
+        <HelpZone id="pnl.split" tour="pnl.split">
+          <Section
+            title="Food and drink"
+            description={`What sold and what it cost, ${countedLabel}. Each cost % is of its own sales.`}
+            actions={<LinkButton href="/variance" variant="ghost" size="sm">Margin gap →</LinkButton>}
+          >
+            <Card className="p-4 sm:p-5">
+              <MixBar
+                ariaLabel="Sales split into food, drinks and items not linked to a recipe"
+                parts={[
+                  { key: "food", label: "Food", value: split.food.sales, color: "var(--area-food)", ink: "dark" },
+                  { key: "bev", label: "Drinks", value: split.beverage.sales, color: "var(--area-today)", ink: "dark" },
+                  { key: "other", label: "Not linked to a recipe", value: Math.max(0, t.sales - split.food.sales - split.beverage.sales), color: "hatch", ink: "dark" },
+                ]}
+              />
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <SplitTile
+                  name="Food"
+                  sales={split.food.sales}
+                  mix={split.food.mix}
+                  costPct={split.food.pct}
+                  target={foodTarget}
+                  partial={kpis.partial}
+                  actual={counts?.food ?? null}
+                  empty="No food items linked to a recipe sold"
+                />
+                <SplitTile
+                  name="Drinks"
+                  sales={split.beverage.sales}
+                  mix={split.beverage.mix}
+                  costPct={bevPct}
+                  target={targets.beverage}
+                  partial={kpis.partial}
+                  actual={counts?.beverage ?? null}
+                  sub={split.beer.sales > 0 ? `beer ${whole(split.beer.sales)}${split.beer.cogs > 0 ? ` at ${pct(split.beer.pct, 0)}` : ""}` : undefined}
+                  empty={split.beverage.sales > 0 ? "Drinks have no cost yet" : "No drinks linked to a recipe sold"}
+                  emptyHref={split.beverage.sales > 0 ? "/menu/draft-beer" : "/sales#sales-items"}
+                />
+              </div>
+              {counts ? (
+                <p className="mt-3 text-xs text-muted">Actual is from your last two counts ({shortDate(counts.from)} → {shortDate(counts.to)}){counts.skipped > 0 ? `; ${counts.skipped} ingredient${counts.skipped === 1 ? " wasn't" : "s weren't"} counted at both ends` : ""}. <HelpTip id="pnl.actual" /></p>
+              ) : (
+                <p className="mt-3 text-xs text-muted">Count stock twice to see actual cost next to these.</p>
+              )}
+            </Card>
+          </Section>
+        </HelpZone>
+      )}
+
+      {/* ---- About these numbers ---- */}
+      {caveats.length > 0 && (
+        <HelpZone id="pnl.caveats" className="mb-10">
+          <Card className="bg-surface-2/40 p-4 sm:p-5">
+            <div className="mb-2 flex items-center gap-1.5 text-[0.8rem] font-medium text-ink-2"><Info aria-hidden className="size-3.5" /> About these numbers</div>
+            <ul className="space-y-1.5 text-sm text-muted">
+              {caveats.map((c, i) => (
+                <li key={i} className={cx("flex gap-2", c.tone === "warn" && "text-warn")}><span aria-hidden className="mt-2 size-1 shrink-0 rounded-full bg-current opacity-60" />{<span>{c.text}</span>}</li>
+              ))}
+            </ul>
+          </Card>
+        </HelpZone>
+      )}
 
       <HelpZone id="pnl.hourly" tour="pnl.hourly">
         <Section
           title={`Hour by hour · ${dayDate(day)}`}
           description={
             <>
-              {hourly.hasSchedule ? <>Actual labor {money(dayLabor, { whole: true })} vs scheduled {money(daySched, { whole: true })}{hourly.scheduleDraft ? " (draft schedule)" : ""}. </> : null}
+              {hourly.hasSchedule ? <>Actual labor {whole(dayLabor)} vs scheduled {whole(daySched)}{hourly.scheduleDraft ? " (draft schedule)" : ""}. </> : null}
               {multiDay ? "Pick a day in the table below to see its hours." : null}
             </>
           }
@@ -227,7 +288,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
 
       {multiDay && (
         <HelpZone id="pnl.byDay" tour="pnl.by-day">
-          <Section title="By day">
+          <Section title="By day" description={report.days.some((d) => d.unlinkedSales > 0) ? `Profit includes the estimated cost of items not linked to a recipe.` : undefined}>
             <Table sticky>
               <thead>
                 <tr>
@@ -249,6 +310,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
                 {report.days.map((d) => {
                   const empty = d.sales === 0 && d.labor === 0 && !d.isToday;
                   const off = ratio(d.sales, d.forecast);
+                  const db = bridge(d);
                   // Today is in progress: no red/amber, and no ratios until sales sync.
                   const live = d.isToday;
                   const pending = live && !d.salesSynced;
@@ -263,27 +325,27 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
                       {d.future || empty ? (
                         <>
                           <Td align="right" className="text-muted">{d.future ? "" : "Closed"}</Td>
-                          <Td align="right" className="hidden text-muted sm:table-cell">{d.forecast != null && d.forecast >= 1 ? money(d.forecast, { whole: true }) : ""}</Td>
+                          <Td align="right" className="hidden text-muted sm:table-cell">{d.forecast != null && d.forecast >= 1 ? whole(d.forecast) : ""}</Td>
                           <Td colSpan={10} />
                         </>
                       ) : (
                         <>
-                          <Td align="right" className={cx(live && "text-muted")}>{pending ? <span className="text-xs whitespace-nowrap">Sync pending</span> : money(d.sales, { whole: true })}</Td>
+                          <Td align="right" className={cx(live && "text-muted")}>{pending ? <span className="text-xs whitespace-nowrap">Sync pending</span> : whole(d.sales)}</Td>
                           <Td align="right" className="hidden sm:table-cell">
                             {d.forecast == null ? "—" : (
                               <span className="inline-flex items-center justify-end gap-1.5">
-                                <span className="text-muted">{money(d.forecast, { whole: true })}</span>
+                                <span className="text-muted">{whole(d.forecast)}</span>
                                 {off != null && !live && d.date < today && <Badge tone={salesTone(d.sales, d.forecast)}>{signedPct(off, 0)}</Badge>}
                               </span>
                             )}
                           </Td>
                           <Td align="right" className={cx("hidden md:table-cell", tt(costTone(d.split.food.pct, targets.food)))}>{pending ? "—" : pct(d.split.food.pct)}</Td>
                           <Td align="right" className={cx("hidden md:table-cell", tt(costTone(d.split.beverage.pct, targets.beverage)))}>{pending ? "—" : pct(d.split.beverage.pct)}</Td>
-                          <Td align="right" className="hidden lg:table-cell">{money(d.labor, { whole: true })}</Td>
-                          <Td align="right" className={cx("hidden xl:table-cell", d.scheduledLabor != null && d.labor > d.scheduledLabor * 1.1 ? "text-warn" : "text-muted")}>{d.scheduledLabor != null ? money(d.scheduledLabor, { whole: true }) : "—"}</Td>
+                          <Td align="right" className="hidden lg:table-cell">{whole(d.labor)}</Td>
+                          <Td align="right" className={cx("hidden xl:table-cell", d.scheduledLabor != null && d.labor > d.scheduledLabor * 1.1 ? "text-warn" : "text-muted")}>{d.scheduledLabor != null ? whole(d.scheduledLabor) : "—"}</Td>
                           <Td align="right" className={budget?.laborPct != null ? tt(costTone(d.laborPct, budget.laborPct)) : ""}>{pending ? "—" : pct(d.laborPct)}</Td>
-                          <Td align="right" className="hidden lg:table-cell">{pending ? "—" : pct(d.primePct)}</Td>
-                          <Td align="right" className={cx("hidden sm:table-cell", !live && d.profit < 0 && "text-bad", live && "text-muted")}>{pending ? "—" : money(d.profit, { whole: true })}</Td>
+                          <Td align="right" className="hidden lg:table-cell">{pending ? "—" : pct(db.primePct)}</Td>
+                          <Td align="right" className={cx("hidden sm:table-cell", !live && db.profit < 0 && "text-bad", live && "text-muted")}>{pending ? "—" : signedWhole(db.profit)}</Td>
                           <Td align="right" className="hidden 2xl:table-cell">{pending ? "—" : money(d.salesPerLaborHour, { whole: true })}</Td>
                           <Td align="right" className="hidden 2xl:table-cell">{d.ordersPerLaborHour == null ? "—" : qty(d.ordersPerLaborHour, 1)}</Td>
                         </>
@@ -297,5 +359,50 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
         </HelpZone>
       )}
     </>
+  );
+}
+
+/** One side of the business: its sales and cost % against target, with actual from counts beside it. */
+function SplitTile({ name, sales, mix, costPct, target, partial, actual, sub, empty, emptyHref }: {
+  name: string;
+  sales: number;
+  mix: number | null;
+  costPct: number | null;
+  target: number;
+  partial: boolean;
+  actual: { actualPct: number | null; theoreticalPct: number | null } | null;
+  sub?: string;
+  empty: string;
+  emptyHref?: string;
+}) {
+  const tone = partial ? "neutral" : costTone(costPct, target);
+  const fill = costPct == null ? 0 : Math.min(1, costPct / Math.max(target * 1.6, costPct));
+  const mark = target / Math.max(target * 1.6, costPct ?? 0);
+  return (
+    <div className="flex h-full flex-col rounded-lg border border-border p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm font-medium text-ink">{name}</span>
+        <span className="num text-sm text-ink-2">{whole(sales)}{mix != null && <span className="ml-1.5 text-xs text-muted">{pct(mix, 0)} of sales</span>}</span>
+      </div>
+      {costPct != null ? (
+        <>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className={cx("text-2xl font-semibold tracking-tight", tone === "bad" ? "text-bad" : tone === "warn" ? "text-warn" : "text-ink")}>{pct(costPct)}</span>
+            <span className="text-xs text-muted">cost · target {pct(target, 0)}</span>
+          </div>
+          {/* meter: cost % with a tick at target */}
+          <div className="relative mt-2.5 h-1.5 rounded-full bg-surface-2" aria-hidden>
+            <div className={cx("absolute inset-y-0 left-0 rounded-full", tone === "bad" ? "bg-bad" : tone === "warn" ? "bg-warn" : "bg-ink-2")} style={{ width: `${fill * 100}%` }} />
+            <div className="absolute -inset-y-1 w-0.5 rounded-full bg-ink" style={{ left: `calc(${mark * 100}% - 1px)` }} />
+          </div>
+          <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-3 text-xs text-muted">
+            {actual?.actualPct != null && <span className="inline-flex items-center gap-1">Actual <Badge tone={gapTone(actual.actualPct, actual.theoreticalPct)}>{pct(actual.actualPct)}</Badge></span>}
+            {sub && <span>{sub}</span>}
+          </div>
+        </>
+      ) : (
+        <div className="mt-3 text-sm text-muted">{emptyHref ? <Link href={emptyHref} className="underline underline-offset-2 hover:text-ink">{empty}</Link> : empty}</div>
+      )}
+    </div>
   );
 }

@@ -9,16 +9,15 @@ export const overview: HelpEntry[] = [
     route: "/",
     tour: "overview",
     title: "Overview",
-    body: "Today so far, the last 7 days split into food and drink, labor, menu items over target, recent price moves and your next deliveries.",
-    article: `The Overview is the page to open each morning. Everything on it links to where you'd fix it.
+    body: "How today is going against the forecast, what needs you, the last 7 days at a glance, price moves, items over target and your next deliveries.",
+    article: `The Overview is the page to open each morning and during service. Everything on it links to where you'd act.
 
-- **Today so far** — sales, labor on the clock, labor % and where today will likely close against the forecast.
-- **Last 7 days** — sales (food vs drinks mix), food cost %, beverage cost %, labor % and prime cost. **P&L →** opens the same week on the P&L.
-- **Items over target** — menu items whose cost % is above target.
-- **Price increases** — supplier prices that went up in the last 30 days.
+- **Today so far** — sales since opening, how far ahead of or behind the forecast you are for this time of day, where the day will likely close, and labor so far.
+- **Needs you** — orders due soon, invoices to approve, staff requests, an unpublished schedule, taps with no keg behind them, certificates and unanswered low reviews. Empty means all clear.
+- **Last 7 days** — each day's sales against its forecast, then profit, labor %, food cost and your rating against the 7 days before. **P&L →** opens the same days on the P&L.
 
-Below that: the biggest price moves, the items over target, and when each supplier delivers next.`,
-    related: ["overview.today", "overview.foodCost", "overview.bevCost", "overview.priceChanges", "overview.overTarget", "overview.deliveries", "pnl.page"],
+Below that: the biggest price moves, menu items over target, and which suppliers deliver next.`,
+    related: ["overview.today", "overview.needs", "overview.week", "overview.profit", "overview.priceChanges", "overview.overTarget", "overview.deliveries", "pnl.page"],
     keywords: ["dashboard", "home"],
   },
   {
@@ -26,9 +25,19 @@ Below that: the biggest price moves, the items over target, and when each suppli
     area: "overview",
     route: "/",
     title: "Today so far",
-    body: "Sales and labor since opening, as of the last Square sync. Projected close = sales so far + the forecast for the hours left. Labor % by close assumes everyone works their scheduled shift.",
+    body: "Sales since opening as of the last Square sync. Pace compares them with what the forecast expected by this hour. Likely close = sales so far + the forecast for the hours left; the black tick is the day's forecast.",
     related: ["pnl.page", "pnl.hourly", "sales.forecast5w"],
-    keywords: ["live", "today", "projection"],
+    keywords: ["live", "today", "projection", "pace"],
+  },
+  {
+    id: "overview.needs",
+    area: "overview",
+    route: "/",
+    tour: "overview",
+    title: "Needs you",
+    body: "Things only a manager can clear, most urgent first: orders due within 36 hours, invoices to approve, staff requests, an unpublished schedule, taps with no full keg, certificates and low reviews. Tap one to go there.",
+    related: ["ordering.builder", "invoices.page", "schedule.page", "kegs.page"],
+    keywords: ["to do", "attention", "deadlines", "cutoff", "approve"],
   },
   {
     id: "overview.foodCost",
@@ -85,7 +94,7 @@ Common fixes: raise the price (the recipe page shows the **price to hit target**
     area: "overview",
     route: "/",
     title: "Price changes",
-    body: "The biggest supplier price moves in the last 30 days, old price vs new. Red is up, green is down.",
+    body: "The biggest supplier price moves in the last 30 days, old price vs new. Red is up, green is down. The line above counts the increases and this week's logged waste.",
     related: ["prices.list", "prices.import"],
   },
   {
@@ -93,7 +102,7 @@ Common fixes: raise the price (the recipe page shows the **price to hit target**
     area: "overview",
     route: "/",
     title: "Next deliveries",
-    body: "When each supplier delivers next, from its delivery days and lead time. Orange means today or tomorrow. Tap a supplier to build its order.",
+    body: "Which suppliers deliver next, grouped by day, from their delivery days and lead time. Tap a supplier to build its order.",
     related: ["ordering.builder", "settings.suppliers"],
   },
   {
@@ -109,8 +118,8 @@ Common fixes: raise the price (the recipe page shows the **price to hit target**
     area: "overview",
     route: "/",
     title: "Last 7 days",
-    body: "Net sales, food cost and beverage cost (theoretical, against their targets) and labor % with prime cost, for the last seven finished days. P&L opens the full breakdown.",
-    related: ["overview.sales", "overview.foodCost", "overview.bevCost", "pnl.page"],
+    body: "The last seven finished days: each day's sales as a column with its forecast as a black tick, then profit, labor %, food cost and rating, each against the 7 days before. Tap a day for its P&L.",
+    related: ["overview.sales", "overview.profit", "overview.foodCost", "pnl.page"],
   },
   {
     id: "overview.rating",
@@ -133,7 +142,7 @@ Common fixes: raise the price (the recipe page shows the **price to hit target**
     area: "overview",
     route: "/",
     title: "Profit before overhead",
-    body: "Last 7 days' net sales minus cost of goods and labor, before rent and other overheads.",
+    body: "Last 7 days' net sales minus food and drink cost and labor, before rent and other overheads. Sales not linked to a recipe are costed at a typical 30%, the same as the P&L.",
     related: ["pnl.page"],
   },
 ];

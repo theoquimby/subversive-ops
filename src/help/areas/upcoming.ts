@@ -540,37 +540,80 @@ export const pnl: HelpEntry[] = [
     id: "pnl.page",
     area: "pnl",
     route: "/pnl",
+    tour: "pnl",
     title: "Live P&L",
-    body: "Sales minus cost of goods minus labor for any period, split into food and beverage, with forecast, schedule and budget next to the actuals.",
-    article: `Pick a period at the top: today, this week, last week, this month or any range.
+    body: "Where each dollar of sales went for any period: food and drink cost, labor, and the profit left, against the period before and a year ago, with notes on what moved.",
+    article: `Pick a period at the top: today, this week, last week, this month or any range. Weeks and custom ranges count finished days; pick **Today** for today so far.
 
-- **Net sales** — from Square, leaving out items marked Ignore on the Sales page (gift cards, merch). Badges compare with the budget and the forecast.
-- **Cost of goods** — theoretical: items sold × each recipe's cost **on the day it sold**, so a price rise this week doesn't rewrite last month. The hint splits it into food and beverage.
-- **Labor** — wages from timecards plus employer burden, including people still on the clock. The hint shows what the schedule planned.
-- **Prime cost** — cost of goods + labor.
-- **Sales per labor hour** and **orders per labor hour** — how hard each paid hour worked.
+- **Profit before overhead** — net sales minus food and drink cost minus labor. The arrows compare with the same days last week (or month) and a year ago, lined up on the same weekdays.
+- **From sales to profit** — the same sum as bars: sales, each cost taken off, what was left, then rent and fixed costs if you've set them in [Settings → Money](/settings/money#fixed).
+- **What moved** — plain-English notes, only from the numbers: sales against both periods, labor and food cost moves of 2 points or more and why, the best day, days that lost money and forecast misses.
+- **The last 12 weeks** — each week's sales split into cost, labor and profit.
 
-Below that: the food and beverage table, an hour-by-hour chart (sales, actual labor, scheduled labor) and a by-day table with the forecast for each day.
+**Food and drink cost** is theoretical: items sold × each recipe's cost on the day it sold. Square items not linked to a recipe have no recipe cost, so they're estimated at a typical 30% and shown hatched. Link them on [Sales](/sales) to make it exact.
 
-Green, orange and red badges compare each number with its target: on or under is green, up to 2 points over is orange, beyond that is red. Set targets on [Budgets](/budgets) and the beverage target on [Menu costs](/menu).`,
-    related: ["pnl.split", "pnl.actual", "pnl.hourly", "pnl.forecast", "pnl.splh", "pnl.prime", "budgets.page"],
-    keywords: ["profit", "loss", "prime cost", "p&l", "flash", "cogs", "beverage cost", "pour cost"],
+**Labor** is timecards × pay rate plus employer taxes, including people still on the clock.`,
+    related: ["pnl.headline", "pnl.notes", "pnl.trend", "pnl.split", "pnl.actual", "pnl.hourly", "pnl.prime", "budgets.page"],
+    keywords: ["profit", "loss", "prime cost", "p&l", "flash", "cogs", "beverage cost", "pour cost", "margin"],
+  },
+  {
+    id: "pnl.headline",
+    area: "pnl",
+    route: "/pnl",
+    tour: "pnl",
+    title: "Profit before overhead",
+    body: "Net sales minus food and drink cost and labor, before rent. Items not linked to a recipe are costed at a typical 30% (hatched). Arrows compare with the same days last week or month and a year ago.",
+    related: ["pnl.page", "pnl.caveats", "sales.mapping"],
+    keywords: ["margin", "bridge", "waterfall", "cents on the dollar"],
+  },
+  {
+    id: "pnl.labor",
+    area: "pnl",
+    route: "/pnl",
+    title: "Labor %",
+    body: "Labor cost (timecards × pay rate, plus employer taxes) as a share of net sales. The arrow shows the change in points against the period before; colored only when a budget sets a target.",
+    related: ["pnl.splh", "budgets.page"],
+  },
+  {
+    id: "pnl.notes",
+    area: "pnl",
+    route: "/pnl",
+    tour: "pnl",
+    title: "What moved",
+    body: "Notes worked out from the numbers only: sales against the period before and last year, labor or food cost moves of 2 points or more with what changed, the best day, days that lost money, and forecast misses.",
+    related: ["pnl.page", "pnl.forecast"],
+  },
+  {
+    id: "pnl.trend",
+    area: "pnl",
+    route: "/pnl",
+    tour: "pnl",
+    title: "The last 12 weeks",
+    body: "Each week's sales as one column, split into food and drink cost (hatched where estimated), labor, and profit on top. The weeks in the period you picked are shaded. Tap a week for its numbers.",
+    related: ["pnl.headline"],
+  },
+  {
+    id: "pnl.caveats",
+    area: "pnl",
+    route: "/pnl",
+    title: "About these numbers",
+    body: "What the figures can't see yet: sales not linked to a recipe (estimated), recipes missing prices, timecards with no pay rate, no budget, or no fixed costs. Each line links to where it's fixed.",
+    related: ["sales.mapping", "budgets.page"],
   },
   {
     id: "pnl.split",
     area: "pnl",
     route: "/pnl",
-    title: "Food and beverage",
-    body: "Sales and cost of goods split by what was sold: food against food sales, beer and other drinks against drink sales. Each has its own cost % and target.",
+    tour: "pnl",
+    title: "Food and drink",
+    body: "Sales split into food, drinks and items not linked to a recipe, then food cost % of food sales and drink cost % of drink sales, each against its target (the tick). Actual from your last two counts shows beside it.",
     article: `A taproom is two businesses. A blended cost % hides both: lots of beer makes a high food cost look fine.
 
 Each menu item counts as Food, Beer, Other beverage or Retail, based on its category. Change the mapping at the bottom of [Menu costs](/menu).
 
-- **Food** — food cost % against the food cost target in Settings.
-- **Beverage** — beer and other drinks against the beverage target.
-- **Other and unlinked** — retail, plus Square sales not linked to a recipe. It counts toward the total only.
-
-Beer only has a cost once its kegs are set up. Use [Draft beer](/menu/draft-beer).`,
+- **Food** — food cost % against the food cost target.
+- **Drinks** — beer and other drinks against the beverage target. Beer only has a cost once its kegs are set up on [Draft beer](/menu/draft-beer).
+- **Not linked to a recipe** — Square sales with no recipe yet. Their cost is estimated at a typical 30% in profit; link them on [Sales](/sales).`,
     related: ["menu.classes", "menu.draftBeer", "pnl.actual"],
     keywords: ["food vs beverage", "beer cost", "pour cost", "mix"],
   },
@@ -604,7 +647,7 @@ Beer only has a cost once its kegs are set up. Use [Draft beer](/menu/draft-beer
     area: "pnl",
     route: "/pnl",
     title: "By day",
-    body: "Each day's sales against forecast, food and beverage cost %, actual and scheduled labor, prime cost, profit and productivity. Columns hide on small screens.",
+    body: "Each day's sales against forecast, food and beverage cost %, actual and scheduled labor, prime cost and profit (with unlinked items estimated), and productivity. Tap a day for its hours. Columns hide on small screens.",
   },
   {
     id: "pnl.splh",
@@ -618,7 +661,7 @@ Beer only has a cost once its kegs are set up. Use [Draft beer](/menu/draft-beer
     area: "pnl",
     route: "/pnl",
     title: "Prime cost",
-    body: "Cost of goods + labor, as a share of sales. Most restaurants aim for around 60% or less.",
+    body: "Food and drink cost + labor, as a share of sales, including the typical-cost estimate for items not linked to a recipe. Most restaurants aim for around 60% or less.",
   },
   {
     id: "pnl.period",
@@ -632,17 +675,10 @@ Beer only has a cost once its kegs are set up. Use [Draft beer](/menu/draft-beer
     area: "pnl",
     route: "/pnl",
     title: "Sales and prime cost",
-    body: "Net sales against budget and forecast, food cost % of food sales (theoretical), labor % of net sales from timecards, and prime cost — cost of goods plus labor. Badges compare each with its target.",
+    body: "Net sales, labor %, prime cost % (food, drink and labor, including the estimate for unlinked items) and sales per labor hour, each with its change against the period before and its target when a budget is set.",
     related: ["pnl.split", "pnl.prime", "budgets.page"],
   },
-  {
-    id: "pnl.productivity",
-    area: "pnl",
-    route: "/pnl",
-    title: "Profit and productivity",
-    body: "Profit before overheads like rent, hours worked (labor cost includes employer burden), sales per labor hour and orders per labor hour.",
-    related: ["pnl.splh"],
-  },
+
 ];
 
 export const events: HelpEntry[] = [

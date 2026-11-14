@@ -1,7 +1,9 @@
 import "server-only";
 import { addDays, dateRange, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
 import { backtest } from "@/domain/forecastAccuracy";
-import { mondayOf, projectClose, proratedBudget, summarize } from "@/domain/pnl";
+import { mondayOf, PeriodKind, projectClose, proratedBudget, summarize } from "@/domain/pnl";
+import { fixedTotal } from "@/domain/analytics";
+import { bridge, comparisonRanges, fixedForDays, PeriodFigures, storyNotes, unlinkedSales, weeklyTrend } from "@/domain/pnlStory";
 import type { GroupSplit } from "@/domain/revenueClass";
 import { laborByHour, localMinutes, zonedTime } from "@/domain/timecards";
 import { db, num } from "../db";
@@ -9,7 +11,8 @@ import { env } from "../env";
 import { laborByDay } from "./budgets";
 import { dailySalesForecast, dailySalesHistory, hourlySalesForecast } from "./forecasting";
 import { costTargets } from "./insights";
-import { dailyKpis, periodFrom } from "./kpis";
+import { dailyKpis, PeriodKpis, periodFrom, periodKpis } from "./kpis";
+import { getFixedCosts } from "./analytics";
 import { loadTimecards } from "./labor";
 import { getLaborRules } from "./labor-rules";
 import { getAdjustments } from "./planning";
@@ -71,6 +74,8 @@ export interface PnlDay extends ReturnType<typeof summarize> {
   /** Scheduled labor cost (shifts, with burden). */
   scheduledLabor: number | null;
   split: GroupSplit;
+  /** Sales with no linked recipe (their cost isn't in cogs). */
+  unlinkedSales: number;
 }
 
 /**
@@ -100,6 +105,7 @@ export async function pnlReport(from: ISODate, toExclusive: ISODate, now = new D
     forecast: forecast.get(d.date) ?? null,
     scheduledLabor: scheduled.get(d.date)?.cost ?? null,
     split: d.group,
+    unlinkedSales: unlinkedSales(d.split, d.sales),
     ...d.summary,
   }));
   const counted = new Set(kpis.counted);
@@ -155,6 +161,71 @@ export async function pnlReport(from: ISODate, toExclusive: ISODate, now = new D
 }
 
 export type PnlReport = Awaited<ReturnType<typeof pnlReport>>;
+
+/** Figures for notes and comparisons from a period's KPIs (finished days only, unless today was included). */
+function figuresOf(k: PeriodKpis): PeriodFigures {
+  const counted = new Set(k.counted);
+  return {
+    sales: k.total.sales,
+    cogs: k.total.cogs,
+    labor: k.total.labor,
+    laborHours: k.total.laborHours,
+    unlinkedSales: k.days.filter((d) => counted.has(d.date)).reduce((s, d) => s + unlinkedSales(d.split, d.sales), 0),
+    foodSales: k.split.food.sales,
+    foodCogs: k.split.food.cogs,
+  };
+}
+
+/** Weeks shown in the P&L trend. */
+export const TREND_WEEKS = 12;
+
+/**
+ * The story around a P&L report: the sales → costs → profit bridge (with a
+ * typical-cost estimate for unlinked sales and the period's share of fixed
+ * costs), the same figures for the previous period and a year ago, a weekly
+ * trend and notes on what moved. Uses the same KPI definitions as the report.
+ */
+export async function pnlStory(report: PnlReport, period: PeriodKind) {
+  const k = report.kpis;
+  const today = businessToday();
+  const { prev, year } = comparisonRanges(period, k.counted);
+  const last = k.counted.at(-1) ?? addDays(today, -1);
+  const trendTo = addDays(last < today ? last : addDays(today, -1), 1);
+  const trendFrom = addDays(mondayOf(addDays(trendTo, -1)), -7 * (TREND_WEEKS - 1));
+  const [fixedCosts, prevK, yearK, trendK] = await Promise.all([
+    getFixedCosts().catch(() => null),
+    prev ? periodKpis(prev.from, prev.toExclusive) : null,
+    year ? periodKpis(year.from, year.toExclusive) : null,
+    dailyKpis(trendFrom, trendTo),
+  ]);
+  const fixedMonthly = fixedTotal(fixedCosts);
+  const fixedFor = (days: number) => (fixedMonthly > 0 ? fixedForDays(fixedMonthly, days) : null);
+
+  const cur = figuresOf(k);
+  const curBridge = bridge(cur, fixedFor(k.counted.length));
+  const side = (kk: PeriodKpis | null, r: typeof prev) => {
+    if (!kk || !r || kk.total.sales <= 0) return null;
+    const f = figuresOf(kk);
+    return { ...r, figures: f, bridge: bridge(f, fixedFor(kk.counted.length)), laborHours: kk.total.laborHours };
+  };
+  const prevSide = side(prevK, prev);
+  const yearSide = side(yearK, year);
+
+  const counted = new Set(k.counted);
+  const days = report.days.filter((d) => counted.has(d.date)).map((d) => ({ date: d.date, sales: d.sales, cogs: d.cogs, labor: d.labor, unlinkedSales: d.unlinkedSales }));
+  const notes = storyNotes({
+    cur,
+    prev: prevSide ? { ...prevSide.figures, label: prevSide.label } : null,
+    year: yearSide ? { ...yearSide.figures, label: yearSide.label } : null,
+    days: period === "today" ? [] : days,
+    forecast: period !== "today" && report.forecastToDate != null ? { actual: report.salesToDate, forecast: report.forecastToDate } : null,
+  });
+
+  const trend = weeklyTrend(trendK.days.filter((d) => d.state === "done").map((d) => ({ date: d.date, sales: d.sales, cogs: d.cogs, labor: d.labor, unlinkedSales: unlinkedSales(d.split, d.sales) })));
+  return { bridge: curBridge, figures: cur, prev: prevSide, year: yearSide, notes, trend, fixedMonthly: fixedMonthly > 0 ? fixedMonthly : null, counted: k.counted };
+}
+
+export type PnlStory = Awaited<ReturnType<typeof pnlStory>>;
 
 /** Scheduled shifts on a business date as cost blocks (rate: person's rate for the position, else the default). */
 async function shiftBlocks(date: ISODate) {
@@ -248,6 +319,11 @@ export async function todaySoFar(now = new Date()) {
     projectedLaborPct: forecast && projected > 0 && day.hasSchedule ? projectedLabor / projected : null,
     hasSchedule: day.hasSchedule,
     lastSync,
+    /** Each local hour: sales so far, the forecast and labor (actual and scheduled). */
+    hours: day.hours.map((h) => ({ hour: h.hour, sales: h.sales, forecast: forecast?.hours[h.hour] ?? 0, labor: h.labor, scheduled: h.scheduled })),
+    /** Local time of the projection. */
+    hour,
+    minute,
   };
 }
 
