@@ -125,7 +125,8 @@ function DeleteType({ id, name }: { id: string; name: string }) {
         if (!(await confirm({ title: `Delete ${name}?`, body: "Only possible while no certificates are on file for it. Otherwise archive it.", confirmLabel: "Delete", danger: true }))) return;
         start(async () => {
           const r = await deleteCertType(id);
-          if (r?.error) await confirm({ title: "Can't delete it yet", body: r.error, confirmLabel: "OK" });
+          // Shown after the transition ends: a dialog opened inside it can't render until it finishes.
+          if (r?.error) { const msg = r.error; setTimeout(() => void confirm({ title: "Can't delete it yet", body: msg, confirmLabel: "OK" }), 0); }
         });
       }}
       className="grid size-10 place-items-center rounded-md text-muted hover:bg-bad-bg hover:text-bad sm:size-8"
