@@ -182,13 +182,24 @@ export function AutoSwitch({ on, onSave, label, onText = "On", offText = "Off" }
 }
 
 /** A choice (our own select, never the browser's) that saves on change. */
-export function AutoChoice({ value, options, onSave, ariaLabel, className }: { value: string; options: { value: string; label: string; hint?: string }[]; onSave: (v: string) => Promise<SaveResult>; ariaLabel: string; className?: string }) {
+/**
+ * `confirm` runs before saving and outside the save's transition: React holds
+ * back renders made inside a transition until it ends, so a dialog opened from
+ * inside onSave would never appear (and the save would wait forever).
+ */
+export function AutoChoice({ value, options, onSave, confirm, ariaLabel, className }: { value: string; options: { value: string; label: string; hint?: string }[]; onSave: (v: string) => Promise<SaveResult>; confirm?: (v: string) => Promise<boolean>; ariaLabel: string; className?: string }) {
   const [v, setV] = useState(value);
   const { status, error, run } = useSaver();
   useEffect(() => setV(value), [value]);
   return (
     <div className={cn("relative min-w-0", className)}>
-      <Select value={v} options={options} aria-label={ariaLabel} disabled={status === "saving"} onChange={(e) => { const prev = v; const next = e.target.value; setV(next); run(() => onSave(next), () => setV(prev)); }} />
+      <Select value={v} options={options} aria-label={ariaLabel} disabled={status === "saving"} onChange={async (e) => {
+        const prev = v;
+        const next = e.target.value;
+        setV(next);
+        if (confirm && !(await confirm(next))) return setV(prev);
+        run(() => onSave(next), () => setV(prev));
+      }} />
       <StatusLine status={status} error={error} />
     </div>
   );

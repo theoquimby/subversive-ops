@@ -55,10 +55,9 @@ export function LoginsList({ rows }: { rows: LoginRow[] }) {
               {u.locked && <Badge tone="warn">Locked — set a new PIN</Badge>}
             </div>
           </div>
-          <HelpZone id="settings.people.role"><AutoChoice value={u.role} options={ROLES} ariaLabel={`Access for ${u.name}`} onSave={async (v) => {
-            if (v === "MANAGER" && !(await confirm({ title: `Make ${u.name} a manager?`, body: "Managers see costs, pay rates and settings, and can change anything.", confirmLabel: "Make manager" }))) return { error: "Not changed" };
-            return setUserRole(u.id, v);
-          }} /></HelpZone>
+          <HelpZone id="settings.people.role"><AutoChoice value={u.role} options={ROLES} ariaLabel={`Access for ${u.name}`}
+            confirm={async (v) => v !== "MANAGER" || confirm({ title: `Make ${u.name} a manager?`, body: "Managers see costs, pay rates and settings, and can change anything.", confirmLabel: "Make manager" })}
+            onSave={(v) => setUserRole(u.id, v)} /></HelpZone>
           <PinReset id={u.id} name={u.name} />
           <div className="sm:pt-0.5">{u.me ? <span className="text-xs text-muted">Can't switch yourself off</span> : <AutoSwitch on={u.active} label={`${u.name} can sign in`} onText="Can sign in" offText="Off" onSave={(on) => setUserActive(u.id, on)} />}</div>
         </div>
