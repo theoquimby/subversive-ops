@@ -69,8 +69,8 @@ export default async function OverviewPage() {
 
   // The last 7 finished days, with the same estimate for unlinked items as the P&L.
   const weekDays = week.days.filter((d) => d.date < today);
-  const weekB = bridge({ sales: t.sales, cogs: t.cogs, labor: t.labor, unlinkedSales: weekDays.reduce((s, d) => s + d.unlinkedSales, 0) });
-  const prevB = bridge({ sales: prevWeek.total.sales, cogs: prevWeek.total.cogs, labor: prevWeek.total.labor, unlinkedSales: prevWeek.days.filter((d) => d.date < today).reduce((s, d) => s + unlinkedSales(d.split, d.sales), 0) });
+  const weekB = bridge({ sales: t.sales, cogs: t.cogs, labor: t.labor, unlinkedSales: weekDays.reduce((s, d) => s + d.unlinkedSales, 0), fees: weekDays.reduce((s, d) => s + (d.fees ?? 0), 0) });
+  const prevB = bridge({ sales: prevWeek.total.sales, cogs: prevWeek.total.cogs, labor: prevWeek.total.labor, unlinkedSales: prevWeek.days.filter((d) => d.date < today).reduce((s, d) => s + unlinkedSales(d.split, d.sales), 0), fees: prevWeek.days.filter((d) => d.date < today).reduce((s, d) => s + ("fees" in d && typeof d.fees === "number" ? d.fees : 0), 0) });
   const hasPrev = prevWeek.total.sales > 0;
   const strip = weekDays.map((d) => ({ date: d.date, sales: d.sales, forecast: d.forecast, profit: bridge(d).profit, closed: d.sales <= 0 }));
 
