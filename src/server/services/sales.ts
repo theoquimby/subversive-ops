@@ -5,6 +5,7 @@ import { db } from "../db";
 import { env } from "../env";
 import { listOrders, listSellables } from "../integrations/square";
 import { readSettingJSON, recordSquareSync, requireSquareClient, writeSettingJSON } from "./square";
+import { discountStaff, discountWrites } from "./square-money";
 
 export const businessToday = () => todayIn(env.BUSINESS_TIMEZONE);
 
@@ -61,7 +62,9 @@ export async function syncCatalog() {
 export async function syncSales(from: ISODate, toExclusive: ISODate) {
   const tz = env.BUSINESS_TIMEZONE;
   const client = await requireSquareClient();
-  const { units, orders } = await listOrders(client, zonedMidnightUTC(from, tz).toISOString(), zonedMidnightUTC(toExclusive, tz).toISOString());
+  const { units, orders, discounts } = await listOrders(client, zonedMidnightUTC(from, tz).toISOString(), zonedMidnightUTC(toExclusive, tz).toISOString());
+  // Comps & discounts per order line, replaced with the day (who took the payment is kept; the payments pass fills new ones).
+  const staff = await discountStaff(from, toExclusive);
 
   const hourly = new Map<string, { date: ISODate; hour: number; netSales: number; orders: number; tips: number; tax: number }>();
   for (const o of orders) {
@@ -104,6 +107,7 @@ export async function syncSales(from: ISODate, toExclusive: ISODate) {
     // Clear the days first, so a day that no longer has sales (a refund, a voided tab) doesn't keep old tips/tax.
     db.setting.deleteMany({ where: { key: { in: dateRange(from, toExclusive).flatMap((d) => [`tips.${d}`, `tax.${d}`]) } } }),
     ...tipRows(hourly),
+    ...discountWrites(from, toExclusive, discounts, staff),
     db.setting.upsert({ where: { key: "square.lastSync" }, create: { key: "square.lastSync", value: new Date().toISOString() }, update: { value: new Date().toISOString() } }),
   ]);
   await recordSquareSync("sales", orders.length, `${from} → ${addDays(toExclusive, -1)}`);

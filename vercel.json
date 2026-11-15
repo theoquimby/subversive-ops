@@ -17,6 +17,30 @@
     {
       "path": "/api/cron/daily-ops",
       "schedule": "23 10 * * *"
+    },
+    {
+      "path": "/api/cron/morning-brief?utc=11",
+      "schedule": "4 11 * * *"
+    },
+    {
+      "path": "/api/cron/morning-brief?utc=12",
+      "schedule": "4 12 * * *"
+    },
+    {
+      "path": "/api/cron/morning-brief?utc=13",
+      "schedule": "4 13 * * *"
+    },
+    {
+      "path": "/api/cron/morning-brief?utc=14",
+      "schedule": "4 14 * * *"
+    },
+    {
+      "path": "/api/cron/morning-brief?utc=15",
+      "schedule": "4 15 * * *"
+    },
+    {
+      "path": "/api/cron/morning-brief?utc=16",
+      "schedule": "4 16 * * *"
     }
   ],
   "git": {

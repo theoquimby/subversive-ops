@@ -94,6 +94,41 @@ Subversive · Catskill, NY",
 }
 `;
 
+exports[`email templates > morning-brief > matches the snapshot 1`] = `
+{
+  "subject": "Monday: $3,150 forecast · busiest 5–8pm · 3 before tonight",
+  "text": "Good morning, Max. Mon, Nov 16.
+
+YESTERDAY: $4,210 in sales, 8% over forecast. Labor 24% (target 26%), about $1,380 profit.
+- 2 items 86'd
+- $38 in comps
+
+TODAY: $3,150 forecast · busiest 5–8pm
+Rain, 48°F / 39°F
+- Trivia night 7pm
+Short one person 6–8pm.
+
+BEFORE TONIGHT
+- Order from Sysco Albany: Due today 2pm · delivers Wed (https://ops.example.com/ordering)
+- 2 invoices to approve: 1 with a price or quantity issue (https://ops.example.com/invoices?status=OPEN)
+- Hazy IPA: no full keg behind it: Fill or plan what goes on that line (https://ops.example.com/kegs)
+Prep list: https://ops.example.com/prep
+
+ONE THING TO ACT ON: Wings are under-priced for what they cost ($410/mo). Raise wings by $1
+
+LAST NIGHT'S NOTES
+- Close · Jamie: Slammed · 86'd Wings, Hazy IPA · Fix: Ice machine · $38 comps: Cold burger [follow up]
+
+LAST WEEK (Nov 9 – Nov 15): $24,180 in sales, 3% under budget. Labor 27%, about $6,900 profit before fixed costs. Best day: Saturday, $5,840.
+
+Full brief: https://ops.example.com/brief
+
+—
+Subversive morning brief
+Subversive · Catskill, NY",
+}
+`;
+
 exports[`email templates > price-spikes > matches the snapshot 1`] = `
 {
   "subject": "2 prices jumped",

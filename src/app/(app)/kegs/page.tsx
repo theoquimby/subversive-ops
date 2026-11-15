@@ -3,7 +3,7 @@ import { Card, EmptyState, LinkButton, PageHeader, Section, Stat } from "@/compo
 import { displayCode, sinceLabel } from "@/domain/kegs";
 import { requireUser } from "@/server/auth";
 import { stockSummary, tapBoard } from "@/server/services/kegs";
-import { ChartColumn, FileUp, History, ListChecks, Printer, ScanLine, Settings2, Warehouse } from "lucide-react";
+import { Beer, ChartColumn, FileUp, History, ListChecks, ListOrdered, Printer, ScanLine, Settings2, Warehouse } from "lucide-react";
 import Link from "next/link";
 import { BeerDot, daysText, LeftBar, pctText, sizeShort } from "./bits";
 import { QueueWatcher } from "./scanner";
@@ -42,7 +42,7 @@ export default async function KegsPage() {
         </Card>
       )}
 
-      <Section help="kegs.taps" title={<span className="inline-flex items-center gap-1">On tap <HelpTip id="kegs.taps" /></span>} description={`Estimated from Square pours since each keg went on. You get about ${Math.round(yi.pintsPerHalf)} pints from a 1/2 bbl${yi.measured ? ` (from ${yi.samples} kicked keg${yi.samples === 1 ? "" : "s"})` : " until a few kegs kick and we can measure it"}.`}>
+      <Section help="kegs.taps" title={<span className="inline-flex items-center gap-1">On tap <HelpTip id="kegs.taps" /></span>} description={`Estimated from Square pours since each keg went on. You get about ${Math.round(yi.pintsPerHalf)} pints from a 1/2 bbl${yi.measured ? ` (from ${yi.samples} kicked keg${yi.samples === 1 ? "" : "s"})` : " until a few kegs kick and we can measure it"}.`} actions={<LinkButton href="/kegs/taps" size="sm" className="h-10 sm:h-8"><ListOrdered className="size-4" /> Tap list</LinkButton>}>
         {onTap.length === 0 ? (
           <EmptyState title="Nothing on tap yet" action={<LinkButton href="/kegs/scan">Scan a keg onto a line</LinkButton>}>When a keg goes on, scan it and pick the line. Then its gauge shows here.</EmptyState>
         ) : (
@@ -98,6 +98,8 @@ export default async function KegsPage() {
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {[
+              { href: "/kegs/taps", label: "Tap list & TV", icon: ListOrdered, hint: "Board order, coming soon" },
+              { href: "/kegs/beers", label: "Beers", icon: Beer, hint: "Style, ABV, prices, labels" },
               { href: "/kegs/cooler", label: "Walk-in board", icon: Warehouse, hint: "Where every keg is" },
               { href: "/kegs/demand", label: "Demand per beer", icon: ChartColumn, hint: "What to fill next" },
               { href: "/kegs/all", label: "All kegs & labels", icon: Printer, hint: "Add kegs, print stickers" },

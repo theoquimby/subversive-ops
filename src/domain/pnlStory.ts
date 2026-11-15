@@ -34,16 +34,28 @@ export interface BridgeInput {
   labor: number;
   /** Sales with no recipe cost behind them. */
   unlinkedSales: number;
+  /** Card processing fees, net of fees returned on refunds (Square). Optional: callers without it keep profit as before. */
+  fees?: number | null;
+  /** Comps & discounts already taken out of net sales (shown above net sales, never subtracted again). */
+  discounts?: number | null;
 }
 
 export interface Bridge {
+  /** Net sales + comps & discounts: what the items rang up at. */
+  grossSales: number;
+  /** Comps & discounts (already out of net sales). */
+  discounts: number;
   sales: number;
   /** Counted from recipes. */
   cogs: number;
   /** Unlinked sales × TYPICAL_COST_SHARE. */
   cogsEstimate: number;
   labor: number;
-  /** Sales − cost of goods (counted + estimate) − labor. */
+  /** Card processing fees (0 when not given). */
+  fees: number;
+  /** fees ÷ sales. */
+  feePct: number | null;
+  /** Sales − cost of goods (counted + estimate) − labor − card fees. */
   profit: number;
   /** profit ÷ sales. */
   margin: number | null;
@@ -66,14 +78,20 @@ export interface Bridge {
 export function bridge(i: BridgeInput, fixed: number | null = null): Bridge {
   const unlinked = Math.min(Math.max(0, i.unlinkedSales), Math.max(0, i.sales));
   const cogsEstimate = unlinked * TYPICAL_COST_SHARE;
-  const profit = i.sales - i.cogs - cogsEstimate - i.labor;
+  const fees = i.fees ?? 0;
+  const discounts = Math.max(0, i.discounts ?? 0);
+  const profit = i.sales - i.cogs - cogsEstimate - i.labor - fees;
   const r = (n: number) => (i.sales > 0 ? n / i.sales : null);
   const afterFixed = fixed != null && fixed > 0 ? profit - fixed : null;
   return {
+    grossSales: i.sales + discounts,
+    discounts,
     sales: i.sales,
     cogs: i.cogs,
     cogsEstimate,
     labor: i.labor,
+    fees,
+    feePct: fees ? r(fees) : null,
     profit,
     margin: r(profit),
     fixed: fixed != null && fixed > 0 ? fixed : null,
@@ -145,6 +163,7 @@ export interface TrendDay {
   cogs: number;
   labor: number;
   unlinkedSales: number;
+  fees?: number | null;
 }
 
 export interface TrendWeek {
@@ -156,6 +175,7 @@ export interface TrendWeek {
   cogs: number;
   cogsEstimate: number;
   labor: number;
+  fees: number;
   profit: number;
 }
 
@@ -164,13 +184,14 @@ export function weeklyTrend(days: TrendDay[]): TrendWeek[] {
   const by = new Map<ISODate, TrendWeek>();
   for (const d of days) {
     const w = mondayOf(d.date);
-    const cur = by.get(w) ?? { weekStart: w, days: 0, sales: 0, cogs: 0, cogsEstimate: 0, labor: 0, profit: 0 };
+    const cur = by.get(w) ?? { weekStart: w, days: 0, sales: 0, cogs: 0, cogsEstimate: 0, labor: 0, fees: 0, profit: 0 };
     const b = bridge(d);
     cur.days++;
     cur.sales += b.sales;
     cur.cogs += b.cogs;
     cur.cogsEstimate += b.cogsEstimate;
     cur.labor += b.labor;
+    cur.fees += b.fees;
     cur.profit += b.profit;
     by.set(w, cur);
   }
@@ -189,6 +210,12 @@ export interface PeriodFigures {
   /** Food sales and their counted cost. */
   foodSales: number;
   foodCogs: number;
+  /** Net card fees; null when Square fees haven't been synced for these days. */
+  fees?: number | null;
+  /** Comps & discounts; null when not synced. */
+  discounts?: number | null;
+  /** The biggest reason in `discounts` ("Comp", "Happy hour"…). */
+  topDiscount?: { name: string; amount: number } | null;
 }
 
 export interface StoryDay {
@@ -197,6 +224,7 @@ export interface StoryDay {
   cogs: number;
   labor: number;
   unlinkedSales: number;
+  fees?: number | null;
 }
 
 export type StoryNote =
@@ -205,17 +233,21 @@ export type StoryNote =
   | { kind: "food"; tone: "good" | "warn"; label: string; pct: number; prevPct: number }
   | { kind: "bestDay"; tone: "neutral"; date: ISODate; sales: number; share: number }
   | { kind: "lossDays"; tone: "warn"; days: { date: ISODate; sales: number; loss: number; labor: number }[] }
-  | { kind: "forecast"; tone: "neutral" | "good"; actual: number; forecast: number; change: number };
+  | { kind: "forecast"; tone: "neutral" | "good"; actual: number; forecast: number; change: number }
+  | { kind: "fees"; tone: "good" | "warn"; label: string; fees: number; pct: number; prevPct: number }
+  | { kind: "discounts"; tone: "good" | "warn"; label: string; amount: number; prevAmount: number; pct: number; prevPct: number; top: { name: string; amount: number } | null };
 
 const ratio = (a: number, b: number) => (b > 0 ? a / b - 1 : null);
 
 /** Points a ratio must move before it's worth a note. */
-export const NOTE_THRESHOLDS = { laborPts: 0.02, foodPts: 0.015, forecast: 0.1, lossMinSales: 1, lossMin: 5 } as const;
+export const NOTE_THRESHOLDS = { laborPts: 0.02, foodPts: 0.015, forecast: 0.1, lossMinSales: 1, lossMin: 5, feePts: 0.0025, discountPts: 0.01, discountMin: 50 } as const;
 
 /**
  * Plain-English notes on what moved, in reading order: sales, then labor and
  * food cost moves (only past a threshold), the best day, days that lost money
- * once food and labor were paid, and the forecast miss. Every note is derived
+ * once food and labor were paid, the forecast miss, then card fees (as a
+ * share of sales) and comps & discounts (as a share of what the items rang up
+ * at) when they moved past a threshold. Every note is derived
  * from the figures given; nothing is guessed.
  */
 export function storyNotes(i: {
@@ -271,6 +303,20 @@ export function storyNotes(i: {
   if (i.forecast && i.forecast.forecast > 0) {
     const change = i.forecast.actual / i.forecast.forecast - 1;
     if (Math.abs(change) >= NOTE_THRESHOLDS.forecast) out.push({ kind: "forecast", tone: change > 0 ? "good" : "neutral", actual: i.forecast.actual, forecast: i.forecast.forecast, change });
+  }
+
+  if (prev && prev.sales > 0 && cur.fees != null && prev.fees != null && cur.fees > 0 && prev.fees > 0) {
+    const pct = cur.fees / cur.sales;
+    const prevPct = prev.fees / prev.sales;
+    if (Math.abs(pct - prevPct) >= NOTE_THRESHOLDS.feePts) out.push({ kind: "fees", tone: pct > prevPct ? "warn" : "good", label: prev.label, fees: cur.fees, pct, prevPct });
+  }
+
+  if (prev && prev.sales > 0 && cur.discounts != null && prev.discounts != null) {
+    const pct = cur.discounts / (cur.sales + cur.discounts);
+    const prevPct = prev.discounts / (prev.sales + prev.discounts);
+    if (Math.abs(pct - prevPct) >= NOTE_THRESHOLDS.discountPts && Math.abs(cur.discounts - prev.discounts) >= NOTE_THRESHOLDS.discountMin) {
+      out.push({ kind: "discounts", tone: pct > prevPct ? "warn" : "good", label: prev.label, amount: cur.discounts, prevAmount: prev.discounts, pct, prevPct, top: cur.topDiscount ?? null });
+    }
   }
   return out;
 }

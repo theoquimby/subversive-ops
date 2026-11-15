@@ -24,6 +24,7 @@ import { buildContext } from "@/server/services/costing";
 import { CircleCheck, ChevronRight, ClipboardList, FileCheck, GraduationCap, Beer, MessageSquareText, ShoppingCart, CalendarCheck, Users, Truck, type LucideIcon } from "lucide-react";
 import { DismissSetupButton } from "./welcome/dismiss-setup";
 import { TodayChart, WeekStrip } from "./_overview/charts";
+import { LastNightNotes } from "./notes/last-night";
 import { Delta, fmt } from "./pnl/story";
 
 export const metadata = { title: "Overview" };
@@ -192,6 +193,8 @@ export default async function OverviewPage() {
           )}
         </Section>
       </HelpZone>
+
+      <LastNightNotes />
 
       <div className="empty:hidden"><TopInsights /></div>
 

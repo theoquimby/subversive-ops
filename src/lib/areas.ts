@@ -14,6 +14,7 @@ import {
   CalendarDays,
   CalendarRange,
   Carrot,
+  ChefHat,
   ChartLine,
   CircleHelp,
   ClipboardList,
@@ -25,6 +26,7 @@ import {
   LayoutGrid,
   Lightbulb,
   MessageSquareText,
+  NotebookPen,
   Receipt,
   Scale,
   Settings,
@@ -51,7 +53,8 @@ const item = (area: Area, href: string, label: string, icon: LucideIcon): NavIte
 export const MANAGER_NAV: NavGroup[] = [
   { area: "today", items: [
     item("today", "/", "Overview", LayoutGrid),
-    item("today", "/brief", "Weekly brief", Sunrise),
+    item("today", "/brief", "Brief", Sunrise),
+    item("today", "/notes", "Shift notes", NotebookPen),
     item("assist", "/ask", "Ask", Sparkles),
   ] },
   { title: "Food", area: "food", items: [
@@ -84,6 +87,7 @@ export const MANAGER_NAV: NavGroup[] = [
     item("floor", "/count", "Counts", ClipboardList),
     item("floor", "/waste", "Waste", Trash2),
     item("floor", "/kegs", "Kegs", Beer),
+    item("floor", "/prep", "Prep list", ChefHat),
   ] },
   { title: "Setup", area: "setup", items: [
     item("setup", "/import", "Import sheets", FileUp),
@@ -97,6 +101,8 @@ export const STAFF_NAV: NavGroup[] = [
     item("floor", "/count", "Count", ClipboardList),
     item("floor", "/waste", "Waste", Trash2),
     item("floor", "/kegs", "Kegs", Beer),
+    item("floor", "/notes", "Shift notes", NotebookPen),
+    item("floor", "/prep", "Prep list", ChefHat),
   ] },
 ];
 

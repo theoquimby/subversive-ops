@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { esc, link } from "../layout";
-import { DEFAULT_PREFS, eventsFor, parsePrefs } from "../prefs";
+import { DEFAULT_PREFS, EVENT_KEYS, eventsFor, parsePrefs } from "../prefs";
 import { purchaseOrderEmail, SAMPLES, shiftUpdateEmail, TEMPLATE_KEYS } from "../templates";
 import { shiftUpdatePush } from "../templates/shift-update";
 
@@ -126,6 +126,11 @@ describe("notification prefs", () => {
   });
   it("staff only see staff events", () => {
     expect(eventsFor("STAFF")).toEqual(["schedulePublished", "shiftChanges", "certificates"]);
-    expect(eventsFor("MANAGER")).toHaveLength(10);
+    expect(eventsFor("MANAGER")).toEqual(EVENT_KEYS);
+  });
+  it("morning brief is for managers, on the phone only by default", () => {
+    expect(eventsFor("MANAGER")).toContain("morning");
+    expect(eventsFor("STAFF")).not.toContain("morning");
+    expect(DEFAULT_PREFS.events.morning).toEqual({ email: false, push: true });
   });
 });

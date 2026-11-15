@@ -923,9 +923,32 @@ model Beer {
   notes        String?
   extra        Json?
   createdAt    DateTime @default(now())
+  /// Tap list: alcohol by volume, %
+  abv          Decimal? @db.Decimal(4, 1)
+  ibu          Int?
+  /// One or two lines for the board and the website
+  description  String?
+  /// "Gluten-reduced", "Gluten-free", "Contains lactose", "Vegan" (shown as a tag)
+  diet         String?
+  /// Board prices typed by hand ("16 oz $8, 10 oz $6"); blank = from Square / draft beer pours
+  boardPours   String?
+  /// Coming soon on the board: null = when a full keg is in cold storage, true = always, false = never
+  comingSoon   Boolean?
+  /// When a label image was uploaded (cache key for the image URL)
+  labelAt      DateTime?
+  label        BeerLabel?
   kegs         Keg[]
   fills        KegFill[]
   batches      KegBatch[]
+}
+
+/// A small label/logo image for a beer on the tap list (≤ 300 KB, resized in the browser).
+model BeerLabel {
+  beerId    String   @id
+  beer      Beer     @relation(fields: [beerId], references: [id], onDelete: Cascade)
+  mime      String
+  bytes     Bytes
+  updatedAt DateTime @updatedAt
 }
 
 model KegBatch {
@@ -1058,4 +1081,251 @@ model KegEvent {
 
   @@index([kegId, at])
   @@index([at])
+}
+
+/// End-of-shift handoff: what the next person (and tomorrow's morning brief) needs to know.
+/// Anyone can write one; `date` is the business date of the shift it covers.
+model ShiftNote {
+  id            String    @id @default(cuid())
+  date          DateTime  @db.Date
+  /// "open" | "mid" | "close" — which shift this covers
+  shift         String    @default("close")
+  authorId      String?
+  authorName    String
+  /// Items that ran out (86'd)
+  eightySixed   String[]  @default([])
+  issues        String?
+  comps         String?
+  compsAmount   Decimal?  @db.Decimal(10, 2)
+  /// Drawer note; over (+) / short (−) in dollars, if counted
+  cash          String?
+  cashOverShort Decimal?  @db.Decimal(10, 2)
+  maintenance   String?
+  notes         String?
+  /// Quick chips picked ("Slammed", "Walk-in warm", "Short-staffed"…)
+  tags          String[]  @default([])
+  /// A manager ticked the follow-ups (issues / maintenance) as handled
+  handledAt     DateTime?
+  handledBy     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([date])
+  @@index([createdAt])
+}
+
+// ---- Private events & parties (buyouts, rehearsal dinners, corporate) ----------------
+// Additive. No foreign keys into existing models (owner, calendar Event and recipes are
+// referenced by id) so the rest of the schema is untouched.
+
+model PrivateEvent {
+  id            String    @id @default(cuid())
+  /// INQUIRY | QUOTED | DEPOSIT | CONFIRMED | DONE | LOST
+  stage         String    @default("INQUIRY")
+  clientName    String
+  company       String?
+  clientEmail   String?
+  clientPhone   String?
+  /// PARTY | BUYOUT | REHEARSAL | CORPORATE | WEDDING | FESTIVAL | OTHER
+  type          String    @default("PARTY")
+  date          DateTime? @db.Date
+  startTime     String?
+  endTime       String?
+  space         String?
+  headcount     Int       @default(0)
+  /// User id (no relation, so User stays untouched)
+  ownerId       String?
+  notes         String?
+  followUpOn    DateTime? @db.Date
+  lostReason    String?
+  /// Calendar Event this booking keeps up to date once confirmed
+  calendarEventId String? @unique
+  // Quote
+  roomFee       Decimal   @default(0) @db.Decimal(10, 2)
+  /// NONE | TICKETS | OPEN_TAB | MINIMUM
+  barKind       String    @default("NONE")
+  drinkTickets  Int       @default(0)
+  ticketPrice   Decimal   @default(0) @db.Decimal(10, 2)
+  barAmount     Decimal   @default(0) @db.Decimal(10, 2)
+  serviceChargePct Decimal @default(0.2) @db.Decimal(5, 4)
+  taxPct        Decimal   @default(0.08) @db.Decimal(5, 4)
+  depositPct    Decimal   @default(0.25) @db.Decimal(5, 4)
+  /// Fixed deposit; overrides the percent when set
+  depositAmount Decimal?  @db.Decimal(10, 2)
+  depositDueOn  DateTime? @db.Date
+  balanceDueOn  DateTime? @db.Date
+  quoteNote     String?
+  quoteToken    String?   @unique
+  quoteSentAt   DateTime?
+  quoteViewedAt DateTime?
+  acceptedAt    DateTime?
+  acceptedName  String?
+  /// Totals as the client accepted them (JSON snapshot)
+  acceptedQuote Json?
+  paymentLinkUrl    String?
+  paymentLinkId     String?
+  paymentLinkAmount Decimal? @db.Decimal(10, 2)
+  remindedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lines         PrivateEventLine[]
+  payments      PrivateEventPayment[]
+
+  @@index([stage, date])
+  @@index([date])
+}
+
+model PrivateEventLine {
+  id             String       @id @default(cuid())
+  privateEventId String
+  privateEvent   PrivateEvent @relation(fields: [privateEventId], references: [id], onDelete: Cascade)
+  /// ITEM (a menu recipe) | PACKAGE (per-person package) | CUSTOM
+  kind           String       @default("ITEM")
+  recipeId       String?
+  packageId      String?
+  label          String
+  qty            Decimal      @default(1) @db.Decimal(10, 2)
+  /// qty is per guest (× headcount) rather than a fixed count
+  perPerson      Boolean      @default(false)
+  unitPrice      Decimal      @default(0) @db.Decimal(10, 2)
+  /// Cost per unit for CUSTOM lines (items and packages are costed live from recipes)
+  unitCost       Decimal?     @db.Decimal(10, 4)
+  sort           Int          @default(0)
+  createdAt      DateTime     @default(now())
+
+  @@index([privateEventId, sort])
+}
+
+model PrivateEventPayment {
+  id             String       @id @default(cuid())
+  privateEventId String
+  privateEvent   PrivateEvent @relation(fields: [privateEventId], references: [id], onDelete: Cascade)
+  amount         Decimal      @db.Decimal(10, 2)
+  /// DEPOSIT | BALANCE | OTHER
+  kind           String       @default("DEPOSIT")
+  /// CARD | CASH | CHECK | SQUARE_LINK | OTHER
+  method         String       @default("CARD")
+  paidOn         DateTime     @db.Date
+  note           String?
+  createdById    String?
+  createdAt      DateTime     @default(now())
+
+  @@index([privateEventId])
+}
+
+model PrivateEventPackage {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  pricePerPerson Decimal  @db.Decimal(10, 2)
+  active         Boolean  @default(true)
+  sort           Int      @default(0)
+  createdAt      DateTime @default(now())
+  items          PrivateEventPackageItem[]
+}
+
+model PrivateEventPackageItem {
+  id        String              @id @default(cuid())
+  packageId String
+  package   PrivateEventPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  recipeId  String
+  /// Portions per guest (0.5 = one for every two guests)
+  perGuest  Decimal             @default(1) @db.Decimal(6, 2)
+  sort      Int                 @default(0)
+
+  @@index([packageId])
+}
+
+// ---------------------------------------------------------------------------
+// Food safety: temperature logs, cooling logs, cleaning & opening/closing lists
+// ---------------------------------------------------------------------------
+
+// ---- Prep list (kitchen) ---------------------------------------------------------
+// Keyed by PREP recipe id (no relation on Recipe, so the Recipe model stays untouched;
+// rows for a deleted recipe are simply ignored).
+
+/// Per prep recipe: on the list or not, par, shelf life, rounding, station and count unit.
+model PrepSetting {
+  recipeId      String   @id
+  onList        Boolean  @default(true)
+  /// Minimum to have on hand, in the recipe's base unit (ml, g or each).
+  parBase       Decimal? @db.Decimal(14, 4)
+  shelfLifeDays Int?
+  /// "batch" (whole batches) | "half" (half batches) | "exact"
+  rounding      String   @default("batch")
+  station       String?
+  /// What the kitchen counts and makes it in: a standard unit ("qt") or a container ("cambro").
+  unitName      String?
+  /// Base units in one `unitName` (only for containers; standard units convert themselves).
+  unitBase      Decimal? @db.Decimal(14, 4)
+  updatedAt     DateTime @updatedAt
+}
+
+/// What's on hand of a prep item, counted on the prep list.
+model PrepCount {
+  id        String   @id @default(cuid())
+  recipeId  String
+  qtyBase   Decimal  @db.Decimal(14, 4)
+  countedAt DateTime @default(now())
+  countedBy String?
+  /// Made on the phone so a retried offline send is applied once.
+  clientId  String?  @unique
+
+  @@index([recipeId, countedAt])
+}
+
+/// A prep item made on a day (`day` = business date YYYY-MM-DD).
+model PrepDone {
+  id       String   @id @default(cuid())
+  recipeId String
+  day      String
+  qtyBase  Decimal  @db.Decimal(14, 4)
+  doneBy   String?
+  doneById String?
+  doneAt   DateTime @default(now())
+  clientId String?  @unique
+
+  @@unique([recipeId, day])
+  @@index([day])
+}
+
+// ---- Card fees, comps & discounts from Square (P&L) -----------------------------------
+
+/// Per business day: Square card processing fees (from payments and refunds) and the
+/// comps & discounts total (from orders). A null column = that sync hasn't covered the day yet.
+model SquareDayMoney {
+  date              DateTime  @id @db.Date
+  /// Fees on payments taken this day (positive = cost).
+  cardFees          Decimal?  @db.Decimal(10, 2)
+  /// Fees Square returned on refunds made this day (positive = money back).
+  feesReturned      Decimal?  @db.Decimal(10, 2)
+  feePayments       Int       @default(0)
+  /// Completed non-cash payments with no fee reported yet.
+  feePending        Int       @default(0)
+  /// Total of the payments that carried a fee.
+  feeVolume         Decimal?  @db.Decimal(12, 2)
+  feesSyncedAt      DateTime?
+  /// Comps & discounts in completed orders closed this day (every item, ignored ones included).
+  discounts         Decimal?  @db.Decimal(10, 2)
+  discountsSyncedAt DateTime?
+}
+
+/// One discount on one order line (negative for a return), as rung in Square.
+model SquareDiscount {
+  id           String   @id @default(cuid())
+  date         DateTime @db.Date
+  orderId      String
+  name         String
+  squareId     String   @default("")
+  itemName     String
+  /// Who took the payment for the order (Payment.team_member_id), "" when not known.
+  teamMemberId String   @default("")
+  amount       Decimal  @db.Decimal(10, 2)
+  qty          Decimal  @db.Decimal(10, 3)
+  /// The line ended at $0: given away whole.
+  full         Boolean  @default(false)
+  percentage   String?
+
+  @@index([date])
+  @@index([orderId])
 }

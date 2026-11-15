@@ -545,15 +545,17 @@ export const pnl: HelpEntry[] = [
     body: "Where each dollar of sales went for any period: food and drink cost, labor, and the profit left, against the period before and a year ago, with notes on what moved.",
     article: `Pick a period at the top: today, this week, last week, this month or any range. Weeks and custom ranges count finished days; pick **Today** for today so far.
 
-- **Profit before overhead** — net sales minus food and drink cost minus labor. The arrows compare with the same days last week (or month) and a year ago, lined up on the same weekdays.
-- **From sales to profit** — the same sum as bars: sales, each cost taken off, what was left, then rent and fixed costs if you've set them in [Settings → Money](/settings/money#fixed).
+- **Profit before overhead** — net sales minus food and drink cost, labor and card fees. The arrows compare with the same days last week (or month) and a year ago, lined up on the same weekdays.
+- **From sales to profit** — the same sum as bars: what items rang up at, comps & discounts, net sales, each cost taken off, card fees, what was left, then rent and fixed costs if you've set them in [Settings → Money](/settings/money#fixed).
 - **What moved** — plain-English notes, only from the numbers: sales against both periods, labor and food cost moves of 2 points or more and why, the best day, days that lost money and forecast misses.
 - **The last 12 weeks** — each week's sales split into cost, labor and profit.
 
 **Food and drink cost** is theoretical: items sold × each recipe's cost on the day it sold. Square items not linked to a recipe have no recipe cost, so they're estimated at a typical 30% and shown hatched. Link them on [Sales](/sales) to make it exact.
 
-**Labor** is timecards × pay rate plus employer taxes, including people still on the clock.`,
-    related: ["pnl.headline", "pnl.notes", "pnl.trend", "pnl.split", "pnl.actual", "pnl.hourly", "pnl.prime", "budgets.page"],
+**Labor** is timecards × pay rate plus employer taxes, including people still on the clock.
+
+**Card fees** are Square's processing fees on the day's card payments, less fees given back on refunds. **Comps & discounts** come from the discount names rung in Square; set what each counts as in [Settings → Money](/settings/money#discounts). Past months fill in with Settings → Square → Import again.`,
+    related: ["pnl.headline", "pnl.notes", "pnl.trend", "pnl.split", "pnl.comps", "pnl.fees", "pnl.actual", "pnl.hourly", "pnl.prime", "budgets.page"],
     keywords: ["profit", "loss", "prime cost", "p&l", "flash", "cogs", "beverage cost", "pour cost", "margin"],
   },
   {
@@ -562,7 +564,7 @@ export const pnl: HelpEntry[] = [
     route: "/pnl",
     tour: "pnl",
     title: "Profit before overhead",
-    body: "Net sales minus food and drink cost and labor, before rent. Items not linked to a recipe are costed at a typical 30% (hatched). Arrows compare with the same days last week or month and a year ago.",
+    body: "Net sales minus food and drink cost, labor and Square card fees, before rent. Comps & discounts show above net sales. Items not linked to a recipe are costed at a typical 30% (hatched). Arrows compare with the same days last week or month and a year ago.",
     related: ["pnl.page", "pnl.caveats", "sales.mapping"],
     keywords: ["margin", "bridge", "waterfall", "cents on the dollar"],
   },
@@ -580,7 +582,7 @@ export const pnl: HelpEntry[] = [
     route: "/pnl",
     tour: "pnl",
     title: "What moved",
-    body: "Notes worked out from the numbers only: sales against the period before and last year, labor or food cost moves of 2 points or more with what changed, the best day, days that lost money, and forecast misses.",
+    body: "Notes worked out from the numbers only: sales against the period before and last year, labor or food cost moves of 2 points or more with what changed, the best day, days that lost money, forecast misses, and card fee or comp moves.",
     related: ["pnl.page", "pnl.forecast"],
   },
   {
@@ -597,7 +599,7 @@ export const pnl: HelpEntry[] = [
     area: "pnl",
     route: "/pnl",
     title: "About these numbers",
-    body: "What the figures can't see yet: sales not linked to a recipe (estimated), recipes missing prices, timecards with no pay rate, no budget, or no fixed costs. Each line links to where it's fixed.",
+    body: "What's in the figures and what they can't see yet: card fees and comps from Square (and days still missing), sales not linked to a recipe (estimated), recipes missing prices, timecards with no pay rate, no budget, or no fixed costs.",
     related: ["sales.mapping", "budgets.page"],
   },
   {

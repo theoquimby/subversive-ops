@@ -9,11 +9,14 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
  *   food & drink cost  violet   (an estimate is the same hue, hatched)
  *   labor              pink     (--series-2, as on the hour-by-hour chart)
  *   profit             blue
+ *   card fees          teal
+ *   comps & discounts  the sales grey, hatched (money that never came in)
  * Validated as an adjacent categorical set (dataviz validate_palette) in both
  * modes: light #6250d6 · #d9467a · #2563eb on #fff, dark #9085e9 · #de5a88 ·
- * #3d76ea on #1a1a18. Values and labels stay in text tokens.
+ * #3d76ea on #1a1a18; fees #0f8577 / #2fae9e sit apart from all three. Values
+ * and labels stay in text tokens.
  */
-export const VIZ_VARS = "[--viz-cogs:#6250d6] [--viz-labor:var(--series-2)] [--viz-profit:#2563eb] dark:[--viz-cogs:#9085e9] dark:[--viz-profit:#3d76ea]";
+export const VIZ_VARS = "[--viz-cogs:#6250d6] [--viz-labor:var(--series-2)] [--viz-profit:#2563eb] [--viz-fees:#0f8577] dark:[--viz-cogs:#9085e9] dark:[--viz-profit:#3d76ea] dark:[--viz-fees:#2fae9e]";
 
 /** A same-hue hatch for "estimated" (45°), over a lighter wash of that hue. */
 const hatch = (color: string): CSSProperties => ({
@@ -36,16 +39,16 @@ function useWidth(min = 240) {
 const whole = (n: number) => money(n, { whole: true });
 const compact = (n: number) => (Math.abs(n) >= 10_000 ? `$${Math.round(n / 1000)}K` : Math.abs(n) >= 1_000 ? `$${(n / 1000).toFixed(1).replace(/\.0$/, "")}K` : whole(n));
 
-export function Swatch({ kind }: { kind: "cogs" | "est" | "labor" | "profit" | "fixed" | "sales" }) {
+export function Swatch({ kind }: { kind: "cogs" | "est" | "labor" | "profit" | "fixed" | "sales" | "fees" | "discounts" }) {
   const style: CSSProperties =
-    kind === "est" ? hatch("var(--viz-cogs)") : { background: kind === "fixed" ? "var(--muted)" : kind === "sales" ? "var(--ink-2)" : `var(--viz-${kind})` };
+    kind === "est" ? hatch("var(--viz-cogs)") : kind === "discounts" ? hatch("var(--ink-2)") : { background: kind === "fixed" ? "var(--muted)" : kind === "sales" ? "var(--ink-2)" : `var(--viz-${kind})` };
   return <span aria-hidden className="inline-block size-2.5 shrink-0 rounded-[3px]" style={style} />;
 }
 
 // ---- Sales → profit bridge -------------------------------------------------------------
 
 export interface BridgeStep {
-  key: "sales" | "cogs" | "est" | "labor" | "profit" | "fixed" | "after";
+  key: "gross" | "discounts" | "sales" | "cogs" | "est" | "labor" | "fees" | "profit" | "fixed" | "after";
   label: ReactNode;
   /** Shown value (costs as positive amounts). */
   value: number;
@@ -70,10 +73,13 @@ export function BridgeChart({ steps, sales }: { steps: BridgeStep[]; sales: numb
   const x = (v: number) => ((v - lo) / span) * 100;
   const zero = x(0);
   const color: Record<BridgeStep["key"], CSSProperties> = {
+    gross: { background: "color-mix(in oklab, var(--ink-2) 45%, transparent)" },
+    discounts: hatch("var(--ink-2)"),
     sales: { background: "var(--ink-2)" },
     cogs: { background: "var(--viz-cogs)" },
     est: hatch("var(--viz-cogs)"),
     labor: { background: "var(--viz-labor)" },
+    fees: { background: "var(--viz-fees)" },
     profit: { background: "var(--viz-profit)" },
     fixed: { background: "var(--muted)" },
     after: { background: "var(--viz-profit)" },
@@ -99,7 +105,7 @@ export function BridgeChart({ steps, sales }: { steps: BridgeStep[]; sales: numb
             </div>
             <div className="num col-start-2 row-start-1 text-right text-sm whitespace-nowrap sm:col-start-3">
               <span className={cx(s.total ? "font-semibold text-ink" : "text-ink-2", negative && "text-bad")}>{s.total ? (s.to < 0 ? `−${whole(-s.to)}` : whole(s.to)) : `−${whole(s.value)}`}</span>
-              {share != null && s.key !== "sales" && <span className="ml-1.5 text-xs text-muted">{pct(Math.abs(s.total ? s.to : s.value) / sales, 0)}</span>}
+              {share != null && s.key !== "sales" && s.key !== "gross" && s.key !== "discounts" && <span className="ml-1.5 text-xs text-muted">{pct(Math.abs(s.total ? s.to : s.value) / sales, 0)}</span>}
             </div>
             {s.note && <div className="col-span-2 -mt-0.5 text-xs text-muted sm:col-span-1 sm:col-start-2">{s.note}</div>}
           </div>
@@ -118,6 +124,8 @@ export interface TrendPoint {
   cogs: number;
   cogsEstimate: number;
   labor: number;
+  /** Card fees (0 before they were synced). */
+  fees: number;
   profit: number;
   /** In the period on screen. */
   current: boolean;
@@ -134,7 +142,7 @@ export function TrendChart({ weeks, height = 210 }: { weeks: TrendPoint[]; heigh
   const [hover, setHover] = useState<number | null>(null);
   const H = height;
   const pad = { top: 10, right: 4, bottom: 22, left: 40 };
-  const max = Math.max(1, ...weeks.map((w) => Math.max(w.sales, w.cogs + w.cogsEstimate + w.labor))) * 1.08;
+  const max = Math.max(1, ...weeks.map((w) => Math.max(w.sales, w.cogs + w.cogsEstimate + w.labor + w.fees))) * 1.08;
   const ticks = niceTicks(max);
   const top = ticks.at(-1)!;
   const band = (W - pad.left - pad.right) / Math.max(1, weeks.length);
@@ -151,6 +159,7 @@ export function TrendChart({ weeks, height = 210 }: { weeks: TrendPoint[]; heigh
         <span className="inline-flex items-center gap-1.5"><Swatch kind="cogs" /> Food &amp; drink cost</span>
         {weeks.some((w) => w.cogsEstimate > 0) && <span className="inline-flex items-center gap-1.5"><Swatch kind="est" /> Estimated cost</span>}
         <span className="inline-flex items-center gap-1.5"><Swatch kind="labor" /> Labor</span>
+        {weeks.some((w) => w.fees > 0) && <span className="inline-flex items-center gap-1.5"><Swatch kind="fees" /> Card fees</span>}
         <span className="inline-flex items-center gap-1.5"><Swatch kind="profit" /> Profit</span>
       </div>
       <div className="relative" ref={ref}>
@@ -172,6 +181,7 @@ export function TrendChart({ weeks, height = 210 }: { weeks: TrendPoint[]; heigh
               { v: wk.cogs, fill: "var(--viz-cogs)" },
               { v: wk.cogsEstimate, fill: "url(#pnl-est)" },
               { v: wk.labor, fill: "var(--viz-labor)" },
+              { v: wk.fees, fill: "var(--viz-fees)" },
               { v: Math.max(0, wk.profit), fill: "var(--viz-profit)" },
             ].filter((s) => s.v > 0);
             let acc = 0;
@@ -205,7 +215,7 @@ export function TrendChart({ weeks, height = 210 }: { weeks: TrendPoint[]; heigh
               height={H}
               fill="transparent"
               tabIndex={0}
-              aria-label={`Week of ${shortDate(wk.weekStart)}: sales ${whole(wk.sales)}, profit ${whole(wk.profit)}`}
+              aria-label={`Week of ${shortDate(wk.weekStart)}: sales ${whole(wk.sales)}${wk.fees > 0 ? `, card fees ${whole(wk.fees)}` : ""}, profit ${whole(wk.profit)}`}
               onMouseEnter={() => setHover(i)}
               onFocus={() => setHover(i)}
               onBlur={() => setHover(null)}
@@ -223,17 +233,18 @@ export function TrendChart({ weeks, height = 210 }: { weeks: TrendPoint[]; heigh
             <TipRow label="Sales" value={whole(hv.sales)} strong />
             <TipRow swatch="cogs" label="Food & drink cost" value={whole(hv.cogs + hv.cogsEstimate)} hint={hv.cogsEstimate > 0 ? `${whole(hv.cogsEstimate)} est.` : undefined} />
             <TipRow swatch="labor" label="Labor" value={whole(hv.labor)} hint={hv.sales > 0 ? pct(hv.labor / hv.sales, 0) : undefined} />
+            {hv.fees > 0 && <TipRow swatch="fees" label="Card fees" value={whole(hv.fees)} hint={hv.sales > 0 ? pct(hv.fees / hv.sales, 1) : undefined} />}
             <TipRow swatch="profit" label="Profit" value={hv.profit < 0 ? `−${whole(-hv.profit)}` : whole(hv.profit)} hint={hv.sales > 0 ? pct(hv.profit / hv.sales, 0) : undefined} strong />
           </div>
         )}
       </div>
       <div className="sr-only">
       <table data-no-resize="">
-        <caption>Weekly sales, cost of goods, labor and profit</caption>
-        <thead><tr><th>Week of</th><th>Sales</th><th>Cost of goods</th><th>Estimated cost</th><th>Labor</th><th>Profit</th></tr></thead>
+        <caption>Weekly sales, cost of goods, labor, card fees and profit</caption>
+        <thead><tr><th>Week of</th><th>Sales</th><th>Cost of goods</th><th>Estimated cost</th><th>Labor</th><th>Card fees</th><th>Profit</th></tr></thead>
         <tbody>
           {weeks.map((w) => (
-            <tr key={w.weekStart}><td>{shortDate(w.weekStart)}</td><td>{whole(w.sales)}</td><td>{whole(w.cogs)}</td><td>{whole(w.cogsEstimate)}</td><td>{whole(w.labor)}</td><td>{whole(w.profit)}</td></tr>
+            <tr key={w.weekStart}><td>{shortDate(w.weekStart)}</td><td>{whole(w.sales)}</td><td>{whole(w.cogs)}</td><td>{whole(w.cogsEstimate)}</td><td>{whole(w.labor)}</td><td>{whole(w.fees)}</td><td>{whole(w.profit)}</td></tr>
           ))}
         </tbody>
       </table>
@@ -242,7 +253,7 @@ export function TrendChart({ weeks, height = 210 }: { weeks: TrendPoint[]; heigh
   );
 }
 
-function TipRow({ label, value, hint, swatch, strong }: { label: string; value: string; hint?: string; swatch?: "cogs" | "labor" | "profit"; strong?: boolean }) {
+function TipRow({ label, value, hint, swatch, strong }: { label: string; value: string; hint?: string; swatch?: "cogs" | "labor" | "fees" | "profit"; strong?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4 py-0.5">
       <span className="inline-flex items-center gap-1.5 text-muted">

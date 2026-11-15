@@ -270,6 +270,16 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
                 </div>
               </section>
             ))}
+            {/* Staff pages without a tab of their own (e.g. Prep list) — Kegs is reached from Scan. */}
+            {role !== "MANAGER" && all.some((i) => !tabs.some((t) => t.href === i.href || t.href.startsWith(`${i.href}/`))) && (
+              <section className="mb-3 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface">
+                {all.filter((i) => !tabs.some((t) => t.href === i.href || t.href.startsWith(`${i.href}/`))).map(({ href, label, icon: Icon, area }) => (
+                  <Link key={href} href={href} aria-current={isActive(pathname, href) ? "page" : undefined} style={areaStyle(area)} className="flex h-12 items-center gap-3 px-3 text-sm transition-colors duration-120 active:bg-surface-2">
+                    <span className="grid size-7 place-items-center rounded-lg bg-area/10 text-area"><Icon className="size-4" strokeWidth={1.9} /></span> {label} <ChevronRight className="ml-auto size-4 text-muted" />
+                  </Link>
+                ))}
+              </section>
+            )}
             <section className="mb-2 overflow-hidden rounded-2xl border border-border bg-surface">
               <Link href="/help" style={areaStyle("assist")} className="flex h-12 items-center gap-3 px-3 text-sm transition-colors duration-120 active:bg-surface-2">
                 <span className="grid size-7 place-items-center rounded-lg bg-area/10 text-area"><CircleHelp className="size-4" strokeWidth={1.9} /></span> Help & guided tours <ChevronRight className="ml-auto size-4 text-muted" />

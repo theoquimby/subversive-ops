@@ -1,5 +1,5 @@
 import { HelpZone } from "@/components/help";
-import { Card, cx, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
+import { Card, cx, EmptyState, LinkButton, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { addDays } from "@/domain/dates";
 import { EVENT_KIND_LABEL, yearOf } from "@/domain/events";
 import { requireUser } from "@/server/auth";
@@ -41,7 +41,7 @@ export default async function EventsPage() {
         help="events.page"
         title="Events"
         description="Games, festivals, music, buyouts and closures. They move the sales forecast, and the upcoming list is what the website shows — keep titles and times tidy."
-        actions={<HelpZone id="events.holidays"><HolidayButtons years={[year, year + 1]} /></HelpZone>}
+        actions={<><LinkButton href="/events/private" data-tour="events.private-link">Private events</LinkButton><HelpZone id="events.holidays"><HolidayButtons years={[year, year + 1]} /></HelpZone></>}
       />
 
       <Section help="events.add" title="Add events" description="Pick as many dates as you need — every Knicks home game at once — or repeat weekly. Impact is how much busier than a normal day (+30%) or quieter (−20%).">

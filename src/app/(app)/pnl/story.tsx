@@ -4,10 +4,11 @@
  */
 
 import { cx } from "@/components/ui";
+import { HelpTip } from "@/components/help";
 import type { Bridge, StoryNote } from "@/domain/pnlStory";
 import { TYPICAL_COST_SHARE } from "@/domain/pnlStory";
 import { dayDate, money, pct, shortDate } from "@/lib/format";
-import { ArrowDownRight, ArrowUpRight, CalendarHeart, Minus, Target, TrendingDown, TrendingUp, Users, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, CalendarHeart, CreditCard, Minus, Tag, Target, TrendingDown, TrendingUp, Users, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { BridgeStep } from "./story-charts";
 
@@ -53,6 +54,8 @@ const NOTE_ICON: Record<StoryNote["kind"], LucideIcon> = {
   bestDay: CalendarHeart,
   lossDays: TrendingDown,
   forecast: Target,
+  fees: CreditCard,
+  discounts: Tag,
 };
 
 const upDown = (n: number) => (n >= 0 ? "up" : "down");
@@ -80,6 +83,10 @@ function noteText(n: StoryNote): ReactNode {
       if (n.days.length === 1) return <><b className="font-medium text-ink">{dayDate(w.date)}</b> lost {whole(w.loss)} once food, drink and labor were paid: {whole(w.sales)} in sales against {whole(w.labor)} of labor.</>;
       return <><b className="font-medium text-ink">{n.days.length} days</b> lost money once food, drink and labor were paid ({n.days.map((d) => shortDate(d.date)).join(", ")}). The worst was {dayDate(w.date)}, down {whole(w.loss)}.</>;
     }
+    case "fees":
+      return <>Card fees were <b className="font-medium text-ink">{pct(n.pct, 1)} of sales</b> ({whole(n.fees)}), {pts(n.pct - n.prevPct)} {n.pct > n.prevPct ? "higher" : "lower"} than {n.label} ({pct(n.prevPct, 1)}).</>;
+    case "discounts":
+      return <>Comps &amp; discounts came to <b className="font-medium text-ink">{whole(n.amount)}</b>, {pct(n.pct, 1)} of what items rang up at, against {whole(n.prevAmount)} ({pct(n.prevPct, 1)}) {n.label}{n.top && n.top.amount > 0 ? <>. The biggest was {n.top.name} at {whole(n.top.amount)}</> : null}.</>;
     case "forecast":
       return <>Sales came in <b className="font-medium text-ink">{pctAbs(n.change)} {n.change < 0 ? "under" : "over"}</b> what the forecast expected ({whole(n.actual)} vs {whole(n.forecast)}).</>;
   }
@@ -105,13 +112,23 @@ export function StoryNotes({ notes }: { notes: StoryNote[] }) {
   );
 }
 
-/** Waterfall steps from a bridge: sales, costs taken off, profit, then fixed costs when set. */
-export function bridgeSteps(b: Bridge, opts: { hours: number }): BridgeStep[] {
-  const steps: BridgeStep[] = [{ key: "sales", label: "Net sales", value: b.sales, from: 0, to: b.sales, total: true }];
+/**
+ * Waterfall steps from a bridge: what items rang up at and the comps &
+ * discounts off it (when Square has them), net sales, costs taken off, card
+ * fees, profit, then fixed costs when set.
+ */
+export function bridgeSteps(b: Bridge, opts: { hours: number; feeNote?: string }): BridgeStep[] {
+  const steps: BridgeStep[] = [];
+  if (b.discounts > 0) {
+    steps.push({ key: "gross", label: "Before discounts", value: b.grossSales, from: 0, to: b.grossSales, total: true });
+    steps.push({ key: "discounts", label: "Comps & discounts", value: b.discounts, from: b.grossSales, to: b.sales, note: `${pct(b.grossSales > 0 ? b.discounts / b.grossSales : 0, 1)} of what items rang up at; already out of net sales` });
+  }
+  steps.push({ key: "sales", label: "Net sales", value: b.sales, from: 0, to: b.sales, total: true });
   let at = b.sales;
   steps.push({ key: "cogs", label: "Food & drink cost", value: b.cogs, from: at, to: (at -= b.cogs) });
   if (b.estimated) steps.push({ key: "est", label: "Not-linked items", value: b.cogsEstimate, from: at, to: (at -= b.cogsEstimate), note: `Estimated at a typical ${pct(TYPICAL_COST_SHARE, 0)} of their ${whole(b.cogsEstimate / TYPICAL_COST_SHARE)} in sales` });
   steps.push({ key: "labor", label: "Labor", value: b.labor, from: at, to: (at -= b.labor), note: opts.hours > 0 ? `${Math.round(opts.hours).toLocaleString("en-US")} hours, incl. employer taxes` : undefined });
+  if (b.fees !== 0) steps.push({ key: "fees", label: <span className="inline-flex items-center gap-1">Card fees <HelpTip id="pnl.fees" /></span>, value: b.fees, from: at, to: (at -= b.fees), note: opts.feeNote });
   steps.push({ key: "profit", label: "Profit before overhead", value: b.profit, from: 0, to: b.profit, total: true });
   if (b.fixed != null && b.afterFixed != null) {
     steps.push({ key: "fixed", label: "Rent & fixed costs", value: b.fixed, from: b.profit, to: b.afterFixed });

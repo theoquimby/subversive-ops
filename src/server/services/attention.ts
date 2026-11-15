@@ -7,6 +7,7 @@ import { stockSummary } from "./kegs";
 import { supplierCutoffs } from "./planning";
 import { businessToday } from "./sales";
 import { certMatrix } from "./training";
+import { privateEventNeedsYou } from "./privateEvents";
 
 /**
  * What needs a manager right now, for the Overview: order cutoffs coming up,
@@ -21,6 +22,8 @@ export async function attentionList(now = new Date()): Promise<AttentionItem[]> 
       console.error(`attention: ${label} failed`, e);
       return fallback;
     });
+  // Private events: follow-ups, deposits and balances due (started early, joined at the end).
+  const privateEvents = soft("private events", privateEventNeedsYou(today), []);
   const [cutoffs, invoices, timeOff, swaps, draftShifts, kegs, certs, badReviews] = await Promise.all([
     soft("cutoffs", supplierCutoffs(now), []),
     soft("invoices", db.invoice.groupBy({ by: ["status"], where: { status: { not: "APPROVED" } }, _count: { _all: true } }), []),
@@ -35,7 +38,7 @@ export async function attentionList(now = new Date()): Promise<AttentionItem[]> 
   const orders = draftIds.length ? await soft("orders", db.purchaseOrder.findMany({ where: { id: { in: draftIds } }, select: { id: true, status: true } }), []) : [];
   const status = new Map(orders.map((o) => [o.id, o.status]));
   const count = (pred: (s: string) => boolean) => invoices.filter((r) => pred(r.status)).reduce((s, r) => s + r._count._all, 0);
-  return attentionItems({
+  const items = attentionItems({
     today,
     cutoffs: cutoffs
       .filter((c) => c.next && c.hoursToCutoff != null)
@@ -58,4 +61,5 @@ export async function attentionList(now = new Date()): Promise<AttentionItem[]> 
     certsExpiring: certs?.expiring ?? 0,
     badReviews,
   });
+  return [...items, ...(await privateEvents)].sort((a, b) => b.urgency - a.urgency);
 }

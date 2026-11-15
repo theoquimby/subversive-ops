@@ -45,6 +45,47 @@ export interface Tour {
 
 export const TOURS: Tour[] = [
   {
+    id: "prep",
+    title: "The prep list",
+    description: "What to make today and why, ticking it off, and keeping on hand right.",
+    audience: "all",
+    minutes: 1,
+    steps: [
+      { route: "/prep", target: "prep.list", title: "Today's prep, by station", body: "Each line is how much to make — rounded to batches — and why: the dishes forecast to use it, minus what's on hand. Whatever runs out first is at the top.", helpId: "prep.page", ifMissing: "skip" },
+      { route: "/prep", target: "prep.tick", title: "Tap when it's made", body: "The circle ticks it off with your name and the time. Tap again to undo. No signal? It's sent when you're back in range.", helpId: "prep.progress", ifMissing: "skip" },
+      { route: "/prep", target: "prep.line", title: "Make more or less", body: "Tap the line to change the amount, type what's on hand now, or open the recipe scaled to what you're making.", helpId: "prep.adjust", ifMissing: "skip" },
+      { title: "Count what matters before prep", body: "On hand is the last count, plus batches made, minus what sales used and waste. A quick count on the busiest sauces keeps the list honest.", helpId: "prep.onHand" },
+      { route: "/prep", target: "prep.tabs", title: "Pars, shelf life, stations", body: "Managers set each item's par, how long it keeps, how it rounds and its station on Prep setup — inline, like a spreadsheet.", helpId: "prep.setup", ifMissing: "skip" },
+    ],
+  },
+  {
+    id: "brief",
+    title: "Your morning brief",
+    description: "Yesterday, today and what to get done before tonight, on one page.",
+    audience: "manager",
+    minutes: 1,
+    steps: [
+      { route: "/brief", target: "brief.morning", title: "Your day on one page", body: "This is pushed to your phone each morning. Read it top to bottom: yesterday, today, then what to do.", helpId: "brief.morning" },
+      { route: "/brief", target: "brief.yesterday", title: "Yesterday in a line", body: "Sales against forecast, labor and an estimated profit. Badges flag anything unusual, including what the shift notes said.", helpId: "brief.yesterday" },
+      { route: "/brief", target: "brief.today", title: "Today", body: "The forecast, the busiest hours, weather and events, and who's on against what the forecast needs.", helpId: "brief.today" },
+      { route: "/brief", target: "brief.tonight", title: "Before tonight", body: "Order deadlines, drafts to send, deliveries to check in, invoices and kegs. Tap one to do it.", helpId: "brief.tonight" },
+      { route: "/brief", target: "brief.notes", title: "Last night's notes", body: "The handoff from the closing crew. Mark follow-ups handled right here.", helpId: "brief.notes", ifMissing: "skip" },
+      { route: "/brief", target: "brief.tabs", title: "This week", body: "The weekly brief lives one tap away: last week against budget and everything to sort before next week.", helpId: "brief.page" },
+    ],
+  },
+  {
+    id: "notes",
+    title: "Leaving a shift note",
+    description: "The end-of-shift handoff in about a minute.",
+    audience: "all",
+    minutes: 1,
+    steps: [
+      { route: "/notes", target: "notes.composer", title: "At the end of every shift", body: "Pick the shift, tap the chips that fit, add what was 86'd, comps and the drawer. Save. That's it.", helpId: "notes.composer" },
+      { route: "/notes", target: "notes.history", title: "Every note, searchable", body: "Search any word: an item, a name, \"ice machine\". Managers can show just the ones still to follow up.", helpId: "notes.history" },
+      { title: "It's in tomorrow's brief", body: "Managers see last night's notes first thing, in the morning brief and on the Overview.", helpId: "notes.page" },
+    ],
+  },
+  {
     id: "kegs",
     title: "Scanning kegs",
     description: "Kick a keg in one tap, put the next one on, and find any keg in the walk-in.",
@@ -89,6 +130,7 @@ export const TOURS: Tour[] = [
       { route: "/", selector: "aside nav, nav", title: "Everything lives here", body: "Menu costs, prices, ordering, counts and the rest, grouped in the sidebar.", placement: "right", touch: { body: "The tabs along the bottom are the pages you'll use most. More has everything else: menu costs, prices, counts, settings and the rest." } },
       { route: "/", target: "overview.today", title: "Today, live", body: "Sales so far, whether you're ahead of or behind the forecast for this time of day, and where the day will likely close.", helpId: "overview.today" },
       { route: "/", target: "overview.needs", title: "What needs you", body: "Orders due soon, invoices to approve, staff requests and the rest, most urgent first. When it's empty, you're clear.", helpId: "overview.needs" },
+      { route: "/", target: "overview.notes", title: "Last night", body: "What the closing crew left in their shift notes: 86'd items, fixes, comps and the drawer. Amber means follow up.", helpId: "overview.notes", ifMissing: "skip" },
       { route: "/", target: "overview.stats", title: "The week at a glance", body: "Each of the last 7 days against its forecast, then profit, labor, food cost and rating against the week before.", helpId: "overview.week" },
       { route: "/", target: "overview.price-changes", title: "Price moves", body: "The biggest supplier price changes in the last 30 days. Every recipe using them has already been recosted.", helpId: "overview.priceChanges" },
       { route: "/", target: "overview.over-target", title: "Over target", body: "Menu items whose food cost % is above target. Tap one to open its recipe and see the price that would hit target.", helpId: "overview.overTarget" },
@@ -213,6 +255,24 @@ export const TOURS: Tour[] = [
       { title: "Reminders and warnings", body: "People and managers hear about certificates 30 and 7 days before they expire. The weekly brief lists what's due, and the schedule warns if someone's on a shift without a certificate their position needs.", helpId: "training.reminders" },
     ],
   },
+  {
+    id: "private-events",
+    title: "Private events",
+    description: "Take an inquiry, build and send the quote, record the deposit and confirm.",
+    audience: "manager",
+    minutes: 2,
+    steps: [
+      { route: "/events/private", target: "private.new", title: "Someone wants a party", body: "Type their name, an email or phone, the date and guests, and press Add inquiry. It opens the booking.", helpId: "events.private.new" },
+      { route: "/events/private", target: "private.bookings", title: "Every booking", body: "Stage, guests, space and owner change right in the row. Next step says what to do.", helpId: "events.private.table" },
+      { route: "/events/private", target: "private.view", title: "Table or board", body: "The board shows a column per stage, with a button to move each booking along.", helpId: "events.private.board", ifMissing: "skip" },
+      { routeFrom: "private.row-link", target: "private.stages", title: "Stages", body: "Inquiry → Quoted → Deposit paid → Confirmed → Done. Moving forward checks it has what it needs.", helpId: "events.private.stages", ifMissing: "skip" },
+      { target: "private.quote", title: "Build the quote", body: "Add a package or menu items, then the bar, room fee, service charge and deposit.", helpId: "events.private.quote", ifMissing: "skip" },
+      { target: "private.totals", title: "Totals and margin", body: "What the client pays, and — just for you — food cost and margin from your recipes.", helpId: "events.private.totals", ifMissing: "skip" },
+      { target: "private.share", title: "Send it", body: "Copy the link to text it, or email it. The client can open, print and accept it.", helpId: "events.private.share", ifMissing: "skip" },
+      { target: "private.payments", title: "Record the deposit", body: "Once it's in, the booking moves to Deposit paid. Confirm it and it goes on the calendar and the forecast.", helpId: "events.private.payments", ifMissing: "skip" },
+      { route: "/events/private/setup", target: "private.packages", title: "Packages & defaults", body: "Per-guest packages with their recipes, your spaces, and the tax, service charge and deposit new quotes start with.", helpId: "events.private.setup" },
+    ],
+  },
 ];
 
 const BY_ID = new Map(TOURS.map((t) => [t.id, t]));
@@ -223,6 +283,7 @@ export const toursFor = (role: "MANAGER" | "STAFF") => TOURS.filter((t) => role 
 export function tourForPath(pathname: string): Tour | undefined {
   const map: [RegExp, string][] = [
     [/^\/$/, "overview"],
+    [/^\/events\/private/, "private-events"],
     [/^\/team\/training/, "training"],
     [/^\/menu/, "menu"],
     [/^\/prices/, "prices"],
@@ -231,6 +292,9 @@ export function tourForPath(pathname: string): Tour | undefined {
     [/^\/ingredients/, "ingredients"],
     [/^\/insights/, "insights"],
     [/^\/kegs/, "kegs"],
+    [/^\/prep/, "prep"],
+    [/^\/brief/, "brief"],
+    [/^\/notes/, "notes"],
   ];
   const hit = map.find(([re]) => re.test(pathname));
   return hit ? getTour(hit[1]) : undefined;

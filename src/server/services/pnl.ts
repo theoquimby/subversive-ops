@@ -19,6 +19,7 @@ import { getAdjustments } from "./planning";
 import { businessToday, dailyNetSalesExcludingIgnored, lastSquareSync } from "./sales";
 import { loadEmployees, loadPositions, rateFor } from "./scheduling";
 import { lastCountPeriod, varianceReport } from "./variance";
+import { moneyForRange, moneyTotals, RangeMoney } from "./square-money";
 
 const tz = () => env.BUSINESS_TIMEZONE;
 const dateWhere = (from: ISODate, toExclusive: ISODate) => ({ gte: parseISODate(from), lt: parseISODate(toExclusive) });
@@ -76,6 +77,10 @@ export interface PnlDay extends ReturnType<typeof summarize> {
   split: GroupSplit;
   /** Sales with no linked recipe (their cost isn't in cogs). */
   unlinkedSales: number;
+  /** Net card fees (Square); null until the payments sync has covered the day. */
+  fees: number | null;
+  /** Comps & discounts (already out of net sales); null until synced. */
+  discounts: number | null;
 }
 
 /**
@@ -87,13 +92,17 @@ export interface PnlDay extends ReturnType<typeof summarize> {
 export async function pnlReport(from: ISODate, toExclusive: ISODate, now = new Date(), opts: { includeToday?: boolean } = {}) {
   const today = businessToday();
   const includeToday = opts.includeToday ?? false;
-  const [daily, budgets, history, forecast, scheduled, targets] = await Promise.all([
+  const [daily, budgets, history, forecast, scheduled, targets, money] = await Promise.all([
     dailyKpis(from, toExclusive, { now }),
     db.budget.findMany({ where: { weekStart: dateWhere(mondayOf(from), toExclusive) } }),
     dailyNetSalesExcludingIgnored(addDays(today, -56), today),
     forecastByDay(from, toExclusive),
     laborByDay(from, toExclusive, "shifts"),
     costTargets(),
+    moneyForRange(from, toExclusive).catch((e) => {
+      console.error("pnl: fees and discounts failed", e);
+      return null;
+    }),
   ]);
   const kpis = periodFrom(daily, from, toExclusive, includeToday);
 
@@ -106,6 +115,8 @@ export async function pnlReport(from: ISODate, toExclusive: ISODate, now = new D
     scheduledLabor: scheduled.get(d.date)?.cost ?? null,
     split: d.group,
     unlinkedSales: unlinkedSales(d.split, d.sales),
+    fees: money?.byDay.get(d.date)?.fees ?? null,
+    discounts: money?.byDay.get(d.date)?.discounts ?? null,
     ...d.summary,
   }));
   const counted = new Set(kpis.counted);
@@ -157,15 +168,32 @@ export async function pnlReport(from: ISODate, toExclusive: ISODate, now = new D
     missingRates: kpis.missingRates,
     openCards: kpis.openCards,
     hasHourly: days.some((d) => d.orders != null),
+    /** Card fees and comps & discounts over the counted days (Square), with the discount breakdown. */
+    money: moneySide(money, kpis),
   };
+}
+
+/** Fees and discounts over a period's counted days, and the breakdown for those days only. */
+function moneySide(m: RangeMoney | null, k: PeriodKpis) {
+  if (!m) return null;
+  // Days with sales but nothing synced are what's missing; a closed day with no row isn't.
+  const withSales = k.days.filter((d) => k.counted.includes(d.date) && d.sales > 0).map((d) => d.date);
+  const t = moneyTotals(m, withSales);
+  return { ...t, ofDays: withSales.length, summary: m.summary, mapping: m.mapping };
 }
 
 export type PnlReport = Awaited<ReturnType<typeof pnlReport>>;
 
 /** Figures for notes and comparisons from a period's KPIs (finished days only, unless today was included). */
-function figuresOf(k: PeriodKpis): PeriodFigures {
+function figuresOf(k: PeriodKpis, money: ReturnType<typeof moneySide> = null): PeriodFigures {
   const counted = new Set(k.counted);
+  // A side's fees or discounts only count when every day with sales has them, so a half-synced period never compares.
+  const complete = (missing: number) => money != null && money.ofDays > 0 && missing === 0;
+  const top = money?.summary.byReason[0];
   return {
+    fees: money && complete(money.feesMissing) ? money.fees : null,
+    discounts: money && complete(money.discountsMissing) ? money.discounts : null,
+    topDiscount: top ? { name: top.label, amount: top.amount } : null,
     sales: k.total.sales,
     cogs: k.total.cogs,
     labor: k.total.labor,
@@ -192,27 +220,36 @@ export async function pnlStory(report: PnlReport, period: PeriodKind) {
   const last = k.counted.at(-1) ?? addDays(today, -1);
   const trendTo = addDays(last < today ? last : addDays(today, -1), 1);
   const trendFrom = addDays(mondayOf(addDays(trendTo, -1)), -7 * (TREND_WEEKS - 1));
-  const [fixedCosts, prevK, yearK, trendK] = await Promise.all([
+  const safeMoney = (from: ISODate, toExclusive: ISODate) => moneyForRange(from, toExclusive).catch(() => null);
+  const [fixedCosts, prevK, yearK, trendK, prevM, yearM, trendM] = await Promise.all([
     getFixedCosts().catch(() => null),
     prev ? periodKpis(prev.from, prev.toExclusive) : null,
     year ? periodKpis(year.from, year.toExclusive) : null,
     dailyKpis(trendFrom, trendTo),
+    prev ? safeMoney(prev.from, prev.toExclusive) : null,
+    year ? safeMoney(year.from, year.toExclusive) : null,
+    safeMoney(trendFrom, trendTo),
   ]);
   const fixedMonthly = fixedTotal(fixedCosts);
   const fixedFor = (days: number) => (fixedMonthly > 0 ? fixedForDays(fixedMonthly, days) : null);
 
-  const cur = figuresOf(k);
-  const curBridge = bridge(cur, fixedFor(k.counted.length));
-  const side = (kk: PeriodKpis | null, r: typeof prev) => {
+  const cur = figuresOf(k, report.money);
+  // The bridge always takes off what fees are known (a caveat says when some days are missing).
+  const curBridge = bridge({ ...cur, fees: report.money?.fees ?? null, discounts: report.money?.discounts ?? null }, fixedFor(k.counted.length));
+  const side = (kk: PeriodKpis | null, r: typeof prev, m: RangeMoney | null) => {
     if (!kk || !r || kk.total.sales <= 0) return null;
-    const f = figuresOf(kk);
-    return { ...r, figures: f, bridge: bridge(f, fixedFor(kk.counted.length)), laborHours: kk.total.laborHours };
+    const f = figuresOf(kk, moneySide(m, kk));
+    // Fees not synced for that side yet: take them off at this period's fee rate, so profit compares like for like.
+    const feesEstimated = f.fees == null && curBridge.feePct != null;
+    const fees = f.fees ?? (feesEstimated ? curBridge.feePct! * f.sales : null);
+    return { ...r, figures: f, bridge: bridge({ ...f, fees }, fixedFor(kk.counted.length)), laborHours: kk.total.laborHours, feesEstimated };
   };
-  const prevSide = side(prevK, prev);
-  const yearSide = side(yearK, year);
+  // Profit is compared like for like: fees come off the other side only when both sides have them.
+  const prevSide = side(prevK, prev, prevM);
+  const yearSide = side(yearK, year, yearM);
 
   const counted = new Set(k.counted);
-  const days = report.days.filter((d) => counted.has(d.date)).map((d) => ({ date: d.date, sales: d.sales, cogs: d.cogs, labor: d.labor, unlinkedSales: d.unlinkedSales }));
+  const days = report.days.filter((d) => counted.has(d.date)).map((d) => ({ date: d.date, sales: d.sales, cogs: d.cogs, labor: d.labor, unlinkedSales: d.unlinkedSales, fees: d.fees }));
   const notes = storyNotes({
     cur,
     prev: prevSide ? { ...prevSide.figures, label: prevSide.label } : null,
@@ -221,7 +258,7 @@ export async function pnlStory(report: PnlReport, period: PeriodKind) {
     forecast: period !== "today" && report.forecastToDate != null ? { actual: report.salesToDate, forecast: report.forecastToDate } : null,
   });
 
-  const trend = weeklyTrend(trendK.days.filter((d) => d.state === "done").map((d) => ({ date: d.date, sales: d.sales, cogs: d.cogs, labor: d.labor, unlinkedSales: unlinkedSales(d.split, d.sales) })));
+  const trend = weeklyTrend(trendK.days.filter((d) => d.state === "done").map((d) => ({ date: d.date, sales: d.sales, cogs: d.cogs, labor: d.labor, unlinkedSales: unlinkedSales(d.split, d.sales), fees: trendM?.byDay.get(d.date)?.fees ?? null })));
   return { bridge: curBridge, figures: cur, prev: prevSide, year: yearSide, notes, trend, fixedMonthly: fixedMonthly > 0 ? fixedMonthly : null, counted: k.counted };
 }
 

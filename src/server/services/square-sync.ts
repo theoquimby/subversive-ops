@@ -8,7 +8,7 @@ import { friendlySquareError } from "../integrations/square-http";
 import { fetchMerchant } from "../integrations/square-auth";
 import { syncSquareTeam, syncSquareTimecards } from "./labor";
 import { businessToday, syncCatalog, syncSales } from "./sales";
-import { syncCardTipsQuietly } from "./tips";
+import { syncPaymentsQuietly } from "./square-money";
 import { isSquareConnected, logSquareError, readSettingJSON, recordSquareSync, requireSquareClient, squareStreams, SquareStream, withSquareLock, writeSettingJSON } from "./square";
 
 /**
@@ -33,8 +33,9 @@ export async function dailySync() {
   const today = businessToday();
   const catalog = await logged("catalog", syncCatalog);
   const sales = await logged("sales", () => syncSales(addDays(today, -3), addDays(today, 1)));
-  // Card tips by person over the same days (tips added to a tab after close land here too).
-  await syncCardTipsQuietly(addDays(today, -3), addDays(today, 1));
+  // Card tips by person and card fees over the same days (tips added to a tab after close, and
+  // fees Square reports a little after the payment, land here too).
+  await syncPaymentsQuietly(addDays(today, -3), addDays(today, 1));
   const labor = await logged("labor", () => syncSquareTimecards(addDays(today, -1), addDays(today, 1)));
   await processPending().catch(() => undefined);
   // Carry on a first import nobody finished (it normally runs from the Square page).
@@ -59,7 +60,7 @@ export async function refreshToday(force = false, maxAgeMinutes = 15) {
     try {
       sales = await logged("sales", () => syncSales(addDays(today, -1), addDays(today, 1)));
       labor = await logged("labor", () => syncSquareTimecards(addDays(today, -1), addDays(today, 1)));
-      await syncCardTipsQuietly(addDays(today, -1), addDays(today, 1));
+      await syncPaymentsQuietly(addDays(today, -1), addDays(today, 1));
     } catch (e) {
       await recordSquareSync("live", 0, "failed — see Recent problems");
       throw e;
@@ -107,7 +108,7 @@ async function drainPending(budgetMs = 40_000) {
       if (p.catalog) await logged("catalog", syncCatalog);
       for (const r of dateRuns(p.sales)) {
         await logged("sales", () => syncSales(r.from, r.toExclusive));
-        await syncCardTipsQuietly(r.from, r.toExclusive);
+        await syncPaymentsQuietly(r.from, r.toExclusive);
       }
       for (const r of dateRuns(p.labor)) await logged("labor", () => syncSquareTimecards(r.from, r.toExclusive));
     } catch (e) {
@@ -217,7 +218,8 @@ export async function backfillStep(budgetMs = 25_000): Promise<{ state: Backfill
         const chunk = chunks[state.nextIndex];
         await save({ current: chunk });
         const sales = await logged("sales", () => syncSales(chunk.from, chunk.toExclusive));
-        await syncCardTipsQuietly(chunk.from, chunk.toExclusive, client);
+        // Card tips, card fees and fee refunds for the same week (fills history on "Import again").
+        await syncPaymentsQuietly(chunk.from, chunk.toExclusive, client);
         const labor = await logged("labor", () => syncSquareTimecards(chunk.from, chunk.toExclusive, client));
         await save({
           nextIndex: state.nextIndex + 1,

@@ -8,12 +8,16 @@ import { beerMatchers, kegAreas, kegConfig } from "@/server/services/kegs";
 import { businessToday } from "@/server/services/sales";
 import { matchBeer } from "@/domain/kegPours";
 import { AccountsTable, BeersTable, PoursEditor, SpotsEditor, TapsConfig } from "./setup-client";
+import { publicOrigin } from "@/server/services/public-url";
+import { boardConfig, displayToken } from "@/server/services/taps";
+import { BoardLink } from "../taps/board-link";
 
 export const metadata = { title: "Keg setup" };
 
 export default async function KegSetupPage() {
   await requireUser("MANAGER");
   const since = addDays(businessToday(), -90);
+  const [token, origin, board] = await Promise.all([displayToken(), publicOrigin(), boardConfig()]);
   const [beers, kegCounts, recipes, spots, spotCounts, areas, config, accounts, outCounts, matchers, sales] = await Promise.all([
     db.beer.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }),
     db.keg.groupBy({ by: ["beerId"], _count: { _all: true } }),
@@ -56,6 +60,11 @@ export default async function KegSetupPage() {
 
       <Section title="Taps and storage">
         <TapsConfig config={config} areas={areas} />
+      </Section>
+
+      <div id="tv" className="scroll-mt-20" />
+      <Section help="taps.tv" title={<span className="inline-flex items-center gap-1">Tap list on a TV <HelpTip id="taps.tv" /></span>} description="A full-screen board of what's pouring, prices and what's coming. It updates itself every minute.">
+        <BoardLink url={`${origin}/display/taps/${token}`} title={board.title} embedUrl={`${origin}/api/public/taps/embed`} />
       </Section>
 
       <Section help="kegs.setup.pours" title={<span className="inline-flex items-center gap-1">Pour sizes <HelpTip id="kegs.setup.pours" /></span>} description="Ounces in each pour, used to work out what's left in a keg. Guessed from the name (Full Pour 16, Half Pour 8, Taster 4); a linked pour recipe wins. 0 means it isn't poured from a keg.">

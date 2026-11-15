@@ -7,6 +7,7 @@ import { purchaseOrderEmail } from "./purchase-order";
 import { schedulePublishedEmail } from "./schedule-published";
 import { shiftUpdateEmail } from "./shift-update";
 import { weeklyBriefEmail } from "./weekly-brief";
+import { MORNING_SAMPLE, morningBriefEmail } from "./morning-brief";
 
 export { badReviewEmail, certReminderEmail, creditRequestEmail, invoiceIssueEmail, priceSpikesEmail, staffRequestEmail, purchaseOrderEmail, schedulePublishedEmail, shiftUpdateEmail, weeklyBriefEmail };
 export type { CertReminderEmail, CertReminderItem } from "./certificates";
@@ -17,6 +18,8 @@ export type { PurchaseOrderEmail } from "./purchase-order";
 export type { ScheduleShift, SchedulePublishedEmail } from "./schedule-published";
 export type { ShiftUpdate, ShiftUpdateEmail } from "./shift-update";
 export type { BriefDigest, BriefDigestItem, WeeklyBriefEmail } from "./weekly-brief";
+export { morningBriefEmail } from "./morning-brief";
+export type { MorningBriefEmail, MorningDigest } from "./morning-brief";
 
 const BASE = "https://ops.example.com";
 
@@ -76,6 +79,10 @@ export const SAMPLES = {
     label: "Time off decided",
     render: () =>
       shiftUpdateEmail({ name: "Jamie Rivera", baseUrl: BASE, update: { kind: "timeOff", approved: true, startDate: "2026-11-26", endDate: "2026-11-28", note: "Thanksgiving" } }),
+  },
+  "morning-brief": {
+    label: "Morning brief",
+    render: () => morningBriefEmail({ name: "Max", baseUrl: BASE, digest: MORNING_SAMPLE }),
   },
   "weekly-brief": {
     label: "Weekly brief",

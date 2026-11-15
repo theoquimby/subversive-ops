@@ -179,3 +179,61 @@ describe("pointsChange", () => {
     expect(pointsChange(null, 0.3)).toBeNull();
   });
 });
+
+describe("card fees and comps & discounts", () => {
+  it("takes card fees off profit and shows discounts above net sales without taking them off again", () => {
+    const base = { sales: 10_000, cogs: 2_000, labor: 3_000, unlinkedSales: 0 };
+    const b = bridge({ ...base, fees: 250, discounts: 500 });
+    expect(b.grossSales).toBe(10_500);
+    expect(b.discounts).toBe(500);
+    expect(b.fees).toBe(250);
+    expect(b.feePct).toBeCloseTo(0.025);
+    expect(b.profit).toBe(10_000 - 2_000 - 3_000 - 250);
+    expect(b.grossSales - b.discounts - b.cogs - b.cogsEstimate - b.labor - b.fees).toBe(b.profit);
+    // Prime cost stays food + labor.
+    expect(b.primePct).toBeCloseTo(0.5);
+  });
+
+  it("leaves profit as before when fees aren't given (Overview, older callers)", () => {
+    const b = bridge({ sales: 1_000, cogs: 300, labor: 200, unlinkedSales: 0 });
+    expect(b).toMatchObject({ fees: 0, feePct: null, discounts: 0, grossSales: 1_000, profit: 500 });
+    expect(bridge({ sales: 1_000, cogs: 300, labor: 200, unlinkedSales: 0, fees: null, discounts: null }).profit).toBe(500);
+  });
+
+  it("counts fees in the weekly trend", () => {
+    const [w] = weeklyTrend([
+      { date: "2026-11-02", sales: 1000, cogs: 300, labor: 300, unlinkedSales: 0, fees: 25 },
+      { date: "2026-11-03", sales: 500, cogs: 150, labor: 200, unlinkedSales: 0 },
+    ]);
+    expect(w).toMatchObject({ fees: 25, profit: 1500 - 450 - 500 - 25 });
+  });
+
+  const fig = (o: Partial<Parameters<typeof storyNotes>[0]["cur"]> = {}) => ({ sales: 10_000, cogs: 2_000, labor: 3_000, laborHours: 150, unlinkedSales: 0, foodSales: 6_000, foodCogs: 1_800, ...o });
+  it("notes a fee rate move of a quarter point or more, never one side missing", () => {
+    const up = storyNotes({ cur: fig({ fees: 300 }), prev: { ...fig({ fees: 250 }), label: "last week" }, year: null, days: [], forecast: null });
+    expect(up.find((n) => n.kind === "fees")).toMatchObject({ tone: "warn", pct: 0.03, prevPct: 0.025, fees: 300 });
+    expect(storyNotes({ cur: fig({ fees: 260 }), prev: { ...fig({ fees: 250 }), label: "last week" }, year: null, days: [], forecast: null }).some((n) => n.kind === "fees")).toBe(false);
+    expect(storyNotes({ cur: fig({ fees: 400 }), prev: { ...fig({ fees: null }), label: "last week" }, year: null, days: [], forecast: null }).some((n) => n.kind === "fees")).toBe(false);
+  });
+
+  it("notes comps & discounts moving a point of gross and $50 or more, with the biggest reason", () => {
+    const notes = storyNotes({ cur: fig({ discounts: 600, topDiscount: { name: "Comp", amount: 400 } }), prev: { ...fig({ discounts: 300 }), label: "last week" }, year: null, days: [], forecast: null });
+    const n = notes.find((x) => x.kind === "discounts");
+    expect(n).toMatchObject({ tone: "warn", amount: 600, prevAmount: 300, top: { name: "Comp", amount: 400 } });
+    if (n?.kind === "discounts") expect(n.pct).toBeCloseTo(600 / 10_600);
+    // Under a point: quiet.
+    expect(storyNotes({ cur: fig({ discounts: 350 }), prev: { ...fig({ discounts: 300 }), label: "last week" }, year: null, days: [], forecast: null }).some((x) => x.kind === "discounts")).toBe(false);
+    // Down is good.
+    expect(storyNotes({ cur: fig({ discounts: 100 }), prev: { ...fig({ discounts: 400 }), label: "last week" }, year: null, days: [], forecast: null }).find((x) => x.kind === "discounts")?.tone).toBe("good");
+  });
+
+  it("counts fees in days that lost money", () => {
+    const days = [
+      { date: "2026-11-02", sales: 1000, cogs: 300, labor: 690, unlinkedSales: 0, fees: 30 },
+      { date: "2026-11-03", sales: 1000, cogs: 300, labor: 300, unlinkedSales: 0 },
+      { date: "2026-11-04", sales: 1000, cogs: 300, labor: 300, unlinkedSales: 0 },
+    ];
+    const loss = storyNotes({ cur: fig({ sales: 3000 }), prev: null, year: null, days, forecast: null }).find((n) => n.kind === "lossDays");
+    expect(loss?.kind === "lossDays" && loss.days.map((d) => [d.date, d.loss])).toEqual([["2026-11-02", 20]]);
+  });
+});

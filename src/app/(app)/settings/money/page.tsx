@@ -9,6 +9,11 @@ import { getFixedCosts } from "@/server/services/analytics";
 import { autoApproveEnabled, loadTolerance, pricesOnApproveEnabled } from "@/server/services/invoices";
 import { quickbooksStatus } from "@/server/services/quickbooks";
 import { LinkRow, SettingGroup, SettingRow } from "../controls";
+import { DiscountClassRows } from "@/app/(app)/pnl/discount-classes";
+import { addDays } from "@/domain/dates";
+import { defaultDiscountClass, discountKey } from "@/domain/squareMoney";
+import { businessToday } from "@/server/services/sales";
+import { discountNames, getDiscountMapping } from "@/server/services/square-money";
 import { AutoApproveSwitch, PricesOnApproveSwitch, FixedInput, PriceTolInput, QtyTolInput, TaxInput, TermsInput } from "./money-client";
 
 export const metadata = { title: "Money & accounting" };
@@ -24,6 +29,9 @@ export default async function MoneySettingsPage() {
   await requireUser("MANAGER");
   const [tax, tol, auto, accounts, fixed, qbo, pricesOnApprove] = await Promise.all([loadTaxRate(), loadTolerance(), autoApproveEnabled(), loadAccounts(), getFixedCosts(), quickbooksStatus(), pricesOnApproveEnabled()]);
   const total = fixedTotal(fixed);
+  const today = businessToday();
+  const [names, mapping] = await Promise.all([discountNames(addDays(today, -365), addDays(today, 1)).catch(() => []), getDiscountMapping()]);
+  const discountRows = names.map((n) => ({ ...n, set: mapping[discountKey(n.name)] ?? null, fallback: defaultDiscountClass(n.name, { full: n.full * 2 > n.lines }) }));
 
   return (
     <div className="max-w-3xl">
@@ -60,6 +68,12 @@ export default async function MoneySettingsPage() {
               <FixedInput field={f.field} value={fixed?.[f.field] ?? null} label={f.label} />
             </SettingRow>
           ))}
+        </SettingGroup>
+      </HelpZone>
+
+      <HelpZone id="settings.money.discounts">
+        <SettingGroup id="discounts" title="Comps & discounts" description={discountRows.length ? "What each discount rung in Square counts as on the P&L. The last 12 months, biggest first." : "Discount names appear here once Square sales sync. Comps, spills and staff meals are read from the discount's name."}>
+          {discountRows.length > 0 ? <DiscountClassRows rows={discountRows} /> : <p className="px-4 py-4 text-sm text-muted sm:px-5">None yet. Run the Square sync, or Settings → Square → Import again for past months.</p>}
         </SettingGroup>
       </HelpZone>
 

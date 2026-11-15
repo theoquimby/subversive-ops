@@ -1,26 +1,53 @@
 import "server-only";
+import type { FeePayment, FeeRefund, SquareProcessingFee } from "@/domain/squareMoney";
 import type { PaymentTip } from "@/domain/tipSources";
 import { squareCall, SquareClient } from "./square-http";
 
 /**
- * Card tips per payment, for tip pooling: GET /v2/payments (scope
- * PAYMENTS_READ). `tip_money` is "the amount designated as a tip for the
- * seller's staff"; `team_member_id` is "the TeamMember associated with taking
- * the payment" (older payments may only carry the deprecated `employee_id`).
+ * Payments and refunds (scope PAYMENTS_READ for both: "Permissions:
+ * PAYMENTS_READ" on GET /v2/payments and GET /v2/refunds).
+ *
+ * - Card tips per payment, for tip pooling: `tip_money` is "the amount
+ *   designated as a tip for the seller's staff"; `team_member_id` is "the
+ *   TeamMember associated with taking the payment" (older payments may only
+ *   carry the deprecated `employee_id`).
+ * - Card fees: `processing_fee` is "the processing fees and fee adjustments
+ *   assessed by Square for this payment" (ProcessingFee: effective_at, type
+ *   INITIAL | ADJUSTMENT, amount_money). Square says it may not be there right
+ *   after the payment, so the nightly re-sync of the last 3 days fills it in.
+ * - Refunds: PaymentRefund.processing_fee holds "processing fees and fee
+ *   adjustments assessed by Square for this refund" (negative = returned).
  */
+
+type Money = { amount?: number | null };
 
 interface RawPayment {
   id: string;
   created_at: string;
   status?: string;
-  tip_money?: { amount?: number | null };
+  source_type?: string;
+  total_money?: Money;
+  tip_money?: Money;
   team_member_id?: string;
   employee_id?: string;
+  order_id?: string;
+  processing_fee?: SquareProcessingFee[];
+}
+
+interface RawRefund {
+  id: string;
+  created_at: string;
+  status?: string;
+  processing_fee?: SquareProcessingFee[];
+}
+
+export interface SquarePayment extends PaymentTip, FeePayment {
+  orderId: string | null;
 }
 
 /** Payments created in [startISO, endISO) at our locations (the API takes one location per call, 100 per page). */
-export async function listPaymentTips(client: SquareClient, startISO: string, endISO: string): Promise<PaymentTip[]> {
-  const out: PaymentTip[] = [];
+export async function listPayments(client: SquareClient, startISO: string, endISO: string): Promise<SquarePayment[]> {
+  const out: SquarePayment[] = [];
   for (const locationId of client.locationIds) {
     let cursor: string | undefined;
     do {
@@ -29,8 +56,37 @@ export async function listPaymentTips(client: SquareClient, startISO: string, en
       const page = await squareCall<{ payments?: RawPayment[]; cursor?: string }>(client, `/payments?${q}`);
       for (const p of page.payments ?? []) {
         // A payment right on end_time belongs to the next day; the caller drops days outside its window.
-        out.push({ id: p.id, createdAt: p.created_at, status: p.status ?? "", tipCents: p.tip_money?.amount ?? 0, teamMemberId: p.team_member_id ?? p.employee_id ?? null });
+        out.push({
+          id: p.id,
+          createdAt: p.created_at,
+          status: p.status ?? "",
+          tipCents: p.tip_money?.amount ?? 0,
+          teamMemberId: p.team_member_id ?? p.employee_id ?? null,
+          sourceType: p.source_type ?? null,
+          totalCents: p.total_money?.amount ?? 0,
+          fees: p.processing_fee ?? [],
+          orderId: p.order_id ?? null,
+        });
       }
+      cursor = page.cursor;
+    } while (cursor);
+  }
+  return out;
+}
+
+/** Card tips only (kept for callers that need nothing else). */
+export const listPaymentTips = (client: SquareClient, startISO: string, endISO: string): Promise<PaymentTip[]> => listPayments(client, startISO, endISO);
+
+/** Refunds created in [startISO, endISO) at our locations (GET /v2/refunds, 100 per page). */
+export async function listRefunds(client: SquareClient, startISO: string, endISO: string): Promise<FeeRefund[]> {
+  const out: FeeRefund[] = [];
+  for (const locationId of client.locationIds) {
+    let cursor: string | undefined;
+    do {
+      const q = new URLSearchParams({ begin_time: startISO, end_time: endISO, location_id: locationId, sort_order: "ASC", limit: "100" });
+      if (cursor) q.set("cursor", cursor);
+      const page = await squareCall<{ refunds?: RawRefund[]; cursor?: string }>(client, `/refunds?${q}`);
+      for (const r of page.refunds ?? []) out.push({ id: r.id, createdAt: r.created_at, status: r.status ?? "", fees: r.processing_fee ?? [] });
       cursor = page.cursor;
     } while (cursor);
   }

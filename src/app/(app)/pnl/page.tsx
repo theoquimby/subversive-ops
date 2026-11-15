@@ -15,6 +15,8 @@ import { HourlyChart } from "./hourly-chart";
 import { PeriodSwitch } from "./period-switch";
 import { bridgeSteps, chipLabel, Delta, fmt, StoryNotes } from "./story";
 import { BridgeChart, MixBar, TrendChart } from "./story-charts";
+import { CompsTable, type CompsRow } from "./comps-table";
+import { DISCOUNT_CLASSES, givenAway } from "@/domain/squareMoney";
 
 export const metadata = { title: "P&L" };
 
@@ -72,6 +74,20 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
   if (report.uncosted.length > 0) caveats.push({ tone: "warn", text: <>Food & drink cost is a floor: {report.uncosted.slice(0, 4).join(", ")}{report.uncosted.length > 4 ? ` and ${report.uncosted.length - 4} more` : ""} {report.uncosted.length === 1 ? "is" : "are"} missing prices.</> });
   if (report.missingRates > 0) caveats.push({ tone: "warn", text: <>{report.missingRates} timecard{report.missingRates === 1 ? " has" : "s have"} no pay rate, so labor is understated. <Link href="/team" className="underline underline-offset-2">Set rates</Link></> });
   if (!budget) caveats.push({ text: <>No budget for {multiDay ? "these weeks" : "this week"}, so there are no targets yet. <Link href="/budgets" className="underline underline-offset-2 hover:text-ink">Budgets</Link></> });
+  // Card fees and comps & discounts: what's in, and what isn't yet.
+  const m = report.money;
+  if (m && m.ofDays > 0) {
+    if (m.fees != null) caveats.push({ text: <>Card fees ({whole(m.fees)}) are Square&apos;s processing fees on payments taken these days{m.feeVolume > 0 ? `, ${pct(m.cardFees / m.feeVolume, 2)} of ${whole(m.feeVolume)} in card payments` : ""}{m.feesReturned > 0 ? `, less ${whole(m.feesReturned)} Square gave back on refunds` : ""}.</> });
+    if (m.feesMissing > 0) caveats.push({ tone: m.fees == null ? undefined : "warn", text: <>{m.feesMissing === m.ofDays ? "Card fees aren't in yet for these days" : `Card fees are missing for ${m.feesMissing} of ${m.ofDays} days`}, so profit is a little high. They come with the Square sync; for older days run <Link href="/settings/square#import" className="underline underline-offset-2 hover:text-ink">Settings → Square → Import again</Link>.</> });
+    if (m.feePending > 0) caveats.push({ text: <>{m.feePending} card payment{m.feePending === 1 ? " doesn't" : "s don't"} have a fee from Square yet. Square adds it shortly after the payment; the nightly sync picks it up.</> });
+    if (m.discounts != null && m.discounts > 0) caveats.push({ text: <>Comps &amp; discounts ({whole(m.discounts)}) are already out of net sales; they&apos;re shown so you can see what was given away. Comped food is in food cost because it was made, so it isn&apos;t logged as waste again. Voided items never reach Square&apos;s completed orders and aren&apos;t included.</> });
+    if (m.discountsMissing > 0 && m.discountsMissing === m.ofDays) caveats.push({ text: <>Comps &amp; discounts aren&apos;t in yet for these days. They come with the Square sync; for older days run <Link href="/settings/square#import" className="underline underline-offset-2 hover:text-ink">Import again</Link>.</> });
+  }
+  const compsRows: CompsRow[] = m && m.summary.total > 0 ? [
+    ...m.summary.byReason.map((g) => ({ id: `reason:${g.key}`, view: "reason" as const, label: g.label, cls: g.cls, amount: g.amount, qty: g.qty, lines: g.lines, share: g.amount / m.summary.total })),
+    ...m.summary.byItem.map((g) => ({ id: `item:${g.key}`, view: "item" as const, label: g.label, cls: null, amount: g.amount, qty: g.qty, lines: g.lines, share: g.amount / m.summary.total })),
+    ...m.summary.byStaff.map((g) => ({ id: `staff:${g.key}`, view: "staff" as const, label: g.label, cls: null, amount: g.amount, qty: g.qty, lines: g.lines, share: g.amount / m.summary.total })),
+  ] : [];
   if (!story.fixedMonthly) caveats.push({ text: <>Add rent and other fixed costs in <Link href="/settings/money#fixed" className="underline underline-offset-2 hover:text-ink">Settings → Money</Link> to see profit after them.</> });
 
   return (
@@ -118,7 +134,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
               </div>
               <div className="p-5 sm:p-6">
                 <div className="mb-4 text-[0.8rem] font-medium text-muted">From sales to profit · {countedLabel}</div>
-                <BridgeChart steps={bridgeSteps(b, { hours: t.laborHours })} sales={b.sales} />
+                <BridgeChart steps={bridgeSteps(b, { hours: t.laborHours, feeNote: m && m.feeVolume > 0 ? `${pct(m.cardFees / m.feeVolume, 2)} of card payments${m.feesMissing > 0 ? ` · ${m.feesMissing} day${m.feesMissing === 1 ? "" : "s"} not in yet` : ""}` : undefined })} sales={b.sales} />
               </div>
             </div>
           ) : (
@@ -251,6 +267,32 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
         </HelpZone>
       )}
 
+      {/* ---- Comps & discounts ---- */}
+      {showStory && m && m.summary.total > 0 && (
+        <HelpZone id="pnl.comps">
+          <Section
+            title="Comps & discounts"
+            description={`What was taken off at the register, ${countedLabel}, from the discount names rung in Square. Already out of net sales.`}
+            actions={<LinkButton href="/settings/money#discounts" variant="ghost" size="sm">What counts as what →</LinkButton>}
+          >
+            <Card className="p-4 sm:p-5">
+              <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {DISCOUNT_CLASSES.map((c) => (
+                  <div key={c.value} className="rounded-lg border border-border px-3 py-2.5">
+                    <div className="text-xs text-muted">{c.value === "staff" ? "Staff meals" : c.value === "waste" ? "Waste" : `${c.label}s`}</div>
+                    <div className="num mt-0.5 text-base font-semibold text-ink">{whole(m.summary.byClass[c.value])}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="mb-4 text-sm text-ink-2">
+                {whole(givenAway(m.summary.byClass))} given away (comps, waste and staff meals) and {whole(m.summary.byClass.promo)} in promos{b.grossSales > 0 ? `: ${pct(m.summary.total / b.grossSales, 1)} of what items rang up at` : ""}.
+              </p>
+              <CompsTable rows={compsRows} />
+            </Card>
+          </Section>
+        </HelpZone>
+      )}
+
       {/* ---- About these numbers ---- */}
       {caveats.length > 0 && (
         <HelpZone id="pnl.caveats" className="mb-10">
@@ -301,6 +343,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
                   <Th align="right" className="hidden xl:table-cell">Scheduled</Th>
                   <Th align="right">Labor %</Th>
                   <Th align="right" className="hidden lg:table-cell">Prime %</Th>
+                  <Th align="right" className="hidden xl:table-cell">Card fees</Th>
                   <Th align="right" className="hidden sm:table-cell">Profit</Th>
                   <Th align="right" className="hidden 2xl:table-cell">SPLH</Th>
                   <Th align="right" className="hidden 2xl:table-cell">Orders/LH</Th>
@@ -326,7 +369,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
                         <>
                           <Td align="right" className="text-muted">{d.future ? "" : "Closed"}</Td>
                           <Td align="right" className="hidden text-muted sm:table-cell">{d.forecast != null && d.forecast >= 1 ? whole(d.forecast) : ""}</Td>
-                          <Td colSpan={10} />
+                          <Td colSpan={11} />
                         </>
                       ) : (
                         <>
@@ -345,6 +388,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
                           <Td align="right" className={cx("hidden xl:table-cell", d.scheduledLabor != null && d.labor > d.scheduledLabor * 1.1 ? "text-warn" : "text-muted")}>{d.scheduledLabor != null ? whole(d.scheduledLabor) : "—"}</Td>
                           <Td align="right" className={budget?.laborPct != null ? tt(costTone(d.laborPct, budget.laborPct)) : ""}>{pending ? "—" : pct(d.laborPct)}</Td>
                           <Td align="right" className="hidden lg:table-cell">{pending ? "—" : pct(db.primePct)}</Td>
+                          <Td align="right" className="hidden text-ink-2 xl:table-cell">{d.fees == null ? "—" : whole(d.fees)}</Td>
                           <Td align="right" className={cx("hidden sm:table-cell", !live && db.profit < 0 && "text-bad", live && "text-muted")}>{pending ? "—" : signedWhole(db.profit)}</Td>
                           <Td align="right" className="hidden 2xl:table-cell">{pending ? "—" : money(d.salesPerLaborHour, { whole: true })}</Td>
                           <Td align="right" className="hidden 2xl:table-cell">{d.ordersPerLaborHour == null ? "—" : qty(d.ordersPerLaborHour, 1)}</Td>

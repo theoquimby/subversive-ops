@@ -1,5 +1,6 @@
 import "server-only";
 import { lineNetCents, lineUnits, type SquareLine, type SquareMoney } from "@/domain/squareOrders";
+import { orderDiscountLines, type DiscountLine, type DiscountLineInput, type SquareDiscountDef } from "@/domain/squareMoney";
 import { squareCall, SquareClient } from "./square-http";
 
 /**
@@ -110,8 +111,10 @@ interface Order {
   total_service_charge_money?: Money;
   /** After returns; preferred when present. */
   net_amounts?: { total_money?: Money; tax_money?: Money; tip_money?: Money; service_charge_money?: Money };
-  line_items?: SquareLine[];
-  returns?: { return_line_items?: SquareLine[] }[];
+  line_items?: DiscountLineInput[];
+  returns?: { return_line_items?: DiscountLineInput[]; return_discounts?: SquareDiscountDef[] }[];
+  /** OrderLineItemDiscount: name, type, percentage, scope (comps are discounts too). */
+  discounts?: SquareDiscountDef[];
 }
 
 export interface OrderTotal {
@@ -129,10 +132,16 @@ export interface SoldUnit {
   netSales: number; // dollars after discounts, before tax; a line's net is shared between the item and its modifiers (each its own unit)
 }
 
-/** All units sold (items and modifiers) in completed orders closed in [start, end), plus per-order totals. */
-export async function listOrders(client: SquareClient, startISO: string, endISO: string): Promise<{ units: SoldUnit[]; orders: OrderTotal[] }> {
+/** A comp or discount on one line of a completed order (see orderDiscountLines). */
+export interface OrderDiscount extends DiscountLine {
+  closedAt: string;
+}
+
+/** All units sold (items and modifiers) in completed orders closed in [start, end), plus per-order totals and every discount line. */
+export async function listOrders(client: SquareClient, startISO: string, endISO: string): Promise<{ units: SoldUnit[]; orders: OrderTotal[]; discounts: OrderDiscount[] }> {
   const out: SoldUnit[] = [];
   const totals: OrderTotal[] = [];
+  const discounts: OrderDiscount[] = [];
   // orders/search takes at most 10 locations per request.
   for (let i = 0; i < client.locationIds.length; i += 10) {
     const locationIds = client.locationIds.slice(i, i + 10);
@@ -169,9 +178,10 @@ export async function listOrders(client: SquareClient, startISO: string, endISO:
         };
         push(order.line_items, 1);
         for (const r of order.returns ?? []) push(r.return_line_items, -1);
+        for (const d of orderDiscountLines(order)) discounts.push({ ...d, closedAt: order.closed_at });
       }
       cursor = page.cursor;
     } while (cursor);
   }
-  return { units: out, orders: totals };
+  return { units: out, orders: totals, discounts };
 }
