@@ -12,7 +12,7 @@
   --border-strong: #d4d3ce;
   --ink: #1b1a18;
   --ink-2: #4a4843;
-  --muted: #85837c;
+  --muted: #6e6c65; /* 4.9:1 on --bg (WCAG AA for small text) */
   --primary: #1b1a18;
   --primary-ink: #ffffff;
   --good: #1f7a4d;

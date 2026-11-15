@@ -20,7 +20,7 @@ async function me() {
 }
 
 const done = () => {
-  revalidatePath("/my");
+  revalidatePath("/my", "layout");
   revalidatePath("/schedule", "layout");
 };
 
@@ -127,7 +127,7 @@ export async function setMyAvailability(weekday: number, raw: string): Promise<{
   if (parsed.length) next[String(weekday)] = parsed;
   else delete next[String(weekday)];
   await db.employee.update({ where: { id: e.id }, data: { availability: next } });
-  revalidatePath("/my");
+  revalidatePath("/my", "layout");
   revalidatePath("/team");
   revalidatePath("/schedule", "layout");
 }
@@ -138,7 +138,7 @@ export async function resetMyAvailability(mode: "all" | "clear"): Promise<Res> {
   if (!e) return { error: "Your login isn't linked to a team member yet." };
   const all = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [String(d), [["00:00", "24:00"]]]));
   await db.employee.update({ where: { id: e.id }, data: { availability: mode === "all" ? all : Prisma.JsonNull } });
-  revalidatePath("/my");
+  revalidatePath("/my", "layout");
   revalidatePath("/team");
   revalidatePath("/schedule", "layout");
   return { ok: mode === "all" ? "Now blank out the times you can't work." : "Cleared. You'll be treated as available any time." };

@@ -8,13 +8,13 @@ export const training: HelpEntry[] = [
     route: "/team/training",
     tour: "training",
     title: "Training & certificates",
-    body: "Who holds which certificate (ATAP, ServSafe, harassment training…), what's about to expire, and onboarding checklists. Staff upload their own cards on My shifts; you verify them here.",
+    body: "Who holds which certificate (ATAP, ServSafe, harassment training…), what's about to expire, and onboarding checklists. Staff upload their own cards on Me; you verify them here.",
     article: `Open it from **Team → Training**.
 
 - **The tiles** show how many required certificates are in date, and how many are expiring, expired or missing.
 - **Certificates** is the matrix: everyone against every certificate type. Tap a cell to add, renew, view or verify.
 - **Certificate types** sets what you track, how long each lasts and who needs it.
-- **Checklists** are onboarding steps (e.g. "New bartender") staff tick off on My shifts and you sign off.
+- **Checklists** are onboarding steps (e.g. "New bartender") staff tick off on Me and you sign off.
 
 People and managers get reminders 30 and 7 days before something expires, and when it has. Expiring and expired certificates, missing ones and overdue checklists also show in the weekly brief, and the schedule warns when someone is put on a shift without a certificate their position needs.
 
@@ -124,7 +124,7 @@ Check with the SLA, the county health department and your insurer, then change t
     route: "/team/training",
     tour: "training",
     title: "Checklists",
-    body: "Onboarding or skills checklists like “New bartender”: a list of steps, each optionally linked to a document. Assign it, staff tick steps on My shifts, then you sign it off.",
+    body: "Onboarding or skills checklists like “New bartender”: a list of steps, each optionally linked to a document. Assign it, staff tick steps on Me, then you sign it off.",
     article: `### Build one
 Type a name under **Checklists** and press Enter. Add steps one by one; each can have a short detail and a linked document from **Team → Documents** (the handbook, a recipe card). Reorder with the arrows.
 
@@ -183,7 +183,7 @@ Each person shows a progress bar. Open the row to tick steps yourself (watched t
   {
     id: "my.training",
     area: "my",
-    route: "/my",
+    route: "/my/me",
     audience: "all",
     title: "My training",
     body: "The certificates your job needs and when they run out, plus any checklists a manager gave you. Upload a photo of a new card here; a manager checks it.",
@@ -193,7 +193,7 @@ Each person shows a progress bar. Open the row to tick steps yourself (watched t
   {
     id: "my.training.upload",
     area: "my",
-    route: "/my",
+    route: "/my/me",
     audience: "all",
     title: "Upload a certificate",
     body: "Tap Upload, take a photo of the card (or choose a PDF), and pick the date on it. It shows as waiting until a manager verifies it.",
@@ -203,7 +203,7 @@ Each person shows a progress bar. Open the row to tick steps yourself (watched t
   {
     id: "my.training.checklists",
     area: "my",
-    route: "/my",
+    route: "/my/me",
     audience: "all",
     title: "Training checklists",
     body: "Tick each step as you learn it. Linked documents open in a new tab. When everything's ticked, a manager signs it off.",

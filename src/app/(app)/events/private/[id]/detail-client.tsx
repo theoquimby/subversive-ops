@@ -1,12 +1,13 @@
 "use client";
 
+import { RelativeTime } from "@/components/relative-time";
 import { useConfirm } from "@/components/dialog";
 import { GridCell } from "@/components/grid";
 import { HelpTip } from "@/components/help";
 import { Badge, Button, Card, cx, DatePicker, Input, Select, Textarea } from "@/components/ui";
 import { displayTime } from "@/domain/events";
 import { BAR_KINDS, BAR_LABEL, canMove, EVENT_TYPE_LABEL, EVENT_TYPES, nextStage, PATH, STAGE_LABEL, type BarKind, type SpaceOption, type Stage } from "@/domain/privateEvents";
-import { money, pct, relativeTime, shortDate } from "@/lib/format";
+import { businessDateOf, money, pct, shortDate } from "@/lib/format";
 import type { PrivateEventDetail, PrivateEventRow, quoteCatalog } from "@/server/services/privateEvents";
 import { Check, Copy, ExternalLink, Mail, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -488,7 +489,7 @@ export function ShareCard({ ev, canEmail }: { ev: PrivateEventDetail; canEmail: 
     <Panel title="Send the quote" help="events.private.share">
       <Card className="p-4 text-sm">
         <div className="mb-3 flex flex-wrap gap-1.5">
-          {sh.acceptedAt ? <Badge tone="good">Accepted by {sh.acceptedName} · {shortDate(sh.acceptedAt.slice(0, 10))}</Badge> : sh.viewedAt ? <Badge>Opened {relativeTime(new Date(sh.viewedAt))}</Badge> : sh.sentAt ? <Badge>Sent {relativeTime(new Date(sh.sentAt))}</Badge> : <Badge>Not sent yet</Badge>}
+          {sh.acceptedAt ? <Badge tone="good">Accepted by {sh.acceptedName} · {shortDate(businessDateOf(sh.acceptedAt))}</Badge> : sh.viewedAt ? <Badge>Opened <RelativeTime at={sh.viewedAt} /></Badge> : sh.sentAt ? <Badge>Sent <RelativeTime at={sh.sentAt} /></Badge> : <Badge>Not sent yet</Badge>}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" disabled={pending || ev.quote.total <= 0} onClick={() => getLink()} className="h-10 sm:h-9" data-tour="private.copy-link"><Copy className="size-4" /> Copy link</Button>
@@ -608,7 +609,7 @@ export function PaymentsCard({ ev, today, square, canEmail }: { ev: PrivateEvent
             <div className="mb-2 text-xs text-muted">
               {which === "deposit" ? "Deposit" : "Balance"} owed {money(owed)}
               {(which === "deposit" ? ev.row.depositDueOn : ev.row.balanceDueOn) && <> · due {shortDate((which === "deposit" ? ev.row.depositDueOn : ev.row.balanceDueOn)!)}</>}
-              {ev.share.remindedAt && <> · reminded {relativeTime(new Date(ev.share.remindedAt))}</>}
+              {ev.share.remindedAt && <> · reminded <RelativeTime at={ev.share.remindedAt} /></>}
             </div>
             <div className="flex flex-wrap gap-2">
               <Button

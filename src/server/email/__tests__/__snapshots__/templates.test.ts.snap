@@ -26,7 +26,7 @@ Your ATAP expires this week:
 
 - ATAP — expires Fri, Nov 20
 
-Upload a new card: https://ops.example.com/my#training
+Upload a new card: https://ops.example.com/my/me#training
 
 —
 Subversive training
@@ -185,7 +185,7 @@ The schedule for the week of Nov 16 is out. You have 3 shifts · 18.5 h:
 - Fri, Nov 20: 4:30 pm – 11:00 pm · Server (Trivia night)
 - Sun, Nov 22: 11:00 am – 5:00 pm · Bar
 
-See your shifts, swap or ask for time off: https://ops.example.com/my
+See your shifts, swap or ask for time off: https://ops.example.com/my/shifts
 
 —
 Subversive schedule
@@ -203,7 +203,7 @@ Your shift changed. Here's the new time.
 - Was: Wed, Nov 18 · 4:00 pm – 10:00 pm · Server
 - Now: Wed, Nov 18 · 5:00 pm – 11:00 pm · Server
 
-My shifts: https://ops.example.com/my
+My shifts: https://ops.example.com/my/shifts
 
 —
 Subversive schedule
@@ -236,7 +236,7 @@ Your swap was approved. Sam is taking it — it's off your schedule.
 
 - Fri, Nov 20: 4:30 pm – 11:00 pm · Server
 
-My shifts: https://ops.example.com/my
+My shifts: https://ops.example.com/my/shifts
 
 —
 Subversive schedule
@@ -253,7 +253,7 @@ Your time off is approved. You won't be scheduled on these days.
 
 - Thu, Nov 26 – Sat, Nov 28 · Thanksgiving
 
-My shifts: https://ops.example.com/my
+My shifts: https://ops.example.com/my/shifts
 
 —
 Subversive schedule

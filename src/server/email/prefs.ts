@@ -15,6 +15,7 @@ export const NOTIFY_EVENTS = {
   staffRequests: { label: "Staff requests", hint: "Someone asked for time off or to swap a shift.", audience: "manager" },
   badReviews: { label: "Low reviews", hint: "A new 1–2★ review came in.", audience: "manager" },
   kegs: { label: "Kegs", hint: "A keg kicked with no full one of that beer behind it, or a beer is running low.", audience: "manager" },
+  inquiries: { label: "Event inquiries", hint: "Someone asked about a private event through the website.", audience: "manager" },
 } as const;
 
 export type NotifyEvent = keyof typeof NOTIFY_EVENTS;
@@ -42,6 +43,7 @@ export const DEFAULT_PREFS: NotifyPrefs = {
     staffRequests: { email: false, push: true },
     badReviews: { email: true, push: true },
     kegs: { email: false, push: true },
+    inquiries: { email: true, push: true },
   },
 };
 

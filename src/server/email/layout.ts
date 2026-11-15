@@ -126,4 +126,4 @@ export const footerText = (extra?: string) => textLines("", "—", extra, `${BRA
 export const manageFooter = (baseUrl: string) =>
   `You get this because notifications are on for your login. <a href="${esc(link(baseUrl, "/settings/notifications"))}" style="color:${C.muted};">Change what you get</a> · ${esc(BRAND)} · Catskill, NY`;
 export const staffFooter = (baseUrl: string) =>
-  `You get this because you're on the ${esc(BRAND)} team. Turn emails off on <a href="${esc(link(baseUrl, "/my"))}" style="color:${C.muted};">My shifts</a> · Catskill, NY`;
+  `You get this because you're on the ${esc(BRAND)} team. Turn emails off on <a href="${esc(link(baseUrl, "/my/me#notifications"))}" style="color:${C.muted};">Me → Notifications</a> · Catskill, NY`;

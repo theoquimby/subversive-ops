@@ -32,7 +32,9 @@ export type HelpAreaId =
   | "insights"
   | "kegs"
   | "prep"
-  | "notes";
+  | "notes"
+  | "website"
+  | "accounting";
 
 export type Audience = "manager" | "staff" | "all";
 

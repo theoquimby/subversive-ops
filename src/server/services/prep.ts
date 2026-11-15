@@ -9,9 +9,11 @@ import {
   estimatePrepOnHand,
   groupByStation,
   planPrep,
+  prepEventLabel,
   prepUsage,
   serviceShareAfter,
   type PrepDay,
+  type PrepDayEvent,
   type PrepGroup,
   type PrepItemSettings,
   type PrepLine,
@@ -24,7 +26,8 @@ import { db, num } from "../db";
 import { env } from "../env";
 import { buildContext, loadCostingSnapshot } from "./costing";
 import { getOpeningHours } from "./labor-rules";
-import { businessToday } from "./sales";
+import { eventsForPrepBetween, type PrepEvent } from "./privateEvents";
+import { businessToday, squareLinks } from "./sales";
 
 const HISTORY_DAYS = 70;
 /** Days forecast from the prep date: enough for a 4-day cover and a week of shelf life. */
@@ -107,7 +110,7 @@ export interface SalesSource {
 export async function servingsByRecipe(from: ISODate, toExclusive: ISODate) {
   const [rows, mappings, sold] = await Promise.all([
     db.dailySale.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(toExclusive) } }, select: { date: true, squareId: true, name: true, qty: true } }),
-    db.squareMapping.findMany({ select: { squareId: true, recipeId: true, ignored: true } }),
+    squareLinks(),
     db.recipe.findMany({ where: { active: true, kind: { in: ["MENU", "MODIFIER"] } }, select: { id: true, name: true } }),
   ]);
   const mapped = new Map(mappings.map((m) => [m.squareId, m]));
@@ -137,7 +140,7 @@ export async function servingsByRecipe(from: ISODate, toExclusive: ISODate) {
 }
 
 /** Item-level forecast for each date (same model as ordering: weekday baseline × trend × events/weather/manual × season). */
-async function forecastServings(dates: ISODate[], today: ISODate) {
+async function forecastServings(dates: ISODate[], today: ISODate, booked: readonly PrepEvent[] = []) {
   const { demandDrivers, pastEventDays, seasonalFactors } = await import("./forecasting");
   const from = addDays(today, -HISTORY_DAYS);
   const [{ byRecipe, openDays, source }, drivers, eventDays, seasonal] = await Promise.all([
@@ -147,7 +150,15 @@ async function forecastServings(dates: ISODate[], today: ISODate) {
     seasonalFactors(dates),
   ]);
   const baselineDays = new Set([...openDays].filter((d) => !eventDays.has(d)));
-  const adjustments = new Map([...drivers].map(([d, x]) => [d, x.total * (seasonal.factors.get(d) ?? 1)]));
+  // A booked event with a menu is prepped from its own portions; take its calendar lift out of
+  // the walk-in forecast so the party isn't counted twice.
+  const explicit = new Set(booked.filter((e) => e.calendarEventId && e.items.length > 0).map((e) => e.calendarEventId!));
+  const walkInFactor = (x: { total: number; events: { id: string; impact: number }[] }) => {
+    let t = x.total;
+    for (const e of x.events) if (explicit.has(e.id) && e.impact > 0) t /= e.impact;
+    return t;
+  };
+  const adjustments = new Map([...drivers].map(([d, x]) => [d, walkInFactor(x) * (seasonal.factors.get(d) ?? 1)]));
   const perDate = new Map<ISODate, Map<string, number>>(dates.map((d) => [d, new Map()]));
   for (const [recipeId, history] of byRecipe) {
     for (const f of forecastSeries({ history, openDays: baselineDays, asOf: today, dates, adjustments })) {
@@ -185,17 +196,20 @@ export interface PrepList {
   problems: string[];
   /** Average forecast use per open day over the horizon, per prep recipe (base units) — the setup table shows it. */
   avgDaily: Map<string, number>;
+  /** Booked private events in the cover window (their portions are in the amounts). */
+  events: PrepEvent[];
 }
 
 export async function buildPrepList(prepDateIn?: ISODate): Promise<PrepList> {
   const today = businessToday();
   const prepDate = prepDateIn && prepDateIn >= today && prepDateIn <= addDays(today, 7) ? prepDateIn : today;
   const forecastDates = dateRange(today, addDays(prepDate, HORIZON));
+  const booked = await eventsForPrepBetween(today, addDays(prepDate, HORIZON));
   const [items, snap, coverDays, fc, hours, counts, dones, waste] = await Promise.all([
     loadPrepItems(),
     loadCostingSnapshot(),
     getCoverDays(),
-    forecastServings(forecastDates, today),
+    forecastServings(forecastDates, today, booked),
     getOpeningHours(today),
     db.prepCount.findMany({ where: { countedAt: { gte: new Date(Date.now() - 60 * 86400_000) } }, orderBy: { countedAt: "desc" } }),
     db.prepDone.findMany({ where: { day: { gte: addDays(today, -21), lte: prepDate } }, orderBy: { doneAt: "asc" } }),
@@ -223,6 +237,9 @@ export async function buildPrepList(prepDateIn?: ISODate): Promise<PrepList> {
     if (hit) return hit;
     const out = new Map<string, number>();
     for (const [sold, n] of servingsOn(date)) for (const [p, q] of usage.perServing.get(sold) ?? []) out.set(p, (out.get(p) ?? 0) + n * q);
+    // Booked parties between now and the prep date eat into what's on hand too.
+    if (date >= today && date < prepDate)
+      for (const e of booked) if (e.date === date) for (const it of e.items) for (const [p, q] of usage.perServing.get(it.recipeId) ?? []) out.set(p, (out.get(p) ?? 0) + it.portions * q);
     useOn.set(date, out);
     return out;
   };
@@ -285,7 +302,9 @@ export async function buildPrepList(prepDateIn?: ISODate): Promise<PrepList> {
     };
   });
 
-  const days: PrepDay[] = dateRange(prepDate, addDays(prepDate, HORIZON)).map((date) => ({ date, servings: fc.perDate.get(date) ?? new Map() }));
+  const eventsOn = (date: ISODate): PrepDayEvent[] =>
+    booked.filter((e) => e.date === date && e.items.length > 0).map((e) => ({ label: prepEventLabel(e.title, e.headcount), portions: new Map(e.items.map((it) => [it.recipeId, it.portions])) }));
+  const days: PrepDay[] = dateRange(prepDate, addDays(prepDate, HORIZON)).map((date) => ({ date, servings: fc.perDate.get(date) ?? new Map(), events: eventsOn(date) }));
   const planned = planPrep({ prepDate, today, days, coverDays, items: planItems, usage, names });
   const lines: PrepListItem[] = planned.map((l) => {
     const i = recipeById.get(l.recipeId)!;
@@ -312,6 +331,7 @@ export async function buildPrepList(prepDateIn?: ISODate): Promise<PrepList> {
     source: fc.source,
     problems: usage.problems,
     avgDaily,
+    events: booked.filter((e) => window.includes(e.date)),
   };
 }
 
@@ -324,7 +344,7 @@ export interface PrepSummary {
   done: number;
   /** Items with no prep count yet. */
   notCounted: number;
-  /** Items that run out during the first service day if nothing is made. */
+  /** Counted items that run out during the first service day if nothing is made. */
   runningOut: number;
   /** Most urgent first. */
   top: { recipeId: string; name: string; amount: string; why: string; station: string | null; done: boolean }[];
@@ -343,7 +363,8 @@ export async function prepSummary(date?: ISODate, limit = 5): Promise<PrepSummar
     toMake: make.length,
     done: make.filter((l) => l.done).length,
     notCounted: list.lines.filter((l) => !l.onHandKnown && l.status !== "nodata").length,
-    runningOut: make.filter((l) => !l.done && l.runsOutIn != null && l.runsOutIn < 1).length,
+    // Only counted items: an uncounted one reads as zero on hand, which isn't "running out".
+    runningOut: make.filter((l) => !l.done && l.onHandKnown && l.runsOutIn != null && l.runsOutIn < 1).length,
     top: make.filter((l) => !l.done).slice(0, limit).map((l) => ({ recipeId: l.recipeId, name: l.name, amount: l.amountText, why: l.why, station: l.station, done: !!l.done })),
     href: list.prepDate === list.today ? "/prep" : `/prep?day=${list.prepDate}`,
   };

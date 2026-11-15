@@ -5,6 +5,7 @@ import { applyWageTable, reviewDue, wageRulesOn } from "@/domain/wageRules";
 import { DEFAULT_WEEK_HOURS, hoursOn, parseSeasons, parseWeek, type SeasonalHours, type WeekHours } from "@/domain/openingHours";
 import { db } from "../db";
 import { env } from "../env";
+import { settingValue } from "./setting-read";
 
 const KEY = "labor.rules";
 /** "off" = use the minimum wages typed in Settings; anything else follows the NY table (src/domain/wageRules.ts). */
@@ -14,13 +15,12 @@ const REVIEWED_KEY = "labor.rulesReviewed";
 const today = () => todayIn(env.BUSINESS_TIMEZONE);
 
 async function storedRules(): Promise<LaborRules> {
-  const s = await db.setting.findUnique({ where: { key: KEY } });
-  return s ? { ...NY_DEFAULT_RULES, ...(JSON.parse(s.value) as Partial<LaborRules>) } : NY_DEFAULT_RULES;
+  const s = await settingValue(KEY);
+  return s ? { ...NY_DEFAULT_RULES, ...(JSON.parse(s) as Partial<LaborRules>) } : NY_DEFAULT_RULES;
 }
 
 export async function wageAutoOn(): Promise<boolean> {
-  const s = await db.setting.findUnique({ where: { key: WAGE_AUTO_KEY } });
-  return s?.value !== "off";
+  return (await settingValue(WAGE_AUTO_KEY)) !== "off";
 }
 
 /**
@@ -67,10 +67,10 @@ const SEASONS_KEY = "openingHours.seasons";
 
 /** The regular week, as set in Settings → Business (Subversive's taproom hours until changed). */
 export async function getRegularHours(): Promise<WeekHours> {
-  const s = await db.setting.findUnique({ where: { key: HOURS_KEY } });
+  const s = await settingValue(HOURS_KEY);
   if (!s) return DEFAULT_WEEK_HOURS;
   try {
-    return parseWeek(JSON.parse(s.value)) ?? DEFAULT_WEEK_HOURS;
+    return parseWeek(JSON.parse(s)) ?? DEFAULT_WEEK_HOURS;
   } catch {
     return DEFAULT_WEEK_HOURS;
   }
@@ -78,10 +78,10 @@ export async function getRegularHours(): Promise<WeekHours> {
 
 /** Seasonal hours (Setting `openingHours.seasons`); none until someone adds one. */
 export async function getSeasonalHours(): Promise<SeasonalHours[]> {
-  const s = await db.setting.findUnique({ where: { key: SEASONS_KEY } });
+  const s = await settingValue(SEASONS_KEY);
   if (!s) return [];
   try {
-    return parseSeasons(JSON.parse(s.value));
+    return parseSeasons(JSON.parse(s));
   } catch {
     return [];
   }

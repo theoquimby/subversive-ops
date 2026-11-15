@@ -6,6 +6,9 @@ import { HelpProvider } from "@/components/help";
 import { AreaScope } from "@/components/area";
 import { RouteProgress } from "@/components/route-progress";
 import { onboardingState } from "@/server/services/onboarding";
+import { WhatsNew } from "@/components/whats-new";
+import { hasAppRoute, whatsNewState } from "@/server/services/whatsNew";
+import { addCommands, managerExtra, STAFF_EXTRA } from "./palette-extra";
 import { headers } from "next/headers";
 import { logout, requireUser } from "@/server/auth";
 import { db } from "@/server/db";
@@ -17,13 +20,20 @@ const HELP_COMMANDS: Command[] = [
 ];
 
 const STAFF_COMMANDS: Command[] = [
-  { id: "my", label: "My shifts / request time off", group: "Do", href: "/my" },
-  { id: "my-docs", label: "Documents and policies", group: "Do", href: "/my" },
+  { id: "my-today", label: "Today", group: "Go to", href: "/my", hint: "home next shift" },
+  { id: "my", label: "My shifts / request time off", group: "Do", href: "/my/shifts", hint: "swap pick up sick availability" },
+  { id: "my-sick", label: "I'm out sick", group: "Do", href: "/my/shifts#sick", hint: "call out sick leave" },
+  { id: "my-docs", label: "Documents, training and certificates", group: "Do", href: "/my/me", hint: "sign handbook policy upload" },
+  { id: "my-notify", label: "Notifications on this phone", group: "Do", href: "/my/me#notifications", hint: "push alerts" },
   ...HELP_COMMANDS,
   { id: "tour-counting", label: "Start tour · Counting & waste", group: "Help", href: "/help?tour=counting" },
   { id: "count", label: "Start a count", group: "Do", href: "/count" },
   { id: "scan-keg", label: "Scan a keg", group: "Do", href: "/kegs/scan", hint: "keg qr kick" },
   { id: "waste", label: "Log waste", group: "Do", href: "/waste" },
+  { id: "prep", label: "Prep list", group: "Go to", href: "/prep", hint: "prep sauces make" },
+  { id: "notes", label: "Shift notes", group: "Go to", href: "/notes", hint: "86 handover log" },
+  { id: "do-note", label: "Write a shift note", group: "Do", href: "/notes", hint: "86 handover log" },
+  { id: "taps", label: "Tap list", group: "Go to", href: "/kegs/taps", hint: "beer on tap board menu" },
 ];
 
 async function managerCommands(): Promise<Command[]> {
@@ -46,7 +56,16 @@ async function managerCommands(): Promise<Command[]> {
     { id: "do-bulk-recipes", label: "Bulk add recipes (paste from a spreadsheet)", group: "Do", href: "/import?for=recipes", hint: "import recipes sheet" },
     { id: "go-kegs", label: "Kegs: taps, walk-in and demand", group: "Go to", href: "/kegs", hint: "beer tap walk-in cooler" },
     { id: "go-suppliers", label: "Suppliers (add or edit)", group: "Go to", href: "/settings#suppliers", hint: "vendor distributor store" },
-    { id: "go-brief", label: "Weekly brief", group: "Go to", href: "/brief" },
+    { id: "go-brief", label: "Morning brief", group: "Go to", href: "/brief", hint: "today daily" },
+    { id: "go-brief-week", label: "Weekly brief", group: "Go to", href: "/brief?view=week" },
+    { id: "go-prep-setup", label: "Prep list setup (pars, shelf life, stations)", group: "Go to", href: "/prep/setup", hint: "prep" },
+    { id: "go-beers", label: "Beers", group: "Go to", href: "/kegs/beers", hint: "beer style abv label" },
+    { id: "go-private", label: "Private events", group: "Go to", href: "/events/private", hint: "party booking quote buyout" },
+    { id: "go-private-setup", label: "Private events setup (spaces, packages)", group: "Go to", href: "/events/private/setup", hint: "party" },
+    { id: "go-insights", label: "Insights", group: "Go to", href: "/insights", hint: "lab analytics" },
+    { id: "go-recipe-drafts", label: "Recipe drafts", group: "Go to", href: "/menu/drafts", hint: "draft recipes" },
+    { id: "go-quickbooks", label: "QuickBooks", group: "Go to", href: "/settings/quickbooks", hint: "accounting export" },
+    { id: "go-invoice-exports", label: "Invoice exports (bills, sales journal)", group: "Go to", href: "/invoices/exports", hint: "quickbooks xero" },
     { id: "go-ask", label: "Ask a question about the numbers", group: "Do", href: "/ask", hint: "ask" },
     { id: "go-allergens", label: "Allergen chart", group: "Go to", href: "/menu/allergens" },
     { id: "go-documents", label: "Documents & policies", group: "Go to", href: "/team/documents" },
@@ -107,7 +126,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       if (ob.firstRun) redirect("/welcome");
     }
   }
-  const commands = session.role === "MANAGER" ? await managerCommands() : STAFF_COMMANDS;
+  const [base, whatsNew] = await Promise.all([session.role === "MANAGER" ? managerCommands() : STAFF_COMMANDS, whatsNewState(session.userId, session.role)]);
+  const commands = addCommands(base, session.role === "MANAGER" ? managerExtra(hasAppRoute) : STAFF_EXTRA);
   return (
     <ConfirmProvider>
     <AreaScope className="min-h-dvh">
@@ -116,6 +136,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <CommandPalette commands={commands} />
       <TableResize />
       <HelpProvider userId={session.userId} />
+      <WhatsNew entries={whatsNew.entries} unseen={whatsNew.unseen} />
       <main className="pb-[var(--tabbar)] lg:pl-60 lg:pb-0">
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 lg:py-12">{children}</div>
       </main>

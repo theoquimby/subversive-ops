@@ -3,11 +3,13 @@ import { addDays, dateRange, ISODate, parseISODate, toISODate, weekday } from "@
 import { DayForecast, defaultHourlyShape, forecastSeries, hasYearOfHistory, hourlyShares, isWet, learnRainFactor, seasonalIndex, WeatherObs, YEAR_LAG } from "@/domain/forecast";
 import { backtest, bias, mape } from "@/domain/forecastAccuracy";
 import { Prisma } from "@prisma/client";
+import { cache } from "react";
 import { db } from "../db";
 import { env } from "../env";
 import { getOpeningHours } from "./labor-rules";
 import { getAdjustments, setAdjustment } from "./planning";
 import { businessToday } from "./sales";
+import { settingValue } from "./setting-read";
 
 const HISTORY_DAYS = 120;
 /** Enough for "same week last year" plus the four weeks before it. */
@@ -73,10 +75,11 @@ export async function refreshWeather(force = false): Promise<{ skipped: true } |
   }
 }
 
-export async function weatherMap(from: ISODate, to: ISODate) {
+/** Read once per render per range (forecasts for several date sets share it). */
+export const weatherMap = cache(async (from: ISODate, to: ISODate) => {
   const rows = await db.weatherDay.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(to) } } });
   return new Map(rows.map((w) => [toISODate(w.date), { date: toISODate(w.date), precipMm: w.precipMm.toNumber(), tempMaxC: w.tempMaxC.toNumber(), tempMinC: w.tempMinC.toNumber(), code: w.code }]));
-}
+});
 
 /** WMO weather code → short label + emoji-free icon key. */
 export function weatherLabel(code: number): { label: string; icon: "sun" | "cloud" | "rain" | "snow" | "storm" | "fog" } {
@@ -91,30 +94,38 @@ export function weatherLabel(code: number): { label: string; icon: "sun" | "clou
 
 // ---- History -------------------------------------------------------------------
 
-/** Store-level daily sales and open days (hourly table if synced, else item sales). */
-export async function dailySalesHistory(from: ISODate, to: ISODate) {
-  const [hourly, items] = await Promise.all([
-    db.hourlySale.groupBy({ by: ["date"], _sum: { netSales: true }, where: { date: { gte: parseISODate(from), lt: parseISODate(to) } } }),
-    db.dailySale.groupBy({ by: ["date"], _sum: { netSales: true }, where: { date: { gte: parseISODate(from), lt: parseISODate(to) } } }),
-  ]);
-  const src = hourly.length > 0 ? hourly : items;
+/**
+ * Store-level daily sales and open days (hourly table if synced, else item sales).
+ * Read once per render per range: a page asks for the same history from several forecasts.
+ * Callers must not mutate the result.
+ */
+export const dailySalesHistory = cache(async (from: ISODate, to: ISODate) => {
+  const where = { date: { gte: parseISODate(from), lt: parseISODate(to) } };
+  const hourly = await db.hourlySale.groupBy({ by: ["date"], _sum: { netSales: true }, where });
+  // Item sales only stand in before the hourly sync has run (rare), so don't aggregate them otherwise.
+  const src = hourly.length > 0 ? hourly : await db.dailySale.groupBy({ by: ["date"], _sum: { netSales: true }, where });
   const sales = new Map<ISODate, number>(src.map((r) => [toISODate(r.date), r._sum.netSales?.toNumber() ?? 0]));
   const openDays = new Set([...sales].filter(([, v]) => v > 0).map(([d]) => d));
   return { sales, openDays };
-}
+});
+
+/** Events in [from, to), read once per render per range. */
+const eventsBetween = cache((from: ISODate, to: ISODate) =>
+  db.event.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(to) } }, select: { date: true, impact: true, kind: true } }),
+);
 
 /** Past event dates (other than plain holidays-with-no-effect) are left out of baselines. */
 export async function pastEventDays(from: ISODate, to: ISODate) {
-  const rows = await db.event.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(to) } }, select: { date: true, impact: true, kind: true } });
+  const rows = await eventsBetween(from, to);
   return new Set(rows.filter((e) => e.kind === "CLOSURE" || e.impact.toNumber() !== 1).map((e) => toISODate(e.date)));
 }
 
-/** History for baselines: sales, open days, and open days minus event days. */
-async function baselineHistory(from: ISODate, to: ISODate) {
+/** History for baselines: sales, open days, and open days minus event days (once per render per range). */
+const baselineHistory = cache(async (from: ISODate, to: ISODate) => {
   const [h, events] = await Promise.all([dailySalesHistory(from, to), pastEventDays(from, to)]);
   const cleanOpenDays = new Set([...h.openDays].filter((d) => !events.has(d)));
   return { ...h, cleanOpenDays, eventDays: events };
-}
+});
 
 // ---- Adjustments: manual × events × weather --------------------------------------
 
@@ -130,7 +141,15 @@ export interface DayDrivers {
   total: number;
 }
 
-export async function demandDrivers(dates: ISODate[]): Promise<Map<ISODate, DayDrivers>> {
+/** Comma-joined dates, so per-render caches can key on a list of dates. */
+const datesKey = (dates: ISODate[]) => dates.join(",");
+const keyDates = (key: string): ISODate[] => (key ? key.split(",") : []);
+
+/** Manual × event × weather multipliers per date. Worked out once per render per date list; don't mutate the result. */
+export const demandDrivers = (dates: ISODate[]): Promise<Map<ISODate, DayDrivers>> => demandDriversFor(datesKey(dates));
+
+const demandDriversFor = cache(async (key: string): Promise<Map<ISODate, DayDrivers>> => {
+  const dates = keyDates(key);
   if (dates.length === 0) return new Map();
   const today = businessToday();
 
@@ -154,15 +173,15 @@ export async function demandDrivers(dates: ISODate[]): Promise<Map<ISODate, DayD
     out.set(date, { date, manual: m, reason: reasons[date] ?? null, events: ev, eventFactor, weather: w, weatherFactor, rain, total: m * eventFactor * weatherFactor });
   }
   return out;
-}
+});
 
 // ---- Manual override reasons ------------------------------------------------------
 
 const REASONS_KEY = "forecast.reasons";
 
 export async function getReasons(): Promise<Record<ISODate, string>> {
-  const s = await db.setting.findUnique({ where: { key: REASONS_KEY } });
-  return s ? (JSON.parse(s.value) as Record<ISODate, string>) : {};
+  const s = await settingValue(REASONS_KEY);
+  return s ? (JSON.parse(s) as Record<ISODate, string>) : {};
 }
 
 /** Manual multiplier for a day plus a note on why (stored alongside `forecast.adjustments`). */
@@ -187,13 +206,17 @@ export interface DailySalesForecast extends DayForecast {
   orders: number | null;
 }
 
-/** Store-level orders per day from the hourly table (Square order count). */
-export async function dailyOrdersHistory(from: ISODate, to: ISODate) {
+/** Store-level orders per day from the hourly table (Square order count). Once per render per range. */
+export const dailyOrdersHistory = cache(async (from: ISODate, to: ISODate) => {
   const rows = await db.hourlySale.groupBy({ by: ["date"], _sum: { orders: true }, where: { date: { gte: parseISODate(from), lt: parseISODate(to) } } });
   return new Map<ISODate, number>(rows.map((r) => [toISODate(r.date), r._sum.orders ?? 0]));
-}
+});
 
-export async function dailySalesForecast(dates: ISODate[]): Promise<DailySalesForecast[]> {
+/** Daily sales (and orders) forecast. Worked out once per render per date list; don't mutate the result. */
+export const dailySalesForecast = (dates: ISODate[]): Promise<DailySalesForecast[]> => dailySalesForecastFor(datesKey(dates));
+
+const dailySalesForecastFor = cache(async (key: string): Promise<DailySalesForecast[]> => {
+  const dates = keyDates(key);
   const today = businessToday();
   const from = addDays(today, -SEASONAL_HISTORY_DAYS);
   const [history, drivers, orders] = await Promise.all([baselineHistory(from, today), demandDrivers(dates), dailyOrdersHistory(from, today)]);
@@ -205,7 +228,7 @@ export async function dailySalesForecast(dates: ISODate[]): Promise<DailySalesFo
     const o = orderF?.get(f.date);
     return { ...f, drivers: drivers.get(f.date)!, orders: o && o.samples > 0 ? o.qty : null };
   });
-}
+});
 
 /**
  * Store-level year-over-year seasonal factor per date (1 until a year of sales
@@ -218,16 +241,24 @@ export async function seasonalFactors(dates: ISODate[]): Promise<{ factors: Map<
   return { factors: new Map(dates.map((d) => [d, active ? seasonalIndex(history.sales, history.cleanOpenDays, today, d) : 1])), active };
 }
 
+/** The last eight weeks of hourly sales and orders (for each weekday's hourly shape), once per render. */
+const recentHourly = cache(async (today: ISODate) => {
+  const rows = await db.hourlySale.findMany({ where: { date: { gte: parseISODate(addDays(today, -56)), lt: parseISODate(today) } }, select: { date: true, hour: true, netSales: true, orders: true } });
+  return {
+    plain: rows.map((r) => ({ date: toISODate(r.date), hour: r.hour, netSales: r.netSales.toNumber() })),
+    plainOrders: rows.map((r) => ({ date: toISODate(r.date), hour: r.hour, netSales: r.orders })),
+  };
+});
+
 /** Forecast sales and orders for each hour of each date (local hours 0–23). */
 export async function hourlySalesForecast(dates: ISODate[]) {
   const today = businessToday();
   const [daily, rows, opening] = await Promise.all([
     dailySalesForecast(dates),
-    db.hourlySale.findMany({ where: { date: { gte: parseISODate(addDays(today, -56)), lt: parseISODate(today) } } }),
+    recentHourly(today),
     getOpeningHours(dates[0] ?? today),
   ]);
-  const plain = rows.map((r) => ({ date: toISODate(r.date), hour: r.hour, netSales: r.netSales.toNumber() }));
-  const plainOrders = rows.map((r) => ({ date: toISODate(r.date), hour: r.hour, netSales: r.orders }));
+  const { plain, plainOrders } = rows;
   const shapeCache = new Map<number, { shares: number[]; orderShares: number[]; learned: boolean }>();
   return daily.map((d) => {
     const wd = weekday(d.date);

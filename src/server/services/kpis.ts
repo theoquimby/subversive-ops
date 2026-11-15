@@ -2,14 +2,14 @@ import "server-only";
 import { CostingContext } from "@/domain/costing";
 import { dateRange, ISODate, parseISODate, toISODate } from "@/domain/dates";
 import { emptySplit, groupSplit, GroupSplit } from "@/domain/revenueClass";
-import { KpiDay, PeriodTotals, rollupKpis, SoldLine, summarize, theoreticalByDay } from "@/domain/pnl";
+import { KpiDay, PeriodTotals, rollupKpis, summarize, theoreticalByDay } from "@/domain/pnl";
 import { blockCost, blockHours } from "@/domain/timecards";
 import { db } from "../db";
 import { buildContext, CostingSnapshot, loadCostingSnapshot, safeCost } from "./costing";
 import { classSettings, recipeClasses } from "./insights";
 import { loadTimecards } from "./labor";
 import { getLaborRules } from "./labor-rules";
-import { businessToday, dailyNetSalesExcludingIgnored } from "./sales";
+import { businessToday, dailyNetSalesExcludingIgnored, itemSalesByDay } from "./sales";
 
 /**
  * Period KPIs — the one place net sales, food/beverage cost %, labor % and
@@ -29,34 +29,20 @@ const dateWhere = (from: ISODate, toExclusive: ISODate) => ({ gte: parseISODate(
 /**
  * Item-level sales for [from, to): servings and net sales per recipe per day
  * (for food/beverage splits and theoretical cost), plus each day's non-ignored
- * item total (used when a day has no order-level hourly rows).
+ * item total (used when a day has no order-level hourly rows). Summed per day
+ * and recipe in the database.
  */
-async function itemSales(from: ISODate, toExclusive: ISODate) {
-  const [rows, mappings] = await Promise.all([
-    db.dailySale.findMany({ where: { date: dateWhere(from, toExclusive) }, select: { date: true, squareId: true, qty: true, netSales: true } }),
-    db.squareMapping.findMany({ select: { squareId: true, recipeId: true, ignored: true } }),
-  ]);
-  const map = new Map(mappings.map((m) => [m.squareId, m]));
-  const sold: SoldLine[] = [];
-  const itemTotal = new Map<ISODate, number>();
-  for (const r of rows) {
-    const m = map.get(r.squareId);
-    if (m?.ignored) continue;
-    const date = toISODate(r.date);
-    itemTotal.set(date, (itemTotal.get(date) ?? 0) + r.netSales.toNumber());
-    if (m?.recipeId) sold.push({ date, recipeId: m.recipeId, qty: r.qty.toNumber(), sales: r.netSales.toNumber() });
-  }
-  return { sold, itemTotal };
-}
+const itemSales = (from: ISODate, toExclusive: ISODate) => itemSalesByDay(from, toExclusive);
 
 /**
  * Net sales (ignored Square items left out) and orders per business date:
  * order totals where the hourly sync has run, else the sum of item sales.
  */
-async function salesByDay(from: ISODate, toExclusive: ISODate, itemTotal: Map<ISODate, number>) {
-  const [orders, net] = await Promise.all([
+async function salesByDay(from: ISODate, toExclusive: ISODate, itemTotalP: Promise<Map<ISODate, number>>) {
+  const [orders, net, itemTotal] = await Promise.all([
     db.hourlySale.groupBy({ by: ["date"], where: { date: dateWhere(from, toExclusive) }, _sum: { orders: true } }),
     dailyNetSalesExcludingIgnored(from, toExclusive),
+    itemTotalP,
   ]);
   const out = new Map<ISODate, { sales: number; orders: number | null }>();
   for (const [date, sales] of itemTotal) out.set(date, { sales, orders: null });
@@ -104,8 +90,9 @@ export interface KpiDayDetail extends KpiDay {
 export async function dailyKpis(from: ISODate, toExclusive: ISODate, opts: { now?: Date; snap?: CostingSnapshot } = {}) {
   const now = opts.now ?? new Date();
   const today = businessToday();
-  const [theo, cards, rules] = await Promise.all([theoreticalSplit(from, toExclusive, opts.snap), loadTimecards(from, toExclusive), getLaborRules()]);
-  const sales = await salesByDay(from, toExclusive, theo.itemTotal);
+  const theoP = theoreticalSplit(from, toExclusive, opts.snap);
+  // Order totals don't wait for the item rows; they're merged once both are in.
+  const [theo, cards, rules, sales] = await Promise.all([theoP, loadTimecards(from, toExclusive), getLaborRules(), salesByDay(from, toExclusive, theoP.then((t) => t.itemTotal))]);
   const laborDay = new Map<ISODate, { cost: number; hours: number }>();
   let missingRates = 0;
   for (const c of cards) {

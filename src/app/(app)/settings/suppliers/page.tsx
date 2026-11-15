@@ -22,7 +22,7 @@ export default async function SuppliersSettingsPage() {
   }));
   return (
     <div className="max-w-5xl">
-      <PageHeader back={{ href: "/settings", label: "Settings" }} title="Suppliers" description="Delivery days and lead time decide when each order is due and how many days it covers. Tap a supplier for cutoffs, auto-drafts and notes." />
+      <PageHeader back={{ href: "/settings", label: "Settings" }} help="settings.suppliers" title="Suppliers" description="Delivery days and lead time decide when each order is due and how many days it covers. Tap a supplier for cutoffs, auto-drafts and notes." />
       <SupplierSuggestionList list={learned.suppliers} />
       <SuppliersTable rows={rows} />
     </div>

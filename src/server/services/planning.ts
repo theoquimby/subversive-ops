@@ -8,6 +8,7 @@ import { Prisma } from "@prisma/client";
 import { db, num } from "../db";
 import { env } from "../env";
 import { buildContext, loadCostingSnapshot, priceAsOf } from "./costing";
+import { settingValue } from "./setting-read";
 import { businessToday, salesByRecipe } from "./sales";
 
 const HISTORY_DAYS = 70;
@@ -17,8 +18,8 @@ const HISTORY_DAYS = 70;
 const ADJ_KEY = "forecast.adjustments";
 
 export async function getAdjustments(): Promise<Map<ISODate, number>> {
-  const s = await db.setting.findUnique({ where: { key: ADJ_KEY } });
-  return new Map(Object.entries(s ? (JSON.parse(s.value) as Record<string, number>) : {}));
+  const s = await settingValue(ADJ_KEY);
+  return new Map(Object.entries(s ? (JSON.parse(s) as Record<string, number>) : {}));
 }
 
 export async function setAdjustment(date: ISODate, multiplier: number | null) {
@@ -372,10 +373,10 @@ export async function setPar(ingredientId: string, qtyBase: number | null) {
 const CUTOFF_KEY = "ordering.cutoffs";
 
 export async function loadCutoffRules(): Promise<Record<string, Partial<CutoffRule>>> {
-  const s = await db.setting.findUnique({ where: { key: CUTOFF_KEY } });
+  const s = await settingValue(CUTOFF_KEY);
   if (!s) return {};
   try {
-    return JSON.parse(s.value) as Record<string, Partial<CutoffRule>>;
+    return JSON.parse(s) as Record<string, Partial<CutoffRule>>;
   } catch {
     return {};
   }

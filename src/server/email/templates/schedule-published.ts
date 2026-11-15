@@ -27,7 +27,7 @@ export function schedulePublishedEmail(e: SchedulePublishedEmail): RenderedEmail
   const week = shortDate(e.weekStart);
   const total = e.shifts.reduce((s, x) => s + x.hours, 0);
   const shifts = [...e.shifts].sort((a, b) => a.date.localeCompare(b.date) || a.startMin - b.startMin);
-  const myUrl = link(e.baseUrl, "/my");
+  const myUrl = link(e.baseUrl, "/my/shifts");
   const summary = shifts.length
     ? `${shifts.length} shift${shifts.length === 1 ? "" : "s"} · ${hrs(total)}`
     : "You're not on the schedule this week";

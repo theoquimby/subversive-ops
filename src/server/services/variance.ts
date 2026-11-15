@@ -7,7 +7,7 @@ import { computeVariance, Consumer, dominantClass, explainVariance, VarianceExpl
 import { db, num } from "../db";
 import { buildContext, loadCostingSnapshot } from "./costing";
 import { classSettings, recipeClasses } from "./insights";
-import { salesByRecipe } from "./sales";
+import { salesByRecipe, squareLinks } from "./sales";
 
 /** Completed counts, newest first — each one is a possible period boundary. */
 export async function countPoints() {
@@ -74,7 +74,7 @@ export async function varianceReport(startCountId: string, endCountId: string): 
     db.wasteLog.findMany({ where: { loggedAt: { gt: a.takenAt, lte: b.takenAt } } }),
     salesByRecipe(from, to),
     db.dailySale.findMany({ where: { date: { gte: new Date(`${from}T00:00:00Z`), lt: new Date(`${to}T00:00:00Z`) } }, select: { squareId: true, netSales: true } }),
-    db.squareMapping.findMany({ where: { recipeId: { not: null }, ignored: false }, select: { squareId: true, recipeId: true } }),
+    squareLinks().then((links) => links.filter((m) => m.recipeId != null && !m.ignored)),
     classSettings(),
   ]);
 

@@ -226,10 +226,31 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
   await seedFinal(db);
   const { seedTraining } = await import("./demo/training");
   await seedTraining(db);
+  // Newer features. Each of these clears its own tables first, so it only runs
+  // where that feature has no rows yet: loading the demo into a database that
+  // already has real kegs, notes, bookings or Square fees never touches them.
+  const today = iso(day(0));
+  if ((await db.keg.count()) === 0) {
+    const { seedKegs } = await import("./demo/kegs");
+    await seedKegs(db, today);
+    const { seedTaps } = await import("./demo/taps");
+    await seedTaps(db);
+  }
+  if ((await db.squareDayMoney.count()) === 0) {
+    const { seedFees } = await import("./demo/fees");
+    await seedFees(db);
+  }
+  if ((await db.shiftNote.count()) === 0) {
+    const { seedShiftNotes } = await import("./demo/shiftNotes");
+    await seedShiftNotes(db);
+  }
+  if ((await db.privateEvent.count()) === 0) {
+    const { seedPrivateEvents } = await import("./demo/privateEvents");
+    await seedPrivateEvents(db, today);
+  }
 
   await db.setting.create({ data: { key: "square.lastSync", value: new Date(Date.now() - 3 * 3600_000).toISOString() } });
 
   console.log(`Seeded ${specs.length} ingredients, ${rows.length} sales rows. Users: Max (manager), Line (staff).`);
-  void iso;
 }
 

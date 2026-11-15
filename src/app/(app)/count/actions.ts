@@ -18,19 +18,26 @@ export async function startCount(form: FormData) {
   redirect(`/count/${count.id}`);
 }
 
-/** Save one line as staff type. qty null clears the line. */
+/** Save one line as staff type. qty null clears the line. Idempotent (an upsert), so the offline queue can retry it. */
 export async function saveCountLine(countId: string, ingredientId: string, qty: number | null, unit: string) {
   await requireUser();
-  const count = await db.stockCount.findUniqueOrThrow({ where: { id: countId } });
+  const count = await db.stockCount.findUnique({ where: { id: countId } });
+  if (!count) return { error: "This count was discarded." };
   if (count.completed) return { error: "This count is already finished." };
   if (qty == null || !Number.isFinite(qty)) {
     await db.stockCountLine.deleteMany({ where: { countId, ingredientId } });
     return { ok: true };
   }
   if (qty < 0) return { error: "Can't be negative." };
-  const ing = await db.ingredient.findUniqueOrThrow({ where: { id: ingredientId }, include: { conversions: true, preferredProduct: { select: { purchaseUnit: true, packQtyBase: true } } } });
+  const ing = await db.ingredient.findUnique({ where: { id: ingredientId }, include: { conversions: true, preferredProduct: { select: { purchaseUnit: true, packQtyBase: true } } } });
+  if (!ing) return { error: "That item isn't on the count any more." };
   const { conversions } = countUnitsFor(ing);
-  const qtyBase = toBase(qty, unit, ing.baseUnit as BaseUnit, conversions);
+  let qtyBase: number;
+  try {
+    qtyBase = toBase(qty, unit, ing.baseUnit as BaseUnit, conversions);
+  } catch {
+    return { error: `${ing.name} can't be counted in "${unit}".` };
+  }
   await db.stockCountLine.upsert({
     where: { countId_ingredientId: { countId, ingredientId } },
     create: { countId, ingredientId, qtyBase: new Prisma.Decimal(qtyBase.toFixed(4)) },

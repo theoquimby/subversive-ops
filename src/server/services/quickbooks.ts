@@ -225,6 +225,19 @@ async function withClient<T>(fn: (c: QboClient) => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Run QuickBooks calls for another feature (Month-end's sales journal) with a
+ * live token: renewed when stale, once more after a 401. Throws
+ * QuickBooksNotConnectedError when there's no usable connection.
+ */
+export const withQuickBooks = <T,>(fn: (c: QboClient) => Promise<T>): Promise<T> => withClient(fn);
+
+/** The connected company's id, or null (no network). */
+export async function quickbooksRealm(): Promise<string | null> {
+  const s = await readStored();
+  return s && !s.needsReconnect ? s.realmId : null;
+}
+
 /** Revoke the app's access in QuickBooks (best effort) and forget the tokens. Links and settings stay. */
 export async function disconnectQuickBooks(): Promise<{ revokeError?: string }> {
   const s = await readStored();

@@ -4,12 +4,13 @@ import { ClassMap, classifyCategory, ClassSettings, DEFAULT_BEV_TARGET, groupOf,
 import { db } from "../db";
 import { buildContext, CostingSnapshot, loadCostingSnapshot, priceAsOf, safeCost } from "./costing";
 import { businessToday } from "./sales";
+import { settingValue } from "./setting-read";
 
 export const DEFAULT_TARGET_FOOD_COST = 0.3;
 
 export async function targetFoodCost(): Promise<number> {
-  const s = await db.setting.findUnique({ where: { key: "costing.targetFoodCostPct" } });
-  return s ? Number(s.value) : DEFAULT_TARGET_FOOD_COST;
+  const s = await settingValue("costing.targetFoodCostPct");
+  return s != null ? Number(s) : DEFAULT_TARGET_FOOD_COST;
 }
 
 // ---- Revenue classes (food / beer / other beverage / retail) ------------------------
@@ -17,8 +18,7 @@ export async function targetFoodCost(): Promise<number> {
 export const CLASS_SETTING = "menu.revenueClasses";
 
 export async function classSettings(): Promise<ClassSettings> {
-  const s = await db.setting.findUnique({ where: { key: CLASS_SETTING } });
-  return parseClassSettings(s?.value);
+  return parseClassSettings(await settingValue(CLASS_SETTING));
 }
 
 /** Targets for the P&L split: food from the costing setting, beverage from the class mapping. */

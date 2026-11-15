@@ -1,7 +1,7 @@
 "use client";
 
+import { RelativeTime } from "@/components/relative-time";
 import { Badge, Button, Card, cx, LinkButton } from "@/components/ui";
-import { relativeTime } from "@/lib/format";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
 import type { BillState } from "@/server/services/quickbooks";
@@ -33,7 +33,7 @@ export function InvoiceQuickBooks({ invoiceId, state, approved, ready, autoSend 
   if (!approved) line = autoSend ? "Goes to QuickBooks as a bill by itself once it's approved." : "Once it's approved, it can go to QuickBooks as a bill.";
   else if (state.state === "sent") {
     tone = "good";
-    line = <>In QuickBooks as a bill{state.at && <> · sent {relativeTime(new Date(state.at))}</>}{state.by && state.by !== "auto" && <> by {state.by}</>}{state.attached && " · photo attached"}</>;
+    line = <>In QuickBooks as a bill{state.at && <> · sent <RelativeTime at={state.at} /></>}{state.by && state.by !== "auto" && <> by {state.by}</>}{state.attached && " · photo attached"}</>;
   } else if (state.state === "linked") {
     tone = "good";
     line = "This bill was already in QuickBooks (typed in by hand), so it's linked and left as it is.";

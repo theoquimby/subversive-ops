@@ -1,5 +1,6 @@
 "use server";
 
+import { pingWebsite } from "@/server/services/website";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { Prisma } from "@prisma/client";
@@ -62,6 +63,7 @@ export async function saveRecipe(id: string | null, input: RecipeInput): Promise
       return tx.recipe.create({ data: { ...data, lines: { create: lines } } });
     });
     revalidatePath("/menu");
+    pingWebsite("menu");
     revalidatePath("/");
     return { id: saved.id };
   } catch (e) {
@@ -82,6 +84,7 @@ export async function archiveRecipe(id: string) {
   for (let n = 2; await db.recipe.findUnique({ where: { name }, select: { id: true } }); n++) name = archivedName(recipe.name, label, n);
   await db.recipe.update({ where: { id }, data: { active: false, name } });
   revalidatePath("/menu");
+  pingWebsite("menu");
   redirect(`/menu?kind=${recipe.kind}`);
 }
 
@@ -95,6 +98,7 @@ export async function restoreRecipe(id: string): Promise<{ error?: string }> {
   if (clash && clash.id !== id) return { error: `There's already a recipe called "${name}". Rename it first, then restore this one.` };
   await db.recipe.update({ where: { id }, data: { active: true, name } });
   revalidatePath("/menu");
+  pingWebsite("menu");
   revalidatePath("/");
   return {};
 }
@@ -141,6 +145,7 @@ export async function archiveRecipes(ids: string[]): Promise<BulkResult> {
     done++;
   }
   revalidatePath("/menu");
+  pingWebsite("menu");
   revalidatePath("/");
   if (!done && kept.length) return { error: `Still used inside other recipes: ${kept.slice(0, 3).join(", ")}.` };
   return { message: `Archived ${recipesWord(done)}.${kept.length ? ` Kept ${kept.length} used inside other recipes.` : ""}` };

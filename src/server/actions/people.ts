@@ -16,7 +16,7 @@ export async function acknowledgeDocument(documentId: string): Promise<{ error?:
   const doc = await db.document.findFirst({ where: { id: documentId, ...documentScope("STAFF") }, select: { id: true } });
   if (!doc) return { error: "That document isn't available any more." };
   const ack = await db.documentAck.upsert({ where: { documentId_employeeId: { documentId, employeeId: me.id } }, create: { documentId, employeeId: me.id }, update: {} });
-  revalidatePath("/my");
+  revalidatePath("/my", "layout");
   revalidatePath("/team");
   return { ackedAt: ack.ackedAt.toISOString() };
 }

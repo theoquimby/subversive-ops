@@ -25,7 +25,20 @@ def test_open_hours_flags_dead_monday_opening():
     out = feed.open_hours(data, {})
     assert any(o["subject"] == "0.16" for o in out), [o["title"] for o in out]
     o = next(o for o in out if o["subject"] == "0.16")
-    assert "Open at 5pm" in o["action"] and o["monthly"] > 0 and o["low"] <= o["monthly"]
+    assert "Open at 5pm" in o["action"] and o["monthly"] > 0 and o["low"] <= o["monthly"] <= o["high"]
+
+
+def test_every_finding_sits_inside_its_range():
+    from subops.common import opportunity
+    o = opportunity("k", "feed.x", "feed", "t", "a", 100, 50, 80)
+    assert o["low"] == 50 and o["monthly"] == 100 and o["high"] == 100
+    o = opportunity("k", "feed.x", "feed", "t", "a", 100, 120, 300)
+    assert o["low"] == 100 and o["high"] == 300
+    data = make_data()
+    data["openingHours"] = {str(k): [16, 23] for k in (0, 1, 3, 4, 5, 6)}
+    for f in (feed.open_hours, feed.event_roi):
+        for x in f(data, {}):
+            assert x["low"] <= x["monthly"] <= x["high"], x["key"]
 
 
 def test_event_roi_and_mis_planned_impact():

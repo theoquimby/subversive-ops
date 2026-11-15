@@ -177,6 +177,23 @@ Prices have an **effective date**. The cost of a recipe "today" and "on March 1s
     related: ["app.tours", "app.helpMode"],
   },
   {
+    id: "help.releases",
+    area: "basics",
+    title: "Release notes",
+    audience: "all",
+    body: "Every update, newest first, with a version number, what changed and where to look. New ones pop up once the first time you open the app after they go live.",
+    route: "/help/releases",
+    article: `Each time the app is updated it gets a **version** (1.3, 1.4 and so on) and a short note.
+
+- **The pop-up.** The first time you open the app after an update, What's new shows the changes you haven't seen, grouped by version. **Show me** takes you straight there, with a tour where there is one. Close it and it won't come back until the next update.
+- **This page.** Every version, newest first. Managers also see the smaller fixes under **Also improved**.
+- **Missed it?** Open the help menu (the ? button) and choose **What's new** or **Release notes** any time.
+
+Staff only see changes to the pages they use.`,
+    related: ["help.center", "app.tours"],
+    keywords: ["what's new", "updates", "changelog", "version", "new features"],
+  },
+  {
     id: "welcome.progress",
     area: "basics",
     route: "/welcome",

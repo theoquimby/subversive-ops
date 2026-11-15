@@ -1,6 +1,7 @@
 import { HelpTip, HelpZone } from "@/components/help";
 import { Card, cx, EmptyState, LinkButton, PageHeader } from "@/components/ui";
 import { addDays, ISODate } from "@/domain/dates";
+import { displayTime } from "@/domain/events";
 import { windowLabel } from "@/domain/prep";
 import { dayDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
@@ -68,6 +69,21 @@ export default async function PrepPage({ searchParams }: { searchParams: Promise
           ))}
         </div>
       </HelpZone>
+
+      {list.events.length > 0 && (
+        <Card className="mb-5 p-4 text-sm">
+          <div className="mb-1 font-medium text-ink">Private event{list.events.length === 1 ? "" : "s"} in this prep</div>
+          <ul className="space-y-1 text-ink-2">
+            {list.events.map((e) => (
+              <li key={e.id} className="min-w-0">
+                {manager ? <Link className="font-medium text-ink underline-offset-2 hover:underline" href={`/events/private/${e.id}`}>{e.title}</Link> : <span className="font-medium text-ink">{e.title}</span>}
+                {` · ${label(e.date)}${e.startTime ? ` ${displayTime(e.startTime)}` : ""} · ${e.headcount} guests`}
+                {e.items.length === 0 ? " · no menu yet, so not in the amounts" : ""}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {list.lines.length === 0 ? (
         <EmptyState title="No prep recipes yet" action={manager ? <LinkButton href="/menu">Open menu costs</LinkButton> : undefined}>

@@ -23,9 +23,10 @@ const KIND_LABEL: Record<string, string> = { MENU: "Menu item", MODIFIER: "Add-o
 export default async function MenuPage({ searchParams }: { searchParams: Promise<{ kind?: string }> }) {
   await requireUser("MANAGER");
   const { kind = "MENU" } = await searchParams;
-  const snap = await loadCostingSnapshot();
-  const [{ rows }, noLines, cls, targets, archived, drafts] = await Promise.all([
-    menuCosts(snap),
+  // The snapshot is read once per render (cached), so it loads alongside the rest.
+  const [snap, { rows }, noLines, cls, targets, archived, drafts] = await Promise.all([
+    loadCostingSnapshot(),
+    menuCosts(),
     db.recipe.findMany({ where: { lines: { none: {} } }, select: { id: true } }),
     classSettings(),
     costTargets(),

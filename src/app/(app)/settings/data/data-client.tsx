@@ -11,7 +11,7 @@ export function ClearData({ counts }: { counts: { label: string; n: number }[] }
   const [msg, setMsg] = useState<{ ok?: string; error?: string } | null>(null);
   const [pending, start] = useTransition();
   const ready = typed.trim().toUpperCase() === "CLEAR";
-  const what = counts.filter((c) => c.n > 0).map((c) => `${c.n.toLocaleString()} ${c.label}`).join(", ");
+  const what = counts.filter((c) => c.n > 0).map((c) => `${c.n.toLocaleString("en-US")} ${c.label}`).join(", ");
   return (
     <div className="space-y-3 px-4 py-4 sm:px-5">
       <p className="text-sm text-ink-2">This removes every ingredient, price, recipe, sale, count, order, invoice, shift and timecard{what ? ` (${what})` : ""}. Logins are kept. It can't be undone.</p>

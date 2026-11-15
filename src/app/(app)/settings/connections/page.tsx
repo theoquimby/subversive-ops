@@ -14,10 +14,11 @@ import { lastWebhookSeen, squareStatus } from "@/server/services/square";
 import { loadQuickBooksData } from "../quickbooks/data";
 import type { ServiceId, TestResult } from "./actions";
 import { Connections, type ConnectionsData } from "./connections-client";
+import { GoogleSearchTile } from "../../website/analytics/google-tile";
 
 export const metadata = { title: "Connections" };
 
-const SERVICES: ServiceId[] = ["square", "email", "push", "ai", "google", "quickbooks"];
+const SERVICES: ServiceId[] = ["square", "email", "push", "ai", "google", "quickbooks", "website"];
 const isService = (s: string | undefined): s is ServiceId => !!s && (SERVICES as string[]).includes(s);
 
 export default async function ConnectionsPage({ searchParams }: { searchParams: Promise<{ open?: string; error?: string; connected?: string }> }) {
@@ -95,6 +96,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
         description="Link the outside services that turn extra features on. Each one has a step-by-step guide with pictures — no technical know-how needed, and everything works without them."
       />
       <Connections data={data} />
+      <GoogleSearchTile />
     </>
   );
 }

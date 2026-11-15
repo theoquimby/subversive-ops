@@ -12,7 +12,7 @@ import { certFileData, setStepDone } from "@/server/services/training";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-const refresh = () => { revalidatePath("/my"); revalidatePath("/team/training"); revalidatePath("/team"); };
+const refresh = () => { revalidatePath("/my", "layout"); revalidatePath("/team/training"); revalidatePath("/team"); };
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => !Number.isNaN(Date.parse(s)));
 
 /** A photo or PDF of your own certificate. It goes in unverified until a manager checks it. */

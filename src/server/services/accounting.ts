@@ -2,6 +2,7 @@ import "server-only";
 import { AccountMap, accountMap, BillInput, SalesDay } from "@/domain/accountingExport";
 import { addDays, dateRange, ISODate, parseISODate, toISODate } from "@/domain/dates";
 import { db, num } from "../db";
+import { squareLinks } from "./sales";
 
 /**
  * Data for accounting exports: approved invoices as bills, and daily sales by
@@ -100,7 +101,7 @@ export async function salesDays(from: ISODate, toExclusive: ISODate): Promise<{ 
   const dates = dateRange(from, toExclusive);
   const [sales, mappings, recipes, settings, rate] = await Promise.all([
     db.dailySale.groupBy({ by: ["date", "squareId"], _sum: { netSales: true }, where: { date: { gte: parseISODate(from), lt: parseISODate(toExclusive) } } }),
-    db.squareMapping.findMany({ select: { squareId: true, recipeId: true, ignored: true } }),
+    squareLinks(),
     db.recipe.findMany({ select: { id: true, category: true } }),
     db.setting.findMany({ where: { key: { in: dates.flatMap((d) => [`tips.${d}`, `tax.${d}`]) } } }),
     loadTaxRate(),

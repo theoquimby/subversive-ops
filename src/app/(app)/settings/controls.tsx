@@ -37,7 +37,8 @@ function useSaver() {
   const run = (fn: () => Promise<SaveResult>, onError?: () => void) => {
     setStatus("saving");
     start(async () => {
-      const r = await fn();
+      // A dropped connection or a server error must not leave "Saving…" up forever.
+      const r: SaveResult = await fn().catch(() => ({ error: "Couldn't save. Check the connection and try again." }));
       if (timer.current) clearTimeout(timer.current);
       if (r && r.error) {
         setError(r.error);

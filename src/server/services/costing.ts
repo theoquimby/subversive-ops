@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { costRecipe, CostingContext, CostIngredient, CostRecipe, explodeUsage, RecipeCostResult } from "@/domain/costing";
 import { addDays, ISODate, toISODate } from "@/domain/dates";
 import { BaseUnit } from "@/domain/units";
@@ -33,7 +34,11 @@ const loadRecipes = () =>
     orderBy: { name: "asc" },
   });
 
-export async function loadCostingSnapshot(): Promise<CostingSnapshot> {
+/**
+ * Loaded once per server render (Overview, P&L, ordering and the brief each pull it from
+ * several services); fresh on every call in actions and route handlers. Treat it as read-only.
+ */
+export const loadCostingSnapshot = cache(async (): Promise<CostingSnapshot> => {
   const [ingredients, recipes, prices] = await Promise.all([
     loadIngredients(),
     loadRecipes(),
@@ -49,7 +54,7 @@ export async function loadCostingSnapshot(): Promise<CostingSnapshot> {
     priceHistory.set(p.supplierProductId, list);
   }
   return { ingredients, recipes, priceHistory };
-}
+});
 
 /** Latest price on or before `asOf` (records are sorted ascending). */
 export function priceAsOf(list: { date: ISODate; price: number }[] | undefined, asOf: ISODate): number | null {

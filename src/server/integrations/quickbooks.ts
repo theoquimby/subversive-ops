@@ -251,3 +251,37 @@ export async function attachToBill(c: QboClient, billId: string, file: { name: s
   const errors = first?.Fault?.Error ?? [];
   throw new QboError(friendlyQboError(400, errors), 400, errors);
 }
+
+// ---- Journal entries (Month-end → QuickBooks sales journal) ---------------------------------------
+
+export interface QboJournalEntry {
+  Id: string;
+  SyncToken: string;
+  DocNumber?: string;
+  TxnDate?: string;
+  TotalAmt?: number;
+}
+
+/** A journal entry by id, or null if it was deleted in QuickBooks. */
+export async function readJournalEntry(c: QboClient, id: string): Promise<QboJournalEntry | null> {
+  try {
+    const r = await api<{ JournalEntry?: QboJournalEntry }>(c, "GET", `/journalentry/${encodeURIComponent(id)}`);
+    return r.JournalEntry ?? null;
+  } catch (e) {
+    if (e instanceof QboError && (e.status === 404 || e.codes.includes("610"))) return null;
+    if (e instanceof QboError && e.status === 400 && e.errors.some((x) => /not found|deleted/i.test(`${x.Message} ${x.Detail}`))) return null;
+    throw e;
+  }
+}
+
+/** Create (`requestid` makes a retried create land once). The body is QboJournalPayload from @/domain/salesJournal. */
+export async function createJournalEntry(c: QboClient, entry: object, requestId: string): Promise<QboJournalEntry> {
+  const r = await api<{ JournalEntry: QboJournalEntry }>(c, "POST", "/journalentry", { params: { requestid: requestId }, json: entry });
+  return r.JournalEntry;
+}
+
+/** Full update: every field we own is sent again, so the lines are replaced as a whole. */
+export async function updateJournalEntry(c: QboClient, id: string, syncToken: string, entry: object): Promise<QboJournalEntry> {
+  const r = await api<{ JournalEntry: QboJournalEntry }>(c, "POST", "/journalentry", { json: { ...entry, Id: id, SyncToken: syncToken } });
+  return r.JournalEntry;
+}

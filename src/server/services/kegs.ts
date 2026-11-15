@@ -6,6 +6,7 @@ import { applyKegAction, isFull, kegOz, legacyCandidates, newKegCode, normalizeC
 import { calibrateYield, dollarsPerOz, ozBetween, ozByBeerDay, shareFromHours, splitItemName, tapEstimate, unmatchedDraftNames, type BeerMatcher, type TapEstimate } from "@/domain/kegPours";
 import { localMinutes } from "@/domain/timecards";
 import { db } from "../db";
+import { settingValue } from "./setting-read";
 import { env } from "../env";
 import { storageAreas } from "./inventory";
 import { businessToday } from "./sales";
@@ -38,9 +39,9 @@ const CONFIG_KEY = "kegs.config";
 const DEFAULT_CONFIG: KegConfig = { tapLines: 12, tapArea: "Bar", coldArea: "Walk-in", pours: {}, fillDays: 7 };
 
 export async function kegConfig(): Promise<KegConfig> {
-  const row = await db.setting.findUnique({ where: { key: CONFIG_KEY } });
+  const row = await settingValue(CONFIG_KEY); // once per render
   try {
-    const v = row ? (JSON.parse(row.value) as Partial<KegConfig>) : {};
+    const v = row ? (JSON.parse(row) as Partial<KegConfig>) : {};
     return {
       tapLines: Number.isInteger(v.tapLines) && v.tapLines! > 0 && v.tapLines! <= 60 ? v.tapLines! : DEFAULT_CONFIG.tapLines,
       tapArea: typeof v.tapArea === "string" && v.tapArea.trim() ? v.tapArea : DEFAULT_CONFIG.tapArea,

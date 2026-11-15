@@ -45,6 +45,23 @@ export interface Tour {
 
 export const TOURS: Tour[] = [
   {
+    id: "today",
+    title: "Your day in the app (staff)",
+    description: "Today, your shifts, the floor tools and getting alerts on your phone.",
+    audience: "all",
+    minutes: 1,
+    steps: [
+      { route: "/my", target: "my.next-shift", title: "Your next shift", body: "When you start, a live countdown, and who's on with you. During the shift it shows how long is left.", helpId: "my.nextShift", ifMissing: "skip" },
+      { route: "/my", target: "my.quick", title: "One tap to the floor", body: "Scan a keg, the prep list, log waste, start a count, a shift note. What you use most comes first.", helpId: "my.quick" },
+      { route: "/my", target: "my.todo", title: "For you", body: "Documents to sign, certificates to upload, training steps and shifts up for grabs. Tap one to do it. Empty means you're caught up.", helpId: "my.todo" },
+      { route: "/my", target: "my.setup", title: "Make it an app", body: "Add it to your Home Screen and turn on notifications to hear about new schedules and swaps.", helpId: "my.setup", ifMissing: "skip" },
+      { selector: 'nav[aria-label="Main"]', title: "Always at the bottom", body: "Today, Shifts, Scan and Prep. More has counts, waste, kegs, shift notes and Me.", placement: "top", ifMissing: "skip" },
+      { route: "/my/shifts", target: "my.open", title: "Pick up or swap a shift", body: "Open shifts for your positions: first to tap gets it. Tap Swap on one of yours to give it away.", helpId: "my.openShifts", ifMissing: "skip" },
+      { route: "/my/shifts", target: "my.time-off", title: "Time off and sick days", body: "Ask for days off early, or tap I'm out sick to log it for today. Your sick leave balance is right above.", helpId: "my.timeOff" },
+      { title: "No signal? Keep going", body: "Counts, waste, prep ticks and keg scans wait on your phone and send themselves when you're back in range.", helpId: "my.offline" },
+    ],
+  },
+  {
     id: "prep",
     title: "The prep list",
     description: "What to make today and why, ticking it off, and keeping on hand right.",
@@ -153,6 +170,22 @@ export const TOURS: Tour[] = [
     ],
   },
   {
+    id: "month-end",
+    title: "Closing the month",
+    description: "The checklist, sales tax, stock value, tips owed and the accountant pack.",
+    audience: "manager",
+    minutes: 1,
+    steps: [
+      { route: "/accounting", target: "accounting.period", title: "Pick the period", body: "A month, a sales tax quarter or any dates. The page and the accountant pack follow it.", helpId: "accounting.page" },
+      { route: "/accounting", target: "accounting.stats", title: "The period at a glance", body: "Net sales, tax Square collected, actual cost of goods from your counts, and card tips still owed to the team.", helpId: "accounting.stats" },
+      { route: "/accounting", target: "accounting.checklist", title: "What's left to do", body: "Invoices, the end-of-month count, tips, payroll and Square sales. Tap a line to go and fix it.", helpId: "accounting.checklist" },
+      { route: "/accounting", target: "accounting.inventory", title: "Actual cost of goods", body: "Stock at the start, plus approved invoices, minus stock at the end, valued at the prices on file.", helpId: "accounting.inventory", placement: "top" },
+      { route: "/accounting", target: "accounting.tax", title: "Sales tax", body: "Tax collected by month, with taxable sales worked out from your rate. The rate and quarters are settings to check with your accountant.", helpId: "accounting.salesTax", placement: "top" },
+      { route: "/accounting", target: "accounting.journal.toggle", title: "Sales to QuickBooks", body: "Off until you turn it on. Preview each day's entry, pick the accounts, then send. Re-sending only updates what changed.", helpId: "accounting.journal", ifMissing: "skip" },
+      { route: "/accounting", target: "accounting.pack", title: "One file for your accountant", body: "Everything above in one Excel file, a tab per subject.", helpId: "accounting.pack", touch: { body: "Everything on this page in one Excel file, a tab per subject." } },
+    ],
+  },
+  {
     id: "menu",
     title: "Menu costs & the recipe editor",
     description: "Plate costs, food cost targets, and building a recipe with quick add.",
@@ -216,10 +249,10 @@ export const TOURS: Tour[] = [
     steps: [
       { route: "/count", target: "count.start", title: "Pick what you're counting", body: "Tap an area like the walk-in, or Everything. If someone already started that area, you'll carry on their count.", helpId: "count.start" },
       { route: "/count", target: "count.in-progress", title: "Pick up where you left off", body: "Counts that aren't finished yet. Everything entered so far is saved.", helpId: "count.inProgress", ifMissing: "skip" },
-      { title: "On the count sheet", body: "Type how much is on the shelf. Each number saves the moment you move on — a green tick means it's in. Enter jumps to the next item.", helpId: "count.autosave" },
+      { title: "On the count sheet", body: "Type how much is on the shelf. Each number saves the moment you move on — a green tick means it's in, a cloud means it's waiting for signal. Enter jumps to the next item.", helpId: "count.autosave" },
       { title: "Any unit you like", body: "Count in cases, lb, each or a custom unit — pick it next to the number. Tap Finish count when you're done.", helpId: "count.units" },
       { route: "/waste", target: "waste.form", title: "Log waste", body: "Anything thrown out: pick the item, how much, and why. It keeps stock and food cost honest.", helpId: "waste.page" },
-      { route: "/waste", target: "waste.reasons", title: "Why it was thrown out", body: "One tap for the reason. The form clears after each log so you can do several in a row.", helpId: "waste.reasons" },
+      { route: "/waste", target: "waste.reasons", title: "Why it was thrown out", body: "One tap for the reason. The form clears the moment you log, so you can do several in a row — even with no signal.", helpId: "waste.reasons" },
     ],
   },
   {
@@ -250,7 +283,7 @@ export const TOURS: Tour[] = [
       { route: "/team/training", target: "training.filters", title: "Narrow it down", body: "Show one position, or only people who need attention, have something expiring, or uploaded a card that isn't verified yet.", helpId: "training.matrix" },
       { title: "Tap a cell to add or renew", body: "Snap a photo or drop a PDF, pick the issue date and the expiry fills in. A renewal adds a new record and keeps the old one. View the photo and mark it verified from the same sheet.", helpId: "training.addCert" },
       { route: "/team/training", target: "training.types", title: "What you track", body: "How long each certificate lasts and which positions need it. Pre-filled for New York — confirm them before relying on them.", helpId: "training.types" },
-      { route: "/team/training", target: "training.module", title: "Onboarding checklists", body: "Steps for a new hire, each with an optional linked document. Assign by position or person; staff tick steps on My shifts and you sign off.", helpId: "training.modules", ifMissing: "skip" },
+      { route: "/team/training", target: "training.module", title: "Onboarding checklists", body: "Steps for a new hire, each with an optional linked document. Assign by position or person; staff tick steps on Me and you sign off.", helpId: "training.modules", ifMissing: "skip" },
       { route: "/team/training", target: "training.new-module", title: "Start a checklist", body: "Type a name like “New bartender” and press Enter, then add the steps.", helpId: "training.modules", ifMissing: "skip" },
       { title: "Reminders and warnings", body: "People and managers hear about certificates 30 and 7 days before they expire. The weekly brief lists what's due, and the schedule warns if someone's on a shift without a certificate their position needs.", helpId: "training.reminders" },
     ],
@@ -273,6 +306,37 @@ export const TOURS: Tour[] = [
       { route: "/events/private/setup", target: "private.packages", title: "Packages & defaults", body: "Per-guest packages with their recipes, your spaces, and the tax, service charge and deposit new quotes start with.", helpId: "events.private.setup" },
     ],
   },
+  {
+    id: "website",
+    title: "The website, from Ops",
+    description: "What guests see on the website and where you change it: hours, the notice, the menu, events and inquiries.",
+    audience: "manager",
+    minutes: 2,
+    steps: [
+      { route: "/website", target: "website.live", title: "What's live", body: "Today's hours, what's on the website menu, upcoming events and new inquiries, read from the same feeds the website reads.", helpId: "website.page" },
+      { route: "/website", target: "website.connection", title: "The connection", body: "The website refreshes every 5 minutes on its own. With its address and secret in Connections, it refreshes the moment you save. Each feed shows a count so you can see it's working.", helpId: "website.connection", ifMissing: "skip" },
+      { route: "/website/hours", target: "website.notice", title: "The notice", body: "One line at the top of the site for a closure or a change. Pick the last day and it comes down by itself.", helpId: "website.notice" },
+      { route: "/website/hours", target: "website.hours", title: "Exact hours and kitchen close", body: "Opening hours come from Settings → Business. Type 4:30pm or when the kitchen stops orders here.", helpId: "website.hours" },
+      { route: "/website/menu", target: "website.menu", title: "The menu", body: "Turn on the items guests should see and give each a line of description and tags. Prices come from Menu costs.", helpId: "website.menu.items" },
+      { route: "/website/menu", target: "website.beer", title: "Draft beer", body: "The draft list is what's on tap right now, from Kegs. Style, ABV and prices come from Kegs → Beers.", helpId: "website.menu.beer", ifMissing: "skip" },
+      { route: "/website/events", target: "website.events", title: "Events", body: "Add a picture, a price, a ticket link or a late close to any calendar event. Private bookings never show.", helpId: "website.events" },
+      { route: "/website/inquiries", target: "website.inquiries", title: "Inquiries", body: "Party and buyout requests from the website form. Each one is already on Private events.", helpId: "website.inquiries" },
+    ],
+  },
+  {
+    id: "webanalytics",
+    title: "Website analytics",
+    description: "Visits, where they come from, what people do next, and how it lines up with sales and Google.",
+    audience: "manager",
+    minutes: 1,
+    steps: [
+      { route: "/website/analytics", target: "webanalytics.kpis", title: "The numbers that matter", body: "People, visits, pages and actions, against the period before. A change is coloured only when it's bigger than normal ups and downs.", helpId: "website.analytics", ifMissing: "skip" },
+      { route: "/website/analytics", target: "webanalytics.funnel", title: "Visit to visit-in-person", body: "All visits, the ones that looked at the menu or an event, and the ones that called, got directions, ordered or booked. Look at the biggest drop first.", helpId: "website.analytics.funnel", ifMissing: "skip" },
+      { route: "/website/analytics", target: "webanalytics.sources", title: "Where they come from", body: "Google, Maps, Instagram, typed in. The dot is how often those visits act; Better or Lower only shows when it's more than chance.", helpId: "website.analytics.sources", ifMissing: "skip" },
+      { route: "/website/analytics", target: "webanalytics.sales", title: "Website and sales", body: "Whether busier website days go with busier days at the taproom, weekday and events allowed for. It never claims more than the numbers show.", helpId: "website.analytics.salesLink", ifMissing: "skip" },
+      { route: "/website/analytics", target: "webanalytics.google", title: "Google", body: "Search terms and the Google listing's calls and direction requests, straight from Google once it's connected.", helpId: "website.analytics.google", ifMissing: "skip" },
+    ],
+  },
 ];
 
 const BY_ID = new Map(TOURS.map((t) => [t.id, t]));
@@ -284,17 +348,22 @@ export function tourForPath(pathname: string): Tour | undefined {
   const map: [RegExp, string][] = [
     [/^\/$/, "overview"],
     [/^\/events\/private/, "private-events"],
+    [/^\/website\/analytics/, "webanalytics"],
     [/^\/team\/training/, "training"],
     [/^\/menu/, "menu"],
     [/^\/prices/, "prices"],
     [/^\/ordering/, "ordering"],
     [/^\/(count|waste)/, "counting"],
+    [/^\/my/, "today"],
     [/^\/ingredients/, "ingredients"],
     [/^\/insights/, "insights"],
     [/^\/kegs/, "kegs"],
     [/^\/prep/, "prep"],
     [/^\/brief/, "brief"],
     [/^\/notes/, "notes"],
+    [/^\/pnl/, "pnl"],
+    [/^\/accounting/, "month-end"],
+    [/^\/website/, "website"],
   ];
   const hit = map.find(([re]) => re.test(pathname));
   return hit ? getTour(hit[1]) : undefined;

@@ -60,7 +60,7 @@ function content(u: ShiftUpdate): { subject: string; title: string; status?: { l
 
 export function shiftUpdateEmail(e: ShiftUpdateEmail): RenderedEmail {
   const c = content(e.update);
-  const myUrl = link(e.baseUrl, "/my");
+  const myUrl = link(e.baseUrl, "/my/shifts");
   const html = shell({
     preheader: `${c.title}. ${c.lines.join(" ")}`.trim(),
     body: [

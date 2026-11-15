@@ -174,7 +174,7 @@ export function notifySchedulePublished(weekStart: ISODate) {
       return {
         to: employeeRecipient(emp),
         email: schedulePublishedEmail({ name: emp.name, weekStart, shifts: mine, baseUrl: base }),
-        push: { title: "Schedule is out", body: `${mine.length} shift${mine.length === 1 ? "" : "s"} · ${Number(hours.toFixed(1))} h the week of ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${weekStart}T00:00:00Z`))}`, url: "/my", tag: `schedule-${weekStart}` },
+        push: { title: "Schedule is out", body: `${mine.length} shift${mine.length === 1 ? "" : "s"} · ${Number(hours.toFixed(1))} h the week of ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${weekStart}T00:00:00Z`))}`, url: "/my/shifts", tag: `schedule-${weekStart}` },
       };
     });
   });
@@ -220,7 +220,7 @@ export function notifyShiftChanged(shiftId: string, before?: ShiftSnapshot | nul
       if (had && has && had.date === has.date && had.startMin === has.startMin && had.endMin === has.endMin && had.position === has.position) continue;
       // Without a snapshot we only know the new state, so it reads "updated" rather than "added".
       const update: ShiftUpdate = { kind: "changed", before: had, after: has, added: before !== undefined };
-      out.push({ to: employeeRecipient(e), email: shiftUpdateEmail({ name: e.name, update, baseUrl: base }), push: { ...shiftUpdatePush(update), url: "/my", tag: `shift-${shiftId}` } });
+      out.push({ to: employeeRecipient(e), email: shiftUpdateEmail({ name: e.name, update, baseUrl: base }), push: { ...shiftUpdatePush(update), url: "/my/shifts", tag: `shift-${shiftId}` } });
     }
     return out;
   });
@@ -232,7 +232,7 @@ export function notifyTimeOffDecided(requestId: string) {
     const r = await db.timeOffRequest.findUnique({ where: { id: requestId }, include: { employee: { select: { name: true, email: true, userId: true } } } });
     if (!r || r.status === "PENDING") return [];
     const update: ShiftUpdate = { kind: "timeOff", approved: r.status === "APPROVED", startDate: toISODate(r.startDate), endDate: toISODate(r.endDate), note: r.note };
-    return [{ to: employeeRecipient(r.employee), email: shiftUpdateEmail({ name: r.employee.name, update, baseUrl: appUrl() }), push: { ...shiftUpdatePush(update), url: "/my", tag: `timeoff-${r.id}` } }];
+    return [{ to: employeeRecipient(r.employee), email: shiftUpdateEmail({ name: r.employee.name, update, baseUrl: appUrl() }), push: { ...shiftUpdatePush(update), url: "/my/shifts#time-off", tag: `timeoff-${r.id}` } }];
   });
 }
 
@@ -254,10 +254,10 @@ export function notifySwapDecided(swapId: string) {
     const base = appUrl();
     const out: Delivery[] = [];
     const reqUpdate: ShiftUpdate = { kind: "swap", role: "requester", approved, shift, otherName: s.taker?.name ?? null };
-    out.push({ to: employeeRecipient(s.requester), email: shiftUpdateEmail({ name: s.requester.name, update: reqUpdate, baseUrl: base }), push: { ...shiftUpdatePush(reqUpdate), url: "/my", tag: `swap-${s.id}` } });
+    out.push({ to: employeeRecipient(s.requester), email: shiftUpdateEmail({ name: s.requester.name, update: reqUpdate, baseUrl: base }), push: { ...shiftUpdatePush(reqUpdate), url: "/my/shifts", tag: `swap-${s.id}` } });
     if (s.taker) {
       const takerUpdate: ShiftUpdate = { kind: "swap", role: "taker", approved, shift, otherName: s.requester.name };
-      out.push({ to: employeeRecipient(s.taker), email: shiftUpdateEmail({ name: s.taker.name, update: takerUpdate, baseUrl: base }), push: { ...shiftUpdatePush(takerUpdate), url: "/my", tag: `swap-${s.id}` } });
+      out.push({ to: employeeRecipient(s.taker), email: shiftUpdateEmail({ name: s.taker.name, update: takerUpdate, baseUrl: base }), push: { ...shiftUpdatePush(takerUpdate), url: "/my/shifts", tag: `swap-${s.id}` } });
     }
     return out;
   });
@@ -457,7 +457,7 @@ export function notifyCertificateReminders(items: CertReminder[]) {
     for (const mine of byPerson.values()) {
       const emp = mine[0].employee;
       const sum = certReminderSummary(mine, "self");
-      out.push({ to: employeeRecipient(emp), email: certReminderEmail({ name: emp.name, audience: "self", items: mine, baseUrl: base }), push: { title: sum.title, body: sum.body, url: "/my#training", tag: `certs-${mine.map((m) => m.certId).join("-").slice(0, 60)}` } });
+      out.push({ to: employeeRecipient(emp), email: certReminderEmail({ name: emp.name, audience: "self", items: mine, baseUrl: base }), push: { title: sum.title, body: sum.body, url: "/my/me#training", tag: `certs-${mine.map((m) => m.certId).join("-").slice(0, 60)}` } });
     }
     const sorted = [...items].sort((a, b) => a.expiresOn.localeCompare(b.expiresOn));
     const sum = certReminderSummary(sorted, "team");

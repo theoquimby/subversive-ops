@@ -1,13 +1,24 @@
 import "server-only";
 import { addDays, businessDate, dateRange, ISODate, parseISODate, toISODate, todayIn, zonedMidnightUTC } from "@/domain/dates";
 import { Prisma } from "@prisma/client";
+import { cache } from "react";
 import { db } from "../db";
 import { env } from "../env";
 import { listOrders, listSellables } from "../integrations/square";
 import { readSettingJSON, recordSquareSync, requireSquareClient, writeSettingJSON } from "./square";
 import { discountStaff, discountWrites } from "./square-money";
+import { foldItemSales, foldRecipeSales, type ItemDaySum, type RecipeDaySum } from "@/domain/salesRollup";
 
 export const businessToday = () => todayIn(env.BUSINESS_TIMEZONE);
+
+/**
+ * Every Square item's link: the recipe it counts as and whether it's ignored.
+ * Read once per server render (the P&L alone asked for it a dozen times); fresh in actions.
+ */
+export const squareLinks = cache(() => db.squareMapping.findMany({ select: { squareId: true, recipeId: true, ignored: true } }));
+
+/** Square ids marked "Ignore" (merch, gift cards…), once per server render. */
+export const ignoredSquareIds = cache(async () => (await squareLinks()).filter((m) => m.ignored).map((m) => m.squareId));
 
 export interface CatalogMeta {
   baseName: string;
@@ -132,27 +143,39 @@ export const localHour = (d: Date, timeZone: string) =>
 
 /**
  * Sales history per recipe (mapped Square objects only), plus the set of
- * days the business was open — used by the forecaster.
+ * days the business was open — used by the forecaster. Summed per day and
+ * recipe in the database (a stock estimate can reach back months), once per
+ * render per range; don't mutate the result.
  */
-export async function salesByRecipe(from: ISODate, toExclusive: ISODate) {
-  const [rows, mappings] = await Promise.all([
-    db.dailySale.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(toExclusive) } } }),
-    db.squareMapping.findMany({ where: { recipeId: { not: null }, ignored: false } }),
-  ]);
-  const recipeFor = new Map(mappings.map((m) => [m.squareId, m.recipeId!]));
-  const byRecipe = new Map<string, Map<ISODate, number>>();
-  const openDays = new Set<ISODate>();
-  for (const r of rows) {
-    const date = toISODate(r.date);
-    if (r.qty.toNumber() > 0) openDays.add(date);
-    const recipeId = recipeFor.get(r.squareId);
-    if (!recipeId) continue;
-    const series = byRecipe.get(recipeId) ?? new Map<ISODate, number>();
-    series.set(date, (series.get(date) ?? 0) + r.qty.toNumber());
-    byRecipe.set(recipeId, series);
-  }
-  return { byRecipe, openDays };
-}
+export const salesByRecipe = cache(async (from: ISODate, toExclusive: ISODate) => {
+  const rows = await db.$queryRaw<RecipeDaySum[]>`
+    SELECT to_char(ds.date, 'YYYY-MM-DD') AS date,
+           CASE WHEN sm.ignored = false THEN sm."recipeId" END AS "recipeId",
+           SUM(ds.qty)::float8 AS qty,
+           bool_or(ds.qty > 0) AS "anySold"
+    FROM "DailySale" ds
+    LEFT JOIN "SquareMapping" sm ON sm."squareId" = ds."squareId"
+    WHERE ds.date >= ${from}::date AND ds.date < ${toExclusive}::date
+    GROUP BY 1, 2`;
+  return foldRecipeSales(rows);
+});
+
+/**
+ * Item sales for [from, toExclusive) summed per business date and linked
+ * recipe, ignored items left out (null recipe: not linked). Once per render per range.
+ */
+export const itemSalesByDay = cache(async (from: ISODate, toExclusive: ISODate) => {
+  const rows = await db.$queryRaw<ItemDaySum[]>`
+    SELECT to_char(ds.date, 'YYYY-MM-DD') AS date,
+           sm."recipeId" AS "recipeId",
+           SUM(ds.qty)::float8 AS qty,
+           SUM(ds."netSales")::float8 AS sales
+    FROM "DailySale" ds
+    LEFT JOIN "SquareMapping" sm ON sm."squareId" = ds."squareId"
+    WHERE ds.date >= ${from}::date AND ds.date < ${toExclusive}::date AND sm.ignored IS NOT TRUE
+    GROUP BY 1, 2`;
+  return foldItemSales(rows);
+});
 
 export async function lastSquareSync() {
   const s = await db.setting.findUnique({ where: { key: "square.lastSync" } });
@@ -166,12 +189,11 @@ export async function lastSquareSync() {
  */
 export async function netSalesExcludingIgnored(from: ISODate, toExclusive: ISODate): Promise<number> {
   const range = { gte: parseISODate(from), lt: parseISODate(toExclusive) };
-  const ignored = await db.squareMapping.findMany({ where: { ignored: true }, select: { squareId: true } });
   const [all, minus] = await Promise.all([
     db.hourlySale.aggregate({ _sum: { netSales: true }, where: { date: range } }),
-    ignored.length
-      ? db.dailySale.aggregate({ _sum: { netSales: true }, where: { date: range, squareId: { in: ignored.map((i) => i.squareId) } } })
-      : Promise.resolve({ _sum: { netSales: null } }),
+    ignoredSquareIds().then((ignored) =>
+      ignored.length ? db.dailySale.aggregate({ _sum: { netSales: true }, where: { date: range, squareId: { in: ignored } } }) : { _sum: { netSales: null } },
+    ),
   ]);
   return (all._sum.netSales?.toNumber() ?? 0) - (minus._sum.netSales?.toNumber() ?? 0);
 }
@@ -179,10 +201,9 @@ export async function netSalesExcludingIgnored(from: ISODate, toExclusive: ISODa
 /** Same as netSalesExcludingIgnored, per business date. */
 export async function dailyNetSalesExcludingIgnored(from: ISODate, toExclusive: ISODate): Promise<Map<ISODate, number>> {
   const range = { gte: parseISODate(from), lt: parseISODate(toExclusive) };
-  const ignored = await db.squareMapping.findMany({ where: { ignored: true }, select: { squareId: true } });
   const [all, minus] = await Promise.all([
     db.hourlySale.groupBy({ by: ["date"], _sum: { netSales: true }, where: { date: range } }),
-    ignored.length ? db.dailySale.groupBy({ by: ["date"], _sum: { netSales: true }, where: { date: range, squareId: { in: ignored.map((i) => i.squareId) } } }) : Promise.resolve([]),
+    ignoredSquareIds().then((ignored) => (ignored.length ? db.dailySale.groupBy({ by: ["date"], _sum: { netSales: true }, where: { date: range, squareId: { in: ignored } } }) : [])),
   ]);
   const out = new Map<ISODate, number>();
   for (const r of all) out.set(toISODate(r.date), r._sum.netSales?.toNumber() ?? 0);

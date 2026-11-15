@@ -3,7 +3,8 @@
 import { HelpTip, HelpZone } from "@/components/help";
 import { Button, Card, cx, Input } from "@/components/ui";
 import { amountText, formatPrepQty, type PrepStatus, type PrepUnit } from "@/domain/prep";
-import { relativeTime } from "@/lib/format";
+import { RelativeTime } from "@/components/relative-time";
+import { businessTime } from "@/lib/format";
 import { Check, ChevronDown, ChevronRight, CloudOff, Minus, Plus, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -33,8 +34,8 @@ export interface BoardLine {
 
 type Done = BoardLine["done"];
 
-const timeFmt = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
-const doneLabel = (d: NonNullable<Done>) => `${d.by ?? "Someone"} · ${timeFmt.format(new Date(d.at))}`;
+// Business-local time, so the server's HTML and the phone's first render agree (no hydration error).
+const doneLabel = (d: NonNullable<Done>) => `${d.by ?? "Someone"} · ${businessTime(d.at)}`;
 
 function overShelfText(l: BoardLine): string {
   const used = l.shelfCapBase != null ? formatPrepQty(l.shelfCapBase, l.unit) : null;
@@ -242,7 +243,7 @@ function OnHandEntry({ line: l }: { line: BoardLine }) {
         <Button type="submit" size="lg" disabled={state === "saving" || !v.trim()}>Save</Button>
       </form>
       <p className="mt-1 text-xs text-muted" aria-live="polite">
-        {error ? <span className="text-bad">{error}</span> : state === "saved" ? <span className="text-good">Saved — the list is updated.</span> : state === "queued" ? "Saved on this phone; it sends when there's signal." : l.countedAt ? `Counted ${relativeTime(new Date(l.countedAt))}${l.countedBy ? ` by ${l.countedBy}` : ""}${l.onHandKnown ? ` · about ${formatPrepQty(l.onHandBase, l.unit)} now` : ""}` : l.onHandKnown ? `About ${formatPrepQty(l.onHandBase, l.unit)} from batches made` : "Not counted yet"}
+        {error ? <span className="text-bad">{error}</span> : state === "saved" ? <span className="text-good">Saved — the list is updated.</span> : state === "queued" ? "Saved on this phone; it sends when there's signal." : l.countedAt ? <>Counted <RelativeTime at={l.countedAt} />{`${l.countedBy ? ` by ${l.countedBy}` : ""}${l.onHandKnown ? ` · about ${formatPrepQty(l.onHandBase, l.unit)} now` : ""}`}</> : l.onHandKnown ? `About ${formatPrepQty(l.onHandBase, l.unit)} from batches made` : "Not counted yet"}
       </p>
     </div>
   );

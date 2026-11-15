@@ -3,13 +3,16 @@ import { businessDate, dateRange, ISODate, parseISODate, toISODate, zonedMidnigh
 import { DiscountClass, discountKey, feeDays, netFees, parseDiscountMapping, StoredDiscount, summarizeDiscounts } from "@/domain/squareMoney";
 import { cardTipRows } from "@/domain/tipSources";
 import { Prisma } from "@prisma/client";
+import { cache } from "react";
 import { db } from "../db";
 import { env } from "../env";
 import type { OrderDiscount } from "../integrations/square";
 import { friendlySquareError, SquareClient } from "../integrations/square-http";
 import { listPayments, listRefunds } from "../integrations/square-payments";
-import { logSquareError, readSettingJSON, requireSquareClient, writeSettingJSON } from "./square";
+import { logSquareError, requireSquareClient, writeSettingJSON } from "./square";
 import { storeSquareTips } from "./tips";
+import { ignoredSquareIds } from "./sales";
+import { settingValue } from "./setting-read";
 
 /**
  * Card fees and comps & discounts from Square, per business day:
@@ -130,8 +133,20 @@ export async function syncPaymentsQuietly(from: ISODate, toExclusive: ISODate, c
 const MAPPING_KEY = "money.discountClasses";
 
 export async function getDiscountMapping(): Promise<Record<string, DiscountClass>> {
-  return parseDiscountMapping(await readSettingJSON<unknown>(MAPPING_KEY));
+  // Read once per render (the P&L asks once per compared period).
+  const raw = await settingValue(MAPPING_KEY);
+  let v: unknown = null;
+  try {
+    v = raw == null ? null : JSON.parse(raw);
+  } catch {}
+  return parseDiscountMapping(v);
 }
+
+/** Team members linked to Square, by Square team member id (who took a discounted payment). Once per render. */
+const squareStaffNames = cache(async () => {
+  const staff = await db.employee.findMany({ where: { squareTeamMemberId: { not: null } }, select: { name: true, squareTeamMemberId: true } });
+  return new Map(staff.map((e) => [e.squareTeamMemberId!, e.name]));
+});
 
 /** Set (or with `cls` null, clear back to the default) what one discount name counts as. */
 export async function setDiscountClass(name: string, cls: DiscountClass | null) {
@@ -182,11 +197,11 @@ export async function moneyForRange(from: ISODate, toExclusive: ISODate) {
   const [days, rows, ignored, mapping, staff] = await Promise.all([
     db.squareDayMoney.findMany({ where: { date: range(from, toExclusive) } }),
     db.squareDiscount.findMany({ where: { date: range(from, toExclusive) } }),
-    db.squareMapping.findMany({ where: { ignored: true }, select: { squareId: true } }),
+    ignoredSquareIds(),
     getDiscountMapping(),
-    db.employee.findMany({ where: { squareTeamMemberId: { not: null } }, select: { name: true, squareTeamMemberId: true } }),
+    squareStaffNames(),
   ]);
-  const names = new Map(staff.map((e) => [e.squareTeamMemberId!, e.name]));
+  const names = staff;
   const stored: StoredDiscount[] = rows.map((r) => ({
     date: toISODate(r.date),
     name: r.name,
@@ -198,7 +213,7 @@ export async function moneyForRange(from: ISODate, toExclusive: ISODate) {
     full: r.full,
     percentage: r.percentage,
   }));
-  const summary = summarizeDiscounts(stored, mapping, { ignored: new Set(ignored.map((i) => i.squareId)), staffName: (id) => names.get(id) ?? "Not on the team list" });
+  const summary = summarizeDiscounts(stored, mapping, { ignored: new Set(ignored), staffName: (id) => names.get(id) ?? "Not on the team list" });
   const byDay = new Map<ISODate, MoneyDay>();
   for (const d of days) {
     const date = toISODate(d.date);

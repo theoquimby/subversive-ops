@@ -35,13 +35,14 @@ import {
 } from "@floating-ui/react";
 import { popoverTransition, useReducedMotion } from "./motion";
 import clsx from "clsx";
-import { BookOpen, CircleHelp, MousePointerClick, Route as RouteIcon } from "lucide-react";
+import { BookOpen, CircleHelp, Gift, MousePointerClick, Route as RouteIcon, ScrollText } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { getHelp, helpForPath, type HelpEntry } from "@/help/content";
 import { tourForPath } from "@/help/tours";
 import { resumeTour, setTourNavigator, setTourUser, startTour, TourHost, useTour } from "./tour";
+import { openWhatsNew, useWhatsNewUnseen } from "./whats-new";
 
 // ---- Help mode store ---------------------------------------------------------------
 
@@ -362,6 +363,7 @@ export function HelpButton({ className, compact }: { className?: string; compact
   const tour = tourForPath(pathname);
   const { start } = useTour();
   const on = useHelpMode();
+  const unseen = useWhatsNewUnseen();
   const [open, setOpen] = useState(false);
   const { refs, floatingStyles, context } = useFloating({ open, onOpenChange: setOpen, placement: "bottom-start", transform: false, whileElementsMounted: autoUpdate, middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })] });
   const reduced = useReducedMotion();
@@ -382,8 +384,12 @@ export function HelpButton({ className, compact }: { className?: string; compact
         className={clsx(compact ? "rounded-md p-2.5 text-ink-2 hover:text-ink" : "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm text-ink-2 hover:bg-surface-2/70 hover:text-ink", on && "text-focus", className)}
         {...getReferenceProps()}
       >
-        <CircleHelp className={compact ? "size-5" : "size-4 opacity-80"} strokeWidth={1.75} />
+        <span className="relative inline-flex">
+          <CircleHelp className={compact ? "size-5" : "size-4 opacity-80"} strokeWidth={1.75} />
+          {unseen > 0 && <span aria-hidden className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-focus ring-2 ring-surface" />}
+        </span>
         {!compact && "Help"}
+        {unseen > 0 && <span className="sr-only">: {unseen} new</span>}
       </button>
       {isMounted && (
         <FloatingPortal>
@@ -399,6 +405,15 @@ export function HelpButton({ className, compact }: { className?: string; compact
                 <span className="flex-1">Tour this page</span>
               </button>
             )}
+            <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); openWhatsNew(); }}>
+              <Gift className="size-4" strokeWidth={1.75} />
+              <span className="flex-1">What&apos;s new</span>
+              {unseen > 0 && <span className="num rounded-full bg-focus/15 px-1.5 text-[11px] font-semibold text-focus">{unseen}</span>}
+            </button>
+            <Link role="menuitem" href="/help/releases" className={item} onClick={() => setOpen(false)}>
+              <ScrollText className="size-4" strokeWidth={1.75} />
+              <span className="flex-1">Release notes</span>
+            </Link>
             <Link role="menuitem" href="/help" className={item} onClick={() => setOpen(false)}>
               <BookOpen className="size-4" strokeWidth={1.75} />
               <span className="flex-1">Help center</span>

@@ -38,7 +38,7 @@ export function MyDocuments({ docs }: { docs: MyPeople["docs"] }) {
   if (docs.length === 0) return null;
   const todo = docs.filter((d) => d.requiresAck && !d.ackedAt).length;
   return (
-    <HelpZone id="my.documents" className="mb-10"><section data-tour="my.documents">
+    <HelpZone id="my.documents" className="mb-10"><section id="documents" data-tour="my.documents" className="scroll-mt-20">
       <div className="mb-3 flex items-end justify-between gap-3">
         <h2 className="text-[0.95rem] font-semibold">Documents</h2>
         {todo > 0 && <Badge tone="warn">{todo} to sign</Badge>}
@@ -51,13 +51,13 @@ export function MyDocuments({ docs }: { docs: MyPeople["docs"] }) {
 }
 
 function DocRow({ d }: { d: MyPeople["docs"][number] }) {
-  const [ackedAt, setAckedAt] = useState(d.ackedAt);
+  const [ackedAt, setAckedAt] = useState<string | null>(d.ackedAt);
   const [opened, setOpened] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <a href={`/my/documents/${d.id}`} target="_blank" rel="noreferrer" onClick={() => setOpened(true)} className="flex min-h-10 min-w-0 flex-1 items-center gap-3">
+      <a href={`/my/documents/${d.id}`} target="_blank" rel="noreferrer" onClick={() => setOpened(true)} className="flex min-h-11 min-w-0 flex-1 items-center gap-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-2 text-ink-2"><FileText className="size-4" /></span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium underline-offset-2 hover:underline">{d.title}</span>
@@ -65,16 +65,24 @@ function DocRow({ d }: { d: MyPeople["docs"][number] }) {
         </span>
       </a>
       {d.requiresAck && (ackedAt ? (
-        <span className="inline-flex items-center gap-1 text-xs text-good"><Check className="size-3.5" /> Signed {shortDate(ackedAt.slice(0, 10))}</span>
+        <span className="inline-flex animate-fade-in items-center gap-1 text-xs text-good motion-reduce:animate-none"><Check className="size-3.5" aria-hidden /> Signed {shortDate(ackedAt.slice(0, 10))}</span>
       ) : (
         <Button
           size="sm"
           variant={opened ? "primary" : "secondary"}
-          className={cx("h-10 w-full sm:h-8 sm:w-auto")}
+          className={cx("h-11 w-full sm:h-8 sm:w-auto")}
           disabled={pending}
-          onClick={() => start(async () => { const r = await acknowledgeDocument(d.id); if (r.error) setError(r.error); else setAckedAt(r.ackedAt ?? new Date().toISOString()); })}
+          onClick={() => {
+            // Optimistic: show it signed straight away; put it back if the server says no.
+            setError(null);
+            setAckedAt(new Date().toISOString());
+            start(async () => {
+              const r = await acknowledgeDocument(d.id).catch(() => ({ error: "No signal — try again in a moment.", ackedAt: undefined }));
+              if (r.error) { setError(r.error); setAckedAt(null); } else if (r.ackedAt) setAckedAt(r.ackedAt);
+            });
+          }}
         >
-          {pending ? "Saving…" : "I've read this"}
+          I&apos;ve read this
         </Button>
       ))}
       {error && <p className="w-full text-xs text-bad" role="alert">{error}</p>}

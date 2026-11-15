@@ -1,5 +1,6 @@
 "use server";
 
+import { pingWebsite } from "@/server/services/website";
 import { BEER_COLORS, displayCode, KEG_SIZE_LIST, normalizeCode, placeLabel, type KegActionId } from "@/domain/kegs";
 import { cleanAreaName } from "@/domain/storageAreas";
 import { requireUser } from "@/server/auth";
@@ -65,6 +66,7 @@ export async function kegAction(input: KegActionForm): Promise<DoActionResult & 
     checkKegStock(k?.beerId ?? null);
   }
   refresh();
+  pingWebsite("menu");
   return { ...r, card: await kegCard(d.kegId) };
 }
 
@@ -72,6 +74,7 @@ export async function undoKegAction(ref: { eventId?: string; groupId?: string })
   const me = await requireUser();
   const r = await undoKegEvents({ userId: me.userId, role: me.role }, ref);
   refresh();
+  pingWebsite("menu");
   return r;
 }
 
@@ -142,6 +145,7 @@ export async function addBeer(name: string, squareName?: string): Promise<{ ok: 
   try {
     const b = await db.beer.create({ data: { name: n, color: guessBeerColor(n), squareNames: squareName?.trim() ? [squareName.trim()] : [] } });
     refresh();
+    pingWebsite("menu");
     return { ok: true, id: b.id };
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { error: "That beer is already on the list." };
@@ -175,6 +179,7 @@ export async function setBeerField(id: string, field: "name" | "style" | "color"
     throw e;
   }
   refresh();
+  pingWebsite("menu");
   return {};
 }
 

@@ -10,14 +10,24 @@ import { explodeWaste } from "@/domain/prepWaste";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { canDeleteWaste, WASTE_UNDO_MINUTES } from "./undo";
 
-export async function logWaste(_: unknown, form: FormData): Promise<{ error?: string; ok?: string }> {
-  const s = await requireUser();
-  const ingredientId = String(form.get("ingredientId") ?? "");
-  const qty = Number(form.get("qty"));
-  const unit = String(form.get("unit") ?? "");
-  const reason = String(form.get("reason") ?? "Other");
+type Who = { name: string };
+type Res = { error?: string; ok?: string };
+
+const clientIdSchema = z.string().regex(/^[A-Za-z0-9-]{8,64}$/).optional();
+const entrySchema = z.object({
+  clientId: clientIdSchema,
+  mode: z.enum(["ingredient", "recipe"]),
+  itemId: z.string().min(1, "Pick an item."),
+  qty: z.number({ message: "Enter how much." }).positive("Enter how much.").max(10_000, "That's a lot — check the amount."),
+  unit: z.string().max(40),
+  reason: z.string().max(40).default("Other"),
+});
+export type WasteEntry = z.input<typeof entrySchema>;
+
+async function wasteIngredient(s: Who, ingredientId: string, qty: number, unit: string, reason: string, batchId: string | null): Promise<Res> {
   if (!ingredientId) return { error: "Pick an item." };
   if (!(qty > 0)) return { error: "Enter how much." };
   const ing = await db.ingredient.findUnique({ where: { id: ingredientId }, include: { conversions: true, preferredProduct: { select: { purchaseUnit: true, packQtyBase: true } } } });
@@ -30,7 +40,7 @@ export async function logWaste(_: unknown, form: FormData): Promise<{ error?: st
   } catch {
     return { error: `${ing.name} can't be logged in "${unit}". Use ${units.slice(0, 4).join(", ")}.` };
   }
-  await db.wasteLog.create({ data: { ingredientId, qtyBase: new Prisma.Decimal(qtyBase.toFixed(4)), reason, loggedBy: s.name } });
+  await db.wasteLog.create({ data: { ingredientId, qtyBase: new Prisma.Decimal(qtyBase.toFixed(4)), reason, loggedBy: s.name, batchId } });
   revalidatePath("/waste");
   return { ok: `Logged ${qty} ${unit} ${ing.name}` };
 }
@@ -40,12 +50,7 @@ export async function logWaste(_: unknown, form: FormData): Promise<{ error?: st
  * waste row per ingredient it's made of, sharing a batch id, so the margin gap
  * and stock estimates count it like any other waste.
  */
-export async function logRecipeWaste(_: unknown, form: FormData): Promise<{ error?: string; ok?: string }> {
-  const s = await requireUser();
-  const recipeId = String(form.get("recipeId") ?? "");
-  const qty = Number(form.get("qty"));
-  const unit = String(form.get("unit") ?? "each");
-  const reason = String(form.get("reason") ?? "Other").slice(0, 40);
+async function wasteRecipe(s: Who, recipeId: string, qty: number, unit: string, reason: string, batchId: string): Promise<Res> {
   if (!recipeId) return { error: "Pick an item." };
   if (!(qty > 0) || qty > 10_000) return { error: "Enter how much." };
   const recipe = await db.recipe.findUnique({ where: { id: recipeId }, select: { name: true, kind: true, active: true } });
@@ -58,7 +63,6 @@ export async function logRecipeWaste(_: unknown, form: FormData): Promise<{ erro
     return { error: (e as Error).message };
   }
   if (exploded.usage.size === 0) return { error: `${recipe.name} has no ingredients set up yet, so there's nothing to log. Ask a manager to finish the recipe.` };
-  const batchId = randomUUID();
   const loggedAt = new Date();
   await db.wasteLog.createMany({
     data: [...exploded.usage].map(([ingredientId, q]) => ({
@@ -76,6 +80,31 @@ export async function logRecipeWaste(_: unknown, form: FormData): Promise<{ erro
   revalidatePath("/waste");
   const n = exploded.usage.size;
   return { ok: `Logged ${qty} ${unit === "each" ? "" : `${unit} `}${recipe.name} (${n} ingredient${n === 1 ? "" : "s"})` };
+}
+
+export async function logWaste(_: unknown, form: FormData): Promise<Res> {
+  const s = await requireUser();
+  return wasteIngredient(s, String(form.get("ingredientId") ?? ""), Number(form.get("qty")), String(form.get("unit") ?? ""), String(form.get("reason") ?? "Other").slice(0, 40), null);
+}
+
+export async function logRecipeWaste(_: unknown, form: FormData): Promise<Res> {
+  const s = await requireUser();
+  return wasteRecipe(s, String(form.get("recipeId") ?? ""), Number(form.get("qty")), String(form.get("unit") ?? "each"), String(form.get("reason") ?? "Other").slice(0, 40), randomUUID());
+}
+
+/**
+ * The phone's waste form. `clientId` is made on the phone and stored as the
+ * entry's batch id, so a retry from the offline queue (walk-in, no signal)
+ * is applied once: if it's already there, it's reported as logged.
+ */
+export async function logWasteEntry(input: WasteEntry): Promise<Res> {
+  const s = await requireUser();
+  const p = entrySchema.safeParse(input);
+  if (!p.success) return { error: p.error.issues[0]?.message ?? "Check the entry." };
+  const { clientId, mode, itemId, qty, unit, reason } = p.data;
+  const batchId = clientId ?? randomUUID();
+  if (clientId && (await db.wasteLog.findFirst({ where: { batchId }, select: { id: true } }))) return { ok: "Already logged" };
+  return mode === "ingredient" ? wasteIngredient(s, itemId, qty, unit, reason, clientId ?? null) : wasteRecipe(s, itemId, qty, unit || "each", reason, batchId);
 }
 
 export async function deleteWaste(id: string): Promise<{ error?: string }> {

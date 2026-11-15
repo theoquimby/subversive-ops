@@ -22,7 +22,7 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
   await requireUser("MANAGER");
   const { q = "", show } = await searchParams;
   const showArchived = show === "archived";
-  const [snap, ingredients, stock, pars, archived, areas, learned] = await Promise.all([
+  const [snap, ingredients, stock, pars, archived, areas, learned, products] = await Promise.all([
     loadCostingSnapshot(),
     loadCountableIngredients(),
     estimatedOnHandAll(),
@@ -30,12 +30,12 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
     db.ingredient.findMany({ where: { active: false }, select: { id: true, name: true, category: true }, orderBy: { name: "asc" } }),
     storageAreas(),
     pendingSuggestions(),
+    db.supplierProduct.findMany({ where: { active: true, ingredientId: { not: null } }, select: { id: true, ingredientId: true, description: true, sku: true, packText: true, purchaseUnit: true, supplier: { select: { name: true } } } }),
   ]);
   const today = businessToday();
   const ctx = buildContext(snap, today);
   const recipesUsing = new Map<string, Set<string>>();
   for (const r of snap.recipes) for (const l of r.lines) if (l.ingredientId) { const set = recipesUsing.get(l.ingredientId) ?? new Set(); set.add(r.name); recipesUsing.set(l.ingredientId, set); }
-  const products = await db.supplierProduct.findMany({ where: { active: true, ingredientId: { not: null } }, select: { id: true, ingredientId: true, description: true, sku: true, packText: true, purchaseUnit: true, supplier: { select: { name: true } } } });
   const productsOf = new Map<string, typeof products>();
   for (const p of products) productsOf.set(p.ingredientId!, [...(productsOf.get(p.ingredientId!) ?? []), p]);
   const archivedList = archived.filter((i) => !q || baseName(i.name).toLowerCase().includes(q.toLowerCase()));

@@ -41,7 +41,7 @@ export function certReminderSummary(items: CertReminderItem[], audience: "self" 
 export function certReminderEmail(e: CertReminderEmail): RenderedEmail {
   const s = certReminderSummary(e.items, e.audience);
   const self = e.audience === "self";
-  const url = link(e.baseUrl, self ? "/my#training" : "/team/training");
+  const url = link(e.baseUrl, self ? "/my/me#training" : "/team/training");
   const html = shell({
     preheader: s.body,
     body: [

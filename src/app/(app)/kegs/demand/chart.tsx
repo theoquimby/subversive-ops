@@ -12,7 +12,8 @@ export function WeeklyPints({ history, forecast }: { history: { week: string; pi
   const max = Math.max(1, ...bars.map((b) => b.hi ?? b.v));
   const W = 600, H = 120, pad = 18, bw = (W - 4) / Math.max(bars.length, 1);
   const y = (v: number) => H - pad - (v / max) * (H - pad - 6);
-  const ticks = [0, Math.round(max / 2), Math.round(max)];
+  // A beer with almost no pours would repeat a tick (0, 1, 1).
+  const ticks = [...new Set([0, Math.round(max / 2), Math.round(max)])];
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="h-28 w-full" role="img" aria-label="Pints a week, last 26 weeks and the next 4">
       {ticks.map((t) => (

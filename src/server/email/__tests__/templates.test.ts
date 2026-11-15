@@ -64,10 +64,10 @@ describe("email templates", () => {
     expect(r.text).toContain(`Fries "3/8" <b>`); // plain text stays literal
   });
 
-  it("schedule email links to /my and sums hours", () => {
+  it("schedule email links to My shifts and sums hours", () => {
     const r = SAMPLES["schedule-published"].render();
     expect(r.subject).toBe("Your shifts for the week of Nov 16");
-    expect(r.html).toContain('href="https://ops.example.com/my"');
+    expect(r.html).toContain('href="https://ops.example.com/my/shifts"');
     expect(r.text).toContain("3 shifts · 18.5 h");
     expect(r.text).toContain("Wed, Nov 18: 4:00 pm – 10:00 pm · Server");
   });

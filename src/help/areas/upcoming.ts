@@ -18,7 +18,7 @@ export const team: HelpEntry[] = [
     article: `- **Positions** — server, bartender, line cook, dish… Each has a default pay rate, tip points and a staffing ratio the schedule uses.
 - **People** — one row per person: positions, pay rate, minor or not, max hours, and their paid sick leave balance. A rate under the minimum wage (or the tipped minimum for tip-eligible positions) shows in red.
 - **Availability and login** — the calendar icon opens when each person can work, and lets you give them a login in one step.
-- **Announcements** — short notes that show at the top of everyone's My shifts.
+- **Announcements** — short notes that show on everyone's Today.
 
 Edit cells in place like any other grid — they save as you go.`,
     related: ["team.positions", "team.employees", "team.availability", "team.invite", "team.announcements", "schedule.page"],
@@ -61,7 +61,7 @@ Edit cells in place like any other grid — they save as you go.`,
     area: "team",
     route: "/team",
     title: "Announcements",
-    body: "Post a short note from Team or Schedule. Everyone sees it at the top of My shifts. Pin the ones that should stay; the rest drop off after 30 days.",
+    body: "Post a short note from Team or Schedule. Everyone sees it on their Today. Pin the ones that should stay; the rest drop off after 30 days.",
     related: ["my.page"],
     keywords: ["message", "notice", "news"],
   },
@@ -364,16 +364,16 @@ export const my: HelpEntry[] = [
   {
     id: "my.page",
     area: "my",
-    route: "/my",
+    route: "/my/shifts",
     audience: "all",
     title: "My shifts",
-    body: "Your upcoming shifts, open shifts you can pick up, swaps, time off and sick leave, when you can work, and notes from your managers — all from your phone.",
-    related: ["my.openShifts", "my.swaps", "my.timeOff", "my.availability"],
+    body: "Your upcoming shifts, open shifts you can pick up, swaps, time off and sick leave, and when you can work — all from your phone.",
+    related: ["my.today", "my.openShifts", "my.swaps", "my.timeOff", "my.availability"],
   },
   {
     id: "my.shifts",
     area: "my",
-    route: "/my",
+    route: "/my/shifts",
     audience: "all",
     title: "Your shifts",
     body: "Your published shifts for the coming weeks with position and times.",
@@ -381,7 +381,7 @@ export const my: HelpEntry[] = [
   {
     id: "my.openShifts",
     area: "my",
-    route: "/my",
+    route: "/my/shifts",
     audience: "all",
     title: "Pick up open shifts",
     body: "Shifts nobody is on yet, for positions you work. The first person to tap Pick up gets it.",
@@ -389,7 +389,7 @@ export const my: HelpEntry[] = [
   {
     id: "my.swaps",
     area: "my",
-    route: "/my",
+    route: "/my/shifts",
     audience: "all",
     title: "Swap a shift",
     body: "Offer one of your shifts to a teammate or to anyone who can cover. Once someone offers and a manager approves, it moves to their schedule.",
@@ -397,16 +397,16 @@ export const my: HelpEntry[] = [
   {
     id: "my.timeOff",
     area: "my",
-    route: "/my",
+    route: "/my/shifts",
     audience: "all",
     title: "Time off and sick leave",
-    body: "Ask for days off, or log sick time (even for today). Sick time is paid from your sick leave balance, shown above the form: 1 hour earned for every 30 worked.",
+    body: "Tap Ask for time off, or I'm out sick to log sick time (even for today). Sick time is paid from your sick leave balance, shown above the buttons: 1 hour earned for every 30 worked.",
     related: ["labor.sick"],
   },
   {
     id: "my.availability",
     area: "my",
-    route: "/my",
+    route: "/my/shifts",
     audience: "all",
     title: "When you can work",
     body: "Type the hours you can work each weekday, like 4p-10p, or leave a day blank. It saves as you go and the next schedule uses it.",
@@ -424,9 +424,9 @@ export const my: HelpEntry[] = [
   {
     id: "my.notifications",
     area: "my",
-    route: "/my",
+    route: "/my/me",
     title: "Notifications on this device",
-    body: "Turn on notifications to hear about schedule changes and other alerts on this phone or computer, even with the app closed. On iPhone, add the app to your Home Screen first.",
+    body: "Turn on notifications to hear about schedule changes and other alerts on this phone, even with the app closed. On iPhone, add the app to your Home Screen first. Choose which alerts you get on Me.",
     audience: "all",
     related: ["app.phone"],
   },

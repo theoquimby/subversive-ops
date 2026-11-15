@@ -28,7 +28,6 @@ const signedWhole = (n: number) => (Math.round(n) < 0 ? `−${whole(-n)}` : whol
 
 export default async function PnlPage({ searchParams }: { searchParams: Promise<{ period?: string; from?: string; to?: string; day?: string }> }) {
   await requireUser("MANAGER");
-  await refreshIfStale();
   const sp = await searchParams;
   const today = businessToday();
   const period = (PERIODS.some((p) => p.kind === sp.period) ? sp.period : "week") as PeriodKind;
@@ -36,7 +35,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
   const now = new Date();
   // Today is still in progress: it only counts toward the totals when "Today" is picked.
   const includeToday = period === "today";
-  const [report, counts] = await Promise.all([pnlReport(from, toExclusive, now, { includeToday }), actualFromCounts()]);
+  const [report, counts] = await Promise.all([pnlReport(from, toExclusive, now, { includeToday }), actualFromCounts(), refreshIfStale()]);
   const { total: t, budget, split, targets, kpis } = report;
   const todayRow = report.days.find((d) => d.isToday);
   // "Today" with no Square sales yet: show the sync state instead of $0 and red ratios.

@@ -259,7 +259,7 @@ export function InvoiceActions({ id, status, statusLabel, flagged, priceChanges,
         <Button variant="primary" disabled={pending} onClick={approve}><Check className="size-4" />Approve</Button>
       )}
       {showCredit && credit && <CreditSheet id={id} credit={credit} onClose={() => setShowCredit(false)} />}
-      {approving && <ApproveSheet id={id} statusLabel={statusLabel} flagged={flagged} credit={credit} after={[receivesOrder && "The order is checked in with the invoice's quantities", pricesOnApprove && priceChanges > 0 && `${priceChanges} price${priceChanges === 1 ? "" : "s"} go to costing`].filter((x): x is string => Boolean(x))} onClose={() => setApproving(false)} />}
+      {approving && <ApproveSheet id={id} statusLabel={statusLabel} flagged={flagged} credit={credit} after={[receivesOrder && "The order is checked in with the invoice's quantities", pricesOnApprove && priceChanges > 0 && `${priceChanges} price${priceChanges === 1 ? " goes" : "s go"} to costing`].filter((x): x is string => Boolean(x))} onClose={() => setApproving(false)} />}
     </>
   );
 }
@@ -288,7 +288,7 @@ function ApproveSheet({ id, statusLabel, flagged, credit, after = [], onClose }:
         <div className="text-base font-semibold">Approve with open issues?</div>
         <p className="mt-1.5 text-sm text-muted">
           This invoice is marked <b className="text-ink-2">{statusLabel.toLowerCase()}</b>
-          {flagged > 0 && <> with {flagged} line{flagged === 1 ? "" : "s"} that don&apos;t match</>}.
+          {flagged > 0 && <> with {flagged} line{flagged === 1 ? " that doesn&apos;t" : "s that don&apos;t"} match</>}.
           {credit && <> You may be owed {money(credit.total)}.</>} Your name and note go on the record.
           {after.length > 0 && <> {after.join(", and ")}.</>}
         </p>

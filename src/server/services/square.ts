@@ -1,6 +1,7 @@
 import "server-only";
 import { decryptJSON, deriveKey, encryptJSON } from "@/domain/squareSecurity";
 import { tokenNeedsRefresh } from "@/domain/squareSync";
+import { cache } from "react";
 import { db } from "../db";
 import { env } from "../env";
 import { getSecret, getSecrets } from "./secrets";
@@ -127,8 +128,8 @@ function envConnection(): SquareConnection | null {
   };
 }
 
-/** The live connection (refreshing an OAuth token that expires within 7 days), or null. */
-export async function getSquareConnection(): Promise<SquareConnection | null> {
+/** The live connection (refreshing an OAuth token that expires within 7 days), or null. Read once per server render. */
+export const getSquareConnection = cache(async (): Promise<SquareConnection | null> => {
   let s = await readStored();
   if (!s) return envConnection();
   const now = new Date();
@@ -157,7 +158,7 @@ export async function getSquareConnection(): Promise<SquareConnection | null> {
     locations: s.locations,
     connectedAt: s.connectedAt,
   };
-}
+});
 
 export async function isSquareConnected(): Promise<boolean> {
   const c = await getSquareConnection();

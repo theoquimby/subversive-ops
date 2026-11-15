@@ -3,13 +3,14 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { env } from "@/server/env";
+import { STARTUP_IMAGES } from "@/lib/pwa";
 
 export const metadata: Metadata = {
   title: { default: "Subversive Ops", template: "%s · Subversive Ops" },
   description: "Food costing, ordering and inventory for Subversive.",
   robots: { index: false, follow: false },
   icons: { apple: "/icons/apple-touch-icon.png" },
-  appleWebApp: { capable: true, title: "Subversive Ops", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "Subversive", statusBarStyle: "default", startupImage: STARTUP_IMAGES },
   // Read by client components (date picker "Today") so they use the business date, not the browser's.
   other: { "business-tz": env.BUSINESS_TIMEZONE },
 };

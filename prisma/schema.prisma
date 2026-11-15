@@ -146,6 +146,7 @@ model SupplierProduct {
   invoiceLines InvoiceLine[]
 
   @@unique([supplierId, sku])
+  @@index([ingredientId]) // perf
 }
 
 model PriceRecord {
@@ -206,6 +207,10 @@ model RecipeLine {
   qty          Decimal     @db.Decimal(14, 4)
   unit         String
   sort         Int         @default(0)
+
+  @@index([recipeId]) // perf: lines are loaded per recipe
+  @@index([subRecipeId])
+  @@index([ingredientId])
 }
 
 // Links a Square catalog object (item variation or modifier) to a recipe.
@@ -216,6 +221,8 @@ model SquareMapping {
   recipeId   String?
   recipe     Recipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
   ignored    Boolean @default(false) // e.g. gift cards, merch
+
+  @@index([recipeId]) // perf
 }
 
 // Daily sales per Square object (variation or modifier) — aggregated from orders.
@@ -238,6 +245,8 @@ model StockCount {
   area      String?
   completed Boolean  @default(false)
   lines     StockCountLine[]
+
+  @@index([completed, takenAt]) // perf: latest completed counts
 }
 
 model StockCountLine {
@@ -249,6 +258,7 @@ model StockCountLine {
   qtyBase      Decimal    @db.Decimal(14, 4)
 
   @@unique([countId, ingredientId])
+  @@index([ingredientId]) // perf: last count per ingredient
 }
 
 model WasteLog {
@@ -269,6 +279,7 @@ model WasteLog {
 
   @@index([batchId])
   @@index([loggedAt])
+  @@index([ingredientId]) // perf
 }
 
 model PurchaseOrder {
@@ -284,6 +295,9 @@ model PurchaseOrder {
   notes        String?
   lines        PurchaseOrderLine[]
   invoices     Invoice[]
+
+  @@index([status, deliveryDate]) // perf: open orders, incoming stock
+  @@index([supplierId])
 }
 
 model PurchaseOrderLine {
@@ -296,6 +310,9 @@ model PurchaseOrderLine {
   qty               Decimal         @db.Decimal(10, 2)
   unitPrice         Decimal?        @db.Decimal(10, 2)
   receivedQty       Decimal?        @db.Decimal(10, 2)
+
+  @@index([orderId]) // perf
+  @@index([supplierProductId])
 }
 
 // ---------------------------------------------------------------------------
@@ -373,6 +390,7 @@ model Shift {
   swaps        ShiftSwap[]
 
   @@index([start])
+  @@index([employeeId, start]) // perf
 }
 
 enum TimecardSource {
@@ -399,6 +417,7 @@ model Timecard {
   approvedBy   String?
 
   @@index([clockIn])
+  @@index([employeeId, clockIn]) // perf
 }
 
 enum RequestStatus {
@@ -425,6 +444,8 @@ model TimeOffRequest {
   note       String?
   status     RequestStatus @default(PENDING)
   createdAt  DateTime      @default(now())
+
+  @@index([status]) // perf: pending requests
 }
 
 model ShiftSwap {
@@ -437,6 +458,8 @@ model ShiftSwap {
   taker       Employee?     @relation("SwapTaker", fields: [takerId], references: [id], onDelete: SetNull)
   status      RequestStatus @default(PENDING)
   createdAt   DateTime      @default(now())
+
+  @@index([status]) // perf: pending swaps
 }
 
 model TipPeriod {
@@ -566,6 +589,8 @@ model Event {
   impact    Decimal  @default(1) @db.Decimal(5, 3)
   notes     String?
   createdAt DateTime @default(now())
+  /// Bumped on every edit (the website feed sends it as updatedAt)
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@index([date])
 }
@@ -620,6 +645,8 @@ model Invoice {
   pages         InvoicePage[]
 
   @@unique([supplierId, invoiceNumber])
+  @@index([status]) // perf: open invoices on the Overview and brief
+  @@index([orderId])
 }
 
 /// Extra pages of an invoice photo set (page 1 is Invoice.image). Bytes in Postgres, ≤ 8 MB each.
@@ -683,6 +710,9 @@ model InvoiceLine {
   packText          String?
   /// Quantity ordered, when the invoice prints it next to quantity shipped
   orderedQty        Decimal?         @db.Decimal(10, 2)
+
+  @@index([invoiceId]) // perf
+  @@index([supplierProductId])
 }
 
 // ---------------------------------------------------------------------------
@@ -1328,4 +1358,221 @@ model SquareDiscount {
 
   @@index([date])
   @@index([orderId])
+}
+
+// ---- Website: what guests see on the public site (feeds under /api/public) ------------
+// Additive. Keyed by the id of the Ops row they describe (no relations), so Recipe, Event
+// and Beer stay untouched; a row for something deleted is simply ignored.
+
+/// Web fields for a menu recipe or add-on: whether and how it shows on the website menu.
+model WebMenuItem {
+  recipeId       String    @id
+  onWebsite      Boolean   @default(false)
+  /// Name on the website (blank = the recipe name)
+  name           String?
+  description    String?
+  /// vegetarian | vegan | kid-friendly | dog-friendly
+  tags           String[]  @default([])
+  badge          String?
+  /// Printed extras under the item, e.g. "Add bacon +3"
+  modifiers      String?
+  /// "food" or "drinks" (blank = guessed from the category)
+  place          String?
+  /// Section title on the website (blank = the recipe's category)
+  section        String?
+  sort           Int       @default(0)
+  showPrice      Boolean   @default(true)
+  availableFrom  DateTime? @db.Date
+  availableUntil DateTime? @db.Date
+  updatedAt      DateTime  @updatedAt
+}
+
+/// A menu section's website details (id is the section slug, e.g. "smash-burgers").
+model WebMenuSection {
+  id             String    @id
+  title          String
+  /// "food" or "drinks"
+  place          String    @default("food")
+  intro          String?
+  note           String?
+  modifiers      String?
+  sort           Int       @default(0)
+  availableFrom  DateTime? @db.Date
+  availableUntil DateTime? @db.Date
+  updatedAt      DateTime  @updatedAt
+}
+
+/// Web fields for a beer on the website's draft list (the rest comes from Beer and the tap list).
+model WebBeer {
+  beerId    String   @id
+  onWebsite Boolean  @default(true)
+  /// Light | Hoppy | Malty | Farmhouse | Sour (blank = guessed from the style)
+  family    String?
+  badge     String?
+  hazy      Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
+
+/// Web fields for a calendar event.
+model WebEvent {
+  eventId              String   @id
+  /// Stable URL slug, set once ("2026-11-21-knicks-vs-blazers")
+  slug                 String   @unique
+  hidden               Boolean  @default(false)
+  /// Finer kind for the website (TRIVIA | MOVIE); blank = the event's kind
+  webKind              String?
+  /// null = the default for its kind (CLOSURE closed; HOLIDAY per the website setting)
+  closed               Boolean?
+  imageId              String?
+  imageAlt             String?
+  ticketUrl            String?
+  rsvpUrl              String?
+  priceLabel           String?
+  featured             Boolean  @default(false)
+  kitchenCloseOverride String?
+  barCloseOverride     String?
+  updatedAt            DateTime @updatedAt
+}
+
+/// An image uploaded for the website (resized in the browser, ≤ 1.5 MB).
+model WebImage {
+  id        String   @id @default(cuid())
+  mime      String
+  bytes     Bytes
+  width     Int      @default(0)
+  height    Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+/// A private-event inquiry from the website form (it also creates a PrivateEvent INQUIRY).
+model WebInquiry {
+  id             String   @id @default(cuid())
+  privateEventId String?
+  name           String
+  email          String?
+  phone          String?
+  date           DateTime? @db.Date
+  guests         Int?
+  type           String?
+  message        String?
+  /// Hash of the sender's IP (rate limiting; never the IP itself)
+  ipHash         String
+  seenAt         DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([ipHash, createdAt])
+  @@index([createdAt])
+}
+
+// ---- Website analytics (first-party, cookieless) + Google Search Console / Business Profile ----
+// Additive only (migration 20261118100000_web_analytics). Raw hits are kept 400 days; pages read
+// the daily rollups. No cookies, no raw IP: a visitor is a hash of IP + browser with a salt that
+// changes every day, so nobody can be followed from one day to the next.
+
+/// One page view or named event from the public website.
+model WebHit {
+  id       String   @id @default(cuid())
+  at       DateTime @default(now())
+  /// Business date (BUSINESS_TIMEZONE)
+  day      DateTime @db.Date
+  /// "pageview" or an event name (click_call, click_directions, menu_view, …)
+  kind     String
+  path     String
+  /// sha256(daily salt + IP + user agent), shortened. The salt is replaced every day.
+  visitor  String
+  /// One visit: ends after 30 minutes without a hit, or when someone arrives from somewhere new
+  session  String
+  /// The visit's source (google, google-maps, instagram, direct…) and medium (organic, maps, social, referral, email, paid, direct)
+  source   String
+  medium   String
+  campaign String?
+  content  String?
+  term     String?
+  /// Referrer host only (never the full address)
+  referrer String?
+  /// mobile | tablet | desktop
+  device   String
+  country  String?
+  region   String?
+  city     String?
+  props    Json?
+
+  @@index([day])
+  @@index([visitor, at])
+  @@index([kind, day])
+}
+
+/// Daily rollup per dimension (total, page, source, medium, campaign, device, country, region,
+/// city, referrer, event, eventSource, eventPage). Rebuilt from WebHit; pages read only these.
+model WebDaily {
+  day       DateTime @db.Date
+  dim       String
+  key       String
+  views     Int      @default(0)
+  visitors  Int      @default(0)
+  sessions  Int      @default(0)
+  entries   Int      @default(0)
+  bounces   Int      @default(0)
+  /// Visits that looked at the menu or an event
+  engaged   Int      @default(0)
+  /// Visits that took an action (call, directions, order, ticket, RSVP, inquiry)
+  converted Int      @default(0)
+  /// Event count (for event dimensions and actions on a page)
+  count     Int      @default(0)
+
+  @@id([day, dim, key])
+  @@index([dim, day])
+}
+
+/// A conversion recorded by Ops itself (a private-event inquiry), with the visit's source.
+model WebConversion {
+  id             String   @id @default(cuid())
+  at             DateTime @default(now())
+  day            DateTime @db.Date
+  kind           String
+  source         String
+  medium         String
+  campaign       String?
+  path           String?
+  privateEventId String?
+  props          Json?
+
+  @@index([day])
+  @@index([privateEventId])
+}
+
+/// Google Search Console, per day: total, and per query / page / device.
+model GoogleSearchDaily {
+  day         DateTime @db.Date
+  /// total | query | page | device
+  dim         String
+  key         String
+  clicks      Int
+  impressions Int
+  /// Average position (1 = top)
+  position    Decimal  @db.Decimal(7, 2)
+
+  @@id([day, dim, key])
+  @@index([dim, day])
+}
+
+/// Google Business Profile Performance API daily metrics (BUSINESS_DIRECTION_REQUESTS, CALL_CLICKS…).
+model GoogleProfileDaily {
+  day    DateTime @db.Date
+  metric String
+  value  Int
+
+  @@id([day, metric])
+}
+
+/// Google Business Profile search keywords, per month (unique users; Google hides small numbers).
+model GoogleProfileKeyword {
+  /// YYYY-MM
+  month     String
+  keyword   String
+  value     Int?
+  /// "Fewer than N" when Google only gives a threshold
+  threshold Int?
+
+  @@id([month, keyword])
 }

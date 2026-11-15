@@ -22,7 +22,8 @@ import { ratingTrend } from "@/domain/alerts";
 import { env } from "@/server/env";
 import { buildContext } from "@/server/services/costing";
 import { CircleCheck, ChevronRight, ClipboardList, FileCheck, GraduationCap, Beer, MessageSquareText, ShoppingCart, CalendarCheck, Users, Truck, type LucideIcon } from "lucide-react";
-import { DismissSetupButton } from "./welcome/dismiss-setup";
+import { SetupCard } from "./_overview/setup-card";
+import { setupChecklist } from "@/server/services/setupChecklist";
 import { TodayChart, WeekStrip } from "./_overview/charts";
 import { LastNightNotes } from "./notes/last-night";
 import { Delta, fmt } from "./pnl/story";
@@ -37,22 +38,24 @@ const toneChip = { bad: "bg-bad-bg text-bad", warn: "bg-warn-bg text-warn", neut
 
 export default async function OverviewPage() {
   await requireUser("MANAGER");
-  await refreshIfStale();
   const today = businessToday();
-  const snap = await loadCostingSnapshot();
   const now = new Date();
-  const [{ rows }, moves, week, prevWeek, live, suppliers, square, ob, recentReviews, waste, needs] = await Promise.all([
-    menuCosts(snap),
-    recentPriceMoves(30, snap),
+  // The costing snapshot is read once per render (cached), so everything below starts at once.
+  const [snap, { rows }, moves, week, prevWeek, live, suppliers, square, ob, checklist, recentReviews, waste, needs] = await Promise.all([
+    loadCostingSnapshot(),
+    menuCosts(),
+    recentPriceMoves(30),
     pnlReport(addDays(today, -7), today, now),
-    periodKpis(addDays(today, -14), addDays(today, -7), { snap }),
+    periodKpis(addDays(today, -14), addDays(today, -7)),
     todaySoFar(now),
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     squareSummary(),
     onboardingState(),
+    setupChecklist(),
     db.review.findMany({ where: { postedAt: { gte: zonedMidnightUTC(addDays(today, -60), env.BUSINESS_TIMEZONE) } }, select: { rating: true, postedAt: true } }),
     db.wasteLog.findMany({ where: { loggedAt: { gte: zonedMidnightUTC(addDays(today, -7), env.BUSINESS_TIMEZONE), lt: zonedMidnightUTC(today, env.BUSINESS_TIMEZONE) } }, select: { id: true, batchId: true, ingredientId: true, qtyBase: true } }),
     attentionList(now),
+    refreshIfStale(),
   ]);
   const rating = ratingTrend(recentReviews.map((r) => ({ rating: r.rating, date: businessDate(r.postedAt, env.BUSINESS_TIMEZONE) })), today, 30);
   const ctx = buildContext(snap, today);
@@ -98,18 +101,7 @@ export default async function OverviewPage() {
         title="Overview"
         description={<>{dayDate(today)} · <Link href="/settings/square" className="underline-offset-2 hover:text-ink hover:underline">{square.connected && square.lastSync ? `Square synced ${relativeTime(square.lastSync)}` : square.text}</Link></>}
       />
-      {!ob.complete && !ob.dismissed && (
-        <HelpZone id="overview.setup" className="mb-6"><Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div>
-            <div className="text-sm font-medium">Finish setting up <span className="num font-normal text-muted">· {ob.done} of {ob.total} done</span></div>
-            <div className="mt-1.5 h-1.5 w-48 overflow-hidden rounded-full bg-surface-2"><div className="h-full rounded-full bg-primary" style={{ width: `${(ob.done / ob.total) * 100}%` }} /></div>
-          </div>
-          <div className="flex items-center gap-1">
-            <LinkButton href={ob.href} size="sm" variant="primary">Continue setup</LinkButton>
-            <DismissSetupButton />
-          </div>
-        </Card></HelpZone>
-      )}
+      {!checklist.essentialsDone && !ob.dismissed && <SetupCard checklist={checklist} />}
 
       {/* ---- Today ---- */}
       <HelpZone id="overview.today" tour="overview.today" className="mb-6">

@@ -1,5 +1,6 @@
 "use client";
 
+import { RelativeTime } from "@/components/relative-time";
 import { useConfirm } from "@/components/dialog";
 import { HelpTip, HelpZone } from "@/components/help";
 import { useReducedMotion } from "@/components/motion";
@@ -9,15 +10,14 @@ import { validateSecret, type SecretName } from "@/domain/secretFormats";
 import { checkAccessToken, SQUARE_WEBHOOK_EVENTS } from "@/domain/squareWebhooks";
 import type { SecretStatus } from "@/domain/secrets";
 import { areaStyle, type Area } from "@/lib/areas";
-import { relativeTime } from "@/lib/format";
-import { ArrowLeft, ArrowRight, BellRing, Check, ChevronRight, Copy, ExternalLink, Mail, Receipt, Search, Sparkles, Star, Store, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, BellRing, Check, ChevronRight, Copy, ExternalLink, Globe, Mail, Receipt, Search, Sparkles, Star, Store, X, type LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { Chips } from "../square/square-client";
 import type { QuickBooksData } from "../quickbooks/data";
 import { AccountMapping, EnvironmentPicker, QboConnectButton, QboDisconnect, QboTestButton, SendOptions } from "../quickbooks/quickbooks-client";
-import { findBusiness, forgetBusiness, pickBusiness, removeKey, saveKey, testAI, testEmail, testSquare, turnOnInstantUpdates, turnOnPush, type ServiceId, type TestResult } from "./actions";
+import { findBusiness, forgetBusiness, makeRevalidateSecret, pickBusiness, removeKey, saveKey, testAI, testEmail, testSquare, testWebsite, turnOnInstantUpdates, turnOnPush, type ServiceId, type TestResult } from "./actions";
 import * as Art from "./illustrations";
 
 export interface ConnectionsData {
@@ -57,6 +57,7 @@ const SERVICES: ServiceMeta[] = [
   { id: "push", title: "Phone notifications", icon: BellRing, area: "people", turnsOn: "Pops up alerts on phones: new schedules, shift swaps, price spikes and more.", time: "1 minute per phone", guide: "Turn on phone notifications" },
   { id: "ai", title: "AI features", icon: Sparkles, area: "assist", turnsOn: "Reads invoices from a photo, drafts review replies and answers questions in Ask.", time: "About 3 minutes", guide: "Turn on AI features" },
   { id: "google", title: "Google reviews", icon: Star, area: "food", turnsOn: "Brings in new Google reviews every morning, with alerts for low ratings.", time: "About 5 minutes", guide: "Bring in Google reviews" },
+  { id: "website", title: "Website", icon: Globe, area: "numbers", turnsOn: "Tells the public website to refresh the moment you save hours, the menu or events, and accepts its inquiry form.", time: "About 5 minutes", guide: "Connect the website" },
   { id: "quickbooks", title: "QuickBooks", icon: Receipt, area: "numbers", turnsOn: "Sends approved supplier invoices to QuickBooks Online as bills, with the photo attached.", time: "About 20 minutes, plus Intuit's review", guide: "Connect QuickBooks" },
 ];
 
@@ -88,6 +89,10 @@ function statusOf(id: ServiceId, d: ConnectionsData, pushReady: boolean): Status
       return { tone: "neutral", label: "Not set up", detail: "You can still paste reviews in on the Reviews page." };
     case "quickbooks":
       return quickbooksStatusOf(d);
+    case "website":
+      if (s.WEBSITE_URL.set && s.REVALIDATE_SECRET.set) return { tone: test && !test.ok ? "bad" : "good", label: test && !test.ok ? "Needs attention" : "On", detail: `${(s.WEBSITE_URL.hint ?? "").replace(/^https?:\/\//, "")}${failed}` };
+      if (s.WEBSITE_URL.set || s.REVALIDATE_SECRET.set) return { tone: "warn", label: "Half done", detail: s.WEBSITE_URL.set ? "Add the shared secret." : "Add the website's address." };
+      return { tone: "neutral", label: "Not set up", detail: "The website still reads Ops every 5 minutes on its own." };
   }
 }
 
@@ -204,6 +209,7 @@ export function Connections({ data }: { data: ConnectionsData }) {
                   {meta.id === "ai" && <AIGuide d={data} />}
                   {meta.id === "google" && <GoogleGuide d={data} />}
                   {meta.id === "quickbooks" && <QuickBooksGuide d={data} />}
+                  {meta.id === "website" && <WebsiteGuide d={data} />}
                 </>
               )}
             </Card>
@@ -300,6 +306,16 @@ function Manage({ id, d, pushReady, onGuide }: { id: ServiceId; d: ConnectionsDa
         </>
       )}
       {id === "quickbooks" && <QuickBooksManage d={d} />}
+      {id === "website" && (
+        <>
+          <TestButton run={testWebsite} last={d.tests.website} label="Send a test refresh" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SecretField name="WEBSITE_URL" status={s.WEBSITE_URL} label="Website address" placeholder="https://drinksubversive.com" sensitive={false} />
+            <SecretField name="REVALIDATE_SECRET" status={s.REVALIDATE_SECRET} label="Shared secret" placeholder="Paste the website's REVALIDATE_SECRET" />
+          </div>
+          <p className="text-sm text-muted">What guests see is managed on <Link href="/website" className="text-ink underline underline-offset-2">Website</Link>.</p>
+        </>
+      )}
       {id === "push" && (
         <>
           <PushToggle variant="inline" />
@@ -632,7 +648,7 @@ function TestButton({ run, last, label = "Test connection", disabled, disabledNo
           </span>
           <span className="min-w-0">
             {result.message}
-            <span className="ml-1 opacity-70">· {relativeTime(new Date(result.at))}</span>
+            <span className="ml-1 opacity-70">· <RelativeTime at={result.at} /></span>
           </span>
         </div>
       )}
@@ -670,7 +686,7 @@ export function InstantUpdates({ on, lastSeen, local }: { on: boolean; lastSeen:
     return (
       <div className="space-y-3">
         <Note tone="good">
-          {lastSeen ? `Instant updates are on — the last one arrived ${relativeTime(new Date(lastSeen))}.` : "Instant updates are on. The first one arrives with the next sale or clock-in."}
+          {lastSeen ? <>Instant updates are on — the last one arrived <RelativeTime at={lastSeen} />.</> : "Instant updates are on. The first one arrives with the next sale or clock-in."}
         </Note>
         <Button size="sm" variant="ghost" className="px-0 hover:bg-transparent" onClick={() => setEditing(true)}>Set them up again</Button>
       </div>
@@ -1093,6 +1109,62 @@ function AIGuide({ d }: { d: ConnectionsData }) {
   return <Stepper steps={steps} />;
 }
 
+// ---- Website --------------------------------------------------------------------------
+
+function WebsiteGuide({ d }: { d: ConnectionsData }) {
+  const s = d.secrets;
+  const router = useRouter();
+  const [made, setMade] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const steps: Step[] = [
+    {
+      id: "web-url",
+      title: "The website's address",
+      done: s.WEBSITE_URL.set,
+      body: (
+        <>
+          <p>Paste the address guests use for the website, like <b>https://drinksubversive.com</b>.</p>
+          <SecretField name="WEBSITE_URL" status={s.WEBSITE_URL} label="Website address" placeholder="https://drinksubversive.com" sensitive={false} />
+          <More>Ops sends its refresh to this address, and only this address may send the private event form to Ops.</More>
+        </>
+      ),
+    },
+    {
+      id: "web-secret",
+      title: "A shared secret",
+      done: s.REVALIDATE_SECRET.set,
+      body: (
+        <>
+          <p>Both sides need the same secret so nobody else can make the website refresh. If the website already has a <b>REVALIDATE_SECRET</b>, paste it. Otherwise make one here and give it to whoever runs the website.</p>
+          <SecretField name="REVALIDATE_SECRET" status={s.REVALIDATE_SECRET} label="Shared secret" placeholder="Paste the website's REVALIDATE_SECRET" hint="At least 16 characters, no spaces." />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button disabled={pending} onClick={() => start(async () => { const r = await makeRevalidateSecret(); if (r.value) setMade(r.value); router.refresh(); })}>{s.REVALIDATE_SECRET.set ? "Make a new one" : "Make one"}</Button>
+          </div>
+          {made && (
+            <>
+              <CopyChip value={made} label="New secret — shown once" />
+              <Note tone="warn">Copy it now. In Vercel, open the website's project → Settings → Environment Variables, add <b>REVALIDATE_SECRET</b> with this value, then redeploy.</Note>
+            </>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "web-test",
+      title: "Test it",
+      done: !!d.tests.website?.ok,
+      body: (
+        <>
+          <p>Ops asks the website to refresh now. It works once the website has the same secret and has been redeployed.</p>
+          <TestButton run={testWebsite} last={d.tests.website} label="Send a test refresh" disabled={!s.WEBSITE_URL.set || !s.REVALIDATE_SECRET.set} disabledNote="Add the address and the secret first." />
+          <p className="text-sm text-muted">After this, saving hours, the notice, the menu, beers or events refreshes the website within seconds. Without it the website still catches up within 5 minutes.</p>
+        </>
+      ),
+    },
+  ];
+  return <Stepper steps={steps} />;
+}
+
 // ---- Google ---------------------------------------------------------------------------
 
 function GoogleGuide({ d }: { d: ConnectionsData }) {
@@ -1413,8 +1485,8 @@ function QuickBooksManage({ d }: { d: ConnectionsData }) {
     <>
       <div className="grid gap-2 text-sm sm:grid-cols-3">
         <div className="rounded-lg border border-border px-3.5 py-2.5"><div className="text-xs text-muted">Company</div><div className="font-medium">{st.companyName ?? "QuickBooks"}{st.environment === "sandbox" && <span className="text-muted"> · test</span>}</div></div>
-        <div className="rounded-lg border border-border px-3.5 py-2.5"><div className="text-xs text-muted">Connected</div><div className="font-medium">{st.connectedAt ? relativeTime(new Date(st.connectedAt)) : "—"}{st.connectedBy && <span className="text-muted"> · {st.connectedBy}</span>}</div></div>
-        <div className="rounded-lg border border-border px-3.5 py-2.5"><div className="text-xs text-muted">Last sent</div><div className="font-medium">{st.lastSync ? relativeTime(new Date(st.lastSync)) : "Nothing yet"}{q.waiting > 0 && <span className="text-muted"> · {q.waiting} waiting</span>}</div></div>
+        <div className="rounded-lg border border-border px-3.5 py-2.5"><div className="text-xs text-muted">Connected</div><div className="font-medium">{st.connectedAt ? <RelativeTime at={st.connectedAt} /> : "—"}{st.connectedBy && <span className="text-muted"> · {st.connectedBy}</span>}</div></div>
+        <div className="rounded-lg border border-border px-3.5 py-2.5"><div className="text-xs text-muted">Last sent</div><div className="font-medium">{st.lastSync ? <RelativeTime at={st.lastSync} /> : "Nothing yet"}{q.waiting > 0 && <span className="text-muted"> · {q.waiting} waiting</span>}</div></div>
       </div>
       <QboTestButton last={d.tests.quickbooks} />
       <div>

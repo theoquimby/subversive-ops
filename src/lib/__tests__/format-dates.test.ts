@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { businessDateOf, businessDateTime } from "../format";
+import { businessDateOf, businessDateTime, businessTime } from "../format";
 
 describe("business timestamp formatting", () => {
   // 02:30 UTC on Nov 14 is still the evening of Nov 13 in New York.
@@ -15,5 +15,11 @@ describe("business timestamp formatting", () => {
     expect(businessDateTime(late, "America/New_York")).toBe("Nov 13, 9:30pm");
     expect(businessDateTime(new Date("2026-11-13T17:05:00Z"), "America/New_York")).toBe("Nov 13, 12:05pm");
     expect(businessDateTime(new Date("2026-11-13T05:00:00Z"), "America/New_York")).toBe("Nov 13, 12:00am");
+  });
+
+  it("formats a time of day in the business timezone", () => {
+    expect(businessTime(late, "America/New_York")).toBe("9:30pm");
+    expect(businessTime(new Date("2026-11-13T17:05:00Z"), "America/New_York")).toBe("12:05pm");
+    expect(businessTime(late, "UTC")).toBe("2:30am");
   });
 });

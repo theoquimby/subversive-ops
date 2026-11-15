@@ -12,6 +12,7 @@ import {
   groupByStation,
   parsePrepUnit,
   planPrep,
+  prepEventLabel,
   prepOrder,
   prepStep,
   prepUnitLabel,
@@ -170,6 +171,28 @@ describe("planPrep", () => {
     // Buffalo: nothing on hand, so it runs out first and leads the list.
     expect(lines[0].recipeId).toBe("buffalo");
     expect(lines[0].runsOutIn).toBe(0);
+  });
+
+  it("adds booked private events' portions on top of the walk-in forecast, with the reason", () => {
+    const withEvent: PrepDay[] = [{ ...day("2026-11-16", 140, 20), events: [{ label: prepEventLabel("Private event: Rotary party", 40), portions: new Map([["burger", 40]]) }] }, ...days.slice(1)];
+    const lines = planPrep({ ...base, days: withEvent, coverDays: 1, items: [item(aioli, QT), item(buffalo, 0)] });
+    const a = lines.find((l) => l.recipeId === "aioli")!;
+    expect(a.usageBase).toBeCloseTo(180 * FLOZ);
+    expect(a.why).toBe("Today ~140 Classic Burger + Rotary party 40 guests → 5.6 qt · on hand 1 qt");
+    // Buffalo isn't on the event menu: unchanged.
+    expect(lines.find((l) => l.recipeId === "buffalo")!.usageBase).toBeCloseTo(20 * 4 * FLOZ);
+  });
+
+  it("counts an event on an otherwise closed day as a service day", () => {
+    const closed: PrepDay[] = [{ date: "2026-11-16", servings: new Map(), events: [{ label: "Wedding 80 guests", portions: new Map([["burger", 80]]) }] }, day("2026-11-17", 60)];
+    expect(coverWindow(closed, 1)).toEqual(["2026-11-16"]);
+    const a = planPrep({ ...base, days: closed, coverDays: 1, items: [item(aioli, 0)] }).find((l) => l.recipeId === "aioli")!;
+    expect(a.why.startsWith("Today + Wedding 80 guests → ")).toBe(true);
+  });
+
+  it("labels events plainly", () => {
+    expect(prepEventLabel("Private event: Rotary party", 40)).toBe("Rotary party 40 guests");
+    expect(prepEventLabel("  ", 0)).toBe("Private event");
   });
 
   it("covers more service days when asked", () => {

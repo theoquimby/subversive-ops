@@ -522,6 +522,9 @@ export async function privateEventNeedsYou(today: ISODate = businessToday()): Pr
 
 export interface PrepEvent {
   id: string;
+  date: ISODate;
+  /** The Events calendar entry that carries this booking into the sales forecast (confirmed/done only). */
+  calendarEventId: string | null;
   title: string;
   clientName: string;
   stage: Stage;
@@ -541,10 +544,15 @@ export interface PrepEvent {
  * headcount and the menu as recipe portions — for the prep list.
  */
 export async function eventsForPrep(date: ISODate): Promise<PrepEvent[]> {
+  return eventsForPrepBetween(date, date);
+}
+
+/** `eventsForPrep` for every date from `from` to `to` (inclusive), ordered by date then start time. */
+export async function eventsForPrepBetween(from: ISODate, to: ISODate): Promise<PrepEvent[]> {
   const rows = await db.privateEvent.findMany({
-    where: { date: parseISODate(date), stage: { in: [...BOOKED_STAGES] } },
+    where: { date: { gte: parseISODate(from), lte: parseISODate(to) }, stage: { in: [...BOOKED_STAGES] } },
     include: { lines: { orderBy: { sort: "asc" } } },
-    orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
+    orderBy: [{ date: "asc" }, { startTime: "asc" }, { createdAt: "asc" }],
   }).catch((e: unknown) => {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2021") return [];
     throw e;
@@ -562,6 +570,8 @@ export async function eventsForPrep(date: ISODate): Promise<PrepEvent[]> {
   const names = new Map((await db.recipe.findMany({ where: { id: { in: [...recipeIds] } }, select: { id: true, name: true } })).map((r) => [r.id, r.name]));
   return rows.map((e, i) => ({
     id: e.id,
+    date: toISODate(e.date!),
+    calendarEventId: e.calendarEventId,
     title: titleOf(e),
     clientName: e.clientName,
     stage: stageOf(e.stage),

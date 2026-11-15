@@ -1,5 +1,7 @@
 import "server-only";
+import { cache } from "react";
 import { db } from "../db";
+import { settingValue } from "./setting-read";
 import { isSquareConnected } from "./square";
 
 /**
@@ -37,10 +39,10 @@ const KEY = "onboarding.progress";
 const EMPTY: OnboardingProgress = { current: "welcome", completed: [], skipped: [] };
 
 export async function getOnboardingProgress(): Promise<OnboardingProgress> {
-  const s = await db.setting.findUnique({ where: { key: KEY } });
+  const s = await settingValue(KEY);
   if (!s) return EMPTY;
   try {
-    const v = JSON.parse(s.value) as Partial<OnboardingProgress>;
+    const v = JSON.parse(s) as Partial<OnboardingProgress>;
     return {
       current: v.current && isStepId(v.current) ? v.current : "welcome",
       completed: (v.completed ?? []).filter(isStepId),
@@ -111,8 +113,9 @@ export interface OnboardingState {
   current: OnboardingStepId;
 }
 
-export async function onboardingState(): Promise<OnboardingState> {
-  const [p, settings, suppliers, ingredients, recipes, users, counts] = await Promise.all([
+/** Read once per render: the app layout and the Overview both ask. */
+export const onboardingState = cache(async (): Promise<OnboardingState> => {
+  const [p, settings, suppliers, ingredients, recipes, users, counts, square] = await Promise.all([
     getOnboardingProgress(),
     db.setting.count({ where: { key: { in: ["business.name", "openingHours"] } } }),
     db.supplier.count({ where: { active: true } }),
@@ -120,13 +123,14 @@ export async function onboardingState(): Promise<OnboardingState> {
     db.recipe.count(),
     db.user.count({ where: { active: true } }),
     db.stockCount.count({ where: { completed: true } }),
+    isSquareConnected(),
   ]);
   const facts: Record<OnboardingStepId, boolean> = {
     welcome: p.completed.length > 0 || p.current !== "welcome",
     basics: settings > 0,
     suppliers: suppliers > 0,
     data: ingredients > 0 || recipes > 0,
-    square: await isSquareConnected(),
+    square,
     team: users > 1,
     phone: counts > 0,
     done: !!p.finishedAt,
@@ -143,4 +147,4 @@ export async function onboardingState(): Promise<OnboardingState> {
     href: `/welcome?step=${p.current}`,
     current: p.current,
   };
-}
+});

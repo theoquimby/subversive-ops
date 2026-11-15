@@ -93,7 +93,10 @@ def open_hours(data: dict, ctx: dict) -> list[dict]:
                     f"feed.hours.{wd}.{h}", "feed.hours", "feed",
                     f"The {hour_label(h)} hour on {WEEKDAYS[wd]}s costs more than it brings in" if edge == "open" else f"The last hour on {WEEKDAYS[wd]}s costs more than it brings in",
                     act + ", or run that hour with one fewer person.",
-                    monthly, monthly * 0.5, (labor - margin * 0.9) * WEEKS_PER_MONTH, min(0.7, 0.3 + 0.02 * weeks),
+                    # Likely range: a cautious half of the headline, up to half the guests coming an hour later
+                    # (the headline assumes 30%). It used to take 90% of the margin off for the "high" end,
+                    # which put the range below the headline.
+                    monthly, monthly * 0.5, (labor - margin * (1 - 0.5)) * WEEKS_PER_MONTH, min(0.7, 0.3 + 0.02 * weeks),
                     [f"Over the last {weeks} {WEEKDAYS[wd]}s, {when} averaged {money(sales)} in sales ({money(margin)} after a {cost_note(measured, cogs)}) and {money(labor)} in wages. It lost money in {losing_weeks} of {len(v)} weeks.", "We assume 30% of those guests would simply come an hour later, so the saving is cautious."],
                     [inp("Sales in the hour (avg)", money(sales)), inp("Guests (orders) in the hour", f"{guests:.0f}"), inp("Wages in the hour (avg)", money(labor)), inp("Food & drink cost", pct(cogs) + ("" if measured else " (typical)")), inp("Weeks", weeks)],
                     href="/schedule", subject=f"{wd}.{h}",

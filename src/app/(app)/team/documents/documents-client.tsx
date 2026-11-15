@@ -171,7 +171,7 @@ function TextEditor({ id, initial }: { id: string; initial: string }) {
     <label className="block">
       <span className="mb-1.5 flex items-center justify-between text-[0.8rem] font-medium text-ink-2">
         Text used to answer questions
-        <span className="text-xs font-normal text-muted" aria-live="polite">{saved === "saving" ? "Saving…" : saved === "saved" ? "Saved" : `${v.length.toLocaleString()} characters`}</span>
+        <span className="text-xs font-normal text-muted" aria-live="polite">{saved === "saving" ? "Saving…" : saved === "saved" ? "Saved" : `${v.length.toLocaleString("en-US")} characters`}</span>
       </span>
       <Textarea
         value={v}

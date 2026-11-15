@@ -76,7 +76,7 @@ The chart only knows what's tagged on ingredients. An item with nothing tagged s
     area: "team",
     route: "/team",
     title: "Notes and kudos",
-    body: "Tap a name to leave kudos, a coaching note or a private manager note. Kudos and coaching can be shared — they then show on that person's My shifts.",
+    body: "Tap a name to leave kudos, a coaching note or a private manager note. Kudos and coaching can be shared — they then show on that person's Me page (kudos also on their Today).",
     article: `Each person's sheet has:
 
 - **Kudos** — something they did well. Shared by default.
@@ -94,12 +94,12 @@ The sheet also lists the documents they still need to sign.`,
     area: "team",
     route: "/team/documents",
     title: "Documents",
-    body: "Upload the handbook, policies and new-hire forms (PDF, Word, text or a photo, up to 8 MB). Mark any that staff must acknowledge; they sign on My shifts.",
+    body: "Upload the handbook, policies and new-hire forms (PDF, Word, text or a photo, up to 8 MB). Mark any that staff must acknowledge; they sign on Me (and see it on Today).",
     article: `### Uploading
 Drop a file on **Team → Documents**, give it a title and type, and choose:
 
 - **Who sees it** — everyone, or managers only.
-- **Staff must acknowledge** — shows on My shifts with an "I've read this" button until they tap it.
+- **Staff must acknowledge** — shows on staff's Today and Me pages with an "I've read this" button until they tap it.
 
 For tax forms (W-4, IT-2104), upload the blank form here so new hires can download it; collect the filled-in copy the way you do today.
 
@@ -148,7 +148,7 @@ Staff see staff documents only; managers also search manager-only ones. Ask a ma
   {
     id: "my.documents",
     area: "my",
-    route: "/my",
+    route: "/my/me",
     audience: "all",
     title: "Documents to read",
     body: "Your handbook and policies. Tap one to read it. If it says “I've read this”, tap that once you have — your manager sees it's done.",
@@ -158,7 +158,7 @@ Staff see staff documents only; managers also search manager-only ones. Ask a ma
   {
     id: "my.feedback",
     area: "my",
-    route: "/my",
+    route: "/my/me",
     audience: "all",
     title: "From your managers",
     body: "Kudos and coaching notes your managers chose to share with you.",
@@ -168,7 +168,7 @@ Staff see staff documents only; managers also search manager-only ones. Ask a ma
   {
     id: "my.policyAsk",
     area: "my",
-    route: "/my",
+    route: "/my/me",
     audience: "all",
     title: "Ask about policies",
     body: "Ask a question about breaks, call-outs, dress code and so on. The answer comes from the handbook and policies your managers uploaded, and names the document.",

@@ -149,6 +149,8 @@ def opportunity(key: str, kind: str, model: str, title: str, action: str, monthl
     group: root cause — findings sharing a group are one action in the app; lead: the one to show."""
     lo = monthly if low is None else low
     hi = monthly if high is None else high
+    # The headline always sits inside its likely range (the app shows "likely $low–$high" under it).
+    lo, hi = min(lo, hi, monthly), max(lo, hi, monthly)
     extra = {k: v for k, v in {"area": area, "effort": effort, "vector": vector, "story": story, "visual": visual, "group": group, "lead": lead}.items() if v is not None}
     return {**extra,
         "key": key,

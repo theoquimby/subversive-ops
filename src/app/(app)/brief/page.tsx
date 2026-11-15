@@ -13,8 +13,7 @@ export const metadata = { title: "Brief" };
 export default async function BriefPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const session = await requireUser("MANAGER");
   const view = (await searchParams).view === "week" ? "week" : "today";
-  await refreshIfStale();
-  const hour = view === "today" ? await getMorningHour().catch(() => 9) : null;
+  const [, hour] = await Promise.all([refreshIfStale(), view === "today" ? getMorningHour().catch(() => 9) : null]);
 
   const tab = (v: "today" | "week", label: string) => (
     <Link

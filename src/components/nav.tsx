@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CalendarCheck, CalendarRange, ChevronRight, CircleHelp, ClipboardList, Home, LayoutGrid, LogOut, MoreHorizontal, ScanLine, Search, ShoppingCart, Trash2, X } from "lucide-react";
+import { CalendarCheck, CalendarRange, ChefHat, ChevronRight, CircleHelp, ClipboardList, Home, LayoutGrid, LogOut, MoreHorizontal, ScanLine, Search, ShoppingCart, Sun, X } from "lucide-react";
 import { areaFor, areaStyle, isActive, MANAGER_NAV, STAFF_NAV, type Area, type NavGroup } from "@/lib/areas";
 import { openCommandPalette } from "./command-palette";
 import { HelpButton } from "./help";
@@ -149,14 +149,18 @@ const MANAGER_TABS: NavItem[] = [
   { href: "/count", label: "Count", icon: ClipboardList, area: "floor" },
   { href: "/schedule", label: "Schedule", icon: CalendarRange, area: "people" },
 ];
-// Staff pages all get a tab (Scan opens the keg scanner; Kegs is reached from it);
-// More holds help and sign out (no repeated page tiles).
+// Staff: their day, their shifts, and the two floor tools used every shift.
+// Count, waste, kegs, notes and Me are one tap away on Today's quick actions
+// and in More (as big tiles, so More is never a dead end).
 const STAFF_TABS: NavItem[] = [
-  { href: "/my", label: "My shifts", icon: CalendarCheck, area: "people" },
-  { href: "/count", label: "Count", icon: ClipboardList, area: "floor" },
-  { href: "/waste", label: "Waste", icon: Trash2, area: "floor" },
+  { href: "/my", label: "Today", icon: Sun, area: "people" },
+  { href: "/my/shifts", label: "Shifts", icon: CalendarCheck, area: "people" },
   { href: "/kegs/scan", label: "Scan", icon: ScanLine, area: "floor" },
+  { href: "/prep", label: "Prep", icon: ChefHat, area: "floor" },
 ];
+
+/** A tab is lit on its own page (and sub-pages); Scan also stays lit on /kegs/k/… — the keg you just scanned. */
+const isTabActive = (pathname: string, href: string) => isActive(pathname, href) || (href === "/kegs/scan" && pathname.startsWith("/kegs/k/"));
 
 function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole; name: string; groups: Group[]; logout: () => Promise<void>; pathname: string }) {
   const [open, setOpen] = useState(false);
@@ -164,7 +168,8 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
   const all = groups.flatMap((g) => g.items);
   const current = all.find((i) => isActive(pathname, i.href)) ?? (pathname.startsWith("/help") ? { label: "Help" } : null);
   const cols = tabs.length + 1;
-  const activeTab = tabs.findIndex((t) => isActive(pathname, t.href));
+  // Most specific tab wins (/my/shifts lights Shifts, not Today).
+  const activeTab = tabs.reduce((best, t, i) => (isTabActive(pathname, t.href) && (best < 0 || t.href.length > tabs[best].href.length) ? i : best), -1);
   const pillIndex = open || activeTab < 0 ? tabs.length : activeTab;
   const pillArea: Area = pillIndex < tabs.length ? tabs[pillIndex].area : areaFor(pathname);
 
@@ -183,7 +188,7 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
     <>
       <header className="sticky top-0 z-30 border-b border-border bg-surface/85 pt-[env(safe-area-inset-top)] backdrop-blur-xl lg:hidden">
         <div className="flex h-13 items-center justify-between gap-2 pr-1.5 pl-2">
-          <Link href="/" className="flex min-w-0 items-center gap-2.5 px-2" aria-label="Home">
+          <Link href={role === "MANAGER" ? "/" : "/my"} className="flex min-w-0 items-center gap-2.5 px-2" aria-label="Home">
             <BrandMark />
             <span className="truncate text-[0.95rem] font-semibold tracking-tight">{current?.label ?? "Subversive Ops"}</span>
           </Link>
@@ -210,7 +215,7 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
           {tabs.map(({ href, label, icon: Icon, area }, i) => {
             const active = pillIndex === i;
             return (
-              <Link key={href} href={href} aria-current={isActive(pathname, href) ? "page" : undefined} style={areaStyle(area)} className={clsx("relative flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors duration-180 active:scale-[0.97]", active ? "text-ink" : "text-muted active:text-ink-2")}>
+              <Link key={href} href={href} aria-current={active ? "page" : undefined} style={areaStyle(area)} className={clsx("relative flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors duration-180 active:scale-[0.97] motion-reduce:active:scale-100", active ? "text-ink" : "text-muted active:text-ink-2")}>
                 <span className="grid h-7 w-12 place-items-center rounded-full">
                   <Icon className={clsx("size-[1.2rem] transition-colors duration-180", active && "text-area")} strokeWidth={active ? 2.1 : 1.75} />
                 </span>
@@ -270,14 +275,22 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
                 </div>
               </section>
             ))}
-            {/* Staff pages without a tab of their own (e.g. Prep list) — Kegs is reached from Scan. */}
-            {role !== "MANAGER" && all.some((i) => !tabs.some((t) => t.href === i.href || t.href.startsWith(`${i.href}/`))) && (
-              <section className="mb-3 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface">
-                {all.filter((i) => !tabs.some((t) => t.href === i.href || t.href.startsWith(`${i.href}/`))).map(({ href, label, icon: Icon, area }) => (
-                  <Link key={href} href={href} aria-current={isActive(pathname, href) ? "page" : undefined} style={areaStyle(area)} className="flex h-12 items-center gap-3 px-3 text-sm transition-colors duration-120 active:bg-surface-2">
-                    <span className="grid size-7 place-items-center rounded-lg bg-area/10 text-area"><Icon className="size-4" strokeWidth={1.9} /></span> {label} <ChevronRight className="ml-auto size-4 text-muted" />
-                  </Link>
-                ))}
+            {/* Staff: every page without a tab, as big tiles (the tabs stay in the bar). */}
+            {role !== "MANAGER" && (
+              <section className="mb-4">
+                <div className="grid grid-cols-3 gap-2">
+                  {all.filter((i) => !tabs.some((t) => t.href === i.href)).map(({ href, label, icon: Icon, area }) => {
+                    const active = isActive(pathname, href);
+                    return (
+                      <Link key={href} href={href} aria-current={active ? "page" : undefined} style={areaStyle(area)} className={clsx("flex h-[5.25rem] flex-col justify-between rounded-2xl border px-3 py-2.5 transition-[background-color,border-color,transform] duration-120 ease-motion active:scale-[0.97] motion-reduce:active:scale-100", active ? "border-area/35 bg-area/10 text-ink" : "border-border bg-surface text-ink active:bg-surface-2")}>
+                        <span className={clsx("grid size-8 place-items-center rounded-xl", active ? "bg-area text-bg" : "bg-area/10 text-area")}>
+                          <Icon className="size-[1.1rem]" strokeWidth={1.9} aria-hidden />
+                        </span>
+                        <span className="line-clamp-2 text-[0.85rem] leading-tight font-medium">{label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
               </section>
             )}
             <section className="mb-2 overflow-hidden rounded-2xl border border-border bg-surface">

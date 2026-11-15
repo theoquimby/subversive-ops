@@ -15,10 +15,12 @@ import { ensurePushKeys } from "@/server/services/push";
 import { SETTING_PLACE_ID } from "@/server/services/reviews";
 import { getSecret, getSecrets, removeSecret, setSecret } from "@/server/services/secrets";
 import { squareEnvironment, SquareNotConnectedError, testSquareConnection } from "@/server/services/square";
+import { sendPing } from "@/server/services/website";
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-export type ServiceId = "square" | "email" | "push" | "ai" | "google" | "quickbooks";
+export type ServiceId = "square" | "email" | "push" | "ai" | "google" | "quickbooks" | "website";
 export interface TestResult {
   ok: boolean;
   message: string;
@@ -36,6 +38,8 @@ const PASTABLE: ReadonlySet<SecretName> = new Set([
   "GOOGLE_PLACES_API_KEY",
   "QUICKBOOKS_CLIENT_ID",
   "QUICKBOOKS_CLIENT_SECRET",
+  "WEBSITE_URL",
+  "REVALIDATE_SECRET",
 ]);
 
 const SETTING_PLACE_NAME = "reviews.googlePlaceName";
@@ -59,7 +63,7 @@ async function forget(id: ServiceId) {
 }
 
 const serviceOf = (n: SecretName): ServiceId =>
-  n.startsWith("QUICKBOOKS") ? "quickbooks" : n.startsWith("SQUARE") ? "square" : n === "RESEND_API_KEY" || n === "EMAIL_FROM" ? "email" : n === "ANTHROPIC_API_KEY" ? "ai" : n === "GOOGLE_PLACES_API_KEY" ? "google" : "push";
+  n === "WEBSITE_URL" || n === "REVALIDATE_SECRET" ? "website" : n.startsWith("QUICKBOOKS") ? "quickbooks" : n.startsWith("SQUARE") ? "square" : n === "RESEND_API_KEY" || n === "EMAIL_FROM" ? "email" : n === "ANTHROPIC_API_KEY" ? "ai" : n === "GOOGLE_PLACES_API_KEY" ? "google" : "push";
 
 /** Save a pasted key after checking it looks right. Returns only a masked hint, never the value. */
 export async function saveKey(name: string, raw: string): Promise<{ error?: string; hint?: string }> {
@@ -121,6 +125,25 @@ export async function testAI(): Promise<TestResult> {
   if (!(await getSecret("ANTHROPIC_API_KEY"))) return { ok: false, message: "Paste a Claude key first (step 3).", at: new Date().toISOString() };
   const r = await testClaudeKey();
   return r.ok ? remember("ai", true, "Working — Claude answered. Invoice reading, review replies and Ask are on.") : remember("ai", false, r.error);
+}
+
+// ---- Website -----------------------------------------------------------------------
+
+/** Make a long random shared secret, save it, and hand it back once so it can be pasted into the website's Vercel project. */
+export async function makeRevalidateSecret(): Promise<{ value?: string; error?: string }> {
+  await requireUser("MANAGER");
+  const value = randomBytes(24).toString("base64url");
+  await setSecret("REVALIDATE_SECRET", value);
+  await forget("website");
+  refresh();
+  return { value };
+}
+
+export async function testWebsite(): Promise<TestResult> {
+  await requireUser("MANAGER");
+  const r = await sendPing(["events", "menu", "site"]);
+  if (r.skipped) return { ok: false, message: `${r.message}.`, at: r.at };
+  return remember("website", r.ok, r.ok ? "Working — the website accepted the secret and refreshed." : r.message);
 }
 
 // ---- Google: find my business ------------------------------------------------------

@@ -9,15 +9,19 @@ import { bridge } from "@/domain/pnlStory";
 import { nightTotals } from "@/domain/shiftNotes";
 import { MANAGER_NAV } from "@/lib/areas";
 import { db } from "../db";
+import { settingValue } from "./setting-read";
 import { attentionList } from "./attention";
 import { forecastRangeFor } from "./analytics";
 import { hourlySalesForecast, weatherLabel } from "./forecasting";
 import { periodKpis } from "./kpis";
 import { orderingBoard } from "./orderingBoard";
 import { pnlReport } from "./pnl";
+import { prepSummary, type PrepSummary } from "./prep";
+import { eventsForPrepBetween, type PrepEvent } from "./privateEvents";
 import { businessToday } from "./sales";
 import { loadWeek } from "./scheduling";
 import { lastNight, notesOn, type ShiftNoteView } from "./shiftNotes";
+import { tapList, type TapListRow } from "./taps";
 
 /**
  * The daily morning brief: yesterday in one line, today (forecast, busy hours,
@@ -32,7 +36,7 @@ export const MORNING_HOUR_KEY = "brief.morning.hour";
 export const MORNING_SENT_KEY = "brief.morning.sent";
 
 export async function getMorningHour(): Promise<number> {
-  return parseMorningHour((await db.setting.findUnique({ where: { key: MORNING_HOUR_KEY } }))?.value);
+  return parseMorningHour(await settingValue(MORNING_HOUR_KEY));
 }
 
 export async function saveMorningHour(hour: number) {
@@ -103,7 +107,8 @@ export async function morningBrief(now = new Date()) {
   const yesterday = addDays(today, -1);
   const monday = isMondayEdition(today);
 
-  const [yReport, forecast, range, week, board, attention, yNotes, notes, sendHour, wrap] = await Promise.all([
+  const hasPrep = prepAvailable();
+  const [yReport, forecast, range, week, board, attention, yNotes, notes, sendHour, wrap, prep, parties, taps] = await Promise.all([
     soft("yesterday", pnlReport(yesterday, today, now), null),
     soft("forecast", hourlySalesForecast([today]).then((f) => f[0] ?? null), null),
     soft("range", forecastRangeFor(today), null),
@@ -114,6 +119,9 @@ export async function morningBrief(now = new Date()) {
     soft("last night", lastNight(today), [] as ShiftNoteView[]),
     soft("hour", getMorningHour(), 9),
     monday ? soft("wrap", lastWeekWrap(today, now), null) : Promise.resolve(null),
+    hasPrep ? soft("prep", prepSummary(today, 3), null as PrepSummary | null) : Promise.resolve(null),
+    soft("private events", eventsForPrepBetween(today, addDays(today, 1)), [] as PrepEvent[]),
+    soft("taps", tapList().then((t) => t.rows), [] as TapListRow[]),
   ]);
 
   // ---- Yesterday ------------------------------------------------------------------------
@@ -148,7 +156,10 @@ export async function morningBrief(now = new Date()) {
   const weather = w
     ? { ...weatherLabel(w.code), hiF: cToF(w.tempMaxC), loF: cToF(w.tempMinC), precipMm: w.precipMm, wet: w.precipMm >= 5, factor: drivers!.weatherFactor }
     : null;
-  const events = (drivers?.events ?? []).map((e) => ({ title: e.title, kind: e.kind, startTime: e.startTime }));
+  // Booked parties are listed on their own (with headcount), so drop their calendar copies here.
+  const partyCalendarIds = new Set(parties.map((p) => p.calendarEventId).filter(Boolean));
+  const events = (drivers?.events ?? []).filter((e) => !partyCalendarIds.has(e.id)).map((e) => ({ title: e.title, kind: e.kind, startTime: e.startTime }));
+  const party = (p: PrepEvent) => ({ id: p.id, title: p.title, headcount: p.headcount, startTime: p.startTime, space: p.space, confirmed: p.stage !== "DEPOSIT" });
 
   let crew: { people: number; shifts: number; drafts: number; open: number; check: CrewCheck; names: string[]; demand: { hour: number; need: number; have: number }[] } | null = null;
   if (week) {
@@ -182,6 +193,22 @@ export async function morningBrief(now = new Date()) {
     if (a.key.startsWith("order")) continue; // covered above, per supplier
     tonight.push({ key: a.key, kind: (KINDS.has(a.key) ? a.key : "other") as TonightItem["kind"], title: a.title, detail: a.detail, href: a.href, tone: a.tone });
   }
+  // Kegs nearly out on tap: change them before service, and say when nothing full is behind.
+  const kegAlerts = attention.filter((a) => a.key.startsWith("kegs")).map((a) => a.title);
+  for (const t of taps) {
+    if (t.badge !== "almost") continue;
+    // "No full keg behind it" from the Overview already covers an empty line with nothing to follow.
+    if (t.backups === 0 && kegAlerts.some((title) => title.includes(t.beer))) continue;
+    const left = t.pctLeft != null ? `${Math.max(0, Math.round(t.pctLeft * 100))}% left` : "nearly out";
+    tonight.push({
+      key: `tap-${t.line}`,
+      kind: "kegs",
+      title: `${t.beer} is almost gone`,
+      detail: `Line ${t.line} · ${left} · ${t.backups > 0 ? `${t.backups} full behind it` : "nothing full behind it"}`,
+      href: "/kegs/taps",
+      tone: t.backups > 0 ? "neutral" : "warn",
+    });
+  }
   const toneRank = { bad: 0, warn: 1, neutral: 2 } as const;
   const kindRank: Record<TonightItem["kind"], number> = { deadline: 0, draft: 1, checkin: 2, invoices: 3, kegs: 4, schedule: 5, requests: 6, certs: 7, reviews: 8, other: 9 };
   tonight.sort((a, b) => toneRank[a.tone] - toneRank[b.tone] || kindRank[a.kind] - kindRank[b.kind]);
@@ -204,10 +231,17 @@ export async function morningBrief(now = new Date()) {
       events,
       reason: drivers?.reason ?? null,
     },
+    /** Booked private events (deposit paid or confirmed) today and tomorrow. */
+    parties: {
+      today: parties.filter((p) => p.date === today).map(party),
+      tomorrow: parties.filter((p) => p.date !== today).map(party),
+    },
     crew,
     tonight,
     notes,
-    prep: prepAvailable(),
+    prep: hasPrep,
+    /** Today's prep in a few numbers (null when the prep list isn't available or failed). */
+    prepToday: prep,
     wrap,
   };
 }

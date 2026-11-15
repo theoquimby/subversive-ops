@@ -121,7 +121,8 @@ export function NoteComposer({ today, defaultDate, defaultShift, usual, note, on
   const submit = () => {
     setError(null);
     start(async () => {
-      const r = await saveNote(note?.id ?? null, toForm(s));
+      // No signal (walk-in): keep the draft on this phone rather than lose it.
+      const r = await saveNote(note?.id ?? null, toForm(s)).catch(() => ({ error: note ? "No signal — that didn't save. Try again when you're back in range." : "No signal. Your note is kept on this phone — tap Save again when you're back in range." }));
       if (r.error) {
         setError(r.error);
         return;
@@ -272,7 +273,7 @@ export function NoteComposer({ today, defaultDate, defaultShift, usual, note, on
       </Group>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" variant="primary" size="lg" onClick={submit} disabled={pending} className="w-full sm:w-auto">
+        <Button type="button" variant="primary" size="lg" onClick={submit} disabled={pending} className={cx("w-full sm:w-auto", !note && "h-13 rounded-xl text-base sm:h-11")}>
           {pending ? "Saving…" : note ? "Save changes" : "Save note"}
         </Button>
         {onDone && note && (

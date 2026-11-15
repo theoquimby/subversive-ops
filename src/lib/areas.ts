@@ -10,11 +10,13 @@
 import {
   Beer,
   BookOpen,
+  Calculator,
   CalendarCheck,
   CalendarDays,
   CalendarRange,
   Carrot,
   ChefHat,
+  CircleUserRound,
   ChartLine,
   CircleHelp,
   ClipboardList,
@@ -22,6 +24,7 @@ import {
   FileCheck,
   FileUp,
   FolderOpen, GraduationCap,
+  Globe,
   HandCoins,
   LayoutGrid,
   Lightbulb,
@@ -32,6 +35,7 @@ import {
   Settings,
   ShoppingCart,
   Sparkles,
+  Sun,
   Sunrise,
   Target,
   Trash2,
@@ -73,15 +77,17 @@ export const MANAGER_NAV: NavGroup[] = [
     item("people", "/team/training", "Training", GraduationCap),
     item("people", "/labor", "Timecards & payroll", Clock),
     item("people", "/tips", "Tips", HandCoins),
-    item("people", "/my", "My shifts", CalendarCheck),
+    item("people", "/my/shifts", "My shifts", CalendarCheck),
   ] },
   { title: "Numbers", area: "numbers", items: [
     item("numbers", "/insights", "Insights", Lightbulb),
     item("numbers", "/pnl", "P&L", TrendingUp),
+    item("numbers", "/accounting", "Month-end", Calculator),
     item("numbers", "/sales", "Sales & forecast", ChartLine),
     item("numbers", "/events", "Events", CalendarDays),
     item("numbers", "/budgets", "Budgets", Target),
     item("numbers", "/reviews", "Reviews", MessageSquareText),
+    item("numbers", "/website", "Website", Globe),
   ] },
   { title: "Floor", area: "floor", items: [
     item("floor", "/count", "Counts", ClipboardList),
@@ -95,20 +101,27 @@ export const MANAGER_NAV: NavGroup[] = [
   ] },
 ];
 
+// Staff: their day first, then the floor tools. The tab bar shows Today, Shifts,
+// Scan and Prep; everything here also appears in the More sheet.
 export const STAFF_NAV: NavGroup[] = [
   { area: "people", items: [
-    item("people", "/my", "My shifts", CalendarCheck),
+    item("people", "/my", "Today", Sun),
+    item("people", "/my/shifts", "My shifts", CalendarCheck),
+    item("people", "/my/me", "Me", CircleUserRound),
+  ] },
+  { title: "Floor", area: "floor", items: [
+    item("floor", "/prep", "Prep list", ChefHat),
+    item("floor", "/kegs", "Kegs & taps", Beer),
     item("floor", "/count", "Count", ClipboardList),
     item("floor", "/waste", "Waste", Trash2),
-    item("floor", "/kegs", "Kegs", Beer),
     item("floor", "/notes", "Shift notes", NotebookPen),
-    item("floor", "/prep", "Prep list", ChefHat),
   ] },
 ];
 
 const HELP_ITEM = item("assist", "/help", "Help", CircleHelp);
 const WELCOME_ITEM = item("today", "/welcome", "Setup", Sparkles);
-const ALL_ITEMS = [...MANAGER_NAV.flatMap((g) => g.items), HELP_ITEM, WELCOME_ITEM];
+// Manager items win ties (same href), so staff-only pages like /my/me still get their own label and hue.
+const ALL_ITEMS = [...MANAGER_NAV.flatMap((g) => g.items), ...STAFF_NAV.flatMap((g) => g.items), HELP_ITEM, WELCOME_ITEM];
 
 const matches = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`) || pathname.startsWith(`${href}?`));
 const ALL_HREFS = [...MANAGER_NAV, ...STAFF_NAV].flatMap((g) => g.items.map((i) => i.href));

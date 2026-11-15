@@ -96,7 +96,8 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
     committed.current = next;
     saving.current = true;
     start(async () => {
-      const res = await onSave(next);
+      // A dropped connection or server error comes back as a normal error, never a stuck cell.
+      const res = await onSave(next).catch(() => ({ error: "Couldn't save. Check the connection and try again." }));
       saving.current = false;
       if (res && res.error) {
         committed.current = prev;
@@ -205,7 +206,7 @@ export function GridSelect({ value, options, onSave, ariaLabel, className }: { v
         const prev = v;
         setV(next);
         start(async () => {
-          const res = await onSave(next);
+          const res = await onSave(next).catch(() => ({ error: "Couldn't save. Check the connection and try again." }));
           if (res && res.error) { setV(prev); setError(res.error); } else setError(null);
         });
       }}

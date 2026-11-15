@@ -80,7 +80,7 @@ const D = (n: number | null) => (n == null ? null : new Prisma.Decimal(n.toFixed
 
 /** Re-run the three-way match for a saved invoice and store line + invoice status. Approved invoices keep their status. */
 export async function rematch(invoiceId: string) {
-  const inv = await db.invoice.findUniqueOrThrow({ where: { id: invoiceId }, include: { lines: { orderBy: { id: "asc" } } } });
+  const inv = await db.invoice.findUniqueOrThrow({ where: { id: invoiceId }, omit: { image: true }, include: { lines: { orderBy: { id: "asc" } } } });
   const r = await computeMatch({
     id: inv.id,
     supplierId: inv.supplierId,
@@ -379,7 +379,7 @@ export async function setPricesOnApprove(on: boolean) {
 
 /** New PriceRecords (source IMPORT, effective invoice date) for every linked item whose billed price differs from the one on record. */
 export async function updatePricesFromInvoice(invoiceId: string) {
-  const inv = await db.invoice.findUniqueOrThrow({ where: { id: invoiceId }, include: { lines: { orderBy: { id: "asc" } } } });
+  const inv = await db.invoice.findUniqueOrThrow({ where: { id: invoiceId }, omit: { image: true }, include: { lines: { orderBy: { id: "asc" } } } });
   const date = toISODate(inv.invoiceDate);
   const ids = [...new Set(inv.lines.map((l) => l.supplierProductId).filter((x): x is string => Boolean(x)))];
   const products = await db.supplierProduct.findMany({

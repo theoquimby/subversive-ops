@@ -1,5 +1,6 @@
 "use server";
 
+import { pingWebsite } from "@/server/services/website";
 import { DIET_TAGS, moveLine, parseAbv, parseBoardPours, parseIbu, formatBoardPours } from "@/domain/taps";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
@@ -9,7 +10,10 @@ import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-const refresh = () => revalidatePath("/kegs", "layout");
+const refresh = () => {
+  revalidatePath("/kegs", "layout");
+  pingWebsite("menu");
+};
 
 // ---- Board order and coming soon ------------------------------------------------------------
 

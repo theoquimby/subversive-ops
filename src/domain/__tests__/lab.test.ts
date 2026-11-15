@@ -65,6 +65,12 @@ describe("actions", () => {
     expect(buildActions([hours, staff], st, "2026-11-13")).toHaveLength(0);
   });
 
+  it("keeps the headline inside its likely range (old cached results had the high end below it)", () => {
+    const [a] = buildActions([opp({ key: "feed.hours.1.16", kind: "feed.hours", monthly: 400, low: 200, high: 310 })], emptyFeedState(), "2026-11-13");
+    expect(a.low).toBe(200);
+    expect(a.high).toBe(400);
+  });
+
   it("fills area, effort and a story from the kind", () => {
     const [a] = buildActions([opp({ key: "feed.price.creep.Sysco", kind: "feed.price.creep", monthly: 300, confidence: 0.45 })], emptyFeedState(), "2026-11-13");
     expect(a.area).toBe("costs");

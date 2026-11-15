@@ -24,6 +24,11 @@ import { drafting } from "./areas/drafting";
 import { orderingBoard } from "./areas/orderingBoard";
 import { privateEvents } from "./areas/privateEvents";
 import { morningBrief } from "./areas/morning";
+import { staffHome } from "./areas/staffHome";
+import { website } from "./areas/website";
+import { websiteAnalytics } from "./areas/websiteAnalytics";
+import { whatsNew } from "./areas/whatsNew";
+import { monthEnd } from "./areas/monthEnd";
 import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
 
@@ -48,6 +53,7 @@ export const AREAS: HelpArea[] = [
   { id: "labor", title: "Labor & payroll", description: "Timecards, approval, sick leave, adjustments and the payroll export." },
   { id: "tips", title: "Tips", description: "Tip pooling by hours or points." },
   { id: "pnl", title: "Live P&L", description: "Sales − cost of goods − labor, split food and beverage." },
+  { id: "accounting", title: "Month-end", description: "Closing the month: the checklist, sales tax, stock value, tips owed, the accountant pack and sales to QuickBooks." },
   { id: "budgets", title: "Budgets", description: "Weekly sales, food cost and labor targets." },
   { id: "events", title: "Events", description: "The events calendar and its effect on sales." },
   { id: "invoices", title: "Invoices", description: "Snap, match, approve, request credits, send to QuickBooks or export for Xero." },
@@ -57,6 +63,7 @@ export const AREAS: HelpArea[] = [
   { id: "insights", title: "Insights", description: "The Insights Lab: one thing to do at a time, how your numbers connect, and a tile for every question." },
   { id: "prep", title: "Prep list", description: "What the kitchen makes today: amounts from the forecast, on hand, pars, shelf life and stations." },
   { id: "kegs", title: "Kegs", description: "Scanning kegs on a phone, what's on tap, the walk-in, demand per beer, labels and importing." },
+  { id: "website", title: "Website", description: "What guests see on the public website: hours, the notice, the menu, events and inquiries." },
   { id: "training", title: "Training & certificates", description: "ATAP, ServSafe and other certificates, expiry reminders and onboarding checklists." },
 ];
 
@@ -89,6 +96,11 @@ export const HELP: HelpEntry[] = [
   ...privateEvents,
   ...morningBrief,
   ...fees,
+  ...staffHome,
+  ...website,
+  ...websiteAnalytics,
+  ...whatsNew,
+  ...monthEnd,
 ];
 
 const BY_ID = new Map(HELP.map((e) => [e.id, e]));
@@ -112,7 +124,7 @@ export function canFollowHelpLink(href: string, role: "MANAGER" | "STAFF"): bool
   if (role === "MANAGER") return true;
   const url = new URL(href, "http://x");
   if (!STAFF_ROUTES.some((p) => url.pathname === p || url.pathname.startsWith(`${p}/`))) return false;
-  const article = url.pathname.match(/^\/help\/(.+)$/);
+  const article = url.pathname === "/help/releases" ? null : url.pathname.match(/^\/help\/(.+)$/);
   if (article) {
     const e = getHelp(decodeURIComponent(article[1]));
     if (!e || !canSee(e, role)) return false;

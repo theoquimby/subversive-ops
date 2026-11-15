@@ -1,5 +1,6 @@
 "use server";
 
+import { pingWebsite } from "@/server/services/website";
 import { ISODate, parseISODate } from "@/domain/dates";
 import { cleanTitle, isEventKind, parseClockTime, parseImpactPct, repeatDates } from "@/domain/events";
 import { requireUser } from "@/server/auth";
@@ -16,6 +17,7 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 function refresh() {
   revalidatePath("/events");
   revalidatePath("/sales");
+  pingWebsite("events", "site");
 }
 
 const addSchema = z.object({

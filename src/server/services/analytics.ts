@@ -16,10 +16,11 @@ import { dailySalesForecast, forecastAccuracy, weatherMap } from "./forecasting"
 import { classSettings, recipeClasses } from "./insights";
 import { dailyKpis } from "./kpis";
 import { kegFindings } from "./kegs";
+import { cachedWebFindings } from "./webInsights";
 import { loadTimecards } from "./labor";
 import { getLaborRules, getOpeningHours } from "./labor-rules";
 import { buildOrderPlan, estimatedOnHandAll, forecastItems, getAdjustments, usagePerServing } from "./planning";
-import { businessToday, dailyNetSalesExcludingIgnored, lastSquareSync, salesByRecipe, squareCatalogMeta } from "./sales";
+import { businessToday, dailyNetSalesExcludingIgnored, lastSquareSync, salesByRecipe, squareCatalogMeta, squareLinks } from "./sales";
 import { loadWeek } from "./scheduling";
 import { lastCountPeriod, varianceReport } from "./variance";
 
@@ -209,7 +210,7 @@ export async function gatherPayload(today = businessToday(), opts: { range?: Ran
   const [{ byRecipe }, saleRows, mappings, catalog, weeklyRows, nameRows] = await Promise.all([
     salesByRecipe(detailFrom, end),
     db.dailySale.findMany({ where: { date: { gte: parseISODate(detailFrom), lt: parseISODate(end) } }, select: { date: true, squareId: true, name: true, qty: true, netSales: true } }),
-    db.squareMapping.findMany({ select: { squareId: true, recipeId: true, ignored: true } }),
+    squareLinks(),
     squareCatalogMeta(),
     db.$queryRaw<{ squareId: string; week: Date; qty: number; sales: number }[]>`
       SELECT "squareId", date_trunc('week', date)::date AS week, SUM(qty)::float AS qty, SUM("netSales")::float AS sales
@@ -655,10 +656,11 @@ export async function markFinding(item: Pick<Opportunity, "key" | "kind" | "titl
  * finding) so it fades next time — pass it only where Max actually sees it.
  */
 export async function insightFeed(opts: { limit?: number; remember?: boolean; run?: AnalyticsRun | null; novelty?: boolean } = {}): Promise<{ items: LabAction[]; run: AnalyticsRun | null; state: FeedState }> {
-  const [run, state, kegs] = await Promise.all([opts.run !== undefined ? Promise.resolve(opts.run) : loadRun(), getFeedState(), kegFindings()]);
+  const [run, state, kegs, web] = await Promise.all([opts.run !== undefined ? Promise.resolve(opts.run) : loadRun(), getFeedState(), kegFindings(), cachedWebFindings()]);
   const today = businessToday();
   // Keg run-outs are worked out here (live kegs + Square), not by the Python service.
-  const ranked = buildActions([...allFindings(run), ...kegs] as LabFinding[], state, today, { novelty: opts.novelty ?? true });
+  // Website findings (src/server/services/webInsights.ts) are worked out nightly in the app too.
+  const ranked = buildActions([...allFindings(run), ...kegs, ...web] as LabFinding[], state, today, { novelty: opts.novelty ?? true });
   const items = ranked.slice(0, opts.limit ?? 20);
   if (opts.remember && items.length) {
     const top = items.slice(0, Math.min(items.length, 5));

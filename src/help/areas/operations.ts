@@ -327,8 +327,10 @@ Counts feed the suggested orders (so you don't over- or under-order) and the mar
     route: "/count",
     audience: "all",
     title: "Counts save as you go",
-    body: "Each number saves the moment you leave the field — a green tick means it's in. You can close the app and come back to the same count.",
+    body: "Each number saves the moment you leave the field — a green tick means it's in. No signal? A cloud means it's kept on this phone and sends by itself. You can close the app and come back to the same count.",
     article: `There's no save button. When you move on from a field (Enter, tapping the next one, or scrolling away), that number is saved. A **green tick** means it's saved; a **red dot** means it didn't save — tap the field and try again.
+
+**No signal** (the walk-in, the basement): keep counting. Each number is kept on this phone with a **cloud** next to it, and sent as soon as there's signal — a banner at the top says how many are waiting. Finish count waits until they've gone.
 
 Clearing a number removes that item from the count.`,
     keywords: ["autosave", "lost", "offline"],
@@ -1046,7 +1048,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     area: "settings",
     route: "/settings/notifications",
     title: "Notifications",
-    body: "Choose which alerts you get by email and on your phone: schedules, shift changes, the weekly brief, price spikes, invoice issues, staff requests and low reviews. Staff turn theirs on from My shifts.",
+    body: "Choose which alerts you get by email and on your phone: schedules, shift changes, the weekly brief, price spikes, invoice issues, staff requests and low reviews. Staff turn theirs on from Today or Me.",
     related: ["settings.notify.events"],
   },
   {
@@ -1069,7 +1071,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     area: "settings",
     route: "/settings/notifications",
     title: "Push",
-    body: "Whether phone and computer notifications are available. Once set up, each person turns them on for their own device, here or on My shifts.",
+    body: "Whether phone and computer notifications are available. Once set up, each person turns them on for their own device, here or on Me (staff).",
   },
   {
     id: "settings.notify.device",

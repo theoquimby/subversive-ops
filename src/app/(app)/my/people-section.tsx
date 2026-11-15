@@ -5,12 +5,12 @@ import { myPeopleData } from "@/server/services/people";
 import { PolicyAsk } from "../help/policy-ask";
 import { MyDocuments, MyFeedback } from "./people-panel";
 
-/** Documents to read/sign and notes managers shared — near the top of My shifts. */
-export async function MyPeopleTop({ employeeId }: { employeeId: string }) {
+/** Documents to read/sign and notes managers shared — at the top of Me. */
+export async function MyPeopleTop({ employeeId, empty }: { employeeId: string; empty?: React.ReactNode }) {
   const { feedback, docs } = await myPeopleData(employeeId);
   return (
     <>
-      <MyDocuments docs={docs} />
+      {docs.length === 0 && empty ? <div className="mb-10">{empty}</div> : <MyDocuments docs={docs} />}
       <MyFeedback items={feedback} />
     </>
   );

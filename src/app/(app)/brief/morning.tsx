@@ -200,7 +200,7 @@ function TodayCard({ b }: { b: MorningBrief }) {
               </>
             )}
           </div>
-          {(d.weather || d.events.length > 0) && (
+          {(d.weather || d.events.length > 0 || b.parties.today.length > 0) && (
             <div className="flex flex-wrap gap-2 sm:max-w-64 sm:flex-col sm:items-stretch">
               {d.weather && W && (
                 <div className="flex min-w-0 items-center gap-2.5 rounded-lg bg-surface-2 px-3 py-2">
@@ -218,9 +218,32 @@ function TodayCard({ b }: { b: MorningBrief }) {
                   {clock(e.startTime) && <span className="num shrink-0 text-muted">{clock(e.startTime)}</span>}
                 </div>
               ))}
+              {b.parties.today.map((p) => (
+                <Link key={p.id} href={`/events/private/${p.id}`} className="flex min-w-0 items-center gap-2.5 rounded-lg bg-surface-2 px-3 py-2 text-sm transition-colors hover:bg-border/60">
+                  <Users aria-hidden className="size-4 shrink-0 text-ink-2" strokeWidth={1.75} />
+                  <span className="min-w-0 truncate font-medium text-ink">{p.title}</span>
+                  <span className="num shrink-0 text-muted">{p.headcount} guests{clock(p.startTime) ? ` · ${clock(p.startTime)}` : ""}</span>
+                </Link>
+              ))}
             </div>
           )}
         </div>
+
+        {b.parties.tomorrow.length > 0 && (
+          <div className="flex items-start gap-3 border-t border-border px-5 py-3 text-sm sm:px-6">
+            <CalendarDays aria-hidden className="mt-0.5 size-4 shrink-0 text-ink-2" strokeWidth={1.75} />
+            <div className="min-w-0 text-ink-2">
+              <span className="font-medium text-ink">Tomorrow:</span>{" "}
+              {b.parties.tomorrow.map((p, i) => (
+                <span key={p.id}>
+                  {i > 0 && ", "}
+                  <Link href={`/events/private/${p.id}`} className="underline decoration-border-strong underline-offset-2 hover:text-ink">{p.title}</Link>
+                  {` · ${p.headcount} guests${clock(p.startTime) ? ` at ${clock(p.startTime)}` : ""}${p.confirmed ? "" : " (deposit paid)"}`}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {!d.closed && <HourStrip b={b} />}
 
@@ -325,7 +348,16 @@ function TonightCard({ b }: { b: MorningBrief }) {
         {b.prep && (
           <Link href="/prep" className="flex min-h-12 items-center gap-3 border-t border-border bg-surface-2/40 px-5 py-2.5 text-sm transition-colors hover:bg-surface-2 sm:px-6">
             <UtensilsCrossed aria-hidden className="size-4 shrink-0 text-ink-2" strokeWidth={1.75} />
-            <span className="min-w-0 flex-1 font-medium text-ink">Today&apos;s prep list</span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium text-ink">Today&apos;s prep list</span>
+              {b.prepToday && (
+                <span className="block truncate text-xs text-muted">
+                  {b.prepToday.toMake === 0
+                    ? "Nothing to make"
+                    : [`${b.prepToday.toMake} to make`, b.prepToday.done ? `${b.prepToday.done} done` : null, b.prepToday.runningOut ? `${b.prepToday.runningOut} running out` : null, b.prepToday.notCounted ? `${b.prepToday.notCounted} not counted` : null, b.prepToday.top.length ? joinList(b.prepToday.top.map((t) => t.name)) : null].filter(Boolean).join(" · ")}
+                </span>
+              )}
+            </span>
             <ChevronRight aria-hidden className="size-4 shrink-0 text-muted" />
           </Link>
         )}

@@ -55,3 +55,11 @@ export function businessDateTime(instant: Date | string, timeZone = businessTime
   const h = Number(get("hour"));
   return `${get("month")} ${get("day")}, ${h % 12 === 0 ? 12 : h % 12}:${get("minute")}${h < 12 ? "am" : "pm"}`;
 }
+
+/** "3:05pm" in the business timezone — deterministic across Node and browsers. */
+export function businessTime(instant: Date | string, timeZone = businessTimeZone()): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(instant));
+  const get = (k: string) => parts.find((p) => p.type === k)?.value ?? "";
+  const h = Number(get("hour"));
+  return `${h % 12 === 0 ? 12 : h % 12}:${get("minute")}${h < 12 ? "am" : "pm"}`;
+}

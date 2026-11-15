@@ -35,7 +35,11 @@ export function morningDigest(b: MorningBrief, insight: { title: string; action:
       closed: b.day.closed,
       headline: todayHeadline(b),
       weather: weatherLine(b),
-      events: b.day.events.map((e) => `${e.title}${clock(e.startTime)}`),
+      events: [
+        ...b.day.events.map((e) => `${e.title}${clock(e.startTime)}`),
+        ...b.parties.today.map((p) => `${p.title} · ${p.headcount} guests${clock(p.startTime)}`),
+        ...b.parties.tomorrow.map((p) => `Tomorrow: ${p.title} · ${p.headcount} guests${clock(p.startTime)}`),
+      ],
       crew: b.crew && !b.day.closed ? { line: `${b.crew.people} on today. ${b.crew.check.line}`, tone: b.crew.check.tone } : null,
     },
     tonight: b.tonight.slice(0, 8).map((t) => ({ title: t.title, detail: t.detail, path: t.href, tone: t.tone })),

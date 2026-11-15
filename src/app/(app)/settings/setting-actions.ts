@@ -7,6 +7,7 @@
  * Insights) stay identical, then refreshes Settings too.
  */
 
+import { pingWebsite } from "@/server/services/website";
 import { saveBevTarget } from "@/app/(app)/menu/draft-beer/actions";
 import { saveAccountField, saveAutoApprove, savePricesOnApprove, saveSalesTaxRate, saveTolerance } from "@/app/(app)/invoices/actions";
 import { saveFixedCost, setRange } from "@/app/(app)/insights/actions";
@@ -52,6 +53,7 @@ export async function saveContact(field: ContactField, raw: string): Promise<R> 
   if (!p.success) return { error: p.error.issues[0].message };
   await saveBusinessField(field, p.data);
   refresh();
+  pingWebsite("site");
   revalidatePath("/", "layout");
   return {};
 }
@@ -68,6 +70,7 @@ export async function saveHours(hours: Record<string, [number, number]>): Promis
   if (problem) return { error: problem };
   await saveOpeningHours(week);
   refresh();
+  pingWebsite("site");
   revalidatePath("/schedule");
   revalidatePath("/sales");
   return {};
@@ -91,6 +94,7 @@ export async function saveSeason(input: z.input<typeof seasonSchema>): Promise<R
   }
   await saveSeasonalHours(all);
   refresh();
+  pingWebsite("site");
   revalidatePath("/schedule");
   return { id: season.id };
 }
@@ -99,6 +103,7 @@ export async function deleteSeason(id: string): Promise<R> {
   await requireUser("MANAGER");
   await saveSeasonalHours((await getSeasonalHours()).filter((s) => s.id !== id));
   refresh();
+  pingWebsite("site");
   revalidatePath("/schedule");
   return {};
 }

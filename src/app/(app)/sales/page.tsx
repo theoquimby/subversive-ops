@@ -4,14 +4,13 @@ import { Card, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components
 import { addDays, dateRange, weekday } from "@/domain/dates";
 import { dayDate, money, qty, relativeTime, shortDate, signedPct } from "@/lib/format";
 import { requireUser } from "@/server/auth";
-import { db } from "@/server/db";
 import { isSquareConnected } from "@/server/services/square";
 import Link from "next/link";
 import { refreshIfStale } from "@/server/services/square-sync";
 import { forecastItems } from "@/server/services/planning";
 import { businessToday, lastSquareSync } from "@/server/services/sales";
-import { squareItemRows } from "@/server/services/square-menu";
-import { SquareItemsTable } from "./square-items-table";
+import { Suspense } from "react";
+import { SquareItemsSection, SquareItemsSkeleton } from "./square-items-section";
 import { dailySalesHistory, demandDrivers, forecastAccuracy, hourlySalesForecast, location, refreshWeather, weatherLabel, weatherMap, weatherStatus } from "@/server/services/forecasting";
 import { after } from "next/server";
 import { CalDay, ForecastCalendar } from "./forecast-calendar";
@@ -25,7 +24,6 @@ export const metadata = { title: "Sales & forecast" };
 
 export default async function SalesPage() {
   await requireUser("MANAGER");
-  await refreshIfStale();
   const today = businessToday();
   const dates = dateRange(today, addDays(today, 7));
   const calStart = addDays(today, -weekday(today));
@@ -34,15 +32,14 @@ export default async function SalesPage() {
   const pastDates = calDates.filter((d) => d < today);
 
   // Weather self-throttles. With nothing for today, wait for it (8s cap); otherwise refresh after responding.
-  const haveToday = (await weatherMap(today, addDays(today, 1))).size > 0;
+  const [todayWeather] = await Promise.all([weatherMap(today, addDays(today, 1)), refreshIfStale()]);
+  const haveToday = todayWeather.size > 0;
   if (!haveToday) await refreshWeather();
   else after(() => refreshWeather().then(() => undefined, () => undefined));
 
-  const [connected, squareRows, lastSync, mappings, forecast, hourly, actuals, pastDrivers, accuracy, weather, wStatus, loc] = await Promise.all([
+  const [connected, lastSync, forecast, hourly, actuals, pastDrivers, accuracy, weather, wStatus, loc] = await Promise.all([
     isSquareConnected(),
-    squareItemRows(),
     lastSquareSync(),
-    db.squareMapping.findMany({ select: { recipeId: true, ignored: true } }),
     forecastItems(dates),
     hourlySalesForecast(calDates.filter((d) => d >= today)),
     dailySalesHistory(calStart, today),
@@ -52,7 +49,6 @@ export default async function SalesPage() {
     weatherStatus(),
     location(),
   ]);
-  const unmapped = mappings.filter((m) => !m.recipeId && !m.ignored);
 
   const byDate = new Map(hourly.map((h) => [h.date, h]));
   const backtestByDate = new Map(accuracy.rows.map((r) => [r.date, r.forecast]));
@@ -207,20 +203,10 @@ export default async function SalesPage() {
         </Section>
       )}
 
-      <Section
-        help="sales.mapping"
-        title="Square items"
-        description="Link each Square item and modifier to a recipe so its sales drive costing and ordering."
-        actions={
-          <a href="/sales/square-menu" className="text-sm font-medium whitespace-nowrap text-ink hover:underline">Menu from Square →</a>
-        }
-      >
-        {squareRows.rows.length === 0 ? (
-          <Card className="p-5 text-sm text-muted">No Square items yet. They come in with the first sync.</Card>
-        ) : (
-          <SquareItemsTable id="sales-items" rows={squareRows.rows} recipes={squareRows.recipes} defaultFilters={unmapped.length ? { status: ["open", "suggested"] } : {}} />
-        )}
-      </Section>
+      {/* Matching Square items to recipes is the slowest part, so it streams in after the forecast. */}
+      <Suspense fallback={<SquareItemsSkeleton />}>
+        <SquareItemsSection />
+      </Suspense>
     </>
   );
 }

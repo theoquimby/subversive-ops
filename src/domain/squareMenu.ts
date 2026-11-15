@@ -39,21 +39,50 @@ function tokens(s: string): string[] {
     .map((t) => (t.length > 3 && t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t));
 }
 
+// Matching every unlinked Square item against every recipe compares the same names
+// thousands of times, so each name's tokens and each text's self-score are worked out once.
+// Small bounded memos: pure functions of the string, cleared when they grow too big.
+const MEMO_MAX = 20_000;
+const nameMemo = new Map<string, { joined: string; set: Set<string> } | null>();
+const selfMemo = new Map<string, number>();
+
+function normName(s: string): { joined: string; set: Set<string> } | null {
+  let n = nameMemo.get(s);
+  if (n === undefined) {
+    const t = tokens(s);
+    n = t.length ? { joined: t.join(" "), set: new Set(t) } : null;
+    if (nameMemo.size >= MEMO_MAX) nameMemo.clear();
+    nameMemo.set(s, n);
+  }
+  return n;
+}
+
+function selfScore(t: string): number {
+  let v = selfMemo.get(t);
+  if (v === undefined) {
+    v = fuzzyScore(t, t) ?? 1;
+    if (selfMemo.size >= MEMO_MAX) selfMemo.clear();
+    selfMemo.set(t, v);
+  }
+  return v;
+}
+
 /** How sure we are that two menu names are the same dish, 0–1. */
 export function matchConfidence(a: string, b: string): number {
-  const ta = tokens(a);
-  const tb = tokens(b);
-  if (!ta.length || !tb.length) return 0;
-  const na = ta.join(" ");
-  const nb = tb.join(" ");
+  const A = normName(a);
+  const B = normName(b);
+  if (!A || !B) return 0;
+  const na = A.joined;
+  const nb = B.joined;
   if (na === nb) return 1;
-  const setA = new Set(ta);
-  const setB = new Set(tb);
-  const common = [...setA].filter((t) => setB.has(t)).length;
+  const setA = A.set;
+  const setB = B.set;
+  let common = 0;
+  for (const t of setA) if (setB.has(t)) common++;
   const dice = (2 * common) / (setA.size + setB.size);
   const [q, t] = na.length <= nb.length ? [na, nb] : [nb, na];
   const s = fuzzyScore(q, t);
-  const self = fuzzyScore(t, t) ?? 1;
+  const self = selfScore(t);
   const fuzzy = s == null || self <= 0 ? 0 : Math.max(0, s / self);
   return Math.min(0.99, Math.max(dice, fuzzy));
 }

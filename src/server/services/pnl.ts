@@ -16,7 +16,7 @@ import { getFixedCosts } from "./analytics";
 import { loadTimecards } from "./labor";
 import { getLaborRules } from "./labor-rules";
 import { getAdjustments } from "./planning";
-import { businessToday, dailyNetSalesExcludingIgnored, lastSquareSync } from "./sales";
+import { businessToday, dailyNetSalesExcludingIgnored, ignoredSquareIds, lastSquareSync } from "./sales";
 import { loadEmployees, loadPositions, rateFor } from "./scheduling";
 import { lastCountPeriod, varianceReport } from "./variance";
 import { moneyForRange, moneyTotals, RangeMoney } from "./square-money";
@@ -319,10 +319,9 @@ export async function hourlyDay(date: ISODate, now = new Date()) {
  */
 export async function todaySoFar(now = new Date()) {
   const today = businessToday();
-  const ignoredIds = (await db.squareMapping.findMany({ where: { ignored: true }, select: { squareId: true } })).map((m) => m.squareId);
   const [day, ignored, lastSync, forecast] = await Promise.all([
     hourlyDay(today, now),
-    db.dailySale.aggregate({ _sum: { netSales: true }, where: { date: parseISODate(today), squareId: { in: ignoredIds } } }),
+    ignoredSquareIds().then((ignoredIds) => db.dailySale.aggregate({ _sum: { netSales: true }, where: { date: parseISODate(today), squareId: { in: ignoredIds } } })),
     lastSquareSync(),
     hourlySalesForecast([today]).then((f) => f[0] ?? null).catch((e) => {
       console.error("today: forecast failed", e);

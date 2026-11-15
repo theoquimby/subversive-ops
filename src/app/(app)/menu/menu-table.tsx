@@ -125,7 +125,7 @@ export function MenuTable({ rows }: { rows: MenuRow[] }) {
     <DataTable
       id="menu"
       help="menu.list"
-      tours={{ root: "menu.table" }}
+      tours={{ root: "menu.table", toolbar: "menu.tabs" }}
       rows={rows}
       rowKey={(r) => r.id}
       columns={columns}

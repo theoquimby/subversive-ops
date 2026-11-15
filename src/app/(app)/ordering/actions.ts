@@ -51,7 +51,7 @@ export async function receiveOrder(id: string, form: FormData) {
     ...po.lines.map((l) => {
       const raw = form.get(`received_${l.id}`);
       const received = raw === null || raw === "" ? l.qty.toNumber() : Number(raw);
-      return db.purchaseOrderLine.update({ where: { id: l.id }, data: { receivedQty: new Prisma.Decimal(Number.isFinite(received) ? received : 0) } });
+      return db.purchaseOrderLine.update({ where: { id: l.id }, data: { receivedQty: new Prisma.Decimal(Number.isFinite(received) && received > 0 ? received : 0) } });
     }),
     db.purchaseOrder.update({ where: { id }, data: { status: "RECEIVED", receivedAt: new Date(), sentAt: po.sentAt ?? new Date() } }),
   ]);

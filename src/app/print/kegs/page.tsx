@@ -73,7 +73,8 @@ export default async function KegLabels({ searchParams }: { searchParams: Promis
         </div>
         {labels.length === 0 && <p className="mt-6 text-sm text-muted">No kegs to print. Add kegs first.</p>}
       </div>
-      <div className="flex flex-col items-center gap-6 pb-10 print:block print:gap-0 print:pb-0">
+      {/* Paper-sized sheets: on a phone they scroll sideways inside this box, not the whole page. */}
+      <div className="flex flex-col items-center gap-6 overflow-x-auto pb-10 max-[52rem]:items-start max-[52rem]:px-4 print:block print:gap-0 print:overflow-visible print:px-0 print:pb-0">
         {pages.map((pg, pi) => (
           <div key={pi} className="sheet shadow-lg">
             {pg.map((k, i) => {

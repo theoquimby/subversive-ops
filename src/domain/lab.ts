@@ -226,6 +226,12 @@ export function buildActions(findings: LabFinding[], state: FeedState, today: IS
       alsoSeen: xs.filter((x) => x !== lead && !x.lead).map((x) => x.title),
     });
   }
+  // The headline always sits inside its likely range (results cached from an older analytics
+  // service could have a range that ended below it).
+  for (const m of merged) {
+    m.low = Math.min(m.low, m.monthly);
+    m.high = Math.max(m.high, m.monthly);
+  }
   // Marks on any merged part (from before merging existed) still count.
   const marks = { ...state.marks };
   for (const m of merged) {

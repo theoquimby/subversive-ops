@@ -17,6 +17,10 @@ export const SECRET_NAMES = [
   "VAPID_SUBJECT",
   "QUICKBOOKS_CLIENT_ID",
   "QUICKBOOKS_CLIENT_SECRET",
+  "WEBSITE_URL",
+  "REVALIDATE_SECRET",
+  "GOOGLE_OAUTH_CLIENT_ID",
+  "GOOGLE_OAUTH_CLIENT_SECRET",
 ] as const;
 
 export type SecretName = (typeof SECRET_NAMES)[number];
@@ -24,7 +28,7 @@ export type SecretName = (typeof SECRET_NAMES)[number];
 export const isSecretName = (s: string): s is SecretName => (SECRET_NAMES as readonly string[]).includes(s);
 
 /** Values that aren't really secret (shown in full in the UI rather than masked). */
-const PUBLIC: ReadonlySet<SecretName> = new Set(["SQUARE_APPLICATION_ID", "EMAIL_FROM", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "QUICKBOOKS_CLIENT_ID"]);
+const PUBLIC: ReadonlySet<SecretName> = new Set(["SQUARE_APPLICATION_ID", "EMAIL_FROM", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "QUICKBOOKS_CLIENT_ID", "WEBSITE_URL", "GOOGLE_OAUTH_CLIENT_ID"]);
 export const isPublicSetting = (n: SecretName) => PUBLIC.has(n);
 
 /** Setting-table key for a stored secret. */
@@ -81,6 +85,8 @@ function looksLike(v: string): string | null {
   if (/^re_/.test(v)) return "That's an email service (Resend) key";
   if (/^sk-ant-/.test(v)) return "That's a Claude key";
   if (/^AIza/.test(v)) return "That's a Google key";
+  if (/\.apps\.googleusercontent\.com$/.test(v)) return "That's a Google OAuth Client ID";
+  if (/^GOCSPX-/.test(v)) return "That's a Google OAuth Client secret";
   if (/^https?:\/\//i.test(v)) return "That's a web address";
   if (/^\d{9,20}$/.test(v)) return "That's a QuickBooks company ID (Realm ID)";
   if (/^eyJ|^eJ/.test(v) && v.length > 200) return "That's a QuickBooks sign-in token";
@@ -141,6 +147,31 @@ export function validateSecret(name: SecretName, raw: string): Validation {
       if (/^[A-Za-z0-9]{30,64}$/.test(v) && /[A-Za-z]/.test(v) && /\d/.test(v) && !looksLike(v)) return { ok: true, value: v };
       if (/^[A-Za-z0-9]{12,29}$/.test(v) && !looksLike(v)) return fail("That looks cut short — a Client secret is about 40 letters and numbers. Copy it again in full.");
       return fail(wrongBox(v, "the Client secret") ?? "That doesn't look like a QuickBooks Client secret. It's about 40 letters and numbers, just below the Client ID.");
+    case "WEBSITE_URL": {
+      const raw2 = /^[a-z]+:\/\//i.test(v) ? v : `https://${v}`;
+      try {
+        const u = new URL(raw2);
+        const local = /^(localhost|127\.0\.0\.1)$/.test(u.hostname);
+        if (u.protocol !== "https:" && !(local && u.protocol === "http:")) return fail("Use the website's https:// address, like https://drinksubversive.com.");
+        if (!local && !u.hostname.includes(".")) return fail("That doesn't look like a web address. Paste the website's address, like https://drinksubversive.com.");
+        return { ok: true, value: u.origin };
+      } catch {
+        return fail("That doesn't look like a web address. Paste the website's address, like https://drinksubversive.com.");
+      }
+    }
+    case "REVALIDATE_SECRET":
+      if (/^[\x21-\x7e]{16,200}$/.test(v)) return { ok: true, value: v };
+      if (v.length < 16) return fail("That's too short for a shared secret — use at least 16 characters. The Make one button creates a good one.");
+      return fail("Use letters, numbers and symbols only, no spaces.");
+    case "GOOGLE_OAUTH_CLIENT_ID":
+      // Google's web client IDs: "<project number>-<32 letters/digits>.apps.googleusercontent.com".
+      if (/^\d{6,20}-[a-z0-9]{20,40}\.apps\.googleusercontent\.com$/.test(v)) return { ok: true, value: v };
+      if (/\.apps\.googleusercontent\.com$/.test(v)) return fail("That Client ID looks cut short. Copy it again in full; it ends in .apps.googleusercontent.com.");
+      return fail(wrongBox(v, "the Client ID") ?? "That doesn't look like a Google OAuth Client ID. It ends in .apps.googleusercontent.com and is on the Credentials page next to the client you made.");
+    case "GOOGLE_OAUTH_CLIENT_SECRET":
+      if (/^GOCSPX-[\w-]{20,40}$/.test(v)) return { ok: true, value: v };
+      if (/^[\w-]{24}$/.test(v) && !looksLike(v)) return { ok: true, value: v }; // older clients: 24 characters, no prefix
+      return fail(wrongBox(v, "the Client secret") ?? "That doesn't look like a Google Client secret. It starts with GOCSPX- and is shown when you open the client on the Credentials page.");
     case "VAPID_SUBJECT":
       if (/^mailto:[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(v) || /^https:\/\/(?!localhost)[^\s]+$/i.test(v)) return { ok: true, value: v };
       return fail("Use mailto: followed by an email address, or an https:// web address.");

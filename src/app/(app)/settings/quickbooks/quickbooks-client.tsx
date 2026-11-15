@@ -1,10 +1,10 @@
 "use client";
 
+import { RelativeTime } from "@/components/relative-time";
 import { useConfirm } from "@/components/dialog";
 import { Button, cx, DatePicker, Select } from "@/components/ui";
 import type { SelectOption } from "@/components/select";
 import type { QboAccount, QboMapping } from "@/domain/quickbooks";
-import { relativeTime } from "@/lib/format";
 import { ArrowRight, Check, RefreshCw, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
@@ -103,7 +103,7 @@ export function QboTestButton({ last, disabled }: { last: TestResult | null; dis
           </span>
           <span className="min-w-0">
             {result.message}
-            <span className="ml-1 opacity-70">· {relativeTime(new Date(result.at))}</span>
+            <span className="ml-1 opacity-70">· <RelativeTime at={result.at} /></span>
           </span>
         </div>
       )}
@@ -280,7 +280,7 @@ export function AccountMapping({ accounts, accountsAt, mapping, categories, sugg
           </Button>
         )}
         <Button variant="ghost" disabled={pending} onClick={refreshLists}><RefreshCw className={cx("size-4", pending && "animate-spin")} />Refresh list</Button>
-        {accountsAt && <span className="text-xs text-muted">List from QuickBooks {relativeTime(new Date(accountsAt))}</span>}
+        {accountsAt && <span className="text-xs text-muted">List from QuickBooks <RelativeTime at={accountsAt} /></span>}
       </div>
       <Feedback msg={msg} />
     </div>

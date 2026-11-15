@@ -1,6 +1,6 @@
 import { displayTime } from "@/domain/events";
 import { BAR_LABEL, isQuoteToken } from "@/domain/privateEvents";
-import { money } from "@/lib/format";
+import { businessTimeZone, money } from "@/lib/format";
 import { getSession } from "@/server/auth";
 import { markQuoteViewed, publicQuote } from "@/server/services/privateEvents";
 import { getBusinessContact } from "@/server/services/settings";
@@ -124,7 +124,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
 
           <section className="mt-6 border-t border-border pt-5">
             {q.acceptedAt ? (
-              <p className="text-sm text-good">Accepted by {q.acceptedName} on {new Date(q.acceptedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}. Thank you!</p>
+              <p className="text-sm text-good">Accepted by {q.acceptedName} on {new Date(q.acceptedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: businessTimeZone() })}. Thank you!</p>
             ) : q.available ? (
               <div className="no-print"><AcceptQuote token={token} deposit={t.deposit > 0 ? money(t.deposit) : null} /></div>
             ) : null}

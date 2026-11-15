@@ -1,12 +1,13 @@
 "use client";
 
+import { RelativeTime } from "@/components/relative-time";
 import { useConfirm } from "@/components/dialog";
 import { GridCell } from "@/components/grid";
 import { HelpTip, HelpZone } from "@/components/help";
 import { Badge, Button, Card, cx, DatePicker, LinkButton, Stat } from "@/components/ui";
 import { planTips, PoolWarning, TipInputs, TipKind, TipMode, TipValue } from "@/domain/tipSources";
 import { perHour, TipMethod } from "@/domain/tips";
-import { money, relativeTime, shortDate } from "@/lib/format";
+import { money, shortDate } from "@/lib/format";
 import type { TipShareRow } from "@/server/services/tips";
 import { Download, Lock, RotateCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -170,7 +171,7 @@ export function TipPool({ from, to, shares, excludedHours, inputs, names, covera
             <h2 className="flex items-center gap-2 text-[0.95rem] font-semibold">Tips by person <Badge>From Square</Badge></h2>
             <p className="mt-0.5 text-sm text-muted">
               {locked ? "As finalized." : <>Type over any number to correct it; clear it to go back to Square&apos;s.{edited > 0 && <> {edited} edited — the Square sync never changes them.</>}</>}
-              {lastSync && !locked && <> Last synced {relativeTime(new Date(lastSync))}.</>}
+              {lastSync && !locked && <> Last synced <RelativeTime at={lastSync} />.</>}
             </p>
           </div>
         </div>

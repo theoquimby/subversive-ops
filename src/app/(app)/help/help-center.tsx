@@ -51,7 +51,7 @@ export function HelpCenter({ userId, role, initialQuery, autoTour }: { userId: s
 
   return (
     <div className="mx-auto max-w-5xl">
-      <PageHeader help="help.center" title="Help" description="Plain-English answers about every page, and short tours that show you around." />
+      <PageHeader help="help.center" title="Help" description="Plain-English answers about every page, and short tours that show you around." actions={<Link href="/help/releases" className="inline-flex h-9 items-center rounded-lg border border-border px-3 text-sm font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink">Release notes</Link>} />
 
       <HelpZone id="help.search" className="relative mb-10">
         <Search className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted" strokeWidth={1.75} />

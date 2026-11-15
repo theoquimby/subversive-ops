@@ -235,8 +235,22 @@ export function estimatePrepOnHand(x: { countBase: number | null; madeSince: num
 
 export interface PrepDay {
   date: ISODate;
-  /** Forecast servings per sold recipe id. */
+  /** Forecast servings per sold recipe id (walk-in trade). */
   servings: ReadonlyMap<string, number>;
+  /** Booked private events that day, with their menu as portions per recipe id. */
+  events?: readonly PrepDayEvent[];
+}
+
+export interface PrepDayEvent {
+  /** "Rotary party 40 guests" — shown as "+ Rotary party 40 guests" in the why line. */
+  label: string;
+  portions: ReadonlyMap<string, number>;
+}
+
+/** "Rotary party 40 guests" from a booking's title and headcount. */
+export function prepEventLabel(title: string, headcount: number): string {
+  const t = title.replace(/^private event:\s*/i, "").trim() || "Private event";
+  return headcount > 0 ? `${t} ${headcount} guests` : t;
 }
 
 export interface PrepPlanItem {
@@ -267,6 +281,8 @@ export interface PrepDriver {
   label: string;
   servings: number | null;
   usageBase: number;
+  /** A booked private event rather than walk-in sales. */
+  event?: boolean;
 }
 
 export type PrepStatus = "make" | "enough" | "nodata";
@@ -310,7 +326,7 @@ export function coverWindow(days: readonly PrepDay[], coverDays: number): ISODat
   let open = 0;
   for (const d of days) {
     out.push(d.date);
-    const any = [...d.servings.values()].some((v) => v > 0);
+    const any = [...d.servings.values()].some((v) => v > 0) || (d.events ?? []).some((e) => [...e.portions.values()].some((v) => v > 0));
     if (any) open++;
     if (open >= Math.max(1, coverDays)) break;
   }
@@ -367,6 +383,26 @@ export function planPrep(input: PrepPlanInput): PrepLine[] {
           dr.servings = (dr.servings ?? 0) + n;
           dr.usageBase += n * q;
           m.set(label, dr);
+        }
+      }
+    }
+    // Private events: their menu portions on top of the walk-in forecast.
+    for (const ev of d.events ?? []) {
+      for (const [sold, n] of ev.portions) {
+        if (!(n > 0)) continue;
+        const per = usage.perServing.get(sold);
+        if (!per) continue;
+        for (const [prepId, q] of per) {
+          const arr = daily.get(prepId);
+          if (!arr) continue;
+          arr[i] += n * q;
+          if (i < window.length) {
+            const m = drivers.get(prepId)!;
+            const key = `event:${ev.label}`;
+            const dr = m.get(key) ?? { label: ev.label, servings: null, usageBase: 0, event: true };
+            dr.usageBase += n * q;
+            m.set(key, dr);
+          }
         }
       }
     }
@@ -461,9 +497,13 @@ const servingsText = (n: number) => (n >= 3 ? `~${Math.round(n)}` : `~${round(n,
 export function whyText(l: PrepLine, window: string, shelfLifeDays: number | null): string {
   const parts: string[] = [];
   if (l.usageBase > 0) {
-    const top = l.drivers.slice(0, 2).map((d) => (d.servings != null ? `${servingsText(d.servings)} ${d.label}` : `for ${d.label}`));
-    const more = l.drivers.length > 2 ? ` +${l.drivers.length - 2} more` : "";
-    parts.push(`${window} ${top.join(", ")}${more} → ${formatPrepQty(l.usageBase, l.unit)}`);
+    const walkIn = l.drivers.filter((d) => !d.event);
+    const events = l.drivers.filter((d) => d.event);
+    const top = walkIn.slice(0, 2).map((d) => (d.servings != null ? `${servingsText(d.servings)} ${d.label}` : `for ${d.label}`));
+    const more = walkIn.length > 2 ? ` +${walkIn.length - 2} more` : "";
+    const head = top.length ? `${window} ${top.join(", ")}${more}` : window;
+    const evText = events.map((d) => ` + ${d.label}`).join("");
+    parts.push(`${head}${evText} → ${formatPrepQty(l.usageBase, l.unit)}`);
   }
   if (l.shelfCapBase != null && l.shelfCapBase < l.usageBase - 1e-6) parts.push(`keeps ${shelfLifeDays} day${shelfLifeDays === 1 ? "" : "s"}: ${formatPrepQty(l.shelfCapBase, l.unit)}`);
   if (l.parBase != null && l.parBase > 0 && l.parBase >= Math.min(l.usageBase, l.shelfCapBase ?? Infinity) - 1e-6) parts.push(`par ${formatPrepQty(l.parBase, l.unit)}`);
