@@ -36,6 +36,7 @@ import { workforce } from "./areas/workforce";
 import { checklists } from "./areas/checklists";
 import { upkeep } from "./areas/upkeep";
 import { brewery } from "./areas/brewery";
+import { breweryStock } from "./areas/breweryStock";
 import { beerTax } from "./areas/beerTax";
 import { dailyUse } from "./areas/dailyUse";
 import { getTour } from "./tours";
@@ -120,6 +121,7 @@ export const HELP: HelpEntry[] = [
   ...checklists,
   ...upkeep,
   ...brewery,
+  ...breweryStock,
   ...beerTax,
   ...dailyUse,
   ...workforce,

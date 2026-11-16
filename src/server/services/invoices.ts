@@ -178,7 +178,8 @@ export async function approve(invoiceId: string, by: string, note: string | null
 
 /**
  * After any approval: check in a sent order from the invoice's quantities, record
- * the prices in costing (unless turned off in Settings), then — with "send to
+ * the prices in costing (unless turned off in Settings), put brewing ingredients
+ * into brewing stock as received, then — with "send to
  * QuickBooks automatically" on — send the bill in the background.
  */
 async function afterApproval(invoiceId: string, by: string) {
@@ -192,6 +193,13 @@ async function afterApproval(invoiceId: string, by: string) {
     if (await pricesOnApproveEnabled()) await applyInvoicePrices(invoiceId, by);
   } catch (e) {
     console.error("recording invoice prices failed", e);
+  }
+  try {
+    // Brewing ingredients on the invoice go into brewing stock as received (never kitchen counts).
+    const { receiveBrewStockFromInvoice } = await import("./brewStock");
+    await receiveBrewStockFromInvoice(invoiceId, by);
+  } catch (e) {
+    console.error("brewing stock from the invoice failed", e);
   }
   // Imported lazily: quickbooks.ts imports this module (for the invoice history).
   const [{ inBackground }, { autoSendApproved }] = await Promise.all([import("./notify"), import("./quickbooks")]);
