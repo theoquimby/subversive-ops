@@ -82,6 +82,10 @@ model Supplier {
   importMapping Json?
   notes         String?
   active        Boolean        @default(true)
+  /// "kitchen" or "brewery": which ordering screen it belongs to
+  department    String         @default("kitchen")
+  /// "regular": an order every delivery (nag when none is placed); "as_needed": only when counts and sales say stock runs short
+  orderCadence  String         @default("regular")
   products      SupplierProduct[]
   imports       PriceImport[]
   orders        PurchaseOrder[]
@@ -126,6 +130,9 @@ model Ingredient {
   photoAt     DateTime?
   photo       CountPhoto?
   brewLines   BrewRecipeLine[]
+  brewStock   BrewStockMove[]
+  /// "kitchen" or "brewery" (malt, hops, yeast and other brewing ingredients)
+  department  String       @default("kitchen")
 }
 
 /// One photo per count item (an ingredient or a prep recipe), shown on the count sheet. Compressed in the browser first.
@@ -2193,6 +2200,10 @@ model Tank {
   sort        Int        @default(0)
   active      Boolean    @default(true)
   notes       String?
+  /// Floor plan: the room or wall it stands in ("Back wall", "Front", "Separate room"), and its row and column there
+  zone        String?
+  layoutRow   Int?
+  layoutCol   Int?
   stays       TankStay[]
 }
 
@@ -2210,8 +2221,23 @@ model BrewRecipe {
   /// Brewhouse efficiency, percent (e.g. 72)
   efficiencyPct Decimal          @default(72) @db.Decimal(5, 2)
   boilMinutes   Int              @default(60)
-  targetOg      Decimal?         @db.Decimal(5, 3)
-  targetFg      Decimal?         @db.Decimal(5, 3)
+  targetOg      Decimal?         @db.Decimal(6, 4)
+  targetFg      Decimal?         @db.Decimal(6, 4)
+  /// Brew-day gravity targets (stored as specific gravity; shown in °Plato or SG): mash tun, boil kettle, knock-out
+  targetMt      Decimal?         @db.Decimal(6, 4)
+  targetBk      Decimal?         @db.Decimal(6, 4)
+  targetKo      Decimal?         @db.Decimal(6, 4)
+  /// Strike water and mash temperatures, °F, and mash rest in minutes
+  strikeF       Decimal?         @db.Decimal(5, 1)
+  mashF         Decimal?         @db.Decimal(5, 1)
+  mashMinutes   Int?
+  /// Timing profile ("hazy" | "sour" | "lager" | "pale" or custom): drives dry-hop, transfer, packaging and release dates
+  profile       String?
+  /// Days from brew day to the dry hop, and to tap/release
+  dryHopDay     Int?
+  tapDay        Int?
+  /// Development beers: label artwork finished
+  artworkDone   Boolean          @default(false)
   /// Usual days in a fermenter, then in a brite tank (drives the tank schedule)
   fermentDays   Int              @default(14)
   conditionDays Int              @default(7)
@@ -2274,8 +2300,27 @@ model BrewBatch {
   packagedOn DateTime?   @db.Date
   /// Volume in barrels (planned, then actual)
   bbl        Decimal?    @db.Decimal(6, 2)
-  og         Decimal?    @db.Decimal(5, 3)
-  fg         Decimal?    @db.Decimal(5, 3)
+  og         Decimal?    @db.Decimal(6, 4)
+  fg         Decimal?    @db.Decimal(6, 4)
+  /// Brew-day log by stage (mash, lauter, boil, fermentation, packaging): readings, times, hop additions ticked off
+  brewLog    Json?
+  /// What packaging produced
+  halfKegs   Int?
+  sixthKegs  Int?
+  cases      Int?
+  co2Vols    Decimal?    @db.Decimal(3, 2)
+  /// Planned dry-hop and tap/release days; a locked release date can't move when the schedule shifts
+  dryHopOn   DateTime?   @db.Date
+  tapOn      DateTime?   @db.Date
+  tapLocked  Boolean     @default(false)
+  lockedReason String?
+  /// Supplier orders placed for this brew: { "<supplier name>": "YYYY-MM-DD" }
+  ordered    Json?
+  /// A split batch: brewed together, split into separate fermenters (e.g. two lagers from one base)
+  splitFromId String?
+  splitFrom  BrewBatch?  @relation("BrewSplit", fields: [splitFromId], references: [id], onDelete: SetNull)
+  splits     BrewBatch[] @relation("BrewSplit")
+  stockMoves BrewStockMove[]
   /// Ingredient cost of the brew, worked out when it was brewed (prices change later)
   cost       Decimal?    @db.Decimal(10, 2)
   /// The keg batch its kegs were filled from
@@ -2306,5 +2351,25 @@ model TankStay {
   planned Boolean   @default(true)
 
   @@index([tankId, start])
+  @@index([batchId])
+}
+
+/// Brewing ingredient stock, kept apart from kitchen counts: counts, deliveries, what each brew used, and fixes.
+/// On hand = the latest count plus everything received, less everything used, since that count.
+model BrewStockMove {
+  id           String     @id @default(cuid())
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  at           DateTime   @default(now())
+  /// "count" (what's on the shelf now) | "received" | "used" (by a brew) | "adjust"
+  kind         String
+  /// In the ingredient's base unit (g, ml or each); "used" is positive and subtracted
+  qtyBase      Decimal    @db.Decimal(14, 4)
+  batchId      String?
+  batch        BrewBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  note         String?
+  userName     String?
+
+  @@index([ingredientId, at])
   @@index([batchId])
 }
