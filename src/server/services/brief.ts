@@ -11,6 +11,7 @@ import { loadCostingSnapshot } from "./costing";
 import { dailySalesForecast } from "./forecasting";
 import { insightFeed } from "./analytics";
 import { costTargets, menuCosts, recentPriceMoves } from "./insights";
+import { kegSignals, type KegSignals } from "./kegSignals";
 import { periodKpis } from "./kpis";
 import { buildOrderPlan } from "./planning";
 import { ReviewAlert, reviewAlerts, unrepliedNegative } from "./reviews";
@@ -110,7 +111,7 @@ export async function weeklyBrief() {
   const dates = dateRange(week, weekEnd);
   const snap = await loadCostingSnapshot();
 
-  const [forecast, targets, orders, shifts, scheduled, moves, costs, counts, timeOff, swaps, reviews, alerts, lastWaste, lastWeek, badReviews, invoiceIssues, unmapped, autoDraft, training] = await Promise.all([
+  const [forecast, targets, orders, shifts, scheduled, moves, costs, counts, timeOff, swaps, reviews, alerts, lastWaste, lastWeek, badReviews, invoiceIssues, unmapped, autoDraft, training, kegs] = await Promise.all([
     dailySalesForecast(dates),
     loadTargets(week, weekEnd),
     orderDrafts(today, weekEnd),
@@ -137,6 +138,10 @@ export async function weeklyBrief() {
     getAutoDraft(),
     trainingBrief(today).catch((e): TrainingBrief | null => {
       console.error("brief: training failed", e);
+      return null;
+    }),
+    kegSignals().catch((e): KegSignals | null => {
+      console.error("brief: kegs failed", e);
       return null;
     }),
   ]);
@@ -227,6 +232,8 @@ export async function weeklyBrief() {
     waste: { last: lastWasteDate, daysSince: daysSinceWaste, quiet: daysSinceWaste == null || daysSinceWaste > 7 },
     training,
     insights,
+    /** The week in kegs and the two "needs a look" lists; null until there is keg history. */
+    kegs: kegs ? { week: kegs.week, look: kegs.look } : null,
   };
 }
 

@@ -17,6 +17,7 @@ import { dailySalesForecast, forecastAccuracy, weatherMap } from "./forecasting"
 import { classSettings, recipeClasses } from "./insights";
 import { dailyKpis } from "./kpis";
 import { kegFindings } from "./kegs";
+import { kegFleetFindings } from "./kegSignals";
 import { cachedWebFindings } from "./webInsights";
 import { loadTimecards } from "./labor";
 import { getLaborRules, getOpeningHours } from "./labor-rules";
@@ -659,11 +660,12 @@ export async function markFinding(item: Pick<Opportunity, "key" | "kind" | "titl
  * finding) so it fades next time — pass it only where Max actually sees it.
  */
 export async function insightFeed(opts: { limit?: number; remember?: boolean; run?: AnalyticsRun | null; novelty?: boolean } = {}): Promise<{ items: LabAction[]; run: AnalyticsRun | null; state: FeedState }> {
-  const [run, state, kegs, web] = await Promise.all([opts.run !== undefined ? Promise.resolve(opts.run) : loadRun(), getFeedState(), kegFindings(), cachedWebFindings()]);
+  const [run, state, kegs, fleet, web] = await Promise.all([opts.run !== undefined ? Promise.resolve(opts.run) : loadRun(), getFeedState(), kegFindings(), kegFleetFindings(), cachedWebFindings()]);
   const today = businessToday();
   // Keg run-outs are worked out here (live kegs + Square), not by the Python service.
+  // So are the keg fleet's findings (the scan gap, slack or strain: services/kegSignals.ts), from the keg history.
   // Website findings (src/server/services/webInsights.ts) are worked out nightly in the app too.
-  const ranked = buildActions([...allFindings(run), ...kegs, ...web] as LabFinding[], state, today, { novelty: opts.novelty ?? true });
+  const ranked = buildActions([...allFindings(run), ...kegs, ...fleet, ...web] as LabFinding[], state, today, { novelty: opts.novelty ?? true });
   const items = ranked.slice(0, opts.limit ?? 20);
   if (opts.remember && items.length) {
     const top = items.slice(0, Math.min(items.length, 5));

@@ -1,21 +1,20 @@
 import { Beer } from "lucide-react";
+import Link from "next/link";
 import { HelpZone } from "@/components/help";
-import { Card, LinkButton } from "@/components/ui";
+import { Card, cx, LinkButton } from "@/components/ui";
 import { beerColor } from "@/domain/kegs";
+import { fleetLoadLine, scanGapSentence } from "@/domain/kegSignals";
 import { beerDemand } from "@/server/services/kegs";
+import { kegSignals, type KegSignals } from "@/server/services/kegSignals";
 import { ShowMeHow } from "./deck";
 
 /**
- * The Lab's keg tile: which beer runs out first. Worked out here from live
- * kegs and Square (not the Python service), so it's always current.
+ * The Lab's keg tile: which beer runs out first, and under it the fleet in a
+ * few numbers from the keg history. Worked out here from live kegs and
+ * Square (not the Python service), so it's always current.
  */
 export async function KegsTile() {
-  let data: Awaited<ReturnType<typeof beerDemand>> | null = null;
-  try {
-    data = await beerDemand();
-  } catch {
-    data = null;
-  }
+  const [data, fleet] = await Promise.all([beerDemand().catch(() => null), kegSignals().catch(() => null)]);
   const rows = (data?.rows ?? []).filter((r) => r.forecast.ozPerDay > 0 || r.full > 0 || r.onTap > 0);
   const first = rows[0];
   // Days-left gauges share one scale: four weeks, with a tick at two (what an order should cover).
@@ -70,6 +69,7 @@ export async function KegsTile() {
             </figure>
           </>
         )}
+        {fleet && <FleetLines s={fleet} />}
         <div className="mt-auto pt-2">
           {first && (
             <ShowMeHow
@@ -85,5 +85,42 @@ export async function KegsTile() {
         </div>
       </Card>
     </HelpZone>
+  );
+}
+
+/** The fleet from the keg scans: how fast kegs turn, how many need a look, the scan gap and any slack or strain. */
+function FleetLines({ s }: { s: KegSignals }) {
+  const need = s.look.outKegs + s.look.idleKegs;
+  const gap = scanGapSentence(s.gap);
+  const load = fleetLoadLine(s.load);
+  const stats: { label: string; value: string; warn?: boolean }[] = [
+    { label: "Turns a keg, a year", value: s.stats.turns == null ? "—" : s.stats.turns.toFixed(1) },
+    { label: "Days per cycle", value: s.stats.medianCycleDays == null ? "—" : String(s.stats.medianCycleDays) },
+    { label: "Need a look", value: String(need), warn: need > 0 },
+  ];
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h4 className="text-xs font-medium text-muted">The fleet, from the keg scans</h4>
+        <Link href="/kegs/fleet" className="relative shrink-0 text-xs text-muted hover:text-ink after:absolute after:-inset-2 after:content-['']">Fleet &amp; trends →</Link>
+      </div>
+      <dl className="mt-3 grid grid-cols-3 gap-3">
+        {stats.map((x) => (
+          <div key={x.label} className="min-w-0">
+            <dt className="text-[11px] leading-tight text-muted">{x.label}</dt>
+            <dd className={cx("num mt-1 text-[1.05rem] font-semibold tracking-tight", x.warn ? "text-warn" : "text-ink")}>{x.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {need > 0 && (
+        <p className="mt-3 text-sm text-ink-2">
+          <Link href="/kegs/fleet#look" className="underline decoration-border-strong underline-offset-2 hover:text-ink">
+            {[s.look.outKegs ? `${s.look.outKegs} out for more than ${s.look.overdueDays} days` : "", s.look.idleKegs ? `${s.look.idleKegs} not scanned in ${s.look.idleDays} days` : ""].filter(Boolean).join(" · ")}
+          </Link>
+        </p>
+      )}
+      {gap && <p className="mt-2 text-sm text-ink-2">{gap}</p>}
+      {load && <p className="mt-2 text-sm text-ink-2">{load}</p>}
+    </div>
   );
 }

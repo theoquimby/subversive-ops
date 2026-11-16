@@ -1,9 +1,10 @@
 import { HelpZone } from "@/components/help";
 import { Badge, Card, cx, LinkButton } from "@/components/ui";
 import { addDays, weekday } from "@/domain/dates";
+import { idleLine, outLine } from "@/domain/kegSignals";
 import { dayDate, money, pct, shortDate, signedPct } from "@/lib/format";
 import { weeklyBrief, WeeklyBrief } from "@/server/services/brief";
-import { BadgeCheck, CalendarDays, ChevronRight, ClipboardList, Gavel, History, Lightbulb, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Star, Tag, Trash2, TrendingUp, Unlink, UtensilsCrossed } from "lucide-react";
+import { BadgeCheck, Beer, CalendarDays, ChevronRight, ClipboardList, Gavel, History, Lightbulb, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Star, Tag, Trash2, TrendingUp, Unlink, UtensilsCrossed } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CreateOrderButton } from "./create-order-button";
@@ -49,6 +50,7 @@ export async function WeeklyView({ name }: { name: string }) {
       </header></HelpZone>
 
       {b.lastWeek && <LastWeekCard r={b.lastWeek} />}
+      {b.kegs && <KegsCard k={b.kegs} />}
       <DecisionsCard items={b.decisions} />
       <InsightsCard items={b.insights} />
       <ForecastCard b={b} />
@@ -126,6 +128,52 @@ function LastWeekCard({ r }: { r: NonNullable<WeeklyBrief["lastWeek"]> }) {
         ))}
       </div>
     </Card></HelpZone>
+  );
+}
+
+/** The week in kegs (the same week as the card above) and the fleet's two "needs a look" lists. Only with keg history. */
+function KegsCard({ k }: { k: NonNullable<WeeklyBrief["kegs"]> }) {
+  const { week: w, look } = k;
+  const lists = [outLine(look), idleLine(look)].filter((x): x is string => !!x);
+  const cells: { label: string; value: number; hint: string; warn?: boolean }[] = [
+    { label: "Filled", value: w.fills, hint: w.fillsBefore === w.fills ? "Same as the week before" : `${w.fillsBefore} the week before` },
+    { label: "Tapped here", value: w.tapped, hint: "Scanned onto a tap" },
+    { label: "Sent out", value: w.sentOut, hint: "Scanned out to an account" },
+    { label: "Back with no scan", value: w.returnedNoScan, hint: w.returned ? `Of ${w.returned} that came back empty` : "None came back empty", warn: w.returnedNoScan > 0 },
+  ];
+  return (
+    <Card className="mb-6 p-5 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-[0.8rem] font-medium text-muted">
+            <Beer className="size-4" strokeWidth={1.75} />
+            Kegs
+          </div>
+          <div className="mt-1 text-sm text-muted">{shortDate(w.from)} – {shortDate(w.to)}, from the keg scans</div>
+        </div>
+        <LinkButton href="/kegs/fleet" variant="secondary" size="sm" className="h-10 sm:h-8">Fleet &amp; trends</LinkButton>
+      </div>
+      <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
+        {cells.map((c) => (
+          <div key={c.label} className="min-w-0">
+            <div className="text-xs text-muted">{c.label}</div>
+            <div className={cx("num mt-1 text-lg font-semibold tracking-tight", c.warn ? "text-warn" : "text-ink")}>{c.value}</div>
+            <div className="num text-xs text-muted">{c.hint}</div>
+          </div>
+        ))}
+      </div>
+      {w.returnedNoScan > 0 && <p className="mt-4 text-xs text-muted">A keg that comes back with no tap or delivery scan is missing from the beer tax worksheet and from keg yield.</p>}
+      {lists.length > 0 && (
+        <div className="mt-4 divide-y divide-border rounded-lg border border-border">
+          {lists.map((line) => (
+            <Link key={line} href="/kegs/fleet#look" className="flex min-h-11 items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-surface-2/60">
+              <span className="min-w-0">{line}</span>
+              <ChevronRight className="size-4 shrink-0 text-muted" />
+            </Link>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 

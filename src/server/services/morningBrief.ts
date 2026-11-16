@@ -27,9 +27,10 @@ import { tapList, type TapListRow } from "./taps";
  * The daily morning brief: yesterday in one line, today (forecast, busy hours,
  * weather, events, crew vs what's needed), what to get done before tonight
  * (order deadlines, drafts, check-ins, invoices, kegs and the rest of the
- * Overview's "Needs you"), last night's shift notes and, on Mondays, a short
- * wrap of last week. Every part fails on its own (logged, left out), so one
- * broken source never blanks the brief.
+ * Overview's "Needs you", less anything long-standing with nothing new today),
+ * last night's shift notes and, on Mondays, a short wrap of last week. Every
+ * part fails on its own (logged, left out), so one broken source never blanks
+ * the brief.
  */
 
 export const MORNING_HOUR_KEY = "brief.morning.hour";
@@ -191,10 +192,11 @@ export async function morningBrief(now = new Date()) {
   }
   for (const a of attention) {
     if (a.key.startsWith("order")) continue; // covered above, per supplier
-    tonight.push({ key: a.key, kind: (KINDS.has(a.key) ? a.key : "other") as TonightItem["kind"], title: a.title, detail: a.detail, href: a.href, tone: a.tone });
+    if (a.standing) continue; // long-standing with nothing new today (the keg fleet's lists): Mondays only
+    tonight.push({ key: a.key, kind: (KINDS.has(a.key) ? a.key : a.key.startsWith("kegs.") ? "kegs" : "other") as TonightItem["kind"], title: a.title, detail: a.detail, href: a.href, tone: a.tone });
   }
   // Kegs nearly out on tap: change them before service, and say when nothing full is behind.
-  const kegAlerts = attention.filter((a) => a.key.startsWith("kegs")).map((a) => a.title);
+  const kegAlerts = attention.filter((a) => a.key === "kegs").map((a) => a.title);
   for (const t of taps) {
     if (t.badge !== "almost") continue;
     // "No full keg behind it" from the Overview already covers an empty line with nothing to follow.
