@@ -5,9 +5,9 @@ import { shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { fleetReport, type FleetRange } from "@/server/services/kegFleet";
 import Link from "next/link";
-import { sizeShort, StatusBadge } from "../bits";
+import { sizeShort } from "../bits";
 import { BUCKET_KEY, FillBars, FleetArea, Key, WENT_KEY, WentBars } from "./charts";
-import { BeerPicker, ExportGrid, RetireKeg } from "./fleet-client";
+import { BeerPicker, ExportGrid, IdleTable, OutTooLongTable } from "./fleet-client";
 
 export const metadata = { title: "Fleet & trends" };
 
@@ -113,24 +113,7 @@ export default async function FleetPage({ searchParams }: { searchParams: Promis
           {r.out.length === 0 ? (
             <p className="text-sm text-muted">No keg has been out longer than {days(r.overdueDays)}.</p>
           ) : (
-            <div className="grid gap-3 lg:grid-cols-2">
-              {r.out.map((g) => (
-                <Card key={g.account} className="p-4">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <h3 className="min-w-0 truncate font-semibold">{g.account}</h3>
-                    <span className="num shrink-0 text-sm text-warn">{kegsWord(g.kegs.length)} · longest {days(g.longest)}</span>
-                  </div>
-                  <ul className="mt-2 divide-y divide-border text-sm">
-                    {g.kegs.map((k) => (
-                      <li key={k.id} className="flex items-center justify-between gap-3 py-1.5">
-                        <span className="min-w-0 truncate"><Link href={`/kegs/k/${k.code}`} className="num font-medium hover:underline">{displayCode(k.code)}</Link> <span className="text-ink-2">{k.beer ?? "Beer not recorded"}</span> <span className="text-muted">· {sizeShort(k.sizeId)}</span></span>
-                        <span className="num shrink-0 text-muted">{days(k.days)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              ))}
-            </div>
+            <OutTooLongTable rows={r.out.flatMap((g) => g.kegs.map((k) => ({ id: k.id, code: k.code, display: displayCode(k.code), size: sizeShort(k.sizeId), beer: k.beer, account: g.account, days: k.days })))} />
           )}
         </Section>
 
@@ -138,21 +121,7 @@ export default async function FleetPage({ searchParams }: { searchParams: Promis
           {r.idle.length === 0 ? (
             <p className="text-sm text-muted">Every keg in service has been scanned in the last {days(r.idleDays)}.</p>
           ) : (
-            <Table>
-              <thead><tr><Th>Keg</Th><Th>Last known</Th><Th className="hidden sm:table-cell">Beer</Th><Th className="hidden md:table-cell">Last scan</Th><Th align="right">Quiet for</Th><Th /></tr></thead>
-              <tbody>
-                {r.idle.map((k) => (
-                  <Tr key={k.id}>
-                    <Td className="num font-medium whitespace-nowrap"><Link href={`/kegs/k/${k.code}`} className="hover:underline">{displayCode(k.code)}</Link> <span className="font-normal text-muted">{sizeShort(k.sizeId)}</span></Td>
-                    <Td><StatusBadge status={k.status} /></Td>
-                    <Td className="hidden text-ink-2 sm:table-cell">{k.beer ?? "—"}</Td>
-                    <Td className="hidden text-muted md:table-cell">{k.lastSeen ? `${shortDate(k.lastSeen)}, ${k.lastSeen.slice(0, 4)}` : "Never scanned"}</Td>
-                    <Td align="right" className="num text-muted">{days(k.days)}</Td>
-                    <Td align="right" className="py-1"><RetireKeg id={k.id} code={displayCode(k.code)} /></Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
+            <IdleTable rows={r.idle.map((k) => ({ id: k.id, code: k.code, display: displayCode(k.code), size: sizeShort(k.sizeId), status: k.status, beer: k.beer, lastSeen: k.lastSeen, days: k.days }))} />
           )}
         </Section>
       </div>

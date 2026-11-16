@@ -1,9 +1,8 @@
 "use client";
 
-import { downloadText } from "@/components/data-table";
 import { GridCell, GridSelect } from "@/components/grid";
 import { Button, Input } from "@/components/ui";
-import { Download, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addAccount, setAccountField } from "../actions";
@@ -68,16 +67,5 @@ export function AccountDetails({ account: a }: { account: AccountFields }) {
       {text("notes", "Notes", "Delivery days, where the empties are kept…")}
       {row("On the list", <GridSelect ariaLabel="On the list" value={a.active ? "true" : "false"} options={[{ value: "true", label: "Yes" }, { value: "false", label: "No longer an account" }]} onSave={(v) => setAccountField(a.id, "active", v)} />)}
     </div>
-  );
-}
-
-const cell = (v: string | number) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
-
-/** A table as a CSV file, named for the report and its dates. */
-export function ExportCsv({ filename, header, rows }: { filename: string; header: string[]; rows: (string | number)[][] }) {
-  return (
-    <Button size="sm" className="h-10 sm:h-8" onClick={() => downloadText(filename, [header, ...rows].map((r) => r.map(cell).join(",")).join("\r\n"))}>
-      <Download className="size-4" /> Export
-    </Button>
   );
 }

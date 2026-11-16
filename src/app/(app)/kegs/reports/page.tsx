@@ -1,19 +1,14 @@
-import { Badge, cx, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
-import { barrels, isRangePreset, RANGE_PRESETS, type RangePreset, type VolumeLine } from "@/domain/kegAccounts";
+import { EmptyState, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
+import { isRangePreset, RANGE_PRESETS, type RangePreset, type VolumeLine } from "@/domain/kegAccounts";
 import { requireUser } from "@/server/auth";
-import { kegReports, NO_ACCOUNT } from "@/server/services/kegAccounts";
+import { kegReports } from "@/server/services/kegAccounts";
 import { Store } from "lucide-react";
-import Link from "next/link";
-import { ExportCsv } from "../accounts/accounts-client";
 import { bbl, Chip, dated, daysWord, gal, kegsWord } from "../accounts/bits";
-import { BeerDot, sizeShort } from "../bits";
+import { AtAccountsTable, VolumeByAccountTable, VolumeByBeerTable } from "./report-tables";
 
 export const metadata = { title: "Keg reports" };
 
 const DAY_CHOICES = [14, 30, 60, 90];
-const NO_BEER = "Beer not recorded";
-/** Two decimals in a file, so small kegs don't round away. */
-const bbl2 = (gallons: number) => Math.round(barrels(gallons) * 100) / 100;
 
 export default async function KegReportsPage({ searchParams }: { searchParams: Promise<{ range?: string; days?: string; sizes?: string }> }) {
   await requireUser("MANAGER");
@@ -40,7 +35,6 @@ export default async function KegReportsPage({ searchParams }: { searchParams: P
   const dates = v.from === v.to ? dated(v.from) : `${dated(v.from)} to ${dated(v.to)}`;
   const stamp = `${v.from}-to-${v.to}`;
   const line = (l: VolumeLine) => `${kegsWord(l.kegs)} · ${gal(l.gallons)} gallons`;
-  const bblCell = (l: VolumeLine) => <span className={cx(!l.kegs && "text-muted")}>{bbl(l.gallons)}</span>;
 
   if (!r.first) {
     return (
@@ -81,77 +75,24 @@ export default async function KegReportsPage({ searchParams }: { searchParams: P
           {v.total.kegs === 0 ? (
             <p className="text-sm text-muted">No taps, deliveries or unscanned fills in these dates.</p>
           ) : (
-            <div className="grid gap-x-8 gap-y-8 xl:grid-cols-[3fr_2fr]">
+            <div className="space-y-8">
               <div>
-                <div className="mb-2 flex items-end justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold">By beer</h3>
-                    <p className="text-xs text-muted">Barrels. A tap counts on the day the keg first went on, a delivery on the day it went out, and an unscanned fill on the day it was filled.</p>
-                  </div>
-                  <ExportCsv
-                    filename={`keg-volume-by-beer-${stamp}.csv`}
-                    header={["Beer", "Tapped kegs", "Tapped barrels", "Sent out kegs", "Sent out barrels", "No scan kegs", "No scan barrels", "Total kegs", "Total barrels", "Total gallons"]}
-                    rows={[
-                      ...v.byBeer.map((b) => [b.name ?? NO_BEER, b.tapped.kegs, bbl2(b.tapped.gallons), b.out.kegs, bbl2(b.out.gallons), b.none.kegs, bbl2(b.none.gallons), b.total.kegs, bbl2(b.total.gallons), b.total.gallons]),
-                      ["Total", v.tapped.kegs, bbl2(v.tapped.gallons), v.out.kegs, bbl2(v.out.gallons), v.none.kegs, bbl2(v.none.gallons), v.total.kegs, bbl2(v.total.gallons), v.total.gallons],
-                    ]}
-                  />
+                <div className="mb-2">
+                  <h3 className="text-sm font-semibold">By beer</h3>
+                  <p className="text-xs text-muted">Barrels. A tap counts on the day the keg first went on, a delivery on the day it went out, and an unscanned fill on the day it was filled. The CSV has kegs and barrels for each.</p>
                 </div>
-                <Table>
-                  <thead><tr><Th>Beer</Th><Th align="right">Tapped</Th><Th align="right">Sent out</Th><Th align="right" className="hidden sm:table-cell">No scan</Th><Th align="right">Total</Th><Th align="right" className="hidden sm:table-cell">Kegs</Th></tr></thead>
-                  <tbody>
-                    <Tr>
-                      <Td className="font-medium">Every beer</Td>
-                      <Td align="right" className="font-medium">{bbl(v.tapped.gallons)}</Td>
-                      <Td align="right" className="font-medium">{bbl(v.out.gallons)}</Td>
-                      <Td align="right" className="hidden font-medium sm:table-cell">{bbl(v.none.gallons)}</Td>
-                      <Td align="right" className="font-medium">{bbl(v.total.gallons)}</Td>
-                      <Td align="right" className="hidden font-medium sm:table-cell">{v.total.kegs}</Td>
-                    </Tr>
-                    {v.byBeer.map((b) => (
-                      <Tr key={b.beerId ?? "none"}>
-                        <Td><span className="flex items-center gap-2">{b.color && <BeerDot color={b.color} />}<span className={cx(!b.name && "text-muted")}>{b.name ?? NO_BEER}</span></span></Td>
-                        <Td align="right">{bblCell(b.tapped)}</Td>
-                        <Td align="right">{bblCell(b.out)}</Td>
-                        <Td align="right" className="hidden sm:table-cell">{bblCell(b.none)}</Td>
-                        <Td align="right">{bbl(b.total.gallons)}</Td>
-                        <Td align="right" className="hidden text-ink-2 sm:table-cell">{b.total.kegs}</Td>
-                      </Tr>
-                    ))}
-                  </tbody>
-                </Table>
+                <VolumeByBeerTable rows={v.byBeer} stamp={stamp} />
               </div>
 
               <div>
-                <div className="mb-2 flex items-end justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold">By account</h3>
-                    <p className="text-xs text-muted">Kegs scanned out to each account in these dates.</p>
-                  </div>
-                  {v.byAccount.length > 0 && (
-                    <ExportCsv
-                      filename={`keg-volume-by-account-${stamp}.csv`}
-                      header={["Account", "Kegs", "Barrels", "Gallons"]}
-                      rows={[...v.byAccount.map((a) => [a.name ?? NO_ACCOUNT, a.kegs, bbl2(a.gallons), a.gallons]), ["Total", v.out.kegs, bbl2(v.out.gallons), v.out.gallons]]}
-                    />
-                  )}
+                <div className="mb-2">
+                  <h3 className="text-sm font-semibold">By account</h3>
+                  <p className="text-xs text-muted">Kegs scanned out to each account in these dates.</p>
                 </div>
                 {v.byAccount.length === 0 ? (
                   <p className="text-sm text-muted">No keg was scanned out to an account in these dates.</p>
                 ) : (
-                  <Table>
-                    <thead><tr><Th>Account</Th><Th align="right">Kegs</Th><Th align="right">Barrels</Th><Th align="right" className="hidden sm:table-cell">Gallons</Th></tr></thead>
-                    <tbody>
-                      {v.byAccount.map((a) => (
-                        <Tr key={a.accountId ?? "none"}>
-                          <Td className={cx(a.accountId && a.name && "py-0")}>{a.accountId && a.name ? <Link href={`/kegs/accounts/${a.accountId}`} className="block py-3 hover:underline">{a.name}</Link> : <span className="text-muted">{NO_ACCOUNT}</span>}</Td>
-                          <Td align="right">{a.kegs}</Td>
-                          <Td align="right">{bbl(a.gallons)}</Td>
-                          <Td align="right" className="hidden text-ink-2 sm:table-cell">{gal(a.gallons)}</Td>
-                        </Tr>
-                      ))}
-                    </tbody>
-                  </Table>
+                  <VolumeByAccountTable rows={v.byAccount} stamp={stamp} />
                 )}
               </div>
             </div>
@@ -163,15 +104,6 @@ export default async function KegReportsPage({ searchParams }: { searchParams: P
         <Section
           title="Kegs at accounts"
           description={`Every account holding kegs today, ${dated(r.today)}, and how many have been there more than ${daysWord(r.days)}. A keg counts from the day it was last scanned out.`}
-          actions={
-            s.rows.length > 0 ? (
-              <ExportCsv
-                filename={`kegs-at-accounts-${r.today}.csv`}
-                header={["Account", "Kegs", `Out more than ${daysWord(r.days)}`, "Longest wait, days", ...(bySize ? s.sizes.map(sizeShort) : [])]}
-                rows={[...s.rows.map((a) => [a.name, a.total, a.over, a.longest, ...(bySize ? s.sizes.map((z) => a.bySize[z]) : [])]), ["Total", s.all.total, s.all.over, "", ...(bySize ? s.sizes.map((z) => s.all.bySize[z]) : [])]]}
-              />
-            ) : undefined
-          }
         >
           <div className="mb-4 flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-sm text-muted">Out more than</span>
@@ -183,35 +115,7 @@ export default async function KegReportsPage({ searchParams }: { searchParams: P
           {s.rows.length === 0 ? (
             <p className="text-sm text-muted">No kegs are out at an account right now.</p>
           ) : (
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Account</Th>
-                  <Th align="right">Kegs</Th>
-                  <Th align="right">Over {daysWord(r.days)}</Th>
-                  <Th align="right" className="hidden sm:table-cell">Longest wait</Th>
-                  {bySize && s.sizes.map((z) => <Th key={z} align="right">{sizeShort(z)}</Th>)}
-                </tr>
-              </thead>
-              <tbody>
-                <Tr>
-                  <Td className="font-medium">All accounts</Td>
-                  <Td align="right" className="font-medium">{s.all.total}</Td>
-                  <Td align="right" className={cx("font-medium", !s.all.over && "text-muted")}>{s.all.over}</Td>
-                  <Td align="right" className="hidden sm:table-cell" />
-                  {bySize && s.sizes.map((z) => <Td key={z} align="right" className="font-medium">{s.all.bySize[z]}</Td>)}
-                </Tr>
-                {s.rows.map((a) => (
-                  <Tr key={a.accountId ?? "none"}>
-                    <Td className={cx(a.accountId && "py-0")}>{a.accountId ? <Link href={`/kegs/accounts/${a.accountId}`} className="block py-3 hover:underline">{a.name}</Link> : <span className="text-muted">{a.name}</span>}</Td>
-                    <Td align="right">{a.total}</Td>
-                    <Td align="right">{a.over ? <Badge tone="warn">{a.over}</Badge> : <span className="text-muted">0</span>}</Td>
-                    <Td align="right" className="hidden whitespace-nowrap text-ink-2 sm:table-cell">{daysWord(a.longest)}</Td>
-                    {bySize && s.sizes.map((z) => <Td key={z} align="right" className={cx(!a.bySize[z] && "text-muted")}>{a.bySize[z]}</Td>)}
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
+            <AtAccountsTable rows={s.rows} sizes={s.sizes} days={r.days} bySize={bySize} today={r.today} />
           )}
         </Section>
       </div>

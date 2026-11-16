@@ -177,6 +177,8 @@ export interface DataTableProps<T> {
   footer?: ReactNode;
   /** A totals row pinned under the rows: this label, then each column's `total` over the filtered rows. */
   totals?: ReactNode;
+  /** Make the CSV yourself (a report's own columns and totals line) from the filtered rows, in view order. */
+  exportCsv?: (rows: T[]) => void;
   /** The rows are one page of a longer list on the server (see RemoteRows). */
   remote?: RemoteRows;
 }
@@ -608,7 +610,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
     return [...seen].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v }));
   };
   const setFilter = (fid: string, value: string, single?: boolean) => patch({ filters: toggleFilterValue(activeFilters, fid, value, single) });
-  const exportCsv = (list: T[]) => downloadText(`${props.csvName ?? id}-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(list, csvColumns(visibleCols)));
+  const exportCsv = (list: T[]) => (props.exportCsv ? props.exportCsv(list) : downloadText(`${props.csvName ?? id}-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(list, csvColumns(visibleCols))));
   /** Server-paged: every row that matches on the server; otherwise this many in view. */
   const totalCount = remote ? remote.total : rows.length;
   const sortable = columns.filter((c) => c.sort);
