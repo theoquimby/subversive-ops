@@ -23,6 +23,7 @@ import {
   CalendarCheck,
   CalendarDays,
   CalendarRange,
+  Camera,
   Carrot,
   ChefHat,
   CircleUserRound,
@@ -51,6 +52,7 @@ import {
   Sun,
   Sunrise,
   Target,
+  ThumbsUp,
   Trash2,
   TrendingUp,
   UserPlus,
@@ -168,11 +170,14 @@ export const MANAGER_NAV: NavGroup[] = [
     item("numbers", "/budgets", "Budgets", Target),
     item("numbers", "/beer-tax", "Beer tax", Landmark),
   ] },
-  // Where guests find the business: its website, its Google listing, and the reviews they leave.
+  // Where guests find the business: its website, its Google listing, Instagram, its Facebook Page, and the reviews they leave.
+  // lucide has no brand marks, so Instagram is a camera and Facebook a thumbs-up: neutral icons that read right.
   { title: "Online", area: "online", items: [
     { ...item("online", "/online", "Overview", Compass), heading: "Online" },
     item("online", "/website", "Website", Globe, WEBSITE_PAGES),
     item("online", "/online/google", "Google listing", MapPin),
+    item("online", "/online/instagram", "Instagram", Camera),
+    item("online", "/online/facebook", "Facebook", ThumbsUp),
     item("online", "/reviews", "Reviews", MessageSquareText),
   ] },
   { title: "Floor", area: "floor", items: [

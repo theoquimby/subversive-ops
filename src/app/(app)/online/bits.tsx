@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 /**
- * Pieces shared by Online → Overview and Online → Google listing. Server
+ * Pieces shared by the Online pages (Overview, Google listing, Instagram, Facebook). Server
  * components; no state. The colours here follow the thing, never its rank:
  * the page's hue for Google, greys for everything people do on their own.
  */
@@ -35,6 +35,9 @@ export const MAPS_FILL: Fill = { fill: "var(--area)", opacity: 0.88 };
 export const SEARCH_FILL: Fill = { fill: "var(--ink-2)", opacity: 0.55 };
 export const LISTING_FILL: Fill = MAPS_FILL;
 export const WEBSITE_FILL: Fill = { fill: "var(--ink-2)", opacity: 0.55 };
+/** Instagram and the Facebook Page, where they share a step. Each bar is also named, so the tint isn't the only cue. */
+export const INSTAGRAM_FILL: Fill = { fill: "var(--area)", opacity: 0.45 };
+export const FACEBOOK_FILL: Fill = { fill: "var(--ink-2)", opacity: 0.28 };
 
 export const VIEW_FILL: Record<ListingViewMetric, Fill> = {
   BUSINESS_IMPRESSIONS_MOBILE_MAPS: { fill: "var(--area)", opacity: 0.9 },

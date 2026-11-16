@@ -2112,3 +2112,50 @@ model StaffMessage {
   @@index([createdAt])
   @@index([employeeId, createdAt])
 }
+
+/// One number a day from any place the business is present online (Instagram, the Facebook Page,
+/// later a review site): `channel` is "instagram" | "facebook" | …, `metric` a short stable name
+/// (views, reach, followers, profile_taps…). Aggregates only; nothing about any one person.
+model OnlineChannelDaily {
+  channel String
+  day     DateTime @db.Date
+  metric  String
+  value   Decimal  @db.Decimal(14, 2)
+
+  @@id([channel, day, metric])
+  @@index([channel, metric, day])
+}
+
+/// The business's own posts on a channel, with their latest numbers (refreshed by the nightly sync).
+model OnlinePost {
+  id            String    @id @default(cuid())
+  channel       String
+  /// The post's id on the channel.
+  externalId    String
+  postedAt      DateTime
+  /// post | reel | video | carousel | link | text
+  kind          String
+  /// The first couple of hundred characters of the caption.
+  caption       String?
+  permalink     String?
+  /// The channel's own image address. It can stop working after a while, so pages must cope without it.
+  thumbnailUrl  String?
+  views         Int?
+  reach         Int?
+  likes         Int?
+  comments      Int?
+  saves         Int?
+  shares        Int?
+  interactions  Int?
+  profileVisits Int?
+  follows       Int?
+  /// Numbers only one channel has (e.g. { clicks, avgWatchSeconds }).
+  extra         Json?
+  /// When the numbers above were last read; null while the channel has none for this post yet.
+  metricsAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([channel, externalId])
+  @@index([channel, postedAt])
+}

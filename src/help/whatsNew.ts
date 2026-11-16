@@ -69,6 +69,29 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.17 (Instagram and the Facebook Page) ----
+  {
+    id: "2026-11-16.instagram",
+    date: "2026-11-16",
+    title: "Instagram's numbers, in Online",
+    line: "Followers, how far posts and reels travel, and your best and quietest post, once connected.",
+    icon: "analytics",
+    area: "online",
+    href: "/online/instagram",
+    help: "online.instagram",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-16.facebook-page",
+    date: "2026-11-16",
+    title: "Your Facebook Page too",
+    line: "The same sign-in brings in the Page: followers, views, visits and each post's reach.",
+    icon: "website",
+    area: "online",
+    href: "/online/facebook",
+    help: "online.facebook",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.16 (Online) ----
   {
     id: "2026-11-16.online",

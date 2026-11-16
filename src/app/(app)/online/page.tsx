@@ -3,10 +3,12 @@ import { Badge, Card, PageHeader, Section, Td, Th, Tr } from "@/components/ui";
 import { parseRange, type Delta, type NextStep, type SourceState } from "@/domain/online";
 import { pct, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
-import { onlineOverview, type OnlineOverview } from "@/server/services/online";
-import { Globe, MapPin, Search } from "lucide-react";
+import { SOCIAL, type SocialChannel } from "@/domain/onlineChannels";
+import { onlineOverview, type Loaded, type OnlineOverview, type SocialBlock } from "@/server/services/online";
+import { Camera, Globe, MapPin, Search, ThumbsUp } from "lucide-react";
 import Link from "next/link";
-import { Change, CHANNEL_FILL, LISTING_FILL, LookList, MeasureRow, MoreLink, n0, Notice, PartsBar, RangeChips, spanText, SquareKey, WEBSITE_FILL, type Fill } from "./bits";
+import type { ReactNode } from "react";
+import { Change, CHANNEL_FILL, FACEBOOK_FILL, INSTAGRAM_FILL, LISTING_FILL, LookList, MeasureRow, MoreLink, n0, Notice, PartsBar, RangeChips, spanText, SquareKey, WEBSITE_FILL, type Fill } from "./bits";
 import { Trend, TrendKey } from "./charts";
 
 export const metadata = { title: "Online" };
@@ -18,29 +20,32 @@ const monthName = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateStrin
 export default async function OnlinePage({ searchParams }: { searchParams: Promise<{ range?: string | string[] }> }) {
   await requireUser("MANAGER");
   const d = await onlineOverview(parseRange((await searchParams).range));
-  const { search, listing, website, reviews, period } = d;
+  const { search, listing, website, instagram, facebook, reviews, period } = d;
   // The key for the dashed line only shows when some chart has a period before to draw.
-  const hasBefore = [search.data?.trend, listing.data?.viewsTrend, website.data?.trend].some((t) => t?.some((pt) => pt.prev != null));
+  const hasBefore = [search.data?.trend, listing.data?.viewsTrend, website.data?.trend, instagram.data?.viewsTrend, facebook.data?.viewsTrend].some((t) => t?.some((pt) => pt.prev != null));
+  // One Facebook sign-in connects both, so while neither has numbers they share one notice.
+  const socialTogether = !instagram.data && !facebook.data && instagram.state.title === facebook.state.title;
 
   return (
     <>
       <PageHeader
         help="online.page"
         title="Online"
-        description="How guests find Subversive online and what they do next: Google Search, the Google listing, the website and reviews, side by side."
+        description="How guests find Subversive online and what they do next: Google Search, the Google listing, the website, Instagram, Facebook and reviews, side by side."
         actions={<RangeChips base="/online" range={d.range} />}
       />
       <p className="-mt-3 mb-6 text-xs text-pretty text-muted">
-        {spanText(d.windows.cur)}, compared with the {period} before. Whole days only. Google&apos;s numbers arrive two or three days late, so its rows end a little earlier.
+        {spanText(d.windows.cur)}, compared with the {period} before. Whole days only. Google&apos;s, Instagram&apos;s and Facebook&apos;s numbers arrive a few days late, so their rows end a little earlier.
       </p>
 
-      <Section help="online.found" title="How people found you" description="Three places a guest comes across Subversive, each over the same period.">
+      <Section help="online.found" title="How people found you" description="The places a guest comes across Subversive, each over the same period.">
         <Card className="divide-y divide-border">
           {hasBefore && (
             <div className="px-4 py-2.5 sm:px-5">
               <TrendKey period={period} />
             </div>
           )}
+          <Group>Search</Group>
           <MeasureRow
             icon={<Search />}
             title="Google Search"
@@ -58,6 +63,7 @@ export default async function OnlinePage({ searchParams }: { searchParams: Promi
             {search.data ? <Trend points={search.data.trend} title="Times the website showed up in Google's search results" unit="times shown" period={period} legend={false} /> : <Notice state={search.state} />}
           </MeasureRow>
 
+          <Group>Maps and the listing</Group>
           <MeasureRow
             icon={<MapPin />}
             title={listing.data ? <Link href="/online/google" className="underline-offset-2 hover:underline">Google listing</Link> : "Google listing"}
@@ -75,6 +81,7 @@ export default async function OnlinePage({ searchParams }: { searchParams: Promi
             {listing.data ? <Trend points={listing.data.viewsTrend} title="Times the listing was shown on Google Maps and Google Search" unit="times shown" period={period} legend={false} /> : <Notice state={listing.state} />}
           </MeasureRow>
 
+          <Group>Website</Group>
           <MeasureRow
             icon={<Globe />}
             title={website.data ? <Link href="/website/analytics" className="underline-offset-2 hover:underline">Website</Link> : "Website"}
@@ -102,10 +109,22 @@ export default async function OnlinePage({ searchParams }: { searchParams: Promi
               </div>
             </div>
           )}
+
+          <Group>Social</Group>
+          {socialTogether ? (
+            <MeasureRow icon={<Camera />} title="Instagram and Facebook" counts="Times your posts, and the profile or Page, were shown">
+              <Notice state={instagram.state} />
+            </MeasureRow>
+          ) : (
+            <>
+              <SocialRow channel="instagram" icon={<Camera />} block={instagram} period={period} />
+              <SocialRow channel="facebook" icon={<ThumbsUp />} block={facebook} period={period} />
+            </>
+          )}
         </Card>
       </Section>
 
-      <Section help="online.next" title="What they did next" description="The same step on the Google listing and on the website, side by side.">
+      <Section help="online.next" title="What they did next" description="The same step in each place, side by side: the Google listing, the website, and Instagram and Facebook where they count it.">
         <NextSteps d={d} />
       </Section>
 
@@ -213,6 +232,36 @@ export default async function OnlinePage({ searchParams }: { searchParams: Promi
   );
 }
 
+/** A quiet label over the rows of one kind of place, so the list reads as groups, not a wall. */
+function Group({ children }: { children: ReactNode }) {
+  return <div className="bg-surface-2/50 px-4 py-2 text-xs font-medium text-muted sm:px-5">{children}</div>;
+}
+
+/** Instagram or the Facebook Page as a row of "How people found you". */
+function SocialRow({ channel, icon, block, period }: { channel: SocialChannel; icon: ReactNode; block: Loaded<SocialBlock>; period: string }) {
+  const c = SOCIAL[channel];
+  const b = block.data;
+  return (
+    <MeasureRow
+      icon={icon}
+      title={b ? <Link href={c.href} className="underline-offset-2 hover:underline">{c.label}</Link> : c.label}
+      counts={c.copy.views.counts}
+      value={b ? n0(b.views.cur) : undefined}
+      change={b && !b.stale ? <Change d={b.views} period={period} /> : undefined}
+      note={
+        b ? (
+          <>
+            {b.followers.now != null && <>{plural(b.followers.now, "follower")}. </>}
+            <Through through={b.through} since={b.since} stale={b.stale} />
+          </>
+        ) : undefined
+      }
+    >
+      {b ? <Trend points={b.viewsTrend} title={c.copy.views.counts} unit={c.copy.views.unit} period={period} legend={false} /> : <Notice state={block.state} />}
+    </MeasureRow>
+  );
+}
+
 /** "Through Nov 12." / "Counting since Nov 2." / a warning when the numbers have stopped. */
 function Through({ through, since, stale }: { through: string | null; since: string | null; stale: boolean }) {
   return (
@@ -260,11 +309,12 @@ function NextSteps({ d }: { d: OnlineOverview }) {
       </Card>
     );
   }
-  const max = Math.max(1, ...steps.flatMap((s) => [s.listing?.cur ?? 0, s.website?.cur ?? 0]));
+  const max = Math.max(1, ...steps.flatMap((s) => [s.listing?.cur ?? 0, s.website?.cur ?? 0, s.instagram?.cur ?? 0, s.facebook?.cur ?? 0]));
+  const has = (side: "instagram" | "facebook") => steps.some((s) => s[side]);
   return (
     <Card>
       <div className="border-b border-border px-4 py-3 sm:px-5">
-        <SquareKey items={[{ label: "On the Google listing", fill: LISTING_FILL }, { label: "On the website", fill: WEBSITE_FILL }]} />
+        <SquareKey items={[{ label: "On the Google listing", fill: LISTING_FILL }, { label: "On the website", fill: WEBSITE_FILL }, ...(has("instagram") ? [{ label: "On Instagram", fill: INSTAGRAM_FILL }] : []), ...(has("facebook") ? [{ label: "On the Facebook Page", fill: FACEBOOK_FILL }] : [])]} />
       </div>
       <ol className="divide-y divide-border">
         {steps.map((s) => (
@@ -273,6 +323,8 @@ function NextSteps({ d }: { d: OnlineOverview }) {
             <div className="space-y-1.5">
               {s.listing && <SideBar name="Google listing" d={s.listing} fill={LISTING_FILL} max={max} period={d.period} />}
               {s.website && <SideBar name="Website" d={s.website} fill={WEBSITE_FILL} max={max} period={d.period} />}
+              {s.instagram && <SideBar name="Instagram" d={s.instagram} fill={INSTAGRAM_FILL} max={max} period={d.period} />}
+              {s.facebook && <SideBar name="Facebook" d={s.facebook} fill={FACEBOOK_FILL} max={max} period={d.period} />}
             </div>
           </li>
         ))}
@@ -282,6 +334,8 @@ function NextSteps({ d }: { d: OnlineOverview }) {
       <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-border px-4 py-3 sm:px-5">
         {d.listing.data && <MoreLink href="/online/google">The listing, over time</MoreLink>}
         {d.website.data && <MoreLink href="/website/analytics#actions">Website actions, and where they came from</MoreLink>}
+        {d.instagram.data && <MoreLink href="/online/instagram">Instagram, over time</MoreLink>}
+        {d.facebook.data && <MoreLink href="/online/facebook">The Facebook Page, over time</MoreLink>}
       </div>
     </Card>
   );

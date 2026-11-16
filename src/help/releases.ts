@@ -24,6 +24,21 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.17",
+    date: "2026-11-16",
+    title: "Instagram and your Facebook Page",
+    summary: "Online now brings in Instagram and the Facebook Page: followers, how far your posts travel, what people tap, and every recent post with its numbers.",
+    entries: ["2026-11-16.instagram", "2026-11-16.facebook-page"],
+    fixed: [
+      "Online → Instagram: followers and their change, views and accounts reached over time, taps on the profile's buttons, and your posts and reels sortable by reach, with the best and the quietest named in a sentence.",
+      "Online → Facebook: the same for the Page, plus visits to the Page itself.",
+      "Connect both with one Facebook sign-in, from Online → Instagram or Settings → Connections. A step-by-step guide covers the one-time setup. Read-only: nothing is ever posted.",
+      "Online → Overview: How people found you is now in four groups (Search, Maps and the listing, Website, Social), and What they did next shows Instagram and Facebook beside the Google listing and the website.",
+      "Worth a look can now mention a fall in followers, three weeks without a post, or a post that reached far more than usual.",
+      "Instagram no longer gives apps profile visits or website-link taps for the whole account, so the page counts them another way and says how.",
+    ],
+  },
+  {
     version: "1.16",
     date: "2026-11-16",
     title: "Online: how guests find you",

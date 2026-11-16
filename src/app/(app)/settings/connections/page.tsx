@@ -15,6 +15,7 @@ import { loadQuickBooksData } from "../quickbooks/data";
 import type { ServiceId, TestResult } from "./actions";
 import { Connections, type ConnectionsData } from "./connections-client";
 import { GoogleSearchTile } from "../../website/analytics/google-tile";
+import { MetaTile } from "../../online/meta/tile";
 
 export const metadata = { title: "Connections" };
 
@@ -97,6 +98,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
       />
       <Connections data={data} />
       <GoogleSearchTile />
+      <MetaTile />
     </>
   );
 }

@@ -286,7 +286,7 @@ export const listingActionsTotal = (t: MetricTotals): number => LISTING_ACTION_M
 
 // ---- What people did next ------------------------------------------------------------------------
 
-export type StepKey = "directions" | "call" | "site" | "menu" | "order" | "tickets" | "inquiry" | "booking";
+export type StepKey = "directions" | "call" | "site" | "menu" | "order" | "tickets" | "inquiry" | "booking" | "page" | "button" | "message";
 
 interface StepDef {
   key: StepKey;
@@ -295,19 +295,28 @@ interface StepDef {
   listing: ListingActionMetric[];
   /** Website events that count this on the website. */
   website: string[];
+  /** Stored channel metrics that count this on Instagram and on the Facebook Page. */
+  instagram?: string[];
+  facebook?: string[];
   /** Left out while it is zero everywhere (not every business has it). */
   optional?: boolean;
 }
 
+/** Website visits that began on a channel, counted by the website and put with that channel's totals. */
+export const WEBSITE_VISITS_KEY = "website_visits";
+
 const STEPS: StepDef[] = [
-  { key: "directions", label: "Asked for directions", listing: ["BUSINESS_DIRECTION_REQUESTS"], website: ["click_directions"] },
-  { key: "call", label: "Called", listing: ["CALL_CLICKS"], website: ["click_call"] },
-  { key: "site", label: "Opened the website from the listing", listing: ["WEBSITE_CLICKS"], website: [] },
+  { key: "directions", label: "Asked for directions", listing: ["BUSINESS_DIRECTION_REQUESTS"], website: ["click_directions"], instagram: ["tap_directions"] },
+  { key: "call", label: "Called", listing: ["CALL_CLICKS"], website: ["click_call"], instagram: ["tap_call"] },
+  { key: "site", label: "Went on to the website", listing: ["WEBSITE_CLICKS"], website: [], instagram: [WEBSITE_VISITS_KEY], facebook: [WEBSITE_VISITS_KEY] },
   { key: "menu", label: "Looked at the menu", listing: ["BUSINESS_FOOD_MENU_CLICKS"], website: ["menu_view"] },
   { key: "order", label: "Went to order online", listing: [], website: ["click_order_online"], optional: true },
   { key: "tickets", label: "Tapped a ticket or RSVP link", listing: [], website: ["ticket_click", "rsvp_click"], optional: true },
   { key: "inquiry", label: "Asked about a private event", listing: [], website: ["inquiry_submit"] },
   { key: "booking", label: "Booked through the listing", listing: ["BUSINESS_BOOKINGS"], website: [], optional: true },
+  { key: "page", label: "Opened the Facebook Page", listing: [], website: [], facebook: ["profile_visits"], optional: true },
+  { key: "button", label: "Tapped a button on the Facebook Page", listing: [], website: [], facebook: ["profile_taps"], optional: true },
+  { key: "message", label: "Tapped Email or Text on Instagram", listing: [], website: [], instagram: ["tap_email", "tap_text"], optional: true },
 ];
 
 export interface SideTotals {
@@ -323,28 +332,32 @@ export interface NextStep {
   listing: Delta | null;
   /** Null when the website doesn't count this, or isn't sending visits. */
   website: Delta | null;
+  /** Null when Instagram (or the Facebook Page) doesn't count this, or isn't connected. */
+  instagram: Delta | null;
+  facebook: Delta | null;
 }
 
 /**
- * The same intent on the Google listing and on the website, row by row:
- * directions, calls, the menu, and the things only one of them has. A side
- * that isn't connected (null) leaves its column empty; rows with no side
- * left are dropped.
+ * The same intent in each place, row by row: directions, calls, going on to
+ * the website, the menu, and the things only one of them has. The Google
+ * listing and the website come first; Instagram and the Facebook Page join
+ * the rows they share. A side that isn't connected (null) leaves its bar
+ * out; rows with no side left are dropped.
  */
-export function nextSteps(a: { listing: SideTotals | null; website: SideTotals | null }): NextStep[] {
-  const side = (s: SideTotals | null, keys: string[]): Delta | null => {
-    if (!s || !keys.length) return null;
+export function nextSteps(a: { listing: SideTotals | null; website: SideTotals | null; instagram?: SideTotals | null; facebook?: SideTotals | null }): NextStep[] {
+  const side = (s: SideTotals | null | undefined, keys: string[] | undefined): Delta | null => {
+    if (!s || !keys?.length) return null;
     const sum = (t: MetricTotals) => keys.reduce((n, k) => n + (t[k] ?? 0), 0);
     return delta(sum(s.cur), s.prev ? sum(s.prev) : null);
   };
   const out: NextStep[] = [];
   for (const d of STEPS) {
-    const listing = side(a.listing, d.listing);
-    const website = side(a.website, d.website);
-    if (!listing && !website) continue;
-    const any = [listing, website].some((x) => x && (x.cur > 0 || (x.prev ?? 0) > 0));
+    const sides = { listing: side(a.listing, d.listing), website: side(a.website, d.website), instagram: side(a.instagram, d.instagram), facebook: side(a.facebook, d.facebook) };
+    const all = Object.values(sides);
+    if (all.every((x) => !x)) continue;
+    const any = all.some((x) => x && (x.cur > 0 || (x.prev ?? 0) > 0));
     if (d.optional && !any) continue;
-    out.push({ key: d.key, label: d.label, listing, website });
+    out.push({ key: d.key, label: d.label, ...sides });
   }
   return out;
 }
@@ -550,12 +563,14 @@ export interface LookInput {
   period: string;
   metrics: LookMetric[];
   states: { key: string; state: SourceState }[];
-  /** Sources whose numbers have stopped arriving. */
-  stale: { key: string; label: string; through: ISODate; href: string }[];
+  /** Sources whose numbers have stopped arriving. `from` names who sends them (Google unless said). */
+  stale: { key: string; label: string; through: ISODate; href: string; from?: string }[];
   /** Average rating of the period's reviews and of the period before (null when too few to compare). */
   rating: { cur: number | null; prev: number | null };
   /** Critical or mixed reviews with no reply. */
   needReply: number;
+  /** Lines a source worked out for itself (see socialLook in ./onlineChannels). */
+  extra?: LookItem[];
 }
 
 export interface LookItem {
@@ -577,8 +592,9 @@ const TONE_ORDER: Record<LookItem["tone"], number> = { bad: 0, warn: 1, neutral:
  * A metric down sharply against the period before (and by more than normal
  * ups and downs), a source that still needs setting up, a source that has
  * stopped updating, a slipping rating, reviews waiting for a reply, and a
- * sharp rise. A source that is only waiting on Google is not listed: there
- * is nothing to do about it. Most serious first, at most `max` rows.
+ * sharp rise, then whatever a source worked out for itself (`extra`). A
+ * source that is only waiting on Google is not listed: there is nothing to
+ * do about it. Most serious first, at most `max` rows.
  */
 export function worthALook(a: LookInput, max = 6): LookItem[] {
   const out: LookItem[] = [];
@@ -597,7 +613,7 @@ export function worthALook(a: LookInput, max = 6): LookItem[] {
     said.add(st.title);
     out.push({ key: `setup-${s.key}`, tone: st.kind === "reconnect" ? "warn" : "neutral", title: st.title, detail: st.body, href: st.href });
   }
-  for (const s of a.stale) out.push({ key: `stale-${s.key}`, tone: "warn", title: `${s.label} stopped on ${sayDay(s.through)}`, detail: "Nothing newer has arrived from Google. Check the connection and sync again.", href: s.href });
+  for (const s of a.stale) out.push({ key: `stale-${s.key}`, tone: "warn", title: `${s.label} stopped on ${sayDay(s.through)}`, detail: `Nothing newer has arrived from ${s.from ?? "Google"}. Check the connection and sync again.`, href: s.href });
   if (a.rating.cur != null && a.rating.prev != null && a.rating.cur - a.rating.prev <= -RATING_SLIP) {
     out.push({ key: "rating", tone: "warn", title: `The rating slipped to ${a.rating.cur.toFixed(1)} from ${a.rating.prev.toFixed(1)}`, detail: `The average of reviews in the last ${a.period}, against the ${a.period} before.`, href: "/reviews" });
   }
@@ -609,6 +625,7 @@ export function worthALook(a: LookInput, max = 6): LookItem[] {
     if (d.change == null || !d.clear || d.change < SHARP_RISE) continue;
     out.push({ key: `up-${m.key}`, tone: "good", title: `${m.label} are up ${pct0(d.change)}`, detail: both(d), href: m.href });
   }
+  out.push(...(a.extra ?? []));
   // Most serious first; within a tone, the bigger drop first, then the order found.
   const size = (i: LookItem) => (i.key.startsWith("down-") ? a.metrics.find((m) => `down-${m.key}` === i.key)?.delta.change ?? 0 : 0);
   return out

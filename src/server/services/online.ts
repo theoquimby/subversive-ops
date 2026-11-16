@@ -24,6 +24,7 @@ import {
   sumByMetric,
   trendPoints,
   unavailable,
+  WEBSITE_VISITS_KEY,
   websiteState,
   worthALook,
   type Delta,
@@ -41,17 +42,20 @@ import {
   type TrendPoint,
   type Windows,
 } from "@/domain/online";
+import { bestAndWorst, dailyAverage, followerSummary, META_SETUP_HREF, postCallout, postsForPage, SOCIAL, SOCIAL_CHANNELS, socialLook, socialState, TAP_LABEL, type BestWorst, type FollowerSummary, type MetaFacts, type PostRow, type SocialChannel } from "@/domain/onlineChannels";
 import { rollingRating } from "@/domain/reviews";
 import { db } from "../db";
 import { googleStatus, profileRows, searchRows, type GoogleStatus } from "./googleSearch";
+import { channelBounds, channelPosts, channelRows, metaFacts, metaStatus, type MetaStatus } from "./metaChannels";
 import { needsReply, reviewDate, SETTING_PLACE_ID } from "./reviews";
 import { businessToday } from "./sales";
 import { dailyRows, extraOrigins, firstHitDay, mainWebsiteOrigin, refreshRollups } from "./webAnalytics";
 
 /**
- * Online → Overview and Online → Google listing: Google Search (Search
- * Console), the Google listing (Business Profile), the website's own visit
- * counts and reviews, read from what is already stored. No calls to Google.
+ * Online → Overview, Google listing, Instagram and Facebook: Google Search
+ * (Search Console), the Google listing (Business Profile), the website's own
+ * visit counts, Instagram, the Facebook Page and reviews, read from what is
+ * already stored. No calls to Google or Meta.
  *
  * Every source loads on its own and fails soft: a source that throws is
  * logged and shown as unavailable, and the rest of the page carries on.
@@ -135,6 +139,46 @@ export interface ReviewsBlock {
   googleConnected: boolean;
 }
 
+/** Instagram or the Facebook Page over a period. */
+export interface SocialBlock {
+  channel: SocialChannel;
+  windows: Windows;
+  /** The last day the channel has reported. */
+  through: ISODate | null;
+  since: ISODate | null;
+  stale: boolean;
+  /** Times its posts (and the profile or Page) were shown. */
+  views: Delta;
+  viewsTrend: TrendPoint[];
+  /** Accounts (or people) reached on a typical day; a count of people can't be added across days. */
+  reachPerDay: number | null;
+  reachPerDayBefore: number | null;
+  reachTrend: TrendPoint[];
+  followers: FollowerSummary;
+  /** Taps on the profile's (or Page's) buttons. */
+  taps: Delta;
+  tapsTrend: TrendPoint[];
+  /** Instagram splits its taps by button. */
+  tapParts: { key: string; label: string; value: number }[];
+  /** Visits to the Page itself (Facebook only). */
+  visits: Delta | null;
+  visitsTrend: TrendPoint[];
+  interactions: Delta;
+  /** Website visits that started on this channel, counted by the website. Null while the website isn't counting. */
+  website: Delta | null;
+  /** For "What they did next". */
+  totals: SideTotals;
+  /** The period's posts (or the latest few, when the period has almost none). */
+  posts: PostRow[];
+  postsInPeriod: boolean;
+  best: BestWorst | null;
+  /** The best and worst post of the period, in a sentence. */
+  callout: string | null;
+  /** Profile visits that came from the period's posts (Instagram only). */
+  postVisits: number | null;
+  lastPostDay: ISODate | null;
+}
+
 export interface OnlineOverview {
   range: OnlineRangeId;
   /** "28 days" */
@@ -144,9 +188,33 @@ export interface OnlineOverview {
   search: Loaded<SearchBlock>;
   listing: Loaded<ListingBlock>;
   website: Loaded<WebsiteBlock>;
+  instagram: Loaded<SocialBlock>;
+  facebook: Loaded<SocialBlock>;
   reviews: Loaded<ReviewsBlock>;
   next: NextStep[];
   look: LookItem[];
+}
+
+export interface SocialConnection {
+  connected: boolean;
+  /** "@drinksubversive", or the Page's name. */
+  name: string | null;
+  connectedBy: string | null;
+  lastSyncAt: string | null;
+  error: string | null;
+  /** Numbers Meta no longer gives, as named by Meta. */
+  skipped: string[];
+  manageHref: string;
+}
+
+export interface SocialReport {
+  range: OnlineRangeId;
+  period: string;
+  today: ISODate;
+  windows: Windows;
+  channel: SocialChannel;
+  block: Loaded<SocialBlock>;
+  connection: SocialConnection | null;
 }
 
 export interface ListingConnection {
@@ -338,6 +406,73 @@ async function loadWebsite(w: Windows): Promise<{ data: WebsiteBlock | null; has
   };
 }
 
+// ---- Instagram and the Facebook Page ----------------------------------------------------------------
+
+/** The numbers that show a channel is reporting (followers are a count on a day, so they don't). */
+const ACTIVITY = ["views", "reach", "interactions", "profile_taps", "profile_visits"];
+const TAP_ORDER = ["tap_directions", "tap_call", "tap_email", "tap_text", "tap_book", "tap_other"];
+
+async function loadSocial(channel: SocialChannel, w: Windows, today: ISODate, period: string): Promise<SocialBlock | null> {
+  const [bounds, posts, followerRows, webFirst] = await Promise.all([channelBounds(channel, ACTIVITY), channelPosts(channel), channelRows(channel, addDays(w.prev.from, -7), today, ["followers"]), firstHitDay()]);
+  if (!bounds.last && !posts.length && !followerRows.length) return null;
+  const a = alignToData(w, bounds.last);
+  const since = coverage(a.cur, bounds.first).since;
+  const comparable = !a.stale && coverage(a.prev, bounds.first).kind === "full";
+  const webComparable = !!webFirst && coverage(w.prev, webFirst).kind === "full";
+  const [cur, prev, webCur, webPrev] = await Promise.all([
+    channelRows(channel, a.cur.from, a.cur.to),
+    channelRows(channel, a.prev.from, a.prev.to),
+    webFirst ? dailyRows(w.cur.from, w.cur.to, ["source"]) : Promise.resolve([]),
+    webFirst ? dailyRows(w.prev.from, w.prev.to, ["source"]) : Promise.resolve([]),
+  ]);
+  const tc = sumByMetric(cur);
+  const tp = sumByMetric(prev);
+  const cmp = (c: number, p: number) => compare(c, p, comparable ? "full" : "none");
+  const series = (rows: typeof cur, metric: string) => rows.filter((r) => r.metric === metric).map((r) => ({ day: r.day, value: r.value }));
+  const points = (metric: string) => trendPoints(series(cur, metric), comparable ? series(prev, metric) : null, a, since);
+  const fromChannel = (rows: { key: string; sessions: number }[]) => rows.filter((r) => r.key === channel).reduce((n, r) => n + r.sessions, 0);
+  const website = webFirst ? compare(fromChannel(webCur), fromChannel(webPrev), webComparable ? "full" : "none") : null;
+  // The website's count joins this channel's totals only when both have the same history to compare with.
+  const withWeb = website && webComparable === comparable ? website : null;
+  const span = { from: w.cur.from, to: today, days: w.cur.days + 1 };
+  const page = postsForPage(posts, span);
+  const inSpan = posts.filter((p) => p.day >= span.from && p.day <= span.to);
+  const best = bestAndWorst(inSpan, today);
+  const visits = inSpan.filter((p) => p.profileVisits != null);
+  return {
+    channel,
+    windows: { cur: a.cur, prev: a.prev },
+    through: a.through,
+    since,
+    stale: a.stale,
+    views: cmp(tc.views ?? 0, tp.views ?? 0),
+    viewsTrend: points("views"),
+    reachPerDay: dailyAverage(series(cur, "reach"), a.cur),
+    reachPerDayBefore: comparable ? dailyAverage(series(prev, "reach"), a.prev) : null,
+    reachTrend: points("reach"),
+    followers: followerSummary(followerRows.map((r) => ({ day: r.day, value: r.value })), w),
+    taps: cmp(tc.profile_taps ?? 0, tp.profile_taps ?? 0),
+    tapsTrend: points("profile_taps"),
+    tapParts: TAP_ORDER.filter((k) => (tc[k] ?? 0) > 0).map((k) => ({ key: k, label: TAP_LABEL[k], value: tc[k] })),
+    visits: channel === "facebook" ? cmp(tc.profile_visits ?? 0, tp.profile_visits ?? 0) : null,
+    visitsTrend: channel === "facebook" ? points("profile_visits") : [],
+    interactions: cmp(tc.interactions ?? 0, tp.interactions ?? 0),
+    website,
+    totals: { cur: { ...tc, ...(withWeb ? { [WEBSITE_VISITS_KEY]: withWeb.cur } : {}) }, prev: comparable ? { ...tp, ...(withWeb ? { [WEBSITE_VISITS_KEY]: withWeb.prev ?? 0 } : {}) } : null },
+    posts: page.list,
+    postsInPeriod: page.inPeriod,
+    best,
+    callout: postCallout(best, period, channel),
+    postVisits: visits.length ? visits.reduce((n, p) => n + (p.profileVisits ?? 0), 0) : null,
+    lastPostDay: posts[0]?.day ?? null,
+  };
+}
+
+const NO_META: MetaFacts = { appReady: false, connected: false, needsReconnect: false, pagePicked: false, instagramLinked: false, synced: { instagram: false, facebook: false } };
+
+const socialBlock = (channel: SocialChannel, res: Soft<SocialBlock | null>, status: Soft<MetaStatus>): Loaded<SocialBlock> =>
+  block(res, SOCIAL[channel].place, (hasData) => (hasData ? socialState(channel, NO_META, true) : status.ok ? socialState(channel, metaFacts(status.value), false) : unavailable("the Instagram and Facebook connection")));
+
 // ---- Reviews ----------------------------------------------------------------------------------------
 
 async function loadReviews(w: Windows, today: ISODate): Promise<ReviewsBlock> {
@@ -363,12 +498,15 @@ export async function onlineOverview(range: OnlineRangeId): Promise<OnlineOvervi
   const today = businessToday();
   const windows = rangeWindows(range, today);
   const period = rangeOf(range).label;
-  const [status, searchRes, listingRes, websiteRes, reviewsRes] = await Promise.all([
+  const [status, searchRes, listingRes, websiteRes, reviewsRes, meta, igRes, fbRes] = await Promise.all([
     soft("Google connection", googleStatus),
     soft("Google Search", () => loadSearch(windows)),
     soft("Google listing", () => loadListing(windows, today)),
     soft("website visits", () => loadWebsite(windows)),
     soft("reviews", () => loadReviews(windows, today)),
+    soft("Instagram and Facebook connection", metaStatus),
+    soft("Instagram", () => loadSocial("instagram", windows, today, period)),
+    soft("Facebook Page", () => loadSocial("facebook", windows, today, period)),
   ]);
   const facts = factsFrom(status.ok ? status.value : null, { search: searchRes.ok && searchRes.value != null, listing: listingRes.ok && listingRes.value != null });
   const google = (what: string, state: (f: GoogleFacts) => SourceState) => (hasData: boolean) => (hasData ? state({ ...(facts ?? NO_FACTS), hasSearchData: true, hasListingData: true }) : facts ? state(facts) : unavailable(what));
@@ -379,7 +517,11 @@ export async function onlineOverview(range: OnlineRangeId): Promise<OnlineOvervi
   const reviewsLoaded = reviewsRes.ok && reviewsRes.value.summary.total > 0 ? reviewsRes.value : null;
   const reviews = block(reviewsRes.ok ? { ok: true, value: reviewsLoaded } : reviewsRes, "reviews", () => reviewsState({ count: reviewsRes.ok ? reviewsRes.value.summary.total : 0, googleConnected: reviewsRes.ok && reviewsRes.value.googleConnected }));
 
-  const next = nextSteps({ listing: listing.data?.totals ?? null, website: website.data?.totals ?? null });
+  const instagram = socialBlock("instagram", igRes, meta);
+  const facebook = socialBlock("facebook", fbRes, meta);
+  const social = { instagram, facebook };
+
+  const next = nextSteps({ listing: listing.data?.totals ?? null, website: website.data?.totals ?? null, instagram: instagram.data?.totals ?? null, facebook: facebook.data?.totals ?? null });
 
   const metrics: LookMetric[] = [];
   if (search.data) {
@@ -398,20 +540,44 @@ export async function onlineOverview(range: OnlineRangeId): Promise<OnlineOvervi
     metrics.push({ key: "visits", label: "Website visits", delta: website.data.visits, href: "/website/analytics" });
     metrics.push({ key: "web-actions", label: "Actions taken on the website", delta: website.data.actions, href: "/website/analytics#actions" });
   }
+  for (const c of SOCIAL_CHANNELS) {
+    const b = social[c].data;
+    if (!b || b.stale) continue;
+    metrics.push({ key: `${c}-views`, label: c === "instagram" ? "Instagram views" : "Facebook Page views", delta: b.views, href: SOCIAL[c].href });
+    metrics.push({ key: `${c}-taps`, label: c === "instagram" ? "Taps on the Instagram profile's buttons" : "Taps on the Facebook Page's buttons", delta: b.taps, href: SOCIAL[c].href });
+  }
   const stale = [
     ...(search.data?.stale && search.data.through ? [{ key: "search", label: "Google Search numbers", through: search.data.through, href: GOOGLE_SETUP_HREF }] : []),
     ...(listing.data?.stale && listing.data.through ? [{ key: "listing", label: "The Google listing's numbers", through: listing.data.through, href: GOOGLE_SETUP_HREF }] : []),
+    ...SOCIAL_CHANNELS.flatMap((c) => {
+      const b = social[c].data;
+      return b?.stale && b.through ? [{ key: c, label: c === "instagram" ? "Instagram's numbers" : "The Facebook Page's numbers", through: b.through, href: META_SETUP_HREF, from: c === "instagram" ? "Instagram" : "Facebook" }] : [];
+    }),
   ];
   const look = worthALook({
     period,
     metrics,
-    states: [...(facts ? [{ key: "google", state: signInState(facts) }] : []), { key: "search", state: search.state }, { key: "listing", state: listing.state }, { key: "website", state: website.state }, { key: "reviews", state: reviews.state }],
+    states: [
+      ...(facts ? [{ key: "google", state: signInState(facts) }] : []),
+      // An expired Facebook sign-in is worth raising even while older numbers still show.
+      ...(meta.ok && meta.value.needsReconnect ? [{ key: "meta", state: socialState("instagram", metaFacts(meta.value), false) }] : []),
+      { key: "search", state: search.state },
+      { key: "listing", state: listing.state },
+      { key: "website", state: website.state },
+      { key: "instagram", state: instagram.state },
+      { key: "facebook", state: facebook.state },
+      { key: "reviews", state: reviews.state },
+    ],
     stale,
     rating: reviews.data && reviews.data.summary.ratingChange != null ? { cur: reviews.data.summary.avg, prev: reviews.data.summary.prevAvg } : { cur: null, prev: null },
     needReply: reviews.data?.needReply ?? 0,
+    extra: SOCIAL_CHANNELS.flatMap((c) => {
+      const b = social[c].data;
+      return b ? socialLook({ channel: c, period, today, lastPostDay: b.lastPostDay, best: b.best, followers: b.followers }) : [];
+    }),
   });
 
-  return { range, period, today, windows, search, listing, website, reviews, next, look };
+  return { range, period, today, windows, search, listing, website, instagram, facebook, reviews, next, look };
 }
 
 const NO_FACTS: GoogleFacts = { connected: false, needsReconnect: false, searchAllowed: false, listingAllowed: false, siteUrl: null, location: null, hasSearchData: false, hasListingData: false, listingSynced: false };
@@ -437,6 +603,33 @@ export async function googleListing(range: OnlineRangeId): Promise<ListingReport
       lastDay: s.state.profile.lastDay,
       error: s.needsReconnect ?? s.state.profile.error,
       manageHref: GOOGLE_SETUP_HREF,
+    },
+  };
+}
+
+/** Online → Instagram and Online → Facebook: one channel over a period, and the state of its connection. */
+export async function socialReport(channel: SocialChannel, range: OnlineRangeId): Promise<SocialReport> {
+  const today = businessToday();
+  const windows = rangeWindows(range, today);
+  const period = rangeOf(range).label;
+  const [status, res] = await Promise.all([soft("Instagram and Facebook connection", metaStatus), soft(SOCIAL[channel].label, () => loadSocial(channel, windows, today, period))]);
+  const s = status.ok ? status.value : null;
+  const sync = s?.state[channel];
+  return {
+    range,
+    period,
+    today,
+    windows,
+    channel,
+    block: socialBlock(channel, res, status),
+    connection: s && {
+      connected: s.connected,
+      name: channel === "instagram" ? (s.igUsername ? `@${s.igUsername}` : null) : s.pageName,
+      connectedBy: s.connectedBy,
+      lastSyncAt: sync?.at ?? null,
+      error: s.needsReconnect ?? sync?.error ?? s.state.posts.error,
+      skipped: sync?.skipped ?? [],
+      manageHref: META_SETUP_HREF,
     },
   };
 }
