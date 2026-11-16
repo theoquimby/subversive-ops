@@ -2,60 +2,72 @@
 
 import { useConfirm } from "@/components/dialog";
 import { useToast } from "@/components/toast";
-import { Badge, Button, Card, cx, DatePicker, Field, Input } from "@/components/ui";
+import { Badge, Button, Card, cx, DatePicker, Field, Input, Textarea } from "@/components/ui";
 import { daysBetween } from "@/domain/dates";
+import type { GravityUnit } from "@/domain/gravity";
+import type { FloorTank, NextAction, TankKind } from "@/domain/tankPlan";
 import { shortDate } from "@/lib/format";
-import type { BatchView, BeerOption, BriteChoice, RecipeOption, TankView } from "@/server/services/brewery";
-import type { FloorTank } from "@/domain/tankPlan";
+import type { BatchView, BeerOption, RecipeOption, TankChoice, TankView } from "@/server/services/brewery";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
-import { brewIntoTankAction, dumpAction, editStayAction, gravityAction, markBrewedAction, packageAction, transferAction } from "./actions";
-import { BeerDot, bblText, DayBar, gravityText } from "./bits";
+import { brewIntoTankAction, conditioningAction, dumpAction, editStayAction, gravityAction, markBrewedAction, moveAction, packageAction } from "./actions";
+import { BeerDot, bblText, DayBar, gravityExample, gravityIn } from "./bits";
 import { BrewPick, pickBbl, pickIds } from "./brew-pick";
 
-type Mode = "brew" | "brewed" | "transfer" | "package" | "gravity" | "dates" | "dump" | null;
-type Res = { ok: string } | { error: string };
+type Mode = "brew" | "brewed" | "move" | "condition" | "package" | "gravity" | "dates" | "dump" | null;
+type Res = { ok: string; href?: string } | { error: string; confirm?: boolean };
 
 /**
  * One tank on the floor: what's in it and how far along, or when it's next
  * booked; and the things to do with it, each opening a short form in the card.
  */
-export function TankCard({ tank: f, today, batch, next, transferTo, plannedBrite, recipes, beers }: {
+export function TankCard({ tank: f, today, batch, next, transferTo, plannedBrite, recipes, beers, unit, action, anchor = true }: {
   tank: FloorTank & { tank: TankView };
   today: string;
   batch: BatchView | null;
   next: BatchView | null;
-  transferTo: BriteChoice[];
+  transferTo: TankChoice[];
   plannedBrite: string | null;
   recipes: RecipeOption[];
   beers: BeerOption[];
+  unit: GravityUnit;
+  action: NextAction | null;
+  /** Carries the #tank-<id> anchor (off for the floor plan's open card). */
+  anchor?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>(null);
   const [toast, show] = useToast();
+  const router = useRouter();
   const t = f.tank;
   const now = f.now;
   const prompt = now?.prompt;
   const late = prompt ? prompt.overdueDays : -1;
   const done = (r: Res) => {
     if ("ok" in r) {
-      show(r.ok);
+      if (r.href) {
+        const href = r.href;
+        show(r.ok, "good", { label: "Fill kegs", onClick: () => router.push(href) });
+      } else show(r.ok);
       setMode(null);
     }
   };
   const nextSoon = !now && next?.status === "PLANNED" && f.next && f.next.start <= addDay(today);
+  const inFermenter = t.kind === "FERMENTER";
+  const primary = action?.kind;
 
   return (
-    <Card id={`tank-${t.id}`} className={cx("flex scroll-mt-24 flex-col p-4", prompt && late >= 3 && "border-bad/40", prompt && late < 3 && "border-warn/40")}>
+    <Card id={anchor ? `tank-${t.id}` : undefined} className={cx("flex scroll-mt-24 flex-col p-4", prompt && late >= 3 && "border-bad/40", prompt && late < 3 && "border-warn/40")}>
       {toast}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-base font-semibold tracking-tight">{t.name}</div>
-          <div className="num text-xs text-muted">{bblText(t.capacityBbl)}</div>
+          <div className="num text-xs text-muted">{bblText(t.capacityBbl)}{t.zone ? ` · ${t.zone}` : ""}</div>
         </div>
-        {prompt ? (
-          <Badge tone={late >= 3 ? "bad" : "warn"}>{prompt.label}</Badge>
+        {action ? (
+          <Badge tone={action.tone}>{action.label}</Badge>
         ) : now ? (
-          <Badge tone="good">{now.stage === "ferment" ? "Fermenting" : "Conditioning"}</Badge>
+          <Badge tone="good">{now.stage === "ferment" ? (batch?.status === "CONDITIONING" ? "Conditioning" : "Fermenting") : "Conditioning"}</Badge>
         ) : (
           <Badge>Empty</Badge>
         )}
@@ -67,17 +79,29 @@ export function TankCard({ tank: f, today, batch, next, transferTo, plannedBrite
             <BeerDot color={batch.color} className="size-3.5" />
             <span className="min-w-0">
               <span className="block truncate text-[0.95rem] font-medium group-hover:underline">{batch.name}</span>
-              <span className="num block text-xs text-muted">{batch.code}{batch.bbl ? ` · ${bblText(batch.bbl)}` : ""}</span>
+              <span className="num block text-xs text-muted">{batch.code}{batch.bbl ? ` · ${bblText(batch.bbl)}` : ""}{batch.splitFrom ? ` · split from ${batch.splitFrom.code}` : ""}</span>
             </span>
           </Link>
           <DayBar day={now.day} of={now.of} />
           <dl className="num grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
             <dt className="text-muted">In since</dt>
             <dd className="text-right">{shortDate(now.start)}</dd>
+            {batch.dryHopOn && now.stage === "ferment" && batch.dryHopOn >= now.start && (
+              <>
+                <dt className="text-muted">Dry hop</dt>
+                <dd className={cx("text-right", batch.dryHopOn === today && "font-medium text-ink")}>{shortDate(batch.dryHopOn)}</dd>
+              </>
+            )}
             <dt className="text-muted">{now.stage === "ferment" ? "Transfer" : "Package"}</dt>
             <dd className={cx("text-right", late > 0 && "font-medium text-warn")}>{shortDate(now.dueOn)}</dd>
             <dt className="text-muted">OG · FG</dt>
-            <dd className="text-right">{gravityText(batch.og)} · {gravityText(batch.fg)}</dd>
+            <dd className="text-right">{gravityIn(batch.og, unit)} · {gravityIn(batch.fg, unit)}</dd>
+            {batch.tapOn && (
+              <>
+                <dt className="text-muted">Release</dt>
+                <dd className="text-right">{shortDate(batch.tapOn)}{batch.tapLocked ? " · locked" : ""}</dd>
+              </>
+            )}
           </dl>
         </div>
       ) : (
@@ -108,10 +132,12 @@ export function TankCard({ tank: f, today, batch, next, transferTo, plannedBrite
           <div className="flex flex-wrap gap-1.5">
             {now && batch ? (
               <>
-                {now.stage === "ferment" && <Button size="sm" variant={prompt?.kind === "transfer" ? "primary" : "secondary"} className="h-10 sm:h-8" onClick={() => setMode("transfer")}>Transfer</Button>}
-                <Button size="sm" variant={prompt?.kind === "package" ? "primary" : "secondary"} className="h-10 sm:h-8" onClick={() => setMode("package")}>Package</Button>
-                <Button size="sm" variant="ghost" className="h-10 sm:h-8" onClick={() => setMode("gravity")}>Gravity</Button>
+                <Button size="sm" variant={primary === "transfer" || primary === "brite" ? "primary" : "secondary"} className="h-10 sm:h-8" onClick={() => setMode("move")}>{inFermenter && batch.status === "CONDITIONING" ? "Transfer to brite" : "Transfer"}</Button>
+                {inFermenter && batch.status === "FERMENTING" && <Button size="sm" variant="secondary" className="h-10 sm:h-8" onClick={() => setMode("condition")}>Mark conditioning</Button>}
+                <Button size="sm" variant={primary === "package" ? "primary" : "secondary"} className="h-10 sm:h-8" onClick={() => setMode("package")}>Package</Button>
+                <Button size="sm" variant={primary === "gravity" ? "primary" : "ghost"} className="h-10 sm:h-8" onClick={() => setMode("gravity")}>Gravity</Button>
                 <Button size="sm" variant="ghost" className="h-10 sm:h-8" onClick={() => setMode("dates")}>Dates</Button>
+                <Link href={`/brewery/batches/${batch.id}#split`} className="inline-flex h-10 items-center rounded-lg px-2.5 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink sm:h-8">Split</Link>
                 <Button size="sm" variant="danger" className="h-10 sm:h-8" onClick={() => setMode("dump")}>Dump</Button>
               </>
             ) : (
@@ -123,11 +149,12 @@ export function TankCard({ tank: f, today, batch, next, transferTo, plannedBrite
           </div>
         ) : (
           <div className="rounded-xl border border-border bg-surface-2/40 p-3">
-            {mode === "brew" && <BrewForm tank={t} today={today} recipes={recipes} beers={beers} onDone={done} onCancel={() => setMode(null)} />}
-            {mode === "brewed" && next && <BrewedForm batch={next} tankId={t.id} today={today} onDone={done} onCancel={() => setMode(null)} />}
-            {mode === "transfer" && batch && <TransferForm batch={batch} from={t} today={today} choices={transferTo} pencilled={plannedBrite} onDone={done} onCancel={() => setMode(null)} />}
-            {mode === "package" && batch && <PackageForm batch={batch} today={today} onDone={done} onCancel={() => setMode(null)} />}
-            {mode === "gravity" && batch && <GravityForm batch={batch} today={today} onDone={done} onCancel={() => setMode(null)} />}
+            {mode === "brew" && <BrewForm tank={t} today={today} unit={unit} recipes={recipes} beers={beers} onDone={done} onCancel={() => setMode(null)} />}
+            {mode === "brewed" && next && <BrewedForm batch={next} tankId={t.id} today={today} unit={unit} onDone={done} onCancel={() => setMode(null)} />}
+            {mode === "move" && batch && <MoveForm batch={batch} from={t} today={today} unit={unit} choices={transferTo} pencilled={plannedBrite} onDone={done} onCancel={() => setMode(null)} />}
+            {mode === "condition" && batch && <ConditionForm batch={batch} tankName={t.name} today={today} unit={unit} onDone={done} onCancel={() => setMode(null)} />}
+            {mode === "package" && batch && <PackageForm batch={batch} today={today} unit={unit} onDone={done} onCancel={() => setMode(null)} />}
+            {mode === "gravity" && batch && <GravityForm batch={batch} today={today} unit={unit} onDone={done} onCancel={() => setMode(null)} />}
             {mode === "dates" && now && <DatesForm stayId={now.stayId} start={now.start} end={now.dueOn} today={today} stage={now.stage} onDone={done} onCancel={() => setMode(null)} />}
             {mode === "dump" && batch && <DumpForm batch={batch} tankName={t.name} today={today} onDone={done} onCancel={() => setMode(null)} />}
           </div>
@@ -164,13 +191,14 @@ function FormFrame({ title, children, error, pending, submit, onSubmit, onCancel
   );
 }
 
-/** Run an action; keep its error in the form, hand success to the card. */
+/** Run an action; keep its error in the form, hand success to the card. A null result (cancelled) does nothing. */
 function useSubmit(onDone: (r: Res) => void) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const go = (fn: () => Promise<Res>) =>
+  const go = (fn: () => Promise<Res | null>) =>
     start(async () => {
       const r = await fn();
+      if (!r) return;
       if ("error" in r) setError(r.error);
       else {
         setError(null);
@@ -180,13 +208,29 @@ function useSubmit(onDone: (r: Res) => void) {
   return { error, pending, go, setError };
 }
 
+/**
+ * Ask the server; when it says the step needs a yes (a tank in use, a tank
+ * too small), ask in our dialog and send it again with `force`.
+ */
+export function useForceable() {
+  const confirm = useConfirm();
+  return async (send: (force: boolean) => Promise<Res>, title: string, confirmLabel: string): Promise<Res | null> => {
+    const r = await send(false);
+    if ("error" in r && r.confirm) {
+      if (!(await confirm({ title, body: r.error.replace(/ [^.]*\?$/, ""), confirmLabel }))) return null;
+      return send(true);
+    }
+    return r;
+  };
+}
+
 interface FormProps {
   today: string;
   onDone: (r: Res) => void;
   onCancel: () => void;
 }
 
-function BrewForm({ tank, today, recipes, beers, onDone, onCancel }: FormProps & { tank: TankView; recipes: RecipeOption[]; beers: BeerOption[] }) {
+function BrewForm({ tank, today, unit, recipes, beers, onDone, onCancel }: FormProps & { tank: TankView; unit: GravityUnit; recipes: RecipeOption[]; beers: BeerOption[] }) {
   const [pick, setPick] = useState("");
   const [on, setOn] = useState(today);
   const [bbl, setBbl] = useState(String(tank.capacityBbl));
@@ -205,13 +249,13 @@ function BrewForm({ tank, today, recipes, beers, onDone, onCancel }: FormProps &
         <Field label="Brew day"><DatePicker value={on} today={today} onChange={(e) => setOn(e.target.value)} aria-label="Brew day" /></Field>
         <Field label="Volume, bbl"><Input value={bbl} onChange={(e) => setBbl(e.target.value)} inputMode="decimal" aria-label="Volume in barrels" /></Field>
         <Field label="Batch code" hint="Blank: next number"><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Auto" aria-label="Batch code" autoComplete="off" /></Field>
-        <Field label="OG" hint="Optional"><Input value={og} onChange={(e) => setOg(e.target.value)} inputMode="decimal" placeholder="1.050" aria-label="Original gravity" /></Field>
+        <Field label="OG" hint="Optional"><Input value={og} onChange={(e) => setOg(e.target.value)} inputMode="decimal" placeholder={gravityExample(unit, 1.05)} aria-label="Original gravity" /></Field>
       </div>
     </FormFrame>
   );
 }
 
-function BrewedForm({ batch, tankId, today, onDone, onCancel }: FormProps & { batch: BatchView; tankId: string }) {
+function BrewedForm({ batch, tankId, today, unit, onDone, onCancel }: FormProps & { batch: BatchView; tankId: string; unit: GravityUnit }) {
   const [on, setOn] = useState(today);
   const [bbl, setBbl] = useState(batch.bbl != null ? String(batch.bbl) : "");
   const [og, setOg] = useState("");
@@ -223,65 +267,130 @@ function BrewedForm({ batch, tankId, today, onDone, onCancel }: FormProps & { ba
       <div className="grid grid-cols-2 gap-2">
         <Field label="Brew day"><DatePicker value={on} today={today} onChange={(e) => setOn(e.target.value)} aria-label="Brew day" /></Field>
         <Field label="Volume, bbl"><Input value={bbl} onChange={(e) => setBbl(e.target.value)} inputMode="decimal" aria-label="Volume in barrels" /></Field>
-        <Field label="OG" hint="Optional" className="col-span-2 sm:col-span-1"><Input value={og} onChange={(e) => setOg(e.target.value)} inputMode="decimal" placeholder="1.050" aria-label="Original gravity" /></Field>
+        <Field label="OG" hint="Optional" className="col-span-2 sm:col-span-1"><Input value={og} onChange={(e) => setOg(e.target.value)} inputMode="decimal" placeholder={gravityExample(unit, 1.05)} aria-label="Original gravity" /></Field>
       </div>
-      <p className="text-xs text-muted">The cost is worked out from today's ingredient prices and kept with the brew.</p>
+      <p className="text-xs text-muted">The cost is worked out from today&apos;s ingredient prices and kept with the brew. For the full brew-day log, use <Link href={`/brewery/brew/new?batch=${batch.id}`} className="underline underline-offset-2">Start brew day</Link>.</p>
     </FormFrame>
   );
 }
 
-function TransferForm({ batch, from, today, choices, pencilled, onDone, onCancel }: FormProps & { batch: BatchView; from: TankView; choices: BriteChoice[]; pencilled: string | null }) {
+const moveTitle = (from: TankKind, to: TankKind | null) =>
+  !to ? "Move to another tank" : from === "FERMENTER" && to === "FERMENTER" ? "FV → FV transfer" : to === "BRITE" && from !== "BRITE" ? "Transfer to brite" : from === "BRITE" && to === "BRITE" ? "BBT → BBT transfer" : "Move to another tank";
+
+/** Every tank it could go into, as large buttons: brites first, then fermenters. A tank in use can be picked; saving asks first. */
+export function TankButtons({ choices, value, onPick, pencilled, bbl, label }: { choices: TankChoice[]; value: string; onPick: (id: string) => void; pencilled?: string | null; bbl: number | null; label: string }) {
+  const groups = [
+    { title: "Brite tanks", list: choices.filter((c) => c.kind === "BRITE") },
+    { title: "Fermenters", list: choices.filter((c) => c.kind === "FERMENTER") },
+    { title: "Other tanks", list: choices.filter((c) => c.kind === "OTHER") },
+  ].filter((g) => g.list.length);
+  return (
+    <div className="space-y-2" role="radiogroup" aria-label={label}>
+      {groups.map((g) => (
+        <div key={g.title}>
+          <div className="mb-1 text-[0.72rem] font-medium text-muted">{g.title}</div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {g.list.map((c) => {
+              const small = bbl != null && bbl > c.capacityBbl;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={value === c.id}
+                  onClick={() => onPick(c.id)}
+                  className={cx("flex min-h-14 flex-col items-start justify-center rounded-xl border px-3 py-2 text-left transition-colors duration-120", value === c.id ? "border-ink bg-surface ring-1 ring-ink" : "border-border-strong bg-surface hover:bg-surface-2")}
+                >
+                  <span className="text-sm font-semibold">{c.name}{c.id === pencilled ? " · planned" : ""}</span>
+                  <span className={cx("text-[11px]", !c.freeNow || small ? "text-warn" : "text-muted")}>
+                    {!c.freeNow ? `In use: ${c.occupant?.code ?? ""} ${c.occupant?.name ?? ""}`.trim() : small ? `Holds ${c.capacityBbl} bbl` : c.bookedFrom ? `Free until ${shortDate(c.bookedFrom)}` : `Free · ${c.capacityBbl} bbl`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MoveForm({ batch, from, today, unit, choices, pencilled, onDone, onCancel }: FormProps & { batch: BatchView; from: TankView; unit: GravityUnit; choices: TankChoice[]; pencilled: string | null }) {
   const usable = choices.filter((c) => c.id !== from.id);
-  const first = usable.find((c) => c.id === pencilled && c.freeNow) ?? usable.find((c) => c.freeNow);
+  const fits = (c: TankChoice) => c.freeNow && !(batch.bbl != null && batch.bbl > c.capacityBbl);
+  const first = usable.find((c) => c.id === pencilled && fits(c)) ?? usable.find((c) => c.kind === "BRITE" && fits(c)) ?? usable.find(fits);
   const [to, setTo] = useState(first?.id ?? "");
   const [on, setOn] = useState(today);
+  const [gravity, setGravity] = useState("");
+  const [note, setNote] = useState("");
   const s = useSubmit(onDone);
+  const forceable = useForceable();
+  const dest = usable.find((c) => c.id === to) ?? null;
+  const intoBrite = dest?.kind === "BRITE" && from.kind !== "BRITE";
   return (
-    <FormFrame title={`Move ${batch.name} out of ${from.name}`} submit="Moved" error={s.error} pending={s.pending} onCancel={onCancel}
-      onSubmit={() => (to ? s.go(() => transferAction({ batchId: batch.id, tankId: to, on })) : s.setError("Pick the tank it went into"))}
+    <FormFrame title={`${moveTitle(from.kind, dest?.kind ?? null)}: ${batch.name}`} submit="Moved" error={s.error} pending={s.pending} onCancel={onCancel}
+      onSubmit={() => {
+        if (!to) return s.setError("Pick the tank it went into");
+        s.go(() => forceable((force) => moveAction({ batchId: batch.id, tankId: to, on, gravity: gravity || null, note: note || null, force }), `Move into ${dest?.name ?? "that tank"}?`, "Move anyway"));
+      }}
     >
-      {usable.length ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {usable.map((c) => {
-            const small = batch.bbl != null && batch.bbl > c.capacityBbl;
-            const off = !c.freeNow || small;
-            return (
-              <button
-                key={c.id}
-                type="button"
-                disabled={off}
-                aria-pressed={to === c.id}
-                onClick={() => setTo(c.id)}
-                className={cx("flex min-h-14 flex-col items-start justify-center rounded-xl border px-3 py-2 text-left transition-colors duration-120", to === c.id ? "border-ink bg-surface ring-1 ring-ink" : "border-border-strong bg-surface hover:bg-surface-2", off && "opacity-50")}
-              >
-                <span className="text-sm font-semibold">{c.name}{c.id === pencilled ? " · planned" : ""}</span>
-                <span className="text-[11px] text-muted">{!c.freeNow ? "In use" : small ? `Holds ${c.capacityBbl} bbl` : c.bookedFrom ? `Free until ${shortDate(c.bookedFrom)}` : "Free"}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="text-sm text-muted">No brite tanks yet. Add one on Setup, or package straight from {from.name}.</p>
-      )}
-      <Field label="Moved on"><DatePicker value={on} today={today} onChange={(e) => setOn(e.target.value)} aria-label="Transfer day" /></Field>
+      {usable.length ? <TankButtons choices={usable} value={to} onPick={setTo} pencilled={pencilled} bbl={batch.bbl} label="Tank it went into" /> : <p className="text-sm text-muted">No other tanks yet. Add them on Setup, or package straight from {from.name}.</p>}
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Moved on"><DatePicker value={on} today={today} onChange={(e) => setOn(e.target.value)} aria-label="Transfer day" /></Field>
+        <Field label={intoBrite ? "FG at transfer" : "Gravity"} hint="Optional"><Input value={gravity} onChange={(e) => setGravity(e.target.value)} inputMode="decimal" placeholder={gravityExample(unit)} aria-label="Gravity at transfer" /></Field>
+      </div>
+      <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional), e.g. clear, tasted clean" aria-label="Note" />
     </FormFrame>
   );
 }
 
-function PackageForm({ batch, today, onDone, onCancel }: FormProps & { batch: BatchView }) {
+function ConditionForm({ batch, tankName, today, unit, onDone, onCancel }: FormProps & { batch: BatchView; tankName: string; unit: GravityUnit }) {
   const [on, setOn] = useState(today);
+  const [gravity, setGravity] = useState("");
+  const [note, setNote] = useState("");
+  const s = useSubmit(onDone);
+  return (
+    <FormFrame title={`${batch.name}: conditioning in ${tankName}`} submit="Mark conditioning" error={s.error} pending={s.pending} onCancel={onCancel}
+      onSubmit={() => s.go(() => conditioningAction({ batchId: batch.id, on, gravity: gravity || null, note: note || null }))}
+    >
+      <p className="text-xs text-muted">Fermenting is done and it stays in {tankName} for now. Its next step shows as transfer to brite.</p>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="From"><DatePicker value={on} today={today} onChange={(e) => setOn(e.target.value)} aria-label="Conditioning from" /></Field>
+        <Field label="Gravity" hint="Optional"><Input value={gravity} onChange={(e) => setGravity(e.target.value)} inputMode="decimal" placeholder={gravityExample(unit)} aria-label="Gravity" /></Field>
+      </div>
+      <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" aria-label="Note" />
+    </FormFrame>
+  );
+}
+
+function PackageForm({ batch, today, unit, onDone, onCancel }: FormProps & { batch: BatchView; unit: GravityUnit }) {
+  const [on, setOn] = useState(today);
+  const [fg, setFg] = useState("");
+  const [half, setHalf] = useState("");
+  const [sixth, setSixth] = useState("");
+  const [cases, setCases] = useState("");
+  const [co2, setCo2] = useState("");
+  const [note, setNote] = useState("");
   const s = useSubmit(onDone);
   return (
     <FormFrame title={`Package ${batch.name}`} submit="Packaged" error={s.error} pending={s.pending} onCancel={onCancel}
-      onSubmit={() => s.go(() => packageAction({ batchId: batch.id, on }))}
+      onSubmit={() => s.go(() => packageAction({ batchId: batch.id, on, fg: fg || null, halfKegs: half, sixthKegs: sixth, cases, co2Vols: co2, note: note || null }))}
     >
-      <Field label="Packaged on"><DatePicker value={on} today={today} onChange={(e) => setOn(e.target.value)} aria-label="Packaging day" /></Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Packaged on"><DatePicker value={on} today={today} onChange={(e) => setOn(e.target.value)} aria-label="Packaging day" /></Field>
+        <Field label="Final FG" hint={batch.fg != null ? `Now ${gravityIn(batch.fg, unit)}` : "Optional"}><Input value={fg} onChange={(e) => setFg(e.target.value)} inputMode="decimal" placeholder={gravityExample(unit)} aria-label="Final gravity" /></Field>
+        <Field label="½ bbl kegs"><Input value={half} onChange={(e) => setHalf(e.target.value)} inputMode="numeric" placeholder="0" aria-label="Half barrel kegs" /></Field>
+        <Field label="⅙ bbl kegs"><Input value={sixth} onChange={(e) => setSixth(e.target.value)} inputMode="numeric" placeholder="0" aria-label="Sixth barrel kegs" /></Field>
+        <Field label="Can cases"><Input value={cases} onChange={(e) => setCases(e.target.value)} inputMode="numeric" placeholder="0" aria-label="Can cases" /></Field>
+        <Field label="CO₂, vols"><Input value={co2} onChange={(e) => setCo2(e.target.value)} inputMode="decimal" placeholder="2.5" aria-label="Carbonation in volumes" /></Field>
+      </div>
+      <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Notes (optional)" aria-label="Packaging notes" />
       <p className="text-xs text-muted">This empties the tank and makes keg batch <span className="num font-medium text-ink">{batch.kegBatchCode ?? batch.code}</span>, so the kegs you fill can be marked as this brew.</p>
     </FormFrame>
   );
 }
 
-function GravityForm({ batch, today, onDone, onCancel }: FormProps & { batch: BatchView }) {
+function GravityForm({ batch, today, unit, onDone, onCancel }: FormProps & { batch: BatchView; unit: GravityUnit }) {
   const [kind, setKind] = useState<"og" | "fg" | "reading">(batch.og == null ? "og" : "reading");
   const [sg, setSg] = useState("");
   const [on, setOn] = useState(today);
@@ -300,7 +409,7 @@ function GravityForm({ batch, today, onDone, onCancel }: FormProps & { batch: Ba
         ))}
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Gravity"><Input value={sg} onChange={(e) => setSg(e.target.value)} inputMode="decimal" placeholder="1.012" aria-label="Specific gravity" autoFocus /></Field>
+        <Field label="Gravity"><Input value={sg} onChange={(e) => setSg(e.target.value)} inputMode="decimal" placeholder={gravityExample(unit)} aria-label="Gravity" autoFocus /></Field>
         <Field label="Taken on"><DatePicker value={on} today={today} onChange={(e) => setOn(e.target.value)} aria-label="Reading day" /></Field>
       </div>
       <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional), e.g. 66°F, tasted clean" aria-label="Note" />

@@ -13,6 +13,8 @@ export async function middleware(req: NextRequest) {
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next();
   // A client's private-event quote: public only with a well-formed random token (the page looks it up).
   if (pathname.startsWith("/quote/")) return isQuoteToken(pathname.slice("/quote/".length)) ? NextResponse.next() : new NextResponse("Not found", { status: 404 });
+  // The brewery calendar feed for calendar apps (they can't sign in): public only with a well-formed token; the route checks it's the current one.
+  if (pathname.startsWith("/api/brewery/calendar/")) return /^\/api\/brewery\/calendar\/[A-Za-z0-9_-]{20,64}(\.ics)?$/i.test(pathname) ? NextResponse.next() : new NextResponse("Not found", { status: 404 });
   // The tap list TV board: public only with a signed display token in the URL (the page checks it's the current one).
   if (pathname.startsWith("/display/taps/")) {
     const ok = await verifyDisplayToken(tokenFromPath(pathname), process.env.SESSION_SECRET ?? "");

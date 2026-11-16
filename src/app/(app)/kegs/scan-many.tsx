@@ -35,11 +35,11 @@ interface Row {
   result?: ScanManyResult;
 }
 
-export function ScanMany({ ctx, role, switcher }: { ctx: PanelContext; role: "MANAGER" | "STAFF"; switcher: React.ReactNode }) {
-  const [mode, setMode] = useState<Mode | null>(null);
+export function ScanMany({ ctx, role, switcher, fill }: { ctx: PanelContext; role: "MANAGER" | "STAFF"; switcher: React.ReactNode; fill?: { beerId: string; batchCode: string } }) {
+  const [mode, setMode] = useState<Mode | null>(fill ? "FILL" : null);
   const [running, setRunning] = useState(false);
-  const [beerId, setBeerId] = useState("");
-  const [batchCode, setBatchCode] = useState("");
+  const [beerId, setBeerId] = useState(fill?.beerId ?? "");
+  const [batchCode, setBatchCode] = useState(fill?.batchCode ?? "");
   const [area, setArea] = useState(ctx.coldArea);
   const [accountId, setAccountId] = useState("");
   const [sizeId, setSizeId] = useState("");

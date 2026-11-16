@@ -1,11 +1,9 @@
 import { Card, Dot, EmptyState, LinkButton, PageHeader, Section } from "@/components/ui";
-import type { TankKind } from "@/domain/tankPlan";
 import { requireUser } from "@/server/auth";
 import { tanksFloor } from "@/server/services/brewery";
 import { ChevronRight, Plus } from "lucide-react";
 import Link from "next/link";
-import { KIND_PLURAL } from "./bits";
-import { TankCard } from "./floor-client";
+import { TanksView } from "./tanks-view";
 
 export const metadata = { title: "Brewery" };
 
@@ -18,7 +16,7 @@ export default async function Page() {
     <PageHeader
       help="brewery.tanks"
       title="Tanks"
-      description="What needs doing in the cellar, then what is in each tank, how far along it is and what goes in next."
+      description="What needs doing in the cellar, then every tank as a list or where it stands on the floor: what's in it, how far along, and what's next."
       actions={f.tanks.length ? <LinkButton href="/brewery/schedule#plan" variant="primary"><Plus className="size-4" />Plan a brew</LinkButton> : undefined}
     />
   );
@@ -27,7 +25,7 @@ export default async function Page() {
       <>
         {header}
         <EmptyState title="No tanks yet" action={<LinkButton href="/brewery/setup" variant="primary">Add your tanks</LinkButton>}>
-          Add your fermenters and brite tanks with their sizes, and this page shows what is in each one and what needs doing.
+          Add your fermenters and brite tanks with their sizes (or start with Brew Manager&apos;s 11), and this page shows what is in each one and what needs doing.
         </EmptyState>
       </>
     );
@@ -44,7 +42,6 @@ export default async function Page() {
     const tankId = i.tankId ?? (i.batchId ? tankOfBatch.get(i.batchId) : undefined);
     return tankId ? `#tank-${tankId}` : i.batchId ? `/brewery/batches/${i.batchId}` : "/brewery/schedule";
   };
-  const groups = (["FERMENTER", "BRITE", "OTHER"] as TankKind[]).map((k) => ({ kind: k, tanks: f.tanks.filter((t) => t.tank.kind === k) })).filter((g) => g.tanks.length);
   const s = f.stats;
 
   return (
@@ -75,25 +72,7 @@ export default async function Page() {
         {[s.fermenting ? `${s.fermenting} fermenting` : null, s.conditioning ? `${s.conditioning} conditioning` : null, s.bblInTanks ? `${Number(s.bblInTanks.toFixed(1))} bbl in tanks` : null, `${plural(s.plannedNext14, "brew")} planned in the next two weeks`].filter(Boolean).join(" · ")}
       </p>
 
-      {groups.map((g) => (
-        <Section key={g.kind} title={KIND_PLURAL[g.kind]}>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {g.tanks.map((t) => (
-              <TankCard
-                key={t.tank.id}
-                tank={t}
-                today={f.today}
-                batch={t.now ? f.batches[t.now.batchId] : null}
-                next={t.next ? f.batches[t.next.batchId] : null}
-                transferTo={f.transferTo}
-                plannedBrite={t.now ? f.plannedBrite[t.now.batchId] ?? null : null}
-                recipes={f.recipes}
-                beers={f.beers}
-              />
-            ))}
-          </div>
-        </Section>
-      ))}
+      <TanksView f={f} />
     </>
   );
 }

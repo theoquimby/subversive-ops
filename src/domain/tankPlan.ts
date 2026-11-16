@@ -18,8 +18,9 @@
  * `end` is the planned day out; it becomes the actual day when it moves on.
  */
 
-import { addDays, daysBetween, type ISODate } from "./dates";
+import { addDays, daysBetween, weekday, type ISODate } from "./dates";
 import { nagsAbout } from "./beerStanding";
+import { packageAfter, type SnapRules } from "./brewProfiles";
 
 export type TankKind = "FERMENTER" | "BRITE" | "OTHER";
 export type BrewStatus = "PLANNED" | "FERMENTING" | "CONDITIONING" | "PACKAGED" | "DUMPED";
@@ -46,6 +47,8 @@ export interface PlanBatch {
   fermentDays: number;
   conditionDays: number;
   plannedOn?: ISODate | null;
+  /** Planned dry-hop day (shows in Needs doing on the day). */
+  dryHopOn?: ISODate | null;
 }
 
 export interface PlanStay {
@@ -289,6 +292,8 @@ export interface PlanBrewInput {
   maxWaitDays?: number;
   /** How far ahead to look for an earliest date when nothing fits. */
   searchDays?: number;
+  /** Brewery weekdays: a brew waiting for a brite moves on the next transfer day and is packaged on a packaging day. */
+  snap?: SnapRules;
 }
 
 export interface TankSlot {
@@ -316,9 +321,12 @@ function fitOn(i: PlanBrewInput, brewOn: ISODate, fermenters: PlanTank[], brites
     return { ok: true, fermenter: slot(f, brewOn, end), brite: null, packageOn: end, slipDays: 0, notes };
   }
   const maxWait = i.maxWaitDays ?? 14;
+  const days = i.snap?.transferDays ?? [];
   for (let slip = 0; slip <= maxWait; slip++) {
     const transfer = addDays(brewOn, fd + slip);
-    const out = addDays(transfer, cd);
+    // Waiting for a brite: only on a transfer day, then packaged on a packaging day.
+    if (slip > 0 && days.length && !days.includes(weekday(transfer))) continue;
+    const out = slip > 0 && i.snap ? packageAfter(transfer, addDays(transfer, cd), i.snap.packageDays) : addDays(transfer, cd);
     for (const f of fermenters) {
       if (!freeIn(i.busy, f.id, brewOn, transfer)) continue;
       const b = brites.find((t) => freeIn(i.busy, t.id, transfer, out));
@@ -432,7 +440,7 @@ export function suggestBrews(i: { today: ISODate; beers: SuggestBeer[]; defaults
 
 export interface TodoItem {
   key: string;
-  kind: "transfer" | "package" | "clash" | "brew";
+  kind: "transfer" | "package" | "dryhop" | "clash" | "brew";
   title: string;
   detail: string;
   tone: "bad" | "warn" | "neutral";
@@ -470,6 +478,23 @@ export function needsDoing(i: { floor: FloorTank[]; clashes: Clash[]; batches: P
     });
   }
   due.sort((a, b) => a.on.localeCompare(b.on));
+  // Dry hops planned for today (or yesterday and not yet past) on brews in a tank.
+  for (const f of i.floor) {
+    const b = f.now ? batchById.get(f.now.batchId) : undefined;
+    if (!f.now || !b?.dryHopOn || f.now.stage !== "ferment") continue;
+    const late = daysBetween(b.dryHopOn, i.today);
+    if (late < 0 || late > 1) continue;
+    due.push({
+      key: `dryhop.${b.id}`,
+      kind: "dryhop",
+      title: `${f.tank.name}: dry hop ${b.name ?? b.code}`,
+      detail: `${late === 0 ? "Today" : "Was yesterday"} · day ${f.now.day}`,
+      tone: late === 0 ? "neutral" : "warn",
+      on: b.dryHopOn,
+      tankId: f.tank.id,
+      batchId: b.id,
+    });
+  }
   const clashes: TodoItem[] = i.clashes.map((c) => ({
     key: `clash.${c.a}.${c.b}`,
     kind: "clash",
@@ -498,6 +523,121 @@ export function needsDoing(i: { floor: FloorTank[]; clashes: Clash[]; batches: P
       };
     });
   return [...due, ...clashes, ...brews];
+}
+
+// ---- The floor plan -----------------------------------------------------------------------------
+
+export interface NextAction {
+  kind: "package" | "brite" | "transfer" | "dryhop" | "gravity";
+  label: string;
+  tone: "bad" | "warn" | "neutral";
+}
+
+/** Days since the last gravity reading before a fermenting brew asks for another. */
+export const GRAVITY_EVERY_DAYS = 3;
+
+/**
+ * The one thing to do next with the brew in a tank, for the floor plan.
+ * Brew Manager's rules on top of ours: a brite is always heading for
+ * packaging; a brew marked conditioning in its fermenter goes to a brite;
+ * fermenting days up → "Check: transfer?"; a dry hop on its day (or the day
+ * after); from day 7, a gravity check unless there's an FG or a reading in
+ * the last three days.
+ */
+export function nextAction(i: { now: TankNow; status: BrewStatus; today: ISODate; dryHopOn: ISODate | null; lastReadingOn: ISODate | null; fg: number | null }): NextAction | null {
+  const p = i.now.prompt;
+  const dueTone = p ? (p.overdueDays >= OVERDUE_RED_DAYS ? "bad" : "warn") : "neutral";
+  if (i.now.stage === "condition") return { kind: "package", label: "Package", tone: dueTone };
+  if (i.status === "CONDITIONING") return { kind: "brite", label: "Transfer to brite", tone: p ? dueTone : "neutral" };
+  if (p) return { kind: "transfer", label: "Check: transfer?", tone: dueTone };
+  if (i.dryHopOn) {
+    const late = daysBetween(i.dryHopOn, i.today);
+    if (late >= 0 && late <= 1) return { kind: "dryhop", label: "Dry hop", tone: late === 0 ? "neutral" : "warn" };
+  }
+  if (i.now.day >= 7 && i.fg == null && (!i.lastReadingOn || daysBetween(i.lastReadingOn, i.today) >= GRAVITY_EVERY_DAYS)) return { kind: "gravity", label: "Grav check", tone: "neutral" };
+  return null;
+}
+
+export interface LayoutTank {
+  id: string;
+  name: string;
+  zone: string | null;
+  layoutRow: number | null;
+  layoutCol: number | null;
+  sort: number;
+}
+
+export interface FloorZone {
+  /** null: tanks not placed in a zone yet. */
+  zone: string | null;
+  rows: number;
+  cols: number;
+  cells: { tankId: string; row: number; col: number }[];
+}
+
+/**
+ * Where each tank sits on the floor plan: grouped by zone (in tank order,
+ * tanks with no zone last), each at its row and column. A tank with no place,
+ * or on a cell another tank already holds, goes on a new row after the placed
+ * ones, left to right.
+ */
+export function floorLayout(tanks: LayoutTank[]): FloorZone[] {
+  const ordered = [...tanks].sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const zones = new Map<string | null, LayoutTank[]>();
+  for (const t of ordered) {
+    const z = t.zone?.trim() || null;
+    zones.set(z, [...(zones.get(z) ?? []), t]);
+  }
+  const keys = [...zones.keys()].sort((a, b) => (a === null ? 1 : b === null ? -1 : 0));
+  return keys.map((zone) => {
+    const list = zones.get(zone)!;
+    const taken = new Set<string>();
+    const cells: FloorZone["cells"] = [];
+    const loose: LayoutTank[] = [];
+    for (const t of list) {
+      const r = t.layoutRow, c = t.layoutCol;
+      if (r != null && c != null && r >= 1 && c >= 1 && !taken.has(`${r}.${c}`)) {
+        taken.add(`${r}.${c}`);
+        cells.push({ tankId: t.id, row: r, col: c });
+      } else loose.push(t);
+    }
+    let row = cells.reduce((m, x) => Math.max(m, x.row), 0) + 1;
+    let col = 1;
+    const width = Math.max(cells.reduce((m, x) => Math.max(m, x.col), 0), 5);
+    for (const t of loose) {
+      cells.push({ tankId: t.id, row, col });
+      if (++col > width) {
+        col = 1;
+        row++;
+      }
+    }
+    return { zone, rows: cells.reduce((m, x) => Math.max(m, x.row), 1), cols: cells.reduce((m, x) => Math.max(m, x.col), 1), cells };
+  });
+}
+
+/** Brew Manager's tanks and where they stand: Setup's quick start. */
+export const STARTER_TANKS: { name: string; kind: TankKind; capacityBbl: number; zone: string; layoutRow: number; layoutCol: number; sort: number }[] = [
+  { name: "BBT1", kind: "BRITE", capacityBbl: 7, zone: "Back wall", layoutRow: 1, layoutCol: 1, sort: 9 },
+  { name: "BBT2", kind: "BRITE", capacityBbl: 7, zone: "Back wall", layoutRow: 1, layoutCol: 2, sort: 10 },
+  { name: "FV1", kind: "FERMENTER", capacityBbl: 9, zone: "Back wall", layoutRow: 1, layoutCol: 3, sort: 1 },
+  { name: "FV2", kind: "FERMENTER", capacityBbl: 9, zone: "Back wall", layoutRow: 1, layoutCol: 4, sort: 2 },
+  { name: "FV3", kind: "FERMENTER", capacityBbl: 9, zone: "Back wall", layoutRow: 1, layoutCol: 5, sort: 3 },
+  { name: "FV4", kind: "FERMENTER", capacityBbl: 9, zone: "Back wall", layoutRow: 2, layoutCol: 5, sort: 4 },
+  { name: "FV5", kind: "FERMENTER", capacityBbl: 9, zone: "Back wall", layoutRow: 3, layoutCol: 5, sort: 5 },
+  { name: "FV6", kind: "FERMENTER", capacityBbl: 5, zone: "Front", layoutRow: 1, layoutCol: 1, sort: 6 },
+  { name: "BBT3", kind: "BRITE", capacityBbl: 10, zone: "Front", layoutRow: 1, layoutCol: 2, sort: 11 },
+  { name: "FV7", kind: "FERMENTER", capacityBbl: 4, zone: "Separate room", layoutRow: 1, layoutCol: 1, sort: 7 },
+  { name: "FV8", kind: "FERMENTER", capacityBbl: 4, zone: "Separate room", layoutRow: 1, layoutCol: 2, sort: 8 },
+];
+
+/** A split batch's code: the parent's code with the next free letter, "26-014B", "26-014C", … */
+export function splitCode(parent: string, existing: string[]): string {
+  const used = new Set(existing);
+  for (let c = 66; c <= 90; c++) {
+    const code = `${parent}${String.fromCharCode(c)}`;
+    if (!used.has(code)) return code;
+  }
+  return `${parent}-${existing.length + 2}`;
 }
 
 // ---- Numbers ------------------------------------------------------------------------------------

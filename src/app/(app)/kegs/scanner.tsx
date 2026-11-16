@@ -15,8 +15,8 @@ import { ScanMany } from "./scan-many";
 type Card_ = Extract<Awaited<ReturnType<typeof lookupKeg>>, { card: unknown }>["card"];
 
 /** Scan one keg and act on it, or switch to scanning a whole stack the same way. */
-export function Scanner({ ctx, role }: { ctx: PanelContext; role: "MANAGER" | "STAFF" }) {
-  const [many, setMany] = useState(false);
+export function Scanner({ ctx, role, fill }: { ctx: PanelContext; role: "MANAGER" | "STAFF"; fill?: { beerId: string; batchCode: string } }) {
+  const [many, setMany] = useState(!!fill);
   const switcher = (
     <div role="tablist" aria-label="How to scan" className="grid grid-cols-2 gap-1 rounded-2xl bg-surface-2 p-1" data-tour="kegs.scan-mode">
       {[{ on: !many, label: "One keg", set: false }, { on: many, label: "Many kegs", set: true }].map((t) => (
@@ -26,7 +26,7 @@ export function Scanner({ ctx, role }: { ctx: PanelContext; role: "MANAGER" | "S
       ))}
     </div>
   );
-  return <div className="mx-auto max-w-md">{many ? <ScanMany ctx={ctx} role={role} switcher={switcher} /> : <ScanOne ctx={ctx} role={role} switcher={switcher} />}</div>;
+  return <div className="mx-auto max-w-md">{many ? <ScanMany ctx={ctx} role={role} switcher={switcher} fill={fill} /> : <ScanOne ctx={ctx} role={role} switcher={switcher} />}</div>;
 }
 
 /** Full-width camera that reads keg stickers, with typing the code as a fallback. */

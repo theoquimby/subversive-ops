@@ -2410,6 +2410,7 @@ model AppFeedback {
 
   @@index([status, createdAt])
   @@index([userId])
+}
 
 /// Brewing ingredient stock, kept apart from kitchen counts: counts, deliveries, what each brew used, and fixes.
 /// On hand = the latest count plus everything received, less everything used, since that count.

@@ -1,4 +1,5 @@
 import { Badge, cx, type Tone } from "@/components/ui";
+import { formatGravity, type GravityUnit } from "@/domain/gravity";
 import { beerColor } from "@/domain/kegs";
 import type { BrewStatus, TankKind } from "@/domain/tankPlan";
 
@@ -52,5 +53,9 @@ export function DayBar({ day, of, redAfter = 3, label }: { day: number; of: numb
 }
 
 export const gravityText = (g: number | null) => (g == null ? "—" : g.toFixed(3));
+/** Gravity in the brewery's unit ("12.5 °P" or "1.050"); "—" when unknown. */
+export const gravityIn = (g: number | null, unit: GravityUnit) => (g == null ? "—" : formatGravity(g, unit));
+/** An example in the unit, for placeholders. */
+export const gravityExample = (unit: GravityUnit, sg = 1.012) => formatGravity(sg, unit).replace(/\s*°P$/, "");
 export const bblText = (n: number | null) => (n == null ? "—" : `${Number(n.toFixed(2))} bbl`);
 export const abvText = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}%`);
