@@ -1,68 +1,46 @@
 "use client";
 
-import { Button, Card, Input } from "@/components/ui";
+import { Button, Card, cx, Input } from "@/components/ui";
+import { KEG_SIZE_LIST } from "@/domain/kegs";
 import type { PanelContext } from "@/server/services/kegs";
-import { Camera, CameraOff, CloudOff, Keyboard, ScanLine } from "lucide-react";
+import { CloudOff, Keyboard, ScanLine } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { lookupKeg } from "./actions";
+import { adoptKeg, lookupKeg } from "./actions";
+import { buzz, CameraFrame, useKegCamera } from "./camera";
 import { KegPanel } from "./keg-panel";
 import { flushQueue, readQueue } from "./queue";
+import { ScanMany } from "./scan-many";
 
 type Card_ = Extract<Awaited<ReturnType<typeof lookupKeg>>, { card: unknown }>["card"];
 
-interface Detector {
-  detect(source: CanvasImageSource): Promise<{ rawValue: string }[]>;
-}
-
-/** BarcodeDetector where the browser has it (Android Chrome, recent Safari); jsQR on a canvas everywhere else. */
-async function makeDetector(): Promise<(video: HTMLVideoElement, canvas: HTMLCanvasElement) => Promise<string | null>> {
-  const BD = (globalThis as unknown as { BarcodeDetector?: { new (o: { formats: string[] }): Detector; getSupportedFormats?: () => Promise<string[]> } }).BarcodeDetector;
-  if (BD) {
-    try {
-      const formats = (await BD.getSupportedFormats?.()) ?? ["qr_code"];
-      if (formats.includes("qr_code")) {
-        const d = new BD({ formats: ["qr_code"] });
-        return async (video) => (await d.detect(video))[0]?.rawValue ?? null;
-      }
-    } catch {
-      // fall through to jsQR
-    }
-  }
-  const jsQR = (await import("jsqr")).default;
-  return async (video, canvas) => {
-    const w = video.videoWidth, h = video.videoHeight;
-    if (!w || !h) return null;
-    const scale = Math.min(1, 720 / Math.max(w, h));
-    canvas.width = Math.round(w * scale);
-    canvas.height = Math.round(h * scale);
-    const g = canvas.getContext("2d", { willReadFrequently: true });
-    if (!g) return null;
-    g.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const img = g.getImageData(0, 0, canvas.width, canvas.height);
-    return jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" })?.data ?? null;
-  };
+/** Scan one keg and act on it, or switch to scanning a whole stack the same way. */
+export function Scanner({ ctx, role }: { ctx: PanelContext; role: "MANAGER" | "STAFF" }) {
+  const [many, setMany] = useState(false);
+  const switcher = (
+    <div role="tablist" aria-label="How to scan" className="grid grid-cols-2 gap-1 rounded-2xl bg-surface-2 p-1" data-tour="kegs.scan-mode">
+      {[{ on: !many, label: "One keg", set: false }, { on: many, label: "Many kegs", set: true }].map((t) => (
+        <button key={t.label} role="tab" aria-selected={t.on} onClick={() => setMany(t.set)} className={cx("h-10 rounded-xl text-sm font-medium transition-colors duration-120", t.on ? "bg-surface text-ink shadow-sm" : "text-ink-2")}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+  return <div className="mx-auto max-w-md">{many ? <ScanMany ctx={ctx} role={role} switcher={switcher} /> : <ScanOne ctx={ctx} role={role} switcher={switcher} />}</div>;
 }
 
 /** Full-width camera that reads keg stickers, with typing the code as a fallback. */
-export function Scanner({ ctx, role }: { ctx: PanelContext; role: "MANAGER" | "STAFF" }) {
-  const video = useRef<HTMLVideoElement>(null);
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const stream = useRef<MediaStream | null>(null);
-  const [camera, setCamera] = useState<"starting" | "on" | "off" | "denied" | "none">("starting");
+function ScanOne({ ctx, role, switcher }: { ctx: PanelContext; role: "MANAGER" | "STAFF"; switcher: React.ReactNode }) {
   const [manual, setManual] = useState(false);
   const [code, setCode] = useState("");
   const [card, setCard] = useState<Card_ | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** A sticker the app doesn't know, waiting for "add it" or "scan again". */
+  const [unknown, setUnknown] = useState<string | null>(null);
+  const [sizeId, setSizeId] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const busy = useRef(false);
-  const lastText = useRef<{ t: string; at: number } | null>(null);
   const queued = useQueueCount();
-
-  const stop = useCallback(() => {
-    stream.current?.getTracks().forEach((t) => t.stop());
-    stream.current = null;
-  }, []);
 
   const lookup = useCallback((text: string) => {
     if (busy.current) return;
@@ -72,12 +50,11 @@ export function Scanner({ ctx, role }: { ctx: PanelContext; role: "MANAGER" | "S
       try {
         const r = await lookupKeg(text);
         if ("error" in r) {
-          setError(r.error);
+          if (r.canAdd) { buzz(); setUnknown(text); setSizeId(null); } else setError(r.error);
           return;
         }
-        try { if ((navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive) navigator.vibrate?.(40); } catch { /* not supported */ }
-        stop();
-        setCamera("off");
+        buzz();
+        cam.off();
         setCard(r.card);
       } catch {
         setError("No signal. Try again in a moment, or move closer to the door.");
@@ -85,110 +62,79 @@ export function Scanner({ ctx, role }: { ctx: PanelContext; role: "MANAGER" | "S
         busy.current = false;
       }
     });
-  }, [stop]);
-
-  const startCamera = useCallback(async () => {
-    setError(null);
-    if (!navigator.mediaDevices?.getUserMedia) { setCamera("none"); setManual(true); return; }
-    setCamera("starting");
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-      stream.current = s;
-      const v = video.current!;
-      v.srcObject = s;
-      await v.play().catch(() => undefined);
-      setCamera("on");
-    } catch (e) {
-      setCamera((e as Error).name === "NotAllowedError" ? "denied" : "none");
-      setManual(true);
-    }
+    // cam is stable enough for this: its methods only touch refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const cam = useKegCamera(lookup, () => busy.current || unknown !== null);
   useEffect(() => {
-    void startCamera();
-    return stop;
-  }, [startCamera, stop]);
-
-  // Read frames ~8 times a second while the camera is on.
-  useEffect(() => {
-    if (camera !== "on") return;
-    let alive = true;
-    let detect: Awaited<ReturnType<typeof makeDetector>> | null = null;
-    const tick = async () => {
-      if (!alive) return;
-      try {
-        detect ??= await makeDetector();
-        if (video.current && canvas.current && !busy.current) {
-          const text = await detect(video.current, canvas.current);
-          if (text && !(lastText.current && lastText.current.t === text && Date.now() - lastText.current.at < 2500)) {
-            lastText.current = { t: text, at: Date.now() };
-            lookup(text);
-          }
-        }
-      } catch {
-        // a bad frame; keep going
-      }
-      if (alive) setTimeout(tick, 120);
-    };
-    void tick();
-    return () => { alive = false; };
-  }, [camera, lookup]);
+    if (cam.state === "denied" || cam.state === "none") setManual(true);
+  }, [cam.state]);
 
   const again = () => {
     setCard(null);
     setCode("");
-    lastText.current = null;
-    void startCamera();
+    setUnknown(null);
+    setError(null);
+    cam.forget();
+    void cam.start();
   };
 
-  if (card) {
-    return (
-      <div className="mx-auto max-w-md">
-        <KegPanel card={card} ctx={ctx} role={role} onDone={again} />
-      </div>
-    );
-  }
+  const add = () =>
+    start(async () => {
+      if (!unknown || !sizeId) return;
+      setError(null);
+      try {
+        const r = await adoptKeg(unknown, sizeId);
+        if ("error" in r) { setError(r.error); return; }
+        cam.off();
+        setUnknown(null);
+        setCard(r.card);
+      } catch {
+        setError("No signal. Try again in a moment.");
+      }
+    });
+
+  if (card) return <KegPanel card={card} ctx={ctx} role={role} onDone={again} />;
 
   return (
-    <div className="mx-auto max-w-md space-y-4">
+    <div className="space-y-4">
+      {switcher}
       {queued > 0 && <QueueNote count={queued} />}
-      <div data-tour="kegs.camera" className="relative aspect-[3/4] max-h-[62dvh] w-full overflow-hidden rounded-3xl bg-black sm:aspect-square">
-        <video ref={video} playsInline muted className="absolute inset-0 size-full object-cover" aria-label="Camera" />
-        <canvas ref={canvas} className="hidden" />
-        {camera === "on" && (
-          <div aria-hidden className="pointer-events-none absolute inset-0 grid place-items-center">
-            <div className="relative size-[62%] max-w-72 rounded-3xl border-[3px] border-white/85 shadow-[0_0_0_9999px_rgb(0_0_0/0.35)]">
-              <div className="absolute inset-x-4 top-1/2 h-0.5 animate-pulse bg-white/70" />
-            </div>
-          </div>
-        )}
-        <div className="absolute inset-x-0 bottom-0 p-4 text-center text-sm font-medium text-white/90">
-          {pending ? "Looking it up…" : camera === "on" ? "Point at the keg's sticker" : camera === "starting" ? "Starting the camera…" : camera === "denied" ? "Camera is blocked for this site" : camera === "none" ? "No camera here" : ""}
-        </div>
-        {(camera === "denied" || camera === "none" || camera === "off") && (
-          <div className="absolute inset-0 grid place-items-center p-6 text-center text-white">
-            <div>
-              <CameraOff className="mx-auto size-8 opacity-70" />
-              <p className="mt-2 text-sm opacity-90">{camera === "denied" ? "Allow the camera in your browser's settings for this site, or type the code below." : "Type the code printed under the QR code."}</p>
-              {camera !== "none" && <Button className="mt-3" onClick={() => void startCamera()}><Camera className="size-4" /> Try the camera</Button>}
-            </div>
-          </div>
-        )}
-      </div>
+      <CameraFrame cam={cam} status={pending ? "Looking it up…" : unknown ? "Sticker read" : undefined} />
 
       {error && <p role="alert" className="rounded-xl bg-bad-bg px-4 py-3 text-sm font-medium text-bad">{error}</p>}
 
-      {manual ? (
+      {unknown && (
+        <Card className="p-4" role="status">
+          <div className="font-semibold">This sticker isn&apos;t in the app yet</div>
+          <p className="mt-1 text-sm text-ink-2">Add it as a new keg. It keeps this sticker, and gets one of our codes too for when the sticker wears out.</p>
+          <div className="mt-3 text-[0.8rem] font-medium text-ink-2">What size is it?</div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {KEG_SIZE_LIST.map((s) => (
+              <button key={s.id} type="button" aria-pressed={sizeId === s.id} onClick={() => setSizeId(s.id)} className={cx("h-10 rounded-full border px-3 text-sm font-medium", sizeId === s.id ? "border-ink bg-ink text-bg" : "border-border bg-surface text-ink-2")}>
+                {s.short}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <Button variant="secondary" size="lg" className="h-12" onClick={again} disabled={pending}>Not a keg</Button>
+            <Button variant="primary" size="lg" className="h-12" onClick={add} disabled={pending || !sizeId}>{pending ? "Adding…" : "Add this keg"}</Button>
+          </div>
+        </Card>
+      )}
+
+      {!unknown && (manual ? (
         <Card className="p-4" data-tour="kegs.manual">
           <form onSubmit={(e) => { e.preventDefault(); if (code.trim()) lookup(code); }} className="flex gap-2">
             <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Code, e.g. 7Q3-MX" aria-label="Keg code" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} className="num h-12 text-lg tracking-wider sm:h-12" autoFocus />
             <Button type="submit" variant="primary" size="lg" className="h-12" disabled={pending || !code.trim()}>Find</Button>
           </form>
-          <p className="mt-2 text-xs text-muted">Old stickers from the previous keg app work too — type what&apos;s printed on them.</p>
+          <p className="mt-2 text-xs text-muted">Old stickers from the previous keg app work too. Scan them, or type what&apos;s printed on them.</p>
         </Card>
       ) : (
         <Button variant="secondary" size="lg" className="h-12 w-full" onClick={() => setManual(true)} data-tour="kegs.type"><Keyboard className="size-4" /> Type the code instead</Button>
-      )}
+      ))}
 
       <div className="grid grid-cols-2 gap-2">
         <Link href="/kegs" className="flex h-12 items-center justify-center gap-2 rounded-xl border border-border bg-surface text-sm font-medium active:bg-surface-2"><ScanLine className="size-4 text-area" /> Taps</Link>

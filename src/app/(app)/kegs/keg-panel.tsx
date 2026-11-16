@@ -96,6 +96,7 @@ export function KegPanel({ card: initial, ctx, role, onDone, compact }: { card: 
               {displayCode(card.code)} · {size.short}
               {card.legacyCode ? ` · old sticker ${card.legacyCode}` : ""}
               {card.owner !== "OURS" ? ` · ${OWNER_LABEL[card.owner]}` : ""}
+              {card.fills > 0 ? ` · filled ${card.fills} time${card.fills === 1 ? "" : "s"}` : ""}
             </div>
           </div>
         </div>

@@ -69,6 +69,39 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.12 (keg scanning, pop-open menu) ----
+  {
+    id: "2026-11-16.scan-many",
+    date: "2026-11-16",
+    title: "Scan a whole stack of kegs",
+    line: "Say once what's happening (empty, cleaned, filled, out), then scan each keg. One scan, one keg done.",
+    icon: "keg",
+    area: "floor",
+    href: "/kegs/scan",
+    help: "kegs.scanMany",
+    audience: "all",
+  },
+  {
+    id: "2026-11-16.old-stickers",
+    date: "2026-11-16",
+    title: "Your old keg stickers scan",
+    line: "Kegs keep the stickers they have. One the app hasn't seen can be added on the spot.",
+    icon: "keg",
+    area: "floor",
+    href: "/kegs/scan",
+    help: "kegs.oldStickers",
+    audience: "all",
+  },
+  {
+    id: "2026-11-16.nav-sublists",
+    date: "2026-11-16",
+    title: "Pages inside Kegs and Website",
+    line: "The menu pops open to list every page in Kegs and Website, so nothing is buried.",
+    icon: "areas",
+    area: "floor",
+    href: "/kegs",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.11 (keg fleet) ----
   {
     id: "2026-11-16.keg-fleet",

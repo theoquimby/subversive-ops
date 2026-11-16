@@ -24,6 +24,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.12",
+    date: "2026-11-16",
+    title: "Scan many kegs, keep your stickers",
+    summary: "Scan a whole stack of kegs in one go, keep using the stickers already on your kegs, and find every keg page from the menu.",
+    entries: ["2026-11-16.scan-many", "2026-11-16.old-stickers", "2026-11-16.nav-sublists"],
+    fixed: [
+      "Scanning a sticker from Distribrewtion now finds its keg. Before, only typing the long code from the sticker worked.",
+      "A keg's card shows how many times it has been filled.",
+      "Fleet & trends has a button at the top of the Kegs page.",
+    ],
+  },
+  {
     version: "1.11",
     date: "2026-11-16",
     title: "Keg fleet and trends",

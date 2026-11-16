@@ -26,6 +26,7 @@ export default async function KegsPage() {
         help="kegs.page"
         title="Kegs"
         description={manager ? "What's on tap, how much is left, and what's in the walk-in. Staff scan kegs when they kick." : "Scan a keg when it kicks, goes on, or moves. Tap a line to see the keg."}
+        actions={manager ? <LinkButton href="/kegs/fleet"><TrendingUp className="size-4" /> Fleet & trends</LinkButton> : undefined}
       />
 
       <div className="mb-4"><QueueWatcher /></div>

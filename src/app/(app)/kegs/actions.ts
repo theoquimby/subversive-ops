@@ -1,12 +1,12 @@
 "use server";
 
 import { pingWebsite } from "@/server/services/website";
-import { BEER_COLORS, displayCode, KEG_SIZE_LIST, normalizeCode, placeLabel, type KegActionId } from "@/domain/kegs";
+import { BEER_COLORS, displayCode, distribrewtionId, KEG_SIZE_LIST, normalizeCode, placeLabel, type KegActionId, type KegStatus } from "@/domain/kegs";
 import { cleanAreaName } from "@/domain/storageAreas";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { checkKegStock } from "@/server/services/keg-alerts";
-import { doKegAction, findKegByScan, freshCodes, kegCard, KEG_ACTIONS, kegConfig, nextKegOf, saveKegConfig, undoKegEvents, type DoActionResult, type KegCard } from "@/server/services/kegs";
+import { adoptSticker, doKegAction, findKegByScan, freshCodes, kegCard, KEG_ACTIONS, kegConfig, nextKegOf, saveKegConfig, undoKegEvents, type DoActionResult, type KegCard } from "@/server/services/kegs";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -16,12 +16,16 @@ const refresh = () => revalidatePath("/kegs", "layout");
 // ---- Scanning (staff and managers) -------------------------------------------------------------
 
 /** What a scan or typed code points at. */
-export async function lookupKeg(text: string): Promise<{ id: string; code: string; card: KegCard } | { error: string }> {
-  await requireUser();
+export async function lookupKeg(text: string): Promise<{ id: string; code: string; card: KegCard } | { error: string; canAdd?: boolean }> {
+  const me = await requireUser();
   const t = String(text ?? "").slice(0, 500);
   if (!t.trim()) return { error: "Type the code on the sticker." };
   const hit = await findKegByScan(t);
-  if (!hit) return { error: `No keg with the code ${displayCode(normalizeCode(t).slice(0, 12)) || t.trim().slice(0, 20)}. Check the sticker, or a manager can add it.` };
+  if (!hit) {
+    // A sticker from the old keg app that was never imported can be added on the spot.
+    if (distribrewtionId(t)) return { error: "This sticker isn't in the app yet.", canAdd: true };
+    return { error: `No keg with the code ${displayCode(normalizeCode(t).slice(0, 12)) || t.trim().slice(0, 20)}. Check the sticker${me.role === "MANAGER" ? ", or add it as a new keg." : ", or a manager can add it."}`, canAdd: me.role === "MANAGER" };
+  }
   const card = await kegCard(hit.id);
   return card ? { id: hit.id, code: hit.code, card } : { error: "That keg was removed." };
 }
@@ -68,6 +72,67 @@ export async function kegAction(input: KegActionForm): Promise<DoActionResult & 
   refresh();
   pingWebsite("menu");
   return { ...r, card: await kegCard(d.kegId) };
+}
+
+/** Add the keg behind a sticker the app doesn't know (it keeps that sticker), and open its card. */
+export async function adoptKeg(text: string, sizeId: string): Promise<{ card: KegCard; added: boolean } | { error: string }> {
+  const me = await requireUser();
+  if (!KEG_SIZE_LIST.some((s) => s.id === sizeId)) return { error: "Pick a size." };
+  const r = await adoptSticker(me, String(text ?? ""), sizeId);
+  if ("error" in r) return r;
+  refresh();
+  const card = await kegCard(r.id);
+  return card ? { card, added: r.added } : { error: "That keg was removed." };
+}
+
+const manySchema = z.object({
+  text: z.string().min(1).max(500),
+  mode: z.enum(["DIRTY", "CLEANED", "FILL", "STORE", "OUT", "ADD"]),
+  sizeId: z.string().nullish(),
+  beerId: z.string().nullish(),
+  batchCode: z.string().trim().max(40).nullish(),
+  filledOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  area: z.string().trim().max(60).nullish(),
+  spotId: z.string().nullish(),
+  accountId: z.string().nullish(),
+  clientId: z.string().min(8).max(64),
+});
+export type ScanManyForm = z.infer<typeof manySchema>;
+export type ScanManyResult =
+  | { ok: true; kegId: string; code: string; beer: string | null; sizeId: string; status: KegStatus; eventId: string | null; added: boolean }
+  | { error: string; code?: string; unknown?: boolean };
+
+/**
+ * Scan-many: the same thing happens to every keg scanned (all of these are
+ * empty, all of these were just filled with this beer…), so one scan is one
+ * keg done. The phone's id makes a retry safe.
+ */
+export async function scanMany(input: ScanManyForm): Promise<ScanManyResult> {
+  const me = await requireUser();
+  const v = manySchema.safeParse(input);
+  if (!v.success) return { error: "Something's missing. Try again." };
+  const d = v.data;
+  const describe = async (id: string) => db.keg.findUnique({ where: { id }, select: { code: true, sizeId: true, status: true, beerId: true, beer: { select: { name: true } } } });
+  if (d.mode === "ADD") {
+    if (!KEG_SIZE_LIST.some((s) => s.id === d.sizeId)) return { error: "Pick a size." };
+    const r = await adoptSticker(me, d.text, d.sizeId!);
+    if ("error" in r) return r;
+    const k = await describe(r.id);
+    if (!k) return { error: "That keg was removed." };
+    if (!r.added) return { error: "Already in the app.", code: k.code };
+    refresh();
+    return { ok: true, kegId: r.id, code: k.code, beer: null, sizeId: k.sizeId, status: k.status as KegStatus, eventId: null, added: true };
+  }
+  const hit = await findKegByScan(d.text);
+  if (!hit) return { error: "This sticker isn't in the app yet.", unknown: true };
+  const r = await doKegAction({ userId: me.userId, name: me.name }, { kegId: hit.id, action: d.mode, beerId: d.beerId, batchCode: d.batchCode, filledOn: d.filledOn, area: d.area ? cleanAreaName(d.area) : d.area, spotId: d.spotId, accountId: d.accountId, clientId: d.clientId });
+  if ("error" in r) return { error: r.error, code: hit.code };
+  const k = await describe(hit.id);
+  if (r.kicked) checkKegStock(r.kicked.beerId, { kicked: { where: null, who: me.name } });
+  else if (d.mode === "OUT") checkKegStock(k?.beerId ?? null);
+  refresh();
+  pingWebsite("menu");
+  return { ok: true, kegId: hit.id, code: hit.code, beer: k?.beer?.name ?? null, sizeId: k?.sizeId ?? "half", status: r.status, eventId: r.eventId, added: false };
 }
 
 export async function undoKegAction(ref: { eventId?: string; groupId?: string }) {

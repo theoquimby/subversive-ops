@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CalendarCheck, CalendarRange, ChefHat, ChevronRight, CircleHelp, ClipboardList, Home, LayoutGrid, LogOut, MoreHorizontal, ScanLine, Search, ShoppingCart, Sun, X } from "lucide-react";
-import { areaFor, areaStyle, isActive, MANAGER_NAV, STAFF_NAV, type Area, type NavGroup } from "@/lib/areas";
+import { activeChild, areaFor, areaStyle, isActive, MANAGER_NAV, STAFF_NAV, type Area, type NavGroup, type NavItem as AreaNavItem } from "@/lib/areas";
 import { openCommandPalette } from "./command-palette";
 import { HelpButton } from "./help";
 import Link from "next/link";
@@ -13,9 +13,74 @@ import type { SessionRole } from "@/server/session";
 type NavItem = { href: string; label: string; icon: typeof LayoutGrid; area: Area };
 type Group = NavGroup;
 
+const OPEN_KEY = "nav.open.v1";
+
+/**
+ * Which pop-open lists are open. A list opens by itself while you're inside
+ * its area; opening or closing one by hand is remembered on this device.
+ */
+function useOpenLists() {
+  const [chosen, setChosen] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(OPEN_KEY) ?? "{}");
+      if (v && typeof v === "object") setChosen(v as Record<string, boolean>);
+    } catch { /* nothing saved */ }
+  }, []);
+  const toggle = (href: string, open: boolean) =>
+    setChosen((cur) => {
+      const next = { ...cur, [href]: open };
+      try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch { /* private mode */ }
+      return next;
+    });
+  return { chosen, toggle };
+}
+
+/** One sidebar row. An item with pages of its own gets a chevron and, when open, its pages listed beneath it. */
+function SideItem({ item, pathname, open, onToggle }: { item: AreaNavItem; pathname: string; open: boolean; onToggle: (open: boolean) => void }) {
+  const { href, label, icon: Icon, area, children } = item;
+  const active = isActive(pathname, href);
+  const child = active && children ? activeChild(pathname, children) : null;
+  // The sliding highlight sits on the most specific visible link: the sub-page when the list is open.
+  const onChild = open && !!child;
+  return (
+    <div style={areaStyle(area)}>
+      <div className="relative z-[1] flex items-center">
+        <Link
+          href={href}
+          aria-current={active && !onChild ? "page" : undefined}
+          className={clsx("flex h-8 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors duration-120 ease-motion", children && "pr-8", active ? "font-medium text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink")}
+        >
+          <Icon className={clsx("size-4 shrink-0 text-area transition-opacity duration-120", active ? "opacity-100" : "opacity-70")} strokeWidth={active ? 2 : 1.75} />
+          <span className="truncate">{label}</span>
+        </Link>
+        {children && (
+          <button type="button" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} ${label} pages`} onClick={() => onToggle(!open)} className="absolute right-0 grid size-8 place-items-center rounded-lg text-muted transition-colors duration-120 hover:text-ink">
+            <ChevronRight className={clsx("size-3.5 transition-transform duration-180 ease-motion", open && "rotate-90")} strokeWidth={2} />
+          </button>
+        )}
+      </div>
+      {children && open && (
+        <div className="relative z-[1] mt-px mb-1 ml-[1.1rem] flex flex-col gap-px border-l border-border pl-2">
+          {children.map((c) => {
+            const on = child === c.href;
+            return (
+              <Link key={c.href} href={c.href} aria-current={on ? "page" : undefined} style={areaStyle(area)} className={clsx("flex h-7 items-center rounded-md px-2 text-[0.8125rem] transition-colors duration-120 ease-motion", on ? "font-medium text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink")}>
+                <span className="truncate">{c.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Nav({ role, name, logout }: { role: SessionRole; name: string; logout: () => Promise<void> }) {
   const pathname = usePathname();
   const groups = role === "MANAGER" ? MANAGER_NAV : STAFF_NAV;
+  const { chosen, toggle } = useOpenLists();
+  const isOpen = (href: string) => chosen[href] ?? isActive(pathname, href);
   return (
     <>
       {/* Desktop sidebar */}
@@ -26,28 +91,11 @@ export function Nav({ role, name, logout }: { role: SessionRole; name: string; l
           Search or jump to…
           <kbd className="ml-auto rounded border border-border px-1 text-[10px]">⌘K</kbd>
         </button>
-        <SidebarScroll pathname={pathname}>
+        <SidebarScroll pathname={pathname} layoutKey={groups.flatMap((g) => g.items).filter((i) => i.children && isOpen(i.href)).map((i) => i.href).join("|")}>
           {groups.map((g, gi) => (
             <div key={gi} className="flex flex-col gap-px">
               {g.title && <div className="px-2.5 pt-1 pb-1 text-[11px] font-medium text-muted">{g.title}</div>}
-              {g.items.map(({ href, label, icon: Icon, area }) => {
-                const active = isActive(pathname, href);
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    aria-current={active ? "page" : undefined}
-                    style={areaStyle(area)}
-                    className={clsx(
-                      "relative z-[1] flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors duration-120 ease-motion",
-                      active ? "font-medium text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink",
-                    )}
-                  >
-                    <Icon className={clsx("size-4 shrink-0 text-area transition-opacity duration-120", active ? "opacity-100" : "opacity-70")} strokeWidth={active ? 2 : 1.75} />
-                    {label}
-                  </Link>
-                );
-              })}
+              {g.items.map((it) => <SideItem key={it.href} item={it} pathname={pathname} open={!!it.children && isOpen(it.href)} onToggle={(o) => toggle(it.href, o)} />)}
             </div>
           ))}
         </SidebarScroll>
@@ -76,7 +124,7 @@ export function Nav({ role, name, logout }: { role: SessionRole; name: string; l
  * below the fold. The active item's tinted background is one element that
  * slides between items (260ms, sheet easing) instead of blinking.
  */
-function SidebarScroll({ children, pathname }: { children: React.ReactNode; pathname: string }) {
+function SidebarScroll({ children, pathname, layoutKey }: { children: React.ReactNode; pathname: string; layoutKey: string }) {
   const ref = useRef<HTMLElement>(null);
   const pill = useRef<HTMLDivElement>(null);
   const placed = useRef(false);
@@ -109,7 +157,8 @@ function SidebarScroll({ children, pathname }: { children: React.ReactNode; path
       if (bottom > nav.scrollTop + nav.clientHeight - 40 || top < nav.scrollTop) nav.scrollTop = top - nav.clientHeight / 2;
     }
     placed.current = true;
-  }, [pathname]);
+    // layoutKey: a list popping open or shut moves every row below it.
+  }, [pathname, layoutKey]);
   return (
     <div className="relative mt-3 -mx-1 flex min-h-0 flex-1 flex-col">
       <nav ref={ref} aria-label="Pages" className="scroll-quiet relative flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pb-2">
@@ -117,6 +166,31 @@ function SidebarScroll({ children, pathname }: { children: React.ReactNode; path
         {children}
       </nav>
       <div aria-hidden className={clsx("pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent transition-opacity duration-200", more ? "opacity-100" : "opacity-0")} />
+    </div>
+  );
+}
+
+/** On a phone: the pages inside any area on this row that has its own, as a wrap of chips under the tiles. */
+function SubPages({ items, pathname }: { items: AreaNavItem[]; pathname: string }) {
+  const withPages = items.filter((i) => i.children);
+  if (!withPages.length) return null;
+  return (
+    <div className="mt-2 space-y-2">
+      {withPages.map((i) => {
+        const on = isActive(pathname, i.href) ? activeChild(pathname, i.children!) : null;
+        return (
+          <div key={i.href} style={areaStyle(i.area)} className="rounded-2xl border border-border bg-surface px-3 py-2.5">
+            <div className="mb-1.5 text-[11px] font-semibold text-muted">{i.label}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {i.children!.map((c) => (
+                <Link key={c.href} href={c.href} aria-current={on === c.href ? "page" : undefined} className={clsx("inline-flex h-10 items-center rounded-full border px-3 text-[0.8rem] font-medium active:scale-[0.97]", on === c.href ? "border-area/35 bg-area/10 text-ink" : "border-border text-ink-2 active:bg-surface-2")}>
+                  {c.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -273,6 +347,7 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
                     );
                   })}
                 </div>
+                <SubPages items={g.items} pathname={pathname} />
               </section>
             ))}
             {/* Staff: every page without a tab, as big tiles (the tabs stay in the bar). */}

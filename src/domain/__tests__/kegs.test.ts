@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyKegAction, checkChar, displayCode, guessBeerColor, isOurCode, kegOz, legacyCandidates, newKegCode, nextActions, normalizeCode, parseKegSize, parseScan, placeLabel, sinceLabel, type KegState } from "../kegs";
+import { applyKegAction, checkChar, displayCode, distribrewtionId, guessBeerColor, isOurCode, kegOz, legacyCandidates, legacyKeys, newKegCode, nextActions, normalizeCode, parseKegSize, parseScan, placeLabel, sinceLabel, type KegState } from "../kegs";
 
 const base: KegState = { status: "COLD", beerId: "b1", area: "Walk-in", spotId: "s1", spotNote: null, tapLine: null, accountId: null };
 
@@ -49,6 +49,24 @@ describe("keg codes", () => {
     expect(parseScan("   ")).toBeNull();
     expect(legacyCandidates("https://oldapp.example.com/keg/AB-1234")).toContain("AB1234");
   });
+  it("reads a Distribrewtion sticker, old and new style, to the id its export uses", () => {
+    const id = "04bd73f0-3984-408e-b7bb-a6368b2bcedc";
+    expect(distribrewtionId("https://distribrewtion.com/app/kegs/04BD73F0-3984-408E-B7BB-A6368B2BCEDC")).toBe(id);
+    expect(distribrewtionId("https://www.distribrewtion.com/some/base/app/kegs/04bd73f03984408eb7bba6368b2bcedc/")).toBe(id);
+    expect(distribrewtionId("https://distribrewtion.com/app/kegs/not-a-keg-id")).toBeNull();
+    expect(distribrewtionId("https://dbrw.example/k/BL1z8DmEQI63u6Y2iyvO3A")).toBe(id);
+    expect(distribrewtionId("https://dbrw.example/k/BL1z8DmEQI63u6Y2iyvO3B")).toBeNull(); // spare bits must be zero
+    expect(distribrewtionId("https://ops.example.com/kegs/k/7Q3MX")).toBeNull();
+    expect(distribrewtionId("7Q3-MX")).toBeNull();
+  });
+  it("matches an old sticker's link against the bare id saved by the import", () => {
+    const saved = normalizeCode("04bd73f0-3984-408e-b7bb-a6368b2bcedc");
+    expect(legacyKeys("https://distribrewtion.com/app/kegs/04BD73F0-3984-408E-B7BB-A6368B2BCEDC")).toContain(saved);
+    expect(legacyKeys("https://dbrw.example/k/BL1z8DmEQI63u6Y2iyvO3A")).toContain(saved);
+    expect(legacyKeys("04bd73f0-3984-408e-b7bb-a6368b2bcedc")).toContain(saved);
+    expect(legacyKeys("https://oldapp.example.com/keg/AB-1234")).toContain("AB1234");
+    expect(legacyKeys("  ")).toEqual([]);
+  });
 });
 
 describe("keg actions", () => {
@@ -96,6 +114,24 @@ describe("keg actions", () => {
     if ("error" in fill) throw new Error(fill.error);
     expect(fill.next).toMatchObject({ status: "FILLED", beerId: "b2" });
     expect(fill.fill).toBe("start");
+  });
+});
+
+describe("an empty keg in front of you", () => {
+  const base: KegState = { status: "FILLED", beerId: "ipa", area: "Walk-in", spotId: null, spotNote: null, tapLine: null, accountId: null };
+  const dirty = (k: KegState) => applyKegAction(k, { action: "DIRTY", tapArea: "Bar" });
+  it("kicks a keg that was on tap and brings back one that was out", () => {
+    expect(dirty({ ...base, status: "ON_TAP", tapLine: 3 })).toMatchObject({ event: "KICKED", fill: "kick", next: { status: "KICKED", tapLine: null } });
+    expect(dirty({ ...base, status: "OUT", accountId: "acc", area: null })).toMatchObject({ event: "RETURNED", next: { status: "CLEANING", accountId: null, beerId: null } });
+  });
+  it("takes a full keg that was never scanned out, and ends its fill", () => {
+    expect(dirty(base)).toMatchObject({ event: "RETURNED", fill: "end", next: { status: "CLEANING", beerId: null } });
+    expect(dirty({ ...base, status: "COLD" })).toMatchObject({ next: { status: "CLEANING" } });
+  });
+  it("says so when there's nothing to do", () => {
+    expect(dirty({ ...base, status: "CLEANING", beerId: null })).toEqual({ error: "Already waiting to be cleaned." });
+    expect(dirty({ ...base, status: "KICKED" })).toEqual({ error: "Already waiting to be cleaned." });
+    expect(dirty({ ...base, status: "EMPTY", beerId: null })).toHaveProperty("error");
   });
 });
 

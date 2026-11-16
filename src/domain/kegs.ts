@@ -144,6 +144,43 @@ export function legacyCandidates(text: string): string[] {
   return [...out].filter(Boolean);
 }
 
+const UUID = /^([0-9a-f]{8})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{12})$/i;
+const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/**
+ * A Distribrewtion sticker. Its QR is a link: older tags end /app/kegs/<keg id>,
+ * newer ones end /k/<the same id, packed into 22 letters>. Returns the keg's id
+ * the way Distribrewtion's export writes it (lowercase, with dashes), or null
+ * when the text isn't one of their stickers.
+ */
+export function distribrewtionId(text: string): string | null {
+  const t = String(text ?? "").trim();
+  const dashed = (hex: string) => hex.toLowerCase().replace(UUID, "$1-$2-$3-$4-$5");
+  const long = t.match(/^https?:\/\/[^\s/]+\/(?:[^\s?#]*\/)?app\/kegs\/([0-9a-f-]{32,36})\/?(?:[?#].*)?$/i);
+  if (long && UUID.test(long[1])) return dashed(long[1]);
+  const short = t.match(/^https?:\/\/[^\s/]+\/(?:[^\s?#]*\/)?k\/([A-Za-z0-9_-]{22})={0,2}\/?(?:[?#].*)?$/);
+  if (!short) return null;
+  // 22 base64url letters are 132 bits: the id's 128 and four spare zeros.
+  let bits = "";
+  for (const ch of short[1]) bits += B64URL.indexOf(ch).toString(2).padStart(6, "0");
+  if (!/^0{4}$/.test(bits.slice(128))) return null;
+  let hex = "";
+  for (let i = 0; i < 128; i += 4) hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+  return dashed(hex);
+}
+
+/**
+ * Every form of a scanned or typed text an old sticker's saved code could
+ * match, normalized (uppercase letters and digits only): the whole text, a
+ * link's last part, and a Distribrewtion sticker's keg id.
+ */
+export function legacyKeys(text: string): string[] {
+  const p = parseScan(text);
+  if (!p) return [];
+  const dbt = distribrewtionId(text);
+  return [...new Set([normalizeCode(text), p.code, dbt ? normalizeCode(dbt) : ""])].filter((k) => k.length >= 3);
+}
+
 // ---- Beer colors ------------------------------------------------------------------------------
 
 /** Board colors, roughly by beer color. `fg` is text drawn on `bg`. */
@@ -180,7 +217,7 @@ export function guessBeerColor(name: string): string {
 
 // ---- Actions ---------------------------------------------------------------------------------
 
-export type KegActionId = "KICK" | "TAP" | "MOVE" | "STORE" | "UNTAP" | "OUT" | "RETURN" | "CLEANED" | "FILL" | "EMPTY";
+export type KegActionId = "KICK" | "TAP" | "MOVE" | "STORE" | "UNTAP" | "OUT" | "RETURN" | "CLEANED" | "FILL" | "EMPTY" | "DIRTY";
 
 export const ACTION_LABEL: Record<KegActionId, string> = {
   KICK: "Kicked",
@@ -193,6 +230,7 @@ export const ACTION_LABEL: Record<KegActionId, string> = {
   CLEANED: "Cleaned, ready to fill",
   FILL: "Filled with…",
   EMPTY: "Mark empty",
+  DIRTY: "Empty, needs cleaning",
 };
 
 /** Past tense for history and the undo bar. */
@@ -306,6 +344,14 @@ export function applyKegAction(k: KegState, a: ActionInput): ActionResult | { er
       if (k.status !== "EMPTY" && k.status !== "CLEANING") return { error: k.status === "KICKED" ? "Clean it first." : "Only an empty keg can be filled." };
       if (!a.beerId) return { error: "Pick the beer." };
       return { next: { ...k, status: "FILLED", beerId: a.beerId, ...place }, event: "FILLED", fill: "start" };
+    case "DIRTY":
+      // An empty keg in front of you, whatever the app last heard: on tap it kicked, out it came back,
+      // and a full one was poured or sent out with no scan.
+      if (k.status === "ON_TAP") return applyKegAction(k, { ...a, action: "KICK" });
+      if (k.status === "OUT") return applyKegAction(k, { ...a, action: "RETURN" });
+      if (k.status === "KICKED" || k.status === "CLEANING") return { error: "Already waiting to be cleaned." };
+      if (k.status === "EMPTY") return { error: "This keg is marked clean. Fill it, or leave it." };
+      return { next: { ...k, status: "CLEANING", beerId: null, tapLine: null, accountId: null, ...place }, event: "RETURNED", fill: "end" };
     case "EMPTY":
       return { next: { ...k, status: "EMPTY", beerId: null, tapLine: null, accountId: null }, event: "EMPTIED", fill: k.status === "ON_TAP" ? "kick" : isFull(k.status) ? "end" : null };
   }

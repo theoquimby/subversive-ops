@@ -115,6 +115,42 @@ This is the real yield for draft costing: if it's well under the yield on [Draft
     related: ["kegs.demand"],
   },
   {
+    id: "kegs.scanMany",
+    area: "kegs",
+    route: "/kegs/scan",
+    title: "Scanning many kegs at once",
+    body: "On Scan, switch to Many kegs, say once what's happening to them, then scan each one. One scan is one keg done. Good for a stack of empties, a cleaning run, or a filling day.",
+    article: `1. Tap **Scan**, then **Many kegs**.
+2. Pick what's happening:
+- **Empty, to clean** for any empty keg, whatever the app last heard. A keg that was on tap is kicked, one that was out comes back, and a full one nobody scanned out is taken as poured.
+- **Cleaned** after washing.
+- **Filled** with one beer (and a batch, if you use them).
+- **Into cold storage** or **Out to an account** for full kegs.
+3. Tap **Start scanning** and scan each sticker. Each keg shows in the list with a tick, or a reason it couldn't be done.
+
+**Undo** sits on the last keg in the list. A sticker scanned twice is skipped. With no signal, scans wait on the page and send themselves when signal is back; keep the page open until they have.`,
+    audience: "all",
+    related: ["kegs.scan", "kegs.oldStickers"],
+    keywords: ["bulk", "batch scan", "many", "stack", "cleaning run", "filling day"],
+  },
+  {
+    id: "kegs.oldStickers",
+    area: "kegs",
+    route: "/kegs/scan",
+    title: "Stickers from your old keg app",
+    body: "Kegs keep the stickers they already have. Scan one inside Scan and its keg opens. A sticker the app hasn't seen can be added as a new keg on the spot.",
+    article: `Kegs brought in with [Import](/kegs/import) remember their old sticker, so scanning it here finds the keg.
+
+**Scan inside the app.** The phone's own camera reads the old sticker's link and opens the old app's site, not this one.
+
+**A sticker the app doesn't know** shows "This sticker isn't in the app yet". Pick the size and tap **Add this keg**. Staff can do this for stickers from Distribrewtion; a manager can add any sticker. To add a lot at once, a manager can use **Many kegs → Add kegs to the app**.
+
+Every keg also has one of our own codes. When an old sticker wears out, print a new label from [All kegs](/kegs/all).`,
+    audience: "all",
+    related: ["kegs.scan", "kegs.scanMany", "kegs.import", "kegs.labels"],
+    keywords: ["distribrewtion", "old sticker", "existing qr", "reuse stickers", "add keg", "unknown sticker"],
+  },
+  {
     id: "kegs.fleet",
     area: "kegs",
     route: "/kegs/fleet",

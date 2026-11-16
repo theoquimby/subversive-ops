@@ -53,10 +53,48 @@ import type { CSSProperties } from "react";
 
 export type Area = "today" | "food" | "people" | "numbers" | "floor" | "setup" | "assist";
 
-export type NavItem = { href: string; label: string; icon: LucideIcon; area: Area };
+/** A page inside a nav item's area, listed under it when the item is popped open. */
+export type SubItem = { href: string; label: string };
+export type NavItem = { href: string; label: string; icon: LucideIcon; area: Area; children?: SubItem[] };
 export type NavGroup = { title?: string; area: Area; items: NavItem[] };
 
-const item = (area: Area, href: string, label: string, icon: LucideIcon): NavItem => ({ href, label, icon, area });
+const item = (area: Area, href: string, label: string, icon: LucideIcon, children?: SubItem[]): NavItem => ({ href, label, icon, area, ...(children ? { children } : {}) });
+
+// Areas big enough to be an app of their own list their pages under the nav item.
+const KEG_PAGES: SubItem[] = [
+  { href: "/kegs", label: "On tap" },
+  { href: "/kegs/scan", label: "Scan" },
+  { href: "/kegs/cooler", label: "Walk-in" },
+  { href: "/kegs/fleet", label: "Fleet & trends" },
+  { href: "/kegs/demand", label: "Demand per beer" },
+  { href: "/kegs/taps", label: "Tap list & TV" },
+  { href: "/kegs/beers", label: "Beers" },
+  { href: "/kegs/all", label: "All kegs & labels" },
+  { href: "/kegs/history", label: "History" },
+  { href: "/kegs/setup", label: "Setup" },
+  { href: "/kegs/import", label: "Import" },
+];
+const STAFF_KEG_PAGES: SubItem[] = [
+  { href: "/kegs", label: "On tap" },
+  { href: "/kegs/scan", label: "Scan" },
+  { href: "/kegs/cooler", label: "Walk-in" },
+];
+const WEBSITE_PAGES: SubItem[] = [
+  { href: "/website", label: "Overview" },
+  { href: "/website/hours", label: "Hours & notice" },
+  { href: "/website/menu", label: "Menu" },
+  { href: "/website/events", label: "Events" },
+  { href: "/website/inquiries", label: "Inquiries" },
+  { href: "/website/content", label: "Site content" },
+  { href: "/website/analytics", label: "Analytics" },
+];
+
+/** The sub-page a path is on: the longest match, so /kegs/fleet lights "Fleet & trends" and /kegs/k/… falls back to the first. */
+export function activeChild(pathname: string, children: SubItem[]): string | null {
+  let best: string | null = null;
+  for (const c of children) if ((pathname === c.href || pathname.startsWith(`${c.href}/`)) && (!best || c.href.length > best.length)) best = c.href;
+  return best;
+}
 
 // Grouped so ~20 pages stay scannable. Order = how often Max uses them.
 export const MANAGER_NAV: NavGroup[] = [
@@ -95,12 +133,12 @@ export const MANAGER_NAV: NavGroup[] = [
     item("numbers", "/budgets", "Budgets", Target),
     item("numbers", "/beer-tax", "Beer tax", Landmark),
     item("numbers", "/reviews", "Reviews", MessageSquareText),
-    item("numbers", "/website", "Website", Globe),
+    item("numbers", "/website", "Website", Globe, WEBSITE_PAGES),
   ] },
   { title: "Floor", area: "floor", items: [
     item("floor", "/count", "Counts", ClipboardList),
     item("floor", "/waste", "Waste", Trash2),
-    item("floor", "/kegs", "Kegs", Beer),
+    item("floor", "/kegs", "Kegs", Beer, KEG_PAGES),
     item("floor", "/prep", "Prep list", ChefHat),
     item("floor", "/checklists", "Checklists", ListChecks),
     item("floor", "/upkeep", "Upkeep", Wrench),
@@ -122,7 +160,7 @@ export const STAFF_NAV: NavGroup[] = [
   { title: "Floor", area: "floor", items: [
     item("floor", "/prep", "Prep list", ChefHat),
     item("floor", "/checklists", "Checklists", ListChecks),
-    item("floor", "/kegs", "Kegs & taps", Beer),
+    item("floor", "/kegs", "Kegs & taps", Beer, STAFF_KEG_PAGES),
     item("floor", "/count", "Count", ClipboardList),
     item("floor", "/waste", "Waste", Trash2),
     item("floor", "/notes", "Shift notes", NotebookPen),

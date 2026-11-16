@@ -2,7 +2,7 @@ import "server-only";
 import { Prisma, type KegStatus as DbStatus } from "@prisma/client";
 import { forecastBeer, monthProfile, planBeer, runOutFinding, seasonalIndex, weeklyTotals, type BeerForecast, type BeerPlan, type RunOutFinding } from "@/domain/beerDemand";
 import { addDays, businessDate, type ISODate } from "@/domain/dates";
-import { applyKegAction, isFull, kegOz, legacyCandidates, newKegCode, normalizeCode, parseScan, placeLabel, UNDO_SERVER_SECONDS, type ActionInput, type KegActionId, type KegState, type KegStatus } from "@/domain/kegs";
+import { applyKegAction, distribrewtionId, isFull, isOurCode, kegOz, legacyCandidates, legacyKeys, newKegCode, parseScan, placeLabel, UNDO_SERVER_SECONDS, type ActionInput, type KegActionId, type KegState, type KegStatus } from "@/domain/kegs";
 import { calibrateYield, dollarsPerOz, ozBetween, ozByBeerDay, shareFromHours, splitItemName, tapEstimate, unmatchedDraftNames, type BeerMatcher, type TapEstimate } from "@/domain/kegPours";
 import { localMinutes } from "@/domain/timecards";
 import { db } from "../db";
@@ -103,10 +103,11 @@ export async function findKegByScan(text: string): Promise<{ id: string; code: s
   const cands = legacyCandidates(text);
   const legacy = await db.keg.findFirst({ where: { OR: cands.map((c) => ({ legacyCode: { equals: c, mode: "insensitive" as const } })) }, select: { id: true, code: true } });
   if (legacy) return legacy;
-  // Imported codes are stored as printed; compare normalized as a last resort.
-  const norm = normalizeCode(text);
-  if (!norm) return null;
-  const rows = await db.$queryRaw<{ id: string; code: string }[]>`SELECT id, code FROM "Keg" WHERE regexp_replace(upper(coalesce("legacyCode", '')), '[^A-Z0-9]', '', 'g') = ${norm} LIMIT 1`;
+  // Imported codes are stored as printed (a Distribrewtion sticker is a link ending in the keg's id):
+  // compare every normalized form of the scan with the normalized saved code.
+  const keys = legacyKeys(text);
+  if (!keys.length) return null;
+  const rows = await db.$queryRaw<{ id: string; code: string }[]>`SELECT id, code FROM "Keg" WHERE "legacyCode" IS NOT NULL AND regexp_replace(upper("legacyCode"), '[^A-Z0-9]', '', 'g') IN (${Prisma.join(keys)}) LIMIT 1`;
   return rows[0] ?? null;
 }
 
@@ -270,6 +271,33 @@ export async function tapBoard(): Promise<{ taps: TapRow[]; yield: YieldInfo; co
   return { taps, yield: yi, config: cfg };
 }
 
+/**
+ * A sticker the app doesn't know yet becomes a keg: it keeps its sticker and
+ * gets one of our codes too. A manager can add any sticker; staff can add one
+ * that is recognizably from Distribrewtion, so a stray QR code can't become a keg.
+ */
+export async function adoptSticker(user: { userId: string; name: string; role: "MANAGER" | "STAFF" }, text: string, sizeId: string): Promise<{ ok: true; id: string; code: string; added: boolean } | { error: string }> {
+  const t = String(text ?? "").trim().slice(0, 300);
+  if (!t) return { error: "Scan the sticker first." };
+  const known = await findKegByScan(t);
+  if (known) return { ok: true, ...known, added: false };
+  const dbt = distribrewtionId(t);
+  if (!dbt && user.role !== "MANAGER") return { error: "That isn't a keg sticker we recognize. A manager can add it." };
+  if (!dbt && isOurCode(parseScan(t)?.code ?? "")) return { error: "That's one of our codes, but no keg has it. Check the sticker." };
+  const [code] = await freshCodes(1);
+  try {
+    const k = await db.keg.create({ data: { code, legacyCode: dbt ?? t, sizeId } });
+    await db.kegEvent.create({ data: { kegId: k.id, userId: user.userId, userName: user.name, action: "CREATED", toStatus: k.status, toPlace: placeLabel({ area: k.area, status: k.status as KegStatus }), note: "Added by scanning its sticker" } });
+    return { ok: true, id: k.id, code: k.code, added: true };
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const again = await findKegByScan(t);
+      if (again) return { ok: true, ...again, added: false };
+    }
+    throw e;
+  }
+}
+
 // ---- Stock and the walk-in ------------------------------------------------------------------------
 
 export interface BoardKeg {
@@ -348,6 +376,7 @@ export async function kegCard(id: string) {
       account: { select: { name: true } },
       fill: { include: { batch: { select: { code: true } } } },
       events: { orderBy: { at: "desc" }, take: 25, include: { account: { select: { name: true } } } },
+      _count: { select: { fills: true } },
     },
   });
   if (!k) return null;
@@ -355,6 +384,8 @@ export async function kegCard(id: string) {
   const estimate = k.status === "ON_TAP" ? ((await tapBoard().catch(() => null))?.taps.find((t) => t.keg?.id === k.id)?.estimate ?? null) : null;
   return {
     estimate,
+    /** How many times this keg has been filled, as far as the history knows. */
+    fills: k._count.fills,
     id: k.id, code: k.code, legacyCode: k.legacyCode, label: k.label, sizeId: k.sizeId, owner: k.owner, notes: k.notes, active: k.active,
     status: k.status as KegStatus, statusAt: k.statusAt, beer: k.beer, area: k.area, spotId: k.spotId, spot: k.spot?.name ?? null, spotNote: k.spotNote, tapLine: k.tapLine, account: k.account?.name ?? null, accountId: k.accountId,
     fill: k.fill ? { filledOn: k.fill.filledOn?.toISOString().slice(0, 10) ?? null, bestBy: k.fill.bestBy?.toISOString().slice(0, 10) ?? null, batch: k.fill.batch?.code ?? k.fill.batchCode, tappedAt: k.fill.tappedAt } : null,
@@ -463,7 +494,7 @@ export async function doKegAction(user: { userId: string; name: string }, input:
           fromStatus: k.status, toStatus: r.next.status,
           fromPlace: placeLabel({ area: k.area, spot: k.spot?.name, spotNote: k.spotNote, tapLine: k.tapLine, account: k.account?.name, status: k.status as KegStatus }),
           toPlace: placeLabel({ area: r.next.area, spot: toSpot?.name, spotNote: r.next.spotNote, tapLine: r.next.tapLine, account: toAccount?.name, status: r.next.status }),
-          beerId: r.next.beerId ?? k.beerId, fillId: fillId ?? k.fillId, tapLine: r.next.tapLine ?? k.tapLine, accountId: r.next.accountId ?? (input.action === "RETURN" ? k.accountId : null),
+          beerId: r.next.beerId ?? k.beerId, fillId: fillId ?? k.fillId, tapLine: r.next.tapLine ?? k.tapLine, accountId: r.next.accountId ?? (r.event === "RETURNED" ? k.accountId : null),
           note: input.note?.trim() || null, before: before as unknown as Prisma.InputJsonValue, groupId: input.groupId ?? null, clientId: input.clientId ?? null,
         },
       });
@@ -588,7 +619,7 @@ export async function kegFindings(): Promise<RunOutFinding[]> {
   }
 }
 
-export const KEG_ACTIONS: KegActionId[] = ["KICK", "TAP", "MOVE", "STORE", "UNTAP", "OUT", "RETURN", "CLEANED", "FILL", "EMPTY"];
+export const KEG_ACTIONS: KegActionId[] = ["KICK", "TAP", "MOVE", "STORE", "UNTAP", "OUT", "RETURN", "CLEANED", "FILL", "EMPTY", "DIRTY"];
 
 
 // ---- Cost per pint from the beer's recipe ------------------------------------------------------------
