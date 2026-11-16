@@ -667,16 +667,16 @@ Products you don't use in recipes (cleaning supplies, to-go boxes) can stay unli
     route: "/prices/import",
     tour: "prices",
     title: "Import a price sheet",
-    body: "Upload the distributor's download exactly as it comes — an Excel or .csv spreadsheet file. You'll see every price change before anything is saved.",
+    body: "Upload the distributor's download exactly as it comes — an Excel or .csv file — or a PDF or phone photo of a paper price sheet. You'll see every price change before anything is saved.",
     article: `1. **Pick the supplier.**
-2. **Drop the file** (.xlsx, .xls or .csv) — no need to tidy it up first.
+2. **Drop the file** (.xlsx, .xls or .csv) — no need to tidy it up first. A **PDF or photo** of a paper price sheet works too: AI reads each line (item number, name, pack and price) into the same columns. Sheets with no item numbers get one made from the name, so next month's sheet matches up. Reading photos needs AI features turned on.
 3. **Prices effective** — usually today; set a future date if the sheet is next week's pricing.
 4. **Preview.** The columns are detected for you and the changes are listed.
 5. **Check the columns** if something looks off, then **Save prices**.
 
 Plate costs update straight away. New products then need linking to ingredients.`,
     related: ["prices.import.columns", "prices.import.diff", "prices.link"],
-    keywords: ["upload", "sysco", "us foods", "distributor", "xlsx", "csv"],
+    keywords: ["upload", "sysco", "us foods", "distributor", "xlsx", "csv", "pdf", "photo", "paper", "price list", "order guide"],
   },
   {
     id: "prices.import.supplier",
@@ -793,7 +793,16 @@ Set **Effective** if the prices started on a different day than today.`,
     route: "/prices",
     title: "Prices",
     body: "Every product your suppliers sell you, with its current price and how it moved in the last 30 days. Import a distributor's price sheet, or update local suppliers by hand.",
-    related: ["prices.list", "prices.import", "prices.manual"],
+    related: ["prices.list", "prices.import", "prices.manual", "prices.suggest"],
+  },
+  {
+    id: "prices.suggest",
+    area: "prices",
+    route: "/prices",
+    title: "We can link these",
+    body: "Products not linked to an ingredient yet whose name clearly is one of your ingredients — \"Chkn Wing Jumbo\" is Chicken wings. They're all ticked: untick any that are wrong and press Link. Once linked, their prices count toward plate costs.",
+    related: ["prices.link", "prices.page"],
+    keywords: ["link", "match", "auto", "unlinked", "suggest", "ingredient"],
   },
   {
     id: "prices.alert",

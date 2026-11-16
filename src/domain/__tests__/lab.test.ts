@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyFeedState, markFeed, type Opportunity } from "../analytics";
-import { buildActions, completeThrough, kindMeta, parseRange, rangeFrom, rootCause, sortActions, stars, storyOf, trackRecord, whatIf, type LabFinding } from "../lab";
+import { buildActions, completeThrough, kindMeta, parseRange, plainAnalyticsError, rangeFrom, rootCause, sortActions, stars, storyOf, trackRecord, whatIf, type LabFinding } from "../lab";
 
 const opp = (o: Partial<LabFinding> & Pick<LabFinding, "key" | "kind">): LabFinding => ({ model: "feed", title: o.key, action: "Do it.", monthly: 100, low: 50, high: 150, confidence: 0.5, how: ["Because."], inputs: [], href: "/insights", ...o });
 
@@ -125,5 +125,22 @@ describe("track record", () => {
     const t = trackRecord(st, [follow]);
     expect(t.items[0].measured).toContain("+$150");
     expect(t.monthly).toBe(120);
+  });
+});
+
+describe("plainAnalyticsError", () => {
+  it("turns a Python traceback into a plain sentence", () => {
+    const raw = `python exited 1: 2 ^^^^ File "/x/analytics/subops/drivers.py", line 20, in <module> import statsmodels.api as sm ModuleNotFoundError: No module named 'statsmodels'`;
+    const msg = plainAnalyticsError(raw)!;
+    expect(msg).not.toMatch(/python|statsmodels|File "|\^/);
+    expect(msg).toMatch(/Your data is fine/);
+  });
+  it("explains timeouts and keeps short human messages", () => {
+    expect(plainAnalyticsError("The analytics service timed out")).toMatch(/took too long/);
+    expect(plainAnalyticsError("Pick a range first")).toBe("Pick a range first");
+    expect(plainAnalyticsError(null)).toBeNull();
+  });
+  it("never shows code", () => {
+    expect(plainAnalyticsError('Traceback (most recent call last): File "a.py", line 3')).toMatch(/Something went wrong/);
   });
 });

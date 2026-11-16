@@ -3,7 +3,7 @@ import { GridCell, GridSelect } from "@/components/grid";
 import { Card, LinkButton, PageHeader, Section, Th, Tr } from "@/components/ui";
 import { relativeTime } from "@/lib/format";
 import { requireUser } from "@/server/auth";
-import { num } from "@/server/db";
+import { db, num } from "@/server/db";
 import { isSquareConnected } from "@/server/services/square";
 import { describeDiff } from "@/domain/teamSync";
 import { lastLaborSync, loadTeam, squareTeamDiffs } from "@/server/services/labor";
@@ -39,7 +39,7 @@ export default async function TeamPage() {
     const floor = tipped ? rules.tippedMinimumWage : rules.minimumWage;
     return rate < floor - 0.005 ? `under $${floor.toFixed(2)} ${tipped ? "tipped " : ""}minimum` : null;
   };
-  const connected = await isSquareConnected();
+  const [connected, unread, newHires] = await Promise.all([isSquareConnected(), db.staffMessage.count({ where: { readAt: null } }), db.onboarding.count({ where: { status: "ACTIVE" } })]);
 
   return (
     <>
@@ -51,7 +51,16 @@ export default async function TeamPage() {
             ? `Positions, pay and availability. Square team sync ${relativeTime(lastSync)}.`
             : "Positions, pay and availability. Connect Square to pull in team members, wages and timecards."
         }
-        actions={<HelpZone id="team.squareSync" className="flex flex-wrap items-center gap-2"><SyncTeamButton configured={connected} /></HelpZone>}
+        actions={
+          <>
+            <HelpZone id="team.workforceLinks" className="flex flex-wrap items-center gap-2">
+              <LinkButton href="/team/onboarding" size="sm">Onboarding{newHires ? ` · ${newHires}` : ""}</LinkButton>
+              <LinkButton href="/team/recognition" size="sm">Shout-outs</LinkButton>
+              <LinkButton href="/team/messages" size="sm">Messages{unread ? ` · ${unread} new` : ""}</LinkButton>
+            </HelpZone>
+            <HelpZone id="team.squareSync" className="flex flex-wrap items-center gap-2"><SyncTeamButton configured={connected} /></HelpZone>
+          </>
+        }
       />
 
       <Section help="team.positions" title="Positions" description="Sales per labor hour sets how many people the schedule asks for: one person per that much forecast sales in an hour, within min and max.">

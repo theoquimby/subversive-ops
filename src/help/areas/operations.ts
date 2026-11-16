@@ -550,8 +550,17 @@ Clearing a number removes that item from the count.`,
 - **How often**: every count, monthly, or only when it changes. Items not due stay off the sheet and their last count carries forward.
 - **Prep items**: put house-made sauces and portioned proteins on the count. They're valued at recipe cost and become the prep list's on-hand.
 - **Take off the count**: archives an ingredient (or just removes a prep item from the count).`,
-    related: ["count.setup.every", "count.setup.prep", "count.units"],
+    related: ["count.setup.every", "count.setup.prep", "count.units", "count.setup.suggest"],
     keywords: ["organize", "setup", "shelf order", "photo", "item number", "lock"],
+  },
+  {
+    id: "count.setup.suggest",
+    area: "counts",
+    route: "/count/setup",
+    title: "Shorter counts",
+    body: "Items that don't need counting every time, worked out from past counts: one that's been the same on the last few counts (over three weeks or more) can be counted only when it changes, and one worth under $15 on the shelf can be counted monthly. Untick any you want to keep on every count, then Apply.",
+    related: ["count.setup.every", "count.setup"],
+    keywords: ["how often", "monthly", "only when it changes", "suggest", "shorter count", "frequency"],
   },
   {
     id: "count.setup.gaps",
@@ -1254,7 +1263,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     route: "/settings/suppliers",
     title: "Suppliers",
     body: "Delivery days and lead time decide when each order is due and how many days it covers. Minimum order warns you when an order is too small. You can also add a supplier straight from an invoice — including stores like Price Chopper.",
-    article: `- **Type** — just a label. **Distributor** sends a price sheet (Sysco, Hudson Valley Foodservice); **Local** is a farm, bakery or store run like Price Chopper. Nothing else changes with it.
+    article: `- **Type** — **Distributor** sends a price sheet (Sysco, Hudson Valley Foodservice); **Local** is a farm, bakery or store run like Price Chopper. It shows on each supplier and you can filter by it. A store added from a receipt (or a known store like Price Chopper) starts as Local.
 - **Delivery days** — the weekdays the truck comes.
 - **Lead time** — how many days before delivery the order must be in. A 1-day lead time means today's order arrives on the next delivery day from tomorrow on.
 - **Minimum order** — the order builder warns when you're under it.
@@ -1364,9 +1373,13 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     id: "settings.square.coverage",
     area: "settings",
     route: "/settings/square",
-    title: "Data we have",
-    body: "How much Square history is in the app: days of sales and their range, completed orders, timecards (and how many came from Square), and the last day with sales.",
-    related: ["sales.backfill"],
+    title: "Everything that comes in",
+    body: "Every kind of data the app keeps from Square, how much is in, and what it's used for. \"Nothing yet\" means that kind hasn't come in — usually the first import hasn't reached it, or Square has none.",
+    article: `What comes in: menu items and their prices, modifiers and add-ons, sales by item by day, orders and sales by hour, card fees, card and declared cash tips, comps and discounts, team members with their jobs and pay rates, and timecards with breaks.
+
+Timecards and declared cash tips only come in if people clock in on Square. Everything keeps itself up to date — through the day, every night, and within seconds once instant updates are on.`,
+    related: ["sales.backfill", "settings.square.sync"],
+    keywords: ["what syncs", "data", "modifiers", "tips", "fees", "discounts", "comps", "timecards", "team"],
   },
   {
     id: "settings.square.instant",

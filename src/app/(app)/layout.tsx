@@ -10,7 +10,7 @@ import { WhatsNew } from "@/components/whats-new";
 import { hasAppRoute, whatsNewState } from "@/server/services/whatsNew";
 import { addCommands, managerExtra, STAFF_EXTRA } from "./palette-extra";
 import { headers } from "next/headers";
-import { logout, requireUser } from "@/server/auth";
+import { getSessionState, logout, requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { redirect } from "next/navigation";
 
@@ -112,6 +112,9 @@ async function managerCommands(): Promise<Command[]> {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  // A manager changed this login's role (or name) since it signed in: refresh the cookie.
+  const { stale } = await getSessionState();
+  if (stale) redirect(`/api/session/refresh?next=${encodeURIComponent((await headers()).get("x-pathname") ?? "/")}`);
   const session = await requireUser();
   async function signOut() {
     "use server";

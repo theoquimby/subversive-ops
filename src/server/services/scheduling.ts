@@ -1,4 +1,5 @@
 import "server-only";
+import { NEEDS_MANAGER } from "@/domain/swaps";
 import { addDays, ISODate, parseISODate, todayIn, toISODate, weekday } from "@/domain/dates";
 import { requiredForShift, validOn, type CertTypeLike } from "@/domain/certs";
 import { applyRuleSettings, assignShifts, Candidate, checkCompliance, curveToBlocks, defaultBreakMinutes, LaborRules, PositionRule } from "@/domain/labor";
@@ -258,7 +259,7 @@ export async function loadWeek(monday: ISODate): Promise<WeekData> {
     getOpeningHours(monday),
     db.shift.findMany({ where: weekWhere(monday), orderBy: { start: "asc" } }),
     db.timeOffRequest.findMany({ where: { status: "PENDING", startDate: { lte: parseISODate(dates[6]) }, endDate: { gte: parseISODate(monday) } } }),
-    db.shiftSwap.count({ where: { status: "PENDING" } }),
+    db.shiftSwap.count({ where: NEEDS_MANAGER }),
     laborTargetFor(monday),
     getAutoDraft(),
   ]);

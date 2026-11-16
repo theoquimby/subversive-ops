@@ -26,10 +26,10 @@ export const whatsNew: HelpEntry[] = [
     article: `The checklist on Overview (**Finish setting up**) and on its own page shows what's left to set up, split in two:
 
 ### Essentials
-Without these the numbers are empty or guessed: connect Square, bring in your sales history, link Square items to recipes, suppliers with delivery deadlines, storage areas, staff logins and the time your morning brief arrives.
+Without these the numbers are empty or guessed, in the order they build on each other: connect Square, bring in your sales history, suppliers with delivery deadlines, get your prices in (an invoice photo, a receipt or a price sheet — done once most ingredients your recipes use have a price), add your recipes (done at five with ingredients), link Square items to recipes, storage areas, staff logins and the time your morning brief arrives.
 
 ### Nice to have
-Each turns on something extra: the prep list, beers and the tap list TV, AI features, QuickBooks, the website and Google.
+Each turns on something extra: AI features (reading photos of invoices and price sheets), the prep list, bringing in your kegs from Distribrewtion or your old keg app, beers and the tap list TV, QuickBooks, the website and Google.
 
 Nothing is ticked by hand: each item checks the real thing (is Square connected? are most items linked?), so it never gets out of date. The Overview card goes away once the essentials are done — or tap × to hide it sooner. The whole list stays at [Setup checklist](/welcome/checklist).`,
     keywords: ["setup", "onboarding", "checklist", "finish setting up", "getting started"],

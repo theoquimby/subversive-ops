@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { parseMoney } from "@/domain/budgets";
 import { requireUser } from "@/server/auth";
-import { RANGE_PRESETS, type RangePreset } from "@/domain/lab";
+import { plainAnalyticsError, RANGE_PRESETS, type RangePreset } from "@/domain/lab";
 import { getFixedCosts, markFinding, refreshAnalytics, saveFixedCosts, saveRange } from "@/server/services/analytics";
 
 const revalidate = () => {
@@ -16,7 +16,7 @@ export async function refreshInsights(): Promise<{ error?: string; seconds?: num
   await requireUser("MANAGER");
   const r = await refreshAnalytics();
   revalidate();
-  return "error" in r ? { error: `Couldn't update just now (${r.error}). Insights update overnight.` } : { seconds: Math.round(r.seconds) };
+  return "error" in r ? { error: `Couldn't update just now. ${plainAnalyticsError(r.error)}` } : { seconds: Math.round(r.seconds) };
 }
 
 const finding = z.object({ key: z.string().min(1).max(200), kind: z.string().min(1).max(80), title: z.string().max(400), subject: z.string().max(200).nullish(), monthly: z.number().finite(), parts: z.array(z.string().max(200)).max(20).optional() });
@@ -55,5 +55,5 @@ export async function setRange(preset: RangePreset): Promise<{ error?: string; s
   await saveRange(p.data);
   const r = await refreshAnalytics();
   revalidate();
-  return "error" in r ? { error: `Saved — it'll be used from the next update (${r.error}).` } : { seconds: Math.round(r.seconds) };
+  return "error" in r ? { error: `Saved — it'll be used from the next update. ${plainAnalyticsError(r.error)}` } : { seconds: Math.round(r.seconds) };
 }

@@ -175,7 +175,7 @@ function Worth({ a, className }: { a: DeckAction; className?: string }) {
   const one = isOneOff(a);
   return (
     <div className={className}>
-      <div className="mb-2 text-[0.72rem] font-medium tracking-[0.06em] text-muted uppercase">{a.vector === "earn" ? "Money earned" : "Money saved"}</div>
+      <div className="mb-2 text-[0.72rem] font-medium tracking-[0.06em] text-muted uppercase">{/* Future tense: what doing it is worth — not what the finding cost so far (that's in the headline). */}{a.vector === "earn" ? "Doing it could earn" : "Doing it could save"}</div>
       <MoneyLine a={a} count />
       {!one && <ImpactRange mid={a.monthly} low={a.low} high={a.high} className="mt-4 max-w-[22rem]" />}
       <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 text-sm lg:grid-cols-1">

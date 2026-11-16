@@ -82,6 +82,22 @@ export default async function QuickBooksPage({ searchParams }: { searchParams: P
         </Card>
       </Section>
 
+      <Section help="settings.quickbooks.what" title="What goes to QuickBooks">
+        <Card className="divide-y divide-border text-sm">
+          {[
+            ["Supplier invoices and store receipts", "As bills, once approved — one line per account, with the photo attached.", true],
+            ["Suppliers", "As vendors, matched by name or created the first time.", true],
+            ["Sales, tips and card fees", "Not sent automatically — download the daily sales journal from Invoices → Exports and import it, or keep using Square's own QuickBooks link.", false],
+            ["Payments", "Never. Bills are paid in QuickBooks, as now.", false],
+          ].map(([what, how, sent]) => (
+            <div key={String(what)} className="flex items-start gap-3 px-4 py-3">
+              <Badge tone={sent ? "good" : "neutral"} className="mt-0.5 shrink-0">{sent ? "Sent" : "Not sent"}</Badge>
+              <div className="min-w-0"><div className="font-medium text-ink">{what}</div><div className="text-muted">{how}</div></div>
+            </div>
+          ))}
+        </Card>
+      </Section>
+
       {s.connected && (
         <>
           <Section help="settings.quickbooks.accounts" title="Choose accounts" description="Which account in your chart of accounts each kind of purchase goes to. Lines are added up per account, so each bill stays short.">

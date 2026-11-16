@@ -1,14 +1,14 @@
 import "server-only";
 import { addDays, businessDate, dateRange, ISODate } from "@/domain/dates";
 import { payForWeek, PayLine } from "@/domain/labor";
-import { mergePositionRate, mergeTeamMember, parseTeamDiffs, type TeamDiff } from "@/domain/teamSync";
+import { mergePositionRate, mergeTeamMember, newPositionDefaults, parseTeamDiffs, type TeamDiff } from "@/domain/teamSync";
 import { cashTipRows } from "@/domain/tipSources";
 import { blockHours, zonedTime } from "@/domain/timecards";
 import { Prisma } from "@prisma/client";
 import { db, num } from "../db";
 import { env } from "../env";
 import { SquareClient } from "../integrations/square-http";
-import { getWageJobs, listTeamMembers, listTimecards } from "../integrations/square-labor";
+import { getWageJobs, listJobTipFlags, listTeamMembers, listTimecards } from "../integrations/square-labor";
 import { isSquareConnected, recordSquareSync, requireSquareClient } from "./square";
 import { getLaborRules } from "./labor-rules";
 import { storeSquareTips } from "./tips";
@@ -91,15 +91,23 @@ export async function weeklyPay(weekStart: ISODate, now = new Date()) {
 
 type PositionResolver = (title: string | null) => Promise<string | null>;
 
-async function positionResolver(): Promise<{ resolve: PositionResolver; created: () => number }> {
+async function positionResolver(client?: SquareClient): Promise<{ resolve: PositionResolver; created: () => number }> {
   const positions = await db.position.findMany();
   const posByName = new Map(positions.map((p) => [p.name.toLowerCase(), p.id]));
   let created = 0;
+  // Square's "tip eligible" switch per job, read once and only when a new position is made.
+  let tipFlags: Promise<Map<string, boolean>> | null = null;
+  const tipFlag = async (title: string) => {
+    if (!client) return null;
+    tipFlags ??= listJobTipFlags(client).catch(() => new Map<string, boolean>());
+    return (await tipFlags).get(title.toLowerCase()) ?? null;
+  };
   const resolve: PositionResolver = async (title) => {
     if (!title) return null;
     const hit = posByName.get(title.toLowerCase());
     if (hit) return hit;
-    const row = await db.position.create({ data: { name: title, sort: positions.length + created } });
+    const d = newPositionDefaults(title, await tipFlag(title));
+    const row = await db.position.create({ data: { name: title, sort: positions.length + created, area: d.area, tipEligible: d.tipEligible, tipPoints: d.tipPoints } });
     created++;
     posByName.set(title.toLowerCase(), row.id);
     return row.id;
@@ -128,7 +136,7 @@ const D2 = (n: number) => new Prisma.Decimal(n.toFixed(2));
 export async function syncSquareTeam(client?: SquareClient) {
   const c = client ?? (await requireSquareClient());
   const members = await listTeamMembers(c);
-  const pos = await positionResolver();
+  const pos = await positionResolver(c);
   const syncDeactivated = new Set<string>(parseIdList((await db.setting.findUnique({ where: { key: SYNC_DEACTIVATED_KEY } }))?.value));
   const diffs: Record<string, TeamDiff[]> = {};
   const positionNames = new Map((await db.position.findMany({ select: { id: true, name: true } })).map((p) => [p.id, p.name]));
@@ -201,7 +209,7 @@ export async function syncSquareTimecards(from: ISODate, toExclusive: ISODate, c
   const existing = new Map(
     (await db.timecard.findMany({ where: { squareId: { in: cards.map((x) => x.id) } }, select: { squareId: true, manuallyEdited: true, approvedAt: true } })).map((t) => [t.squareId!, t]),
   );
-  const pos = await positionResolver();
+  const pos = await positionResolver(c);
   let saved = 0;
   let kept = 0;
   for (const card of cards) {

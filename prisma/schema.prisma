@@ -439,6 +439,16 @@ model Employee {
   documentAcks       DocumentAck[]
   certifications     Certification[]
   trainingAssignments TrainingAssignment[]
+  /// First day of work (anniversaries, "first month"). Null = use createdAt.
+  startDate           DateTime?            @db.Date
+  /// Who to call in an emergency. Collected on the new-hire checklist; never tax or bank details.
+  emergencyName       String?
+  emergencyPhone      String?
+  emergencyRelation   String?
+  onboardings         Onboarding[]
+  shoutouts           Shoutout[]
+  redemptions         RewardRedemption[]
+  staffMessages       StaffMessage[]
 }
 
 model EmployeePosition {
@@ -463,7 +473,9 @@ model Shift {
   published    Boolean   @default(false)
   notes        String?
   createdAt    DateTime  @default(now())
-  swaps        ShiftSwap[]
+  swaps        ShiftSwap[] @relation("SwapShift")
+  /// Swaps where this shift is the one given back in a trade.
+  swapOffers   ShiftSwap[] @relation("SwapOffered")
 
   @@index([start])
   @@index([employeeId, start]) // perf
@@ -500,6 +512,7 @@ enum RequestStatus {
   PENDING
   APPROVED
   DENIED
+  CANCELLED
 }
 
 enum TimeOffType {
@@ -524,18 +537,33 @@ model TimeOffRequest {
   @@index([status]) // perf: pending requests
 }
 
+/// A shift changing hands. kind GIVE: give it away; SWAP: trade for one of the taker's shifts;
+/// DROP: can't work it, becomes an open shift once approved; PICKUP: an open shift someone claimed.
+/// takerId set with claimedAt null = the requester asked that person, who hasn't said yes yet.
 model ShiftSwap {
   id          String        @id @default(cuid())
   shiftId     String
-  shift       Shift         @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  shift          Shift         @relation("SwapShift", fields: [shiftId], references: [id], onDelete: Cascade)
   requesterId String
   requester   Employee      @relation("SwapRequester", fields: [requesterId], references: [id], onDelete: Cascade)
   takerId     String?
   taker       Employee?     @relation("SwapTaker", fields: [takerId], references: [id], onDelete: SetNull)
   status      RequestStatus @default(PENDING)
   createdAt   DateTime      @default(now())
+  kind           String        @default("GIVE") // GIVE | SWAP | DROP | PICKUP
+  /// SWAP: the taker's shift the requester gets in return.
+  offeredShiftId String?
+  offeredShift   Shift?        @relation("SwapOffered", fields: [offeredShiftId], references: [id], onDelete: SetNull)
+  note           String?
+  claimedAt      DateTime?
+  decidedAt      DateTime?
+  decidedBy      String?
+  autoApproved   Boolean       @default(false)
+  /// [{ at, by, what }] — every step, for the history.
+  log            Json          @default("[]")
 
   @@index([status]) // perf: pending swaps
+  @@index([shiftId])
 }
 
 model TipPeriod {
@@ -624,6 +652,9 @@ model PayPeriod {
   /// Payroll rows + totals at approval time (see domain/payroll.ts PayrollSnapshot).
   snapshot   Json?
   createdAt  DateTime        @default(now())
+  /// Marked as entered in the payroll provider (Square Payroll, Gusto…). Ops never runs payroll.
+  handedOffAt DateTime?
+  handedOffBy String?
 
   @@unique([startDate, endDate])
 }
@@ -1669,4 +1700,334 @@ model LinkChange {
 
   @@index([at])
   @@index([batch])
+}
+
+// ---- Shift checklists: opening, closing and mid-shift routines with sign-off ---------
+
+/// A routine run every day (or on chosen weekdays): "Opening — bar", "Closing — kitchen".
+model ChecklistTemplate {
+  id          String          @id @default(cuid())
+  name        String
+  /// "open" | "mid" | "close" — when in the day it's done (closing lists done after midnight count for the day before)
+  shift       String          @default("close")
+  /// Positions it's for (empty = everyone)
+  positionIds String[]        @default([])
+  /// Weekdays it runs, 0 = Sunday (empty = every day)
+  weekdays    Int[]           @default([])
+  sort        Int             @default(0)
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  items       ChecklistItem[]
+  runs        ChecklistRun[]
+}
+
+model ChecklistItem {
+  id         String            @id @default(cuid())
+  templateId String
+  template   ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  sort       Int               @default(0)
+  title      String
+  detail     String?
+  /// An app page that helps do it ("/kegs/scan", "/notes")
+  href       String?
+  /// Weekdays this item applies, 0 = Sunday (empty = whenever the list runs)
+  weekdays   Int[]             @default([])
+  active     Boolean           @default(true)
+  ticks      ChecklistTick[]
+
+  @@index([templateId, sort])
+}
+
+/// One day's run of a checklist. Created on the first tick.
+model ChecklistRun {
+  id            String            @id @default(cuid())
+  templateId    String
+  template      ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  /// Business date the run covers
+  date          DateTime          @db.Date
+  signedOffAt   DateTime?
+  signedOffBy   String?
+  signedOffName String?
+  note          String?
+  createdAt     DateTime          @default(now())
+  ticks         ChecklistTick[]
+
+  @@unique([templateId, date])
+  @@index([date])
+}
+
+model ChecklistTick {
+  id       String        @id @default(cuid())
+  runId    String
+  run      ChecklistRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  itemId   String
+  item     ChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  doneAt   DateTime      @default(now())
+  userId   String?
+  userName String
+
+  @@unique([runId, itemId])
+}
+
+// ---- Upkeep: equipment, recurring maintenance and the repair log ---------------------
+
+model Equipment {
+  id            String       @id @default(cuid())
+  name          String
+  /// "Bar" | "Kitchen" | "Cellar" | "Brewhouse" | "Building" | anything typed
+  area          String       @default("Bar")
+  make          String?
+  model         String?
+  serial        String?
+  /// Who services or repairs it
+  vendor        String?
+  vendorPhone   String?
+  installedOn   DateTime?    @db.Date
+  warrantyUntil DateTime?    @db.Date
+  notes         String?
+  active        Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  tasks         UpkeepTask[]
+  logs          UpkeepLog[]
+}
+
+/// A job that comes round every N days ("Clean draft lines", every 14).
+model UpkeepTask {
+  id          String      @id @default(cuid())
+  equipmentId String?
+  equipment   Equipment?  @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  title       String
+  everyDays   Int
+  /// Last time it was done (kept in step with the log)
+  lastDoneOn  DateTime?   @db.Date
+  /// Staff can tick it off from their checklists; off = a manager or outside vendor job
+  staffCanDo  Boolean     @default(false)
+  vendor      String?
+  howTo       String?
+  active      Boolean     @default(true)
+  sort        Int         @default(0)
+  createdAt   DateTime    @default(now())
+  logs        UpkeepLog[]
+}
+
+/// Append-only: a job done, a repair, a service visit, a note.
+model UpkeepLog {
+  id          String      @id @default(cuid())
+  date        DateTime    @db.Date
+  /// "done" (a recurring job) | "repair" | "service" | "note"
+  kind        String      @default("done")
+  taskId      String?
+  task        UpkeepTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  equipmentId String?
+  equipment   Equipment?  @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  title       String
+  cost        Decimal?    @db.Decimal(10, 2)
+  vendor      String?
+  /// Out of service until fixed (repairs)
+  down        Boolean     @default(false)
+  fixedOn     DateTime?   @db.Date
+  note        String?
+  userId      String?
+  userName    String?
+  createdAt   DateTime    @default(now())
+
+  @@index([date])
+  @@index([equipmentId, date])
+}
+
+// ---- Beer tax: removals worksheet for federal excise, the brewer's report and NY ------
+
+/// Gallons the keg history can't see: cans/crowlers/growlers out the door, beer returned, losses.
+model BeerTaxAdjustment {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  /// "packaged" (packaged outside kegs) | "removed" (taxable removal outside kegs) | "returned" (back to the brewery) | "loss" (dumped/destroyed)
+  kind      String
+  gallons   Decimal  @db.Decimal(10, 2)
+  beerId    String?
+  note      String?
+  userName  String?
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}
+
+/// A return marked as filed for one period.
+model BeerTaxFiling {
+  id          String   @id @default(cuid())
+  /// "federal" (TTB excise return) | "brop" (TTB brewer's report) | "ny" (NY beer tax return)
+  form        String
+  periodStart DateTime @db.Date
+  periodEnd   DateTime @db.Date
+  filedOn     DateTime @db.Date
+  amount      Decimal? @db.Decimal(10, 2)
+  note        String?
+  userName    String?
+  createdAt   DateTime @default(now())
+
+  @@unique([form, periodStart])
+}
+
+// ---- Workforce: new-hire onboarding, recognition, payroll hand-off, staff messages --------
+
+/// A reusable new-hire checklist ("Bartender", "Kitchen").
+model OnboardingTemplate {
+  id          String                   @id @default(cuid())
+  name        String
+  /// Positions it's suggested for (empty = anyone).
+  positionIds String[]                 @default([])
+  active      Boolean                  @default(true)
+  sort        Int                      @default(0)
+  createdAt   DateTime                 @default(now())
+  items       OnboardingTemplateItem[]
+  onboardings Onboarding[]
+}
+
+/// kind: DOCUMENT (sign a document; refId = document id, null = every document that needs signing)
+/// TRAINING (refId = module id, null = their assigned training) | CERT (refId = cert type id, null = every certificate their position needs)
+/// PAYROLL (W-4 / I-9 / direct deposit done in the payroll provider — a checkbox only) | AVAILABILITY | EMERGENCY | TASK (uniform, keys…)
+model OnboardingTemplateItem {
+  id           String             @id @default(cuid())
+  templateId   String
+  template     OnboardingTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  sort         Int                @default(0)
+  kind         String
+  title        String
+  detail       String?
+  refId        String?
+  required     Boolean            @default(true)
+  /// TASK: the new hire can tick it themselves (otherwise a manager does).
+  staffCanTick Boolean            @default(false)
+
+  @@index([templateId, sort])
+}
+
+/// One new hire's checklist. Items are copied from the template so later template edits don't change it.
+model Onboarding {
+  id          String              @id @default(cuid())
+  employeeId  String
+  employee    Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  templateId  String?
+  template    OnboardingTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  startDate   DateTime            @db.Date
+  dueOn       DateTime?           @db.Date
+  /// ACTIVE | DONE | CANCELLED
+  status      String              @default("ACTIVE")
+  /// MANUAL | SQUARE (started from a person the Square team sync brought in)
+  source      String              @default("MANUAL")
+  createdBy   String?
+  createdAt   DateTime            @default(now())
+  completedAt DateTime?
+  /// The new hire opened their checklist (first login).
+  seenAt      DateTime?
+  items       OnboardingItem[]
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model OnboardingItem {
+  id           String     @id @default(cuid())
+  onboardingId String
+  onboarding   Onboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  sort         Int        @default(0)
+  kind         String
+  title        String
+  detail       String?
+  refId        String?
+  required     Boolean    @default(true)
+  staffCanTick Boolean    @default(false)
+  doneAt       DateTime?
+  doneBy       String?
+
+  @@index([onboardingId, sort])
+}
+
+/// A shout-out: thanks tied to one of the house values. Managers give them; peers too when switched on.
+model Shoutout {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  fromUserId String?
+  fromName   String
+  /// One of the values in Setting recognition.config (free text kept as given).
+  value      String?
+  body       String
+  /// Points added to the person's balance (0 when points are off).
+  points     Int      @default(0)
+  /// Peer shout-outs can be hidden by a manager.
+  hidden     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([employeeId, createdAt])
+}
+
+/// Something points can be swapped for (a growler fill, a shift meal, a day picking the playlist).
+model Reward {
+  id          String             @id @default(cuid())
+  name        String
+  description String?
+  cost        Int
+  active      Boolean            @default(true)
+  sort        Int                @default(0)
+  createdAt   DateTime           @default(now())
+  redemptions RewardRedemption[]
+}
+
+model RewardRedemption {
+  id         String    @id @default(cuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  rewardId   String
+  reward     Reward    @relation(fields: [rewardId], references: [id], onDelete: Cascade)
+  points     Int
+  /// PENDING | APPROVED | DENIED
+  status     String    @default("PENDING")
+  createdAt  DateTime  @default(now())
+  decidedAt  DateTime?
+  decidedBy  String?
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+/// Every payroll file downloaded for a pay period (format, who, totals), so the hand-off has a history.
+model PayrollExport {
+  id          String   @id @default(cuid())
+  periodStart DateTime @db.Date
+  periodEnd   DateTime @db.Date
+  /// SQUARE_PAYROLL | GUSTO | GENERIC | ACCOUNTANT
+  format      String
+  /// Exported from the approved snapshot (true) or a live draft (false).
+  approved    Boolean  @default(false)
+  people      Int      @default(0)
+  hours       Decimal  @default(0) @db.Decimal(10, 2)
+  gross       Decimal  @default(0) @db.Decimal(12, 2)
+  tips        Decimal  @default(0) @db.Decimal(12, 2)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  @@index([periodStart, periodEnd])
+}
+
+/// A note from a staff member to the managers: a question, an idea, a heads-up. Managers can reply.
+model StaffMessage {
+  id         String    @id @default(cuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  /// QUESTION | IDEA | CONCERN | OTHER
+  kind       String    @default("QUESTION")
+  body       String
+  /// The sender's name is hidden from managers (only for IDEA / CONCERN).
+  anonymous  Boolean   @default(false)
+  readAt     DateTime?
+  readBy     String?
+  reply      String?
+  repliedAt  DateTime?
+  repliedBy  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([employeeId, createdAt])
 }

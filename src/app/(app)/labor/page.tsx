@@ -17,6 +17,7 @@ import Link from "next/link";
 import { AdjustmentsGrid, ApprovalBar, LevelBadge, PeriodPicker } from "./payroll-client";
 import { SquareSyncButton } from "./square-sync-button";
 import { TimecardGrid } from "./timecard-grid";
+import { ProductivityLine } from "./productivity";
 
 export const metadata = { title: "Timecards" };
 
@@ -83,6 +84,7 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
             <HelpZone id="labor.period"><PeriodPicker start={period.start} prev={payPeriodFor(addDays(period.start, -1), rules).start} next={addDays(period.end, 1)} label={label} /></HelpZone>
             <HelpZone id="labor.squareSync" className="flex flex-wrap items-center gap-2"><SquareSyncButton periodStart={period.start} connected={squareConnected} /></HelpZone>
             <HelpZone id="labor.export"><LinkButton href={`/labor/payroll?start=${period.start}`} prefetch={false}><Download className="size-3.5" />{approved ? "Payroll spreadsheet" : "Draft spreadsheet"}</LinkButton></HelpZone>
+            <LinkButton href={`/labor/handoff?start=${period.start}`} variant={approved ? "primary" : "secondary"}>Payroll hand-off</LinkButton>
           </>
         }
       />
@@ -95,6 +97,8 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
         <Stat help="labor.gross" label="Gross wages" value={money(total.gross, { whole: true })} hint="incl. OT, leave and adjustments" />
         <Stat help="labor.tips" label="Tips" value={money(total.tips, { whole: true })} hint={data.tips.uncovered.length && !approved ? "from finalized tip pools · incomplete" : "from finalized tip pools"} />
       </div>
+
+      <ProductivityLine start={period.start} end={period.end < today ? period.end : today} />
 
       {!approved && (
         <Section help="labor.exceptions" title="Before you approve" description={exceptions.length ? "Most urgent first. Fix what you can in the timecards below." : undefined}>

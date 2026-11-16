@@ -4,7 +4,7 @@ import { isQuoteToken } from "@/domain/privateEvents";
 import { tokenFromPath, verifyDisplayToken } from "@/server/display-token";
 
 // Staff only ever see the floor tools; everything else is manager-only.
-const STAFF_PATHS = ["/my", "/count", "/waste", "/kegs", "/notes", "/prep", "/help"];
+const STAFF_PATHS = ["/my", "/count", "/waste", "/kegs", "/notes", "/prep", "/checklists", "/help", "/api/session"];
 // Webhooks authenticate by signature inside the route.
 const PUBLIC_PATHS = ["/login", "/api/cron", "/api/webhooks", "/api/public", "/sw.js", "/manifest.webmanifest", "/icons/"];
 
@@ -33,8 +33,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
   if (session.role === "STAFF" && !STAFF_PATHS.some((p) => pathname.startsWith(p))) {
+    // The cookie may be older than a promotion to manager: check the current role
+    // (the refresh route re-signs the cookie, then sends staff to /my as before).
     const url = req.nextUrl.clone();
-    url.pathname = "/my";
+    url.pathname = "/api/session/refresh";
+    url.search = `?next=${encodeURIComponent(pathname + req.nextUrl.search)}`;
     return NextResponse.redirect(url);
   }
   return forward();

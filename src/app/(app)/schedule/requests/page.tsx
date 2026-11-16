@@ -7,6 +7,10 @@ import { requestHours, sickBalances } from "@/server/services/payroll";
 import { businessToday } from "@/server/services/sales";
 import { instantAt, loadWeek, shiftView, WeekData } from "@/server/services/scheduling";
 import { RequestsList } from "./requests-list";
+import { SwapRequests, type SwapRow } from "./swap-requests";
+import { candidatesFor, checkTaker, getSwapRules, weekCache } from "@/server/services/swaps";
+import { parseSwapLog, swapStage, type SwapKind } from "@/domain/swaps";
+import { dayDate } from "@/lib/format";
 
 export const metadata = { title: "Schedule requests" };
 
@@ -15,12 +19,12 @@ const MAX_COVERAGE_DAYS = 14;
 export default async function RequestsPage() {
   await requireUser("MANAGER");
   const today = businessToday();
-  const [off, swaps, recentOff, recentSwaps, team] = await Promise.all([
+  const [off, swaps, recentOff, recentSwaps, swapRules] = await Promise.all([
     db.timeOffRequest.findMany({ where: { status: "PENDING" }, orderBy: { startDate: "asc" }, include: { employee: { select: { name: true } } } }),
-    db.shiftSwap.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "asc" }, include: { shift: { include: { position: true } }, requester: { select: { name: true } }, taker: { select: { name: true } } } }),
+    db.shiftSwap.findMany({ where: { status: "PENDING", shift: { start: { gte: new Date() } } }, orderBy: { createdAt: "asc" }, include: { shift: { include: { position: true } }, requester: { select: { name: true } }, taker: { select: { name: true } }, offeredShift: true } }),
     db.timeOffRequest.findMany({ where: { status: { not: "PENDING" }, endDate: { gte: new Date(`${addDays(today, -30)}T00:00:00Z`) } }, orderBy: { startDate: "desc" }, take: 15, include: { employee: { select: { name: true } } } }),
-    db.shiftSwap.findMany({ where: { status: { not: "PENDING" } }, orderBy: { createdAt: "desc" }, take: 10, include: { shift: { include: { position: true } }, requester: { select: { name: true } }, taker: { select: { name: true } } } }),
-    db.employee.findMany({ where: { active: true }, select: { id: true, name: true, positions: { select: { positionId: true } } }, orderBy: { name: "asc" } }),
+    db.shiftSwap.findMany({ where: { status: { not: "PENDING" } }, orderBy: { createdAt: "desc" }, take: 15, include: { shift: { include: { position: true } }, requester: { select: { name: true } }, taker: { select: { name: true } }, offeredShift: true } }),
+    getSwapRules(),
   ]);
 
   // Week data (forecast needs, shifts, time off) shared by every request in that week.
@@ -76,53 +80,64 @@ export default async function RequestsPage() {
     }),
   );
 
-  const swapRow = async (w: (typeof swaps)[number], withImpact: boolean) => {
+  const cache = weekCache();
+  const tradeLabel = (sh: { start: Date; end: Date; breakMinutes: number; id: string; employeeId: string | null; positionId: string; notes: string | null; published: boolean } | null) => {
+    if (!sh) return null;
+    const v = shiftView(sh);
+    return `${dayDate(v.date)} ${shiftLabel(v.startMin, v.endMin)}`;
+  };
+  const swapRow = async (w: (typeof swaps)[number], live: boolean): Promise<SwapRow> => {
     const v = shiftView(w.shift);
-    const hours = shiftPaidHours(v);
-    const wk = withImpact ? await week(v.date) : null;
-    const candidates = team
-      .filter((t) => t.id !== w.requesterId && t.positions.some((p) => p.positionId === w.shift.positionId))
-      .map((t) => {
-        if (!wk) return { value: t.id, label: t.name, note: null as string | null };
-        const e = wk.employees.find((x) => x.id === t.id);
-        const before = wk.shifts.filter((x) => x.employeeId === t.id).reduce((a, x) => a + shiftPaidHours(x), 0);
-        const after = before + hours;
-        const busy = wk.shifts.some((x) => x.employeeId === t.id && x.date === v.date && x.startMin < v.endMin && v.startMin < x.endMin);
-        const off = wk.timeOff[t.id]?.includes(v.date);
-        const windows = e?.availability?.[weekday(v.date)];
-        const unavailable = e?.availability && !(windows ?? []).some(([a, b]) => a * 60 <= v.startMin && b * 60 >= v.endMin);
-        const notes = [
-          busy && "already working then",
-          off && "on time off",
-          unavailable && "outside availability",
-          after > wk.rules.weeklyOvertimeHours ? `goes to ${after.toFixed(1)}h: overtime` : e?.maxHoursWeek && after > e.maxHoursWeek ? `over their ${e.maxHoursWeek}h max` : null,
-        ].filter(Boolean) as string[];
-        return { value: t.id, label: `${t.name} · ${Number(before.toFixed(1))}h this week`, note: notes.length ? notes.join(", ") : null };
-      });
+    const checks: SwapRow["checks"] = [];
+    if (live && w.takerId && w.kind !== "DROP") {
+      const c = await checkTaker(v, w.takerId, cache, w.offeredShiftId);
+      checks.push({ who: w.taker?.name ?? "Taker", eligible: c.eligible, reasons: c.reasons, warnings: c.warnings });
+      if (w.kind === "SWAP" && w.offeredShift) {
+        const back = await checkTaker(shiftView(w.offeredShift), w.requesterId, cache, w.shiftId);
+        checks.push({ who: w.requester.name, eligible: back.eligible, reasons: back.reasons, warnings: back.warnings });
+      }
+    }
+    const candidates = live && w.kind !== "SWAP"
+      ? (await candidatesFor(v, w.kind === "PICKUP" ? [] : [w.requesterId], cache)).map((c) => ({ id: c.id, name: c.name, eligible: c.check.eligible, reasons: c.check.reasons, warnings: c.check.warnings, hoursBefore: c.check.hoursBefore, hoursAfter: c.check.hoursAfter }))
+      : [];
     return {
       id: w.id,
-      status: w.status,
+      kind: w.kind as SwapKind,
+      stage: swapStage(w),
       requester: w.requester.name,
-      requesterId: w.requesterId,
       taker: w.taker?.name ?? null,
       takerId: w.takerId,
       date: v.date,
       time: shiftLabel(v.startMin, v.endMin),
       position: w.shift.position.name,
       color: w.shift.position.color,
+      note: w.note,
+      giving: tradeLabel(w.offeredShift),
+      checks,
       candidates,
+      log: parseSwapLog(w.log),
+      auto: w.autoApproved,
+      decidedBy: w.decidedBy,
     };
   };
+  const needsMe = swaps.filter((w) => w.claimedAt || w.kind === "DROP");
+  const offered = swaps.filter((w) => !w.claimedAt && w.kind !== "DROP");
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader help="schedule.requests" title="Requests" description="Time off and shift swaps from the team, with who else is off and how each day is covered." back={{ href: "/schedule", label: "Schedule" }} />
-      <RequestsList
-        timeOff={timeOff}
-        swaps={await Promise.all(swaps.map((w) => swapRow(w, true)))}
-        recentOff={recentOff.map((r) => ({ id: r.id, name: r.employee.name, start: toISODate(r.startDate), end: toISODate(r.endDate), days: 0, note: r.note, status: r.status, type: r.type, hours: r.hours?.toNumber() ?? null, sickAvailable: null, clashes: [], coverage: [] }))}
-        recentSwaps={await Promise.all(recentSwaps.map((w) => swapRow(w, false)))}
-      />
+      <PageHeader help="schedule.requests" title="Requests" description="Time off, swaps, drops and pickups from the team — with who else is off, how each day is covered, and whether the person taking a shift passes the schedule rules." back={{ href: "/schedule", label: "Schedule" }} />
+      <div className="flex flex-col gap-10">
+        <RequestsList
+          timeOff={timeOff}
+          recentOff={recentOff.map((r) => ({ id: r.id, name: r.employee.name, start: toISODate(r.startDate), end: toISODate(r.endDate), days: 0, note: r.note, status: r.status, type: r.type, hours: r.hours?.toNumber() ?? null, sickAvailable: null, clashes: [], coverage: [] }))}
+        />
+        <SwapRequests
+          decide={await Promise.all(needsMe.map((w) => swapRow(w, true)))}
+          open={await Promise.all(offered.map((w) => swapRow(w, true)))}
+          recent={await Promise.all(recentSwaps.map((w) => swapRow(w, false)))}
+          rules={swapRules}
+        />
+      </div>
     </div>
   );
 }

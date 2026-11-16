@@ -396,3 +396,23 @@ export function watchList(watching: Opportunity[], state: FeedState): WatchItem[
       confidence: o.confidence,
     }));
 }
+
+// ---- Errors in plain English ----------------------------------------------------------------
+
+/**
+ * The analytics run fails with whatever the number-crunching service said —
+ * often a Python traceback. Managers get one plain sentence about what happened
+ * and whether their data is at risk; the raw text stays available as "details".
+ */
+export function plainAnalyticsError(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = raw.toLowerCase();
+  if (/modulenotfounderror|no module named|importerror/.test(s)) return "The number-crunching part of the app is missing a piece on the server, so the update couldn't run. Your data is fine — this needs a fix by whoever looks after the app.";
+  if (/timed out|timeout/.test(s)) return "The update took too long and was stopped. It tries again overnight; a shorter range (1–2 years) runs faster.";
+  if (/enoent|spawn|python(3)? (not found|exited 127)|command not found/.test(s)) return "The number-crunching service couldn't be started on the server. Your data is fine — this needs a fix by whoever looks after the app.";
+  if (/econnrefused|fetch failed|network|503|502|504/.test(s)) return "The number-crunching service couldn't be reached. It tries again overnight.";
+  if (/not enough|too few|no sales/.test(s)) return "There isn't enough sales history in the chosen range yet. Pick a longer range or wait for a few more weeks of sales.";
+  if (/memory|killed/.test(s)) return "The update ran out of room on the server. Try a shorter range (1–2 years).";
+  // Short, human messages pass through; tracebacks and code don't.
+  return raw.length <= 120 && !/traceback|file "|line \d+|\^\^\^|exited \d/i.test(raw) ? raw : "Something went wrong while working out the numbers. It tries again overnight.";
+}

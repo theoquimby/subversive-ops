@@ -8,6 +8,7 @@ import { documentScope } from "./documents";
 import { businessToday } from "./sales";
 import { listAnnouncements, shiftView, TZ } from "./scheduling";
 import { myTraining } from "./training";
+import { onboardingsWithProgress } from "./newHires";
 
 export interface HomeShift {
   id: string;
@@ -46,6 +47,8 @@ export interface StaffHome {
   actions: QuickAction[];
   announcements: { id: string; body: string; author: string | null; pinned: boolean; createdAt: string }[];
   kudos: { body: string; author: string | null; createdAt: string } | null;
+  /** Their new-hire checklist, while it's open. */
+  onboarding: { done: number; total: number; requiredLeft: number; seen: boolean; dueOn: ISODate | null } | null;
 }
 
 /** Everything the staff "Today" view shows, in one round of queries. */
@@ -55,6 +58,10 @@ export async function staffHome(employee: { id: string; name: string; positions:
   const weekEnd = new Date(now.getTime() + 7 * 86_400_000);
   const ackDocs = { ...documentScope("STAFF"), requiresAck: true, acks: { none: { employeeId: employee.id } } };
 
+  const [asks, onboarding] = await Promise.all([
+    db.shiftSwap.findMany({ where: { status: "PENDING", takerId: employee.id, claimedAt: null, requesterId: { not: employee.id }, shift: { start: { gte: now } } }, select: { kind: true, requester: { select: { name: true } }, shift: { select: { start: true } } }, orderBy: { shift: { start: "asc" } } }),
+    onboardingsWithProgress({ employeeId: employee.id }).then((l) => l[0] ?? null).catch(() => null),
+  ]);
   const [mine, openCount, board, toSign, training, myPendingSwaps, pendingOff, notes, kudos] = await Promise.all([
     db.shift.findMany({
       where: { employeeId: employee.id, published: true, end: { gt: now } },
@@ -62,16 +69,16 @@ export async function staffHome(employee: { id: string; name: string; positions:
       take: 12,
       include: { position: { select: { name: true, color: true } }, swaps: { where: { status: "PENDING" }, select: { id: true } } },
     }),
-    db.shift.count({ where: { employeeId: null, published: true, start: { gte: now }, positionId: { in: posIds } } }),
+    db.shift.count({ where: { employeeId: null, published: true, start: { gte: now }, positionId: { in: posIds }, swaps: { none: { status: "PENDING", kind: "PICKUP" } } } }),
     db.shiftSwap.findMany({
-      where: { status: "PENDING", takerId: null, requesterId: { not: employee.id }, shift: { start: { gte: now }, positionId: { in: posIds } } },
+      where: { status: "PENDING", takerId: null, kind: { in: ["GIVE", "SWAP"] }, requesterId: { not: employee.id }, shift: { start: { gte: now }, positionId: { in: posIds } } },
       select: { requester: { select: { name: true } }, shift: { select: { start: true } } },
       orderBy: { shift: { start: "asc" } },
       take: 5,
     }),
     db.document.findMany({ where: ackDocs, select: { id: true, title: true }, orderBy: { createdAt: "asc" } }),
     myTraining(employee.id, today),
-    db.shiftSwap.count({ where: { status: "PENDING", requesterId: employee.id, shift: { start: { gte: now } } } }),
+    db.shiftSwap.count({ where: { status: "PENDING", OR: [{ requesterId: employee.id, kind: { not: "PICKUP" } }, { takerId: employee.id, claimedAt: { not: null } }], shift: { start: { gte: now } } } }),
     db.timeOffRequest.count({ where: { employeeId: employee.id, status: "PENDING" } }),
     listAnnouncements(3),
     db.employeeFeedback.findFirst({
@@ -135,6 +142,15 @@ export async function staffHome(employee: { id: string; name: string; positions:
       href: "/my/me#training",
     });
   }
+  for (const a of asks) {
+    todos.push({
+      kind: "swap",
+      tone: "warn",
+      title: `${firstName(a.requester.name)} asked you to ${a.kind === "SWAP" ? "trade" : "cover"} ${shortDate(localParts(a.shift.start, TZ).date)}`,
+      detail: "Say yes or no — it only takes a tap.",
+      href: "/my/shifts",
+    });
+  }
   if (board.length) {
     const first = board[0];
     const d = localParts(first.shift.start, TZ).date;
@@ -142,7 +158,7 @@ export async function staffHome(employee: { id: string; name: string; positions:
       kind: "swap",
       tone: "neutral",
       title: board.length === 1 ? `${firstName(first.requester.name)} wants to give away ${shortDate(d)}` : `${board.length} teammates want to give away a shift`,
-      detail: "Offer to take it — your manager confirms.",
+      detail: "Take it if you can — we check your hours for you.",
       href: "/my/shifts#open",
     });
   }
@@ -167,5 +183,6 @@ export async function staffHome(employee: { id: string; name: string; positions:
     actions: quickActionOrder(employee.positions.map((p) => p.position.name)),
     announcements: notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() })),
     kudos: kudos ? { body: kudos.body, author: kudos.author?.name ?? null, createdAt: kudos.createdAt.toISOString() } : null,
+    onboarding: onboarding && onboarding.status === "ACTIVE" ? { done: onboarding.progress.done, total: onboarding.progress.total, requiredLeft: onboarding.progress.requiredTotal - onboarding.progress.requiredDone, seen: !!onboarding.seenAt, dueOn: onboarding.dueOn } : null,
   };
 }

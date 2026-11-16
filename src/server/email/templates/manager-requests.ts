@@ -8,7 +8,7 @@ type Shift = Omit<ScheduleShift, "hours" | "notes">;
 /** Something a staff member asked for that a manager has to decide. */
 export type StaffRequest =
   | { kind: "timeOff"; employee: string; type: "PTO" | "SICK" | "UNPAID"; startDate: ISODate; endDate: ISODate; hours: number | null; note: string | null; /** Published shifts they're on in that range. */ shiftsAffected: number }
-  | { kind: "swap"; employee: string; shift: Shift; taker: string | null };
+  | { kind: "swap"; employee: string; shift: Shift; taker: string | null; /** GIVE | SWAP | DROP | PICKUP (missing = GIVE). */ swapKind?: string };
 
 export interface StaffRequestEmail {
   name: string;
@@ -29,8 +29,10 @@ export function staffRequestSummary(r: StaffRequest): { title: string; body: str
       body: `${range(r.startDate, r.endDate)}${hours}${r.shiftsAffected ? ` · on ${r.shiftsAffected} shift${r.shiftsAffected === 1 ? "" : "s"}` : ""}`,
     };
   }
+  if (r.swapKind === "DROP") return { title: `${r.employee} wants to drop a shift`, body: `${dayDate(r.shift.date)} ${shiftTime(r.shift)} · ${r.shift.position} · it becomes an open shift if you approve` };
+  if (r.swapKind === "PICKUP") return { title: `${r.employee} wants to pick up an open shift`, body: `${dayDate(r.shift.date)} ${shiftTime(r.shift)} · ${r.shift.position}` };
   return {
-    title: `${r.employee} wants to swap a shift`,
+    title: r.swapKind === "SWAP" && r.taker ? `${r.employee} and ${r.taker} want to trade shifts` : `${r.employee} wants to swap a shift`,
     body: `${dayDate(r.shift.date)} ${shiftTime(r.shift)} · ${r.shift.position}${r.taker ? ` · ${r.taker} would take it` : " · open to anyone"}`,
   };
 }

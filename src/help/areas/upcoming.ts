@@ -348,15 +348,15 @@ In Settings each rule can be **Must fix** (publishing stops until you override),
     area: "schedule",
     route: "/schedule/requests",
     title: "Shift swaps",
-    body: "Someone wants to give away a shift. If nobody has offered to take it, pick who gets it — each name shows their hours this week and any clash, such as overtime or being off.",
-    related: ["my.swaps"],
+    body: "Swaps someone has said yes to, pickups waiting on you, and drops. Each shows whether the person taking it passes the schedule rules (hours, overtime, minors, certificates, time off). You can pick someone else before approving.",
+    related: ["my.swaps", "schedule.requests.rules"],
   },
   {
     id: "schedule.requests.recent",
     area: "schedule",
     route: "/schedule/requests",
-    title: "Recently handled",
-    body: "Time off and swaps you've already approved or denied, newest first, so you can check what was decided.",
+    title: "Swap history",
+    body: "Every swap, pickup and drop with each step: who offered, who took it, who approved (or if it went through automatically).",
   },
 ];
 
@@ -367,7 +367,7 @@ export const my: HelpEntry[] = [
     route: "/my/shifts",
     audience: "all",
     title: "My shifts",
-    body: "Your upcoming shifts, open shifts you can pick up, swaps, time off and sick leave, and when you can work — all from your phone.",
+    body: "Your upcoming shifts, shifts you can pick up, swaps and trades, time off and sick leave, and when you can work — all from your phone.",
     related: ["my.today", "my.openShifts", "my.swaps", "my.timeOff", "my.availability"],
   },
   {
@@ -384,7 +384,7 @@ export const my: HelpEntry[] = [
     route: "/my/shifts",
     audience: "all",
     title: "Pick up open shifts",
-    body: "Shifts nobody is on yet, for positions you work. The first person to tap Pick up gets it.",
+    body: "Open shifts and shifts teammates are giving away or trading, for positions you work. Each one says whether you can take it — we check your hours, overtime and certificates first.",
   },
   {
     id: "my.swaps",
@@ -392,7 +392,8 @@ export const my: HelpEntry[] = [
     route: "/my/shifts",
     audience: "all",
     title: "Swap a shift",
-    body: "Offer one of your shifts to a teammate or to anyone who can cover. Once someone offers and a manager approves, it moves to their schedule.",
+    body: "Tap Swap on a shift: give it away, trade it for one of a teammate's, or ask to drop it. You can ask one person or anyone who can cover. It stays yours until it's approved.",
+    related: ["my.swapBoard", "schedule.requests.rules"],
   },
   {
     id: "my.timeOff",

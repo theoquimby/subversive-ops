@@ -24,6 +24,44 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.10",
+    date: "2026-11-16",
+    title: "Your team, end to end",
+    summary: "Shift swaps and pickups that check the rules for you, new-hire checklists, shout-outs, a payroll hand-off for Square Payroll or Gusto, covers next to sales, and a fuller staff home.",
+    entries: ["2026-11-16.swap-board", "2026-11-16.my-everything", "2026-11-16.swap-rules", "2026-11-16.onboarding", "2026-11-16.shoutouts", "2026-11-16.payroll-handoff", "2026-11-16.covers"],
+    fixed: [
+      "A swap request no longer counts as waiting on a manager until someone says they'll take the shift.",
+      "Withdrawn swaps are kept in the history instead of disappearing.",
+      "Staff can see their own clock-ins for the pay period and flag a mistake before it's approved.",
+    ],
+  },
+  {
+    version: "1.9",
+    date: "2026-11-16",
+    title: "Running the floor and the brewery",
+    summary: "Opening and closing checklists anyone can tick on a phone, upkeep for the draft lines and everything else, and the beer tax worked out from your kegs.",
+    entries: ["2026-11-16.checklists", "2026-11-16.upkeep", "2026-11-16.beer-tax"],
+    fixed: [
+      "The Overview and the morning brief now flag a closing list left unfinished, an overdue upkeep job, equipment down for repair and a beer tax return coming due.",
+      "Jobs staff can do, like cleaning the draft lines, show on Checklists when they're due and are logged with their name.",
+    ],
+  },
+  {
+    version: "1.8",
+    date: "2026-11-16",
+    title: "Getting your data in",
+    summary: "Everything Square sends in one list, price sheets from paper, products and count frequencies worked out for you, and a setup checklist in the order things build on each other.",
+    entries: ["2026-11-16.datain-square-all", "2026-11-16.datain-paper-prices", "2026-11-16.datain-link-products", "2026-11-16.datain-count-every", "2026-11-16.datain-checklist"],
+    fixed: [
+      "New positions that come in from Square jobs take Square's tip-eligible setting, and kitchen jobs land in Back of house.",
+      "A store added from a receipt (Price Chopper and the like) starts as a Local supplier, and each supplier shows Local or Distributor on phones.",
+      "Invoice and product matching no longer mistakes a short word for a longer one (\"Pork Butt\" isn't Buttermilk, \"Cont\" isn't Cornstarch).",
+      "Suppliers works out delivery days and deadlines from your invoices the first time you open it, instead of waiting for the night.",
+      "QuickBooks lists exactly what goes over (bills and vendors) and what doesn't, before you connect.",
+      "Keg import says it takes Distribrewtion's exports.",
+    ],
+  },
+  {
     version: "1.7",
     date: "2026-11-16",
     title: "Link your sales",

@@ -3,7 +3,7 @@ import { HelpTip, HelpZone } from "@/components/help";
 import { EmptyState, PageHeader, Section } from "@/components/ui";
 import { allFindings, allWatching, type PriceFit } from "@/domain/analytics";
 import { daysBetween } from "@/domain/dates";
-import { priceResults, trackRecord, watchList, type ProfitBase } from "@/domain/lab";
+import { plainAnalyticsError, priceResults, trackRecord, watchList, type ProfitBase } from "@/domain/lab";
 import { money, relativeTime, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { analyticsStatus, getFixedCosts, getRange, insightFeed, labSetup, refreshIfStale } from "@/server/services/analytics";
@@ -49,7 +49,13 @@ export default async function InsightsPage() {
       <>
         {header(null)}
         <EmptyState title="Insights update overnight" action={<RefreshLink />}>
-          {status.error ? `The last try didn't finish (${status.error}). ` : ""}The first set is worked out after the nightly sync, or work it out now — it takes a few seconds.
+          {status.error ? `The last try didn't finish. ${plainAnalyticsError(status.error)} ` : ""}The first set is worked out after the nightly sync, or work it out now — it takes a few seconds.
+          {status.error && plainAnalyticsError(status.error) !== status.error && (
+            <details className="mx-auto mt-3 max-w-md text-left text-xs">
+              <summary className="cursor-pointer text-muted hover:text-ink">Details for whoever looks after the app</summary>
+              <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-surface-2 p-3 whitespace-pre-wrap break-all">{status.error}</pre>
+            </details>
+          )}
         </EmptyState>
       </>
     );

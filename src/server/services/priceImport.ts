@@ -46,6 +46,10 @@ export async function readTables(file: File): Promise<SheetTable[]> {
 
 /** Read a CSV/XLSX upload (first table) — used by distributor price sheets. */
 export async function readSheet(file: File): Promise<{ headers: string[]; records: Record<string, unknown>[] }> {
+  if (file.size > MAX_BYTES) throw new Error("That file is over 10 MB.");
+  // A photo of a paper price sheet, or a PDF: read by AI into the same columns.
+  const { isPaperFile, readPaperPriceSheet } = await import("./priceSheetPaper");
+  if (isPaperFile(file)) return readPaperPriceSheet(file);
   const [first] = await readTables(file);
   return first ? { headers: first.headers, records: first.records } : { headers: [], records: [] };
 }

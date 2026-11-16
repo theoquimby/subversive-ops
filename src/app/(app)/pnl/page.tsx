@@ -148,7 +148,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
       {showStory && prev && <p className="mb-2 text-xs text-muted sm:hidden">Arrows compare with {prev.label}.</p>}
       <HelpZone id="pnl.kpis" tour="pnl.stats" className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
-          label={KPI_LABELS.sales}
+          label={<span className="inline-flex items-center gap-1.5">{KPI_LABELS.sales} <HelpTip id="pnl.sales" /></span>}
           value={salesPending ? "—" : nothingCounted ? "—" : whole(t.sales)}
           hint={
             showStory ? (

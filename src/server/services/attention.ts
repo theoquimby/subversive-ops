@@ -1,4 +1,5 @@
 import "server-only";
+import { NEEDS_MANAGER } from "@/domain/swaps";
 import { attentionItems, type AttentionItem } from "@/domain/attention";
 import { INVOICE_ISSUE_STATUSES, isInvoiceIssue } from "@/domain/alerts";
 import { addDays, parseISODate } from "@/domain/dates";
@@ -8,6 +9,10 @@ import { supplierCutoffs } from "./planning";
 import { businessToday } from "./sales";
 import { certMatrix } from "./training";
 import { privateEventNeedsYou } from "./privateEvents";
+import { opsAttentionItems } from "@/domain/opsAttention";
+import { unfinishedLastNight } from "./checklists";
+import { upkeepNeedsYou } from "./upkeep";
+import { beerTaxNeedsYou } from "./beerTax";
 
 /**
  * What needs a manager right now, for the Overview: order cutoffs coming up,
@@ -24,11 +29,17 @@ export async function attentionList(now = new Date()): Promise<AttentionItem[]> 
     });
   // Private events: follow-ups, deposits and balances due (started early, joined at the end).
   const privateEvents = soft("private events", privateEventNeedsYou(today), []);
+  // Floor and brewery: unfinished closes, overdue upkeep, equipment down, beer tax due.
+  const ops = Promise.all([
+    soft("checklists", unfinishedLastNight(today), []),
+    soft("upkeep", upkeepNeedsYou(today), { overdue: [], down: [] }),
+    soft("beer tax", beerTaxNeedsYou(today), []),
+  ]).then(([closes, upkeep, taxes]) => opsAttentionItems({ today, closes, overdueJobs: upkeep.overdue, down: upkeep.down, taxes }));
   const [cutoffs, invoices, timeOff, swaps, draftShifts, kegs, certs, badReviews] = await Promise.all([
     soft("cutoffs", supplierCutoffs(now), []),
     soft("invoices", db.invoice.groupBy({ by: ["status"], where: { status: { not: "APPROVED" } }, _count: { _all: true } }), []),
     soft("time off", db.timeOffRequest.count({ where: { status: "PENDING", endDate: { gte: parseISODate(today) } } }), 0),
-    soft("swaps", db.shiftSwap.count({ where: { status: "PENDING", shift: { start: { gte: now } } } }), 0),
+    soft("swaps", db.shiftSwap.count({ where: { ...NEEDS_MANAGER, shift: { start: { gte: now } } } }), 0),
     soft("schedule", db.shift.count({ where: { published: false, start: { gte: now, lt: new Date(now.getTime() + 7 * 86_400_000) } } }), 0),
     soft("kegs", stockSummary(), null),
     soft("certificates", certMatrix(today).then((m) => m.summary), null),
@@ -61,5 +72,5 @@ export async function attentionList(now = new Date()): Promise<AttentionItem[]> 
     certsExpiring: certs?.expiring ?? 0,
     badReviews,
   });
-  return [...items, ...(await privateEvents)].sort((a, b) => b.urgency - a.urgency);
+  return [...items, ...(await privateEvents), ...(await ops)].sort((a, b) => b.urgency - a.urgency);
 }

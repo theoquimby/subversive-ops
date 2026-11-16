@@ -152,7 +152,7 @@ export function SuppliersTable({ rows }: { rows: SupplierRow[] }) {
       ]}
       card={(s) => ({
         title: <>{s.name}{!s.active && <span className="font-normal text-muted"> · archived</span>}</>,
-        subtitle: days(s.deliveryDays),
+        subtitle: `${s.kind === "LOCAL" ? "Local" : "Distributor"} · ${days(s.deliveryDays)}`,
         value: `${s.leadTimeDays}d lead`,
         sub: s.email ? deadlineSummary(s) || "no delivery days" : <Badge tone="warn">no email</Badge>,
       })}

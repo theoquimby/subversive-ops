@@ -195,3 +195,15 @@ describe("parsePastedLines", () => {
     expect(parsePastedLines("Sourdough loaf\t4\t\t26.00")).toEqual([{ sku: null, description: "Sourdough loaf", qty: 4, unitPrice: 6.5 }]);
   });
 });
+
+describe("descriptionSimilarity abbreviations", () => {
+  it("accepts shorthand and most-of-a-word", () => {
+    expect(descriptionSimilarity("Chicken", "Chkn Wing Jumbo")).toBe(1);
+    expect(descriptionSimilarity("Shredded", "Cheese Shred")).toBe(1);
+  });
+  it("doesn't take a short word inside a longer one", () => {
+    expect(descriptionSimilarity("Buttermilk", "Pork Butt Bone In")).toBe(0);
+    expect(descriptionSimilarity("Cornstarch", "Cont Hinged 9X9")).toBe(0);
+    expect(descriptionSimilarity("Buttermilk", "Liner Blk 38X58")).toBe(0);
+  });
+});

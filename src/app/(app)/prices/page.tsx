@@ -11,8 +11,14 @@ import { savePriceAlertThreshold } from "./actions";
 import { spikeThreshold } from "@/server/services/notify";
 import { HelpZone } from "@/components/help";
 import { PricesTable, type PriceRow } from "./prices-table";
+import { LinkSuggestions, type LinkSuggestionRow } from "./link-suggestions";
+import { suggestIngredient } from "@/domain/invoiceAutopilot";
+import type { BaseUnit } from "@/domain/units";
 
 export const metadata = { title: "Prices" };
+
+/** How sure a name match must be before it's offered as a link. */
+const LINK_SUGGEST_SCORE = 0.85;
 
 export default async function PricesPage({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
   await requireUser("MANAGER");
@@ -26,7 +32,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
       include: { supplier: { select: { id: true, name: true } }, ingredient: { select: { id: true, name: true, category: true, storageArea: true } } },
       orderBy: [{ supplier: { name: "asc" } }, { description: "asc" }],
     }),
-    db.ingredient.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    db.ingredient.findMany({ where: { active: true }, select: { id: true, name: true, baseUnit: true }, orderBy: { name: "asc" } }),
     db.priceImport.findMany({ orderBy: { createdAt: "desc" }, take: 1, include: { supplier: { select: { name: true } } } }),
     loadCostingSnapshot(),
     spikeThreshold(),
@@ -34,6 +40,14 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
   ]);
   const usedIn = new Map<string, number>();
   for (const r of snap.recipes) for (const l of r.lines) if (l.ingredientId) usedIn.set(l.ingredientId, (usedIn.get(l.ingredientId) ?? 0) + 1);
+
+  // Unlinked products whose name clearly is one of the ingredients: offered to link in one go.
+  const ingRefs = ingredients.map((i) => ({ id: i.id, name: i.name, baseUnit: i.baseUnit as BaseUnit }));
+  const linkSuggestions: LinkSuggestionRow[] = hiddenView ? [] : products.flatMap((p) => {
+    if (p.ingredient) return [];
+    const s = suggestIngredient(p.description, ingRefs);
+    return s && s.score >= LINK_SUGGEST_SCORE ? [{ productId: p.id, description: p.description, supplier: p.supplier.name, ingredientId: s.ingredient.id, ingredient: s.ingredient.name }] : [];
+  });
 
   const rows: PriceRow[] = products.map((p) => {
     const hist = (snap.priceHistory.get(p.id) ?? []).filter((h) => h.date <= today);
@@ -78,6 +92,8 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
           )
         }
       />
+
+      <LinkSuggestions rows={linkSuggestions} />
 
       <PricesTable rows={rows} ingredients={ingredients.map((i) => ({ value: i.id, label: i.name }))} hiddenView={hiddenView} today={today} />
 

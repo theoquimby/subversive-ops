@@ -1,9 +1,9 @@
-import { Badge, Card, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, Card, LinkButton, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { qty, relativeTime, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { lastWebhookSeen, squareStatus, squareStreams, squareSyncLog, squareWebhookKey } from "@/server/services/square";
 import { publicOrigin, SQUARE_WEBHOOK_PATH } from "@/server/services/public-url";
-import { dataCoverage, getBackfill } from "@/server/services/square-sync";
+import { dataCoverage, getBackfill, squareDataInventory } from "@/server/services/square-sync";
 import Link from "next/link";
 import { InstantUpdates } from "../connections/connections-client";
 import { isLocalOrigin } from "@/server/services/public-url";
@@ -24,7 +24,7 @@ const STREAMS = [
 export default async function SquareSettingsPage({ searchParams }: { searchParams: Promise<{ connected?: string; error?: string }> }) {
   await requireUser("MANAGER");
   const { connected: justConnected, error } = await searchParams;
-  const [status, streams, log, coverage, backfill, webhookKey, origin, lastWebhook] = await Promise.all([squareStatus(), squareStreams(), squareSyncLog(), dataCoverage(), getBackfill(), squareWebhookKey(), publicOrigin(), lastWebhookSeen()]);
+  const [status, streams, log, coverage, backfill, webhookKey, origin, lastWebhook, inventory] = await Promise.all([squareStatus(), squareStreams(), squareSyncLog(), dataCoverage(), getBackfill(), squareWebhookKey(), publicOrigin(), lastWebhookSeen(), squareDataInventory()]);
   const webhooksOn = !!webhookKey;
 
   return (
@@ -105,13 +105,22 @@ export default async function SquareSettingsPage({ searchParams }: { searchParam
         </div>
       </Section>
 
-      <Section help="settings.square.coverage" title="Data we have">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat label="Sales history" value={coverage.salesDays ? `${coverage.salesDays} days` : "None yet"} hint={coverage.firstSale && coverage.lastSale ? `${shortDate(coverage.firstSale)} – ${shortDate(coverage.lastSale)}` : "import to get started"} />
-          <Stat label="Orders" value={qty(coverage.orders, 0)} hint="completed in Square" />
-          <Stat label="Timecards" value={qty(coverage.timecards, 0)} hint={`${qty(coverage.squareTimecards, 0)} from Square`} />
-          <Stat label="Last sale day" value={coverage.lastSale ? shortDate(coverage.lastSale) : "—"} hint={streams.live ? `today refreshed ${relativeTime(new Date(streams.live.at))}` : "not refreshed yet"} />
-        </div>
+      <Section
+        help="settings.square.coverage"
+        title="Everything that comes in"
+        description={`Every kind of Square data the app keeps, and what it's used for. It all stays in step by itself.${coverage.lastSale ? ` Last sale day: ${shortDate(coverage.lastSale)}${streams.live ? `, today refreshed ${relativeTime(new Date(streams.live.at))}` : ""}.` : ""}`}
+      >
+        <Card className="divide-y divide-border">
+          {inventory.map((r) => (
+            <div key={r.id} className="flex items-start justify-between gap-4 px-4 py-3">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-ink">{r.label}</div>
+                <div className="text-xs text-muted">{r.usedFor}</div>
+              </div>
+              <div className={`num shrink-0 text-right text-sm ${r.value ? "text-ink-2" : "text-muted"}`}>{r.value ?? "nothing yet"}</div>
+            </div>
+          ))}
+        </Card>
       </Section>
 
       <Section help="settings.square.sync" title="Sync" description={webhooksOn ? "Square tells us about new orders and clock-ins as they happen (instant updates are on). Pages also top up today's numbers if they're more than 15 minutes old." : "Pages top up today's numbers when they're more than 15 minutes old, and everything re-syncs nightly. Turn on instant updates in the set-up guide to get new orders within seconds."}>

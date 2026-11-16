@@ -1,3 +1,4 @@
+import { TeamCard } from "./team-card";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
@@ -80,6 +81,7 @@ export async function MorningView({ name, viewer }: { name: string; viewer: { us
       <div className="space-y-6">
         <YesterdayCard b={b} />
         <TodayCard b={b} />
+        <TeamCard />
         <TonightCard b={b} />
         {feed.items.length > 0 && (
           <HelpZone id="brief.insight">
@@ -143,10 +145,10 @@ function YesterdayCard({ b }: { b: MorningBrief }) {
           <>
             <p className="px-5 text-[1.02rem] leading-relaxed text-ink sm:px-6">{y.line}</p>
             <div className="mt-4 grid grid-cols-2 border-t border-border sm:grid-cols-4">
-              <Figure label="Sales" value={whole(y.sales)} sub={y.orders ? `${Math.round(y.orders)} orders` : "net of tax and tips"} />
-              <Figure label="vs forecast" value={y.vsForecast == null ? "—" : signedPct(y.vsForecast, 0)} sub={y.forecast ? `forecast ${whole(y.forecast)}` : "no forecast"} tone={y.vsForecast == null ? undefined : y.vsForecast >= -0.03 ? "good" : y.vsForecast <= -0.15 ? "warn" : undefined} />
-              <Figure label="Labor" value={y.laborPct == null ? "—" : pct(y.laborPct, 0)} sub={y.labor <= 0 ? "no timecards yet" : y.laborTarget != null ? `target ${pct(y.laborTarget, 0)}` : `${whole(y.labor)} wages`} tone={y.laborPct != null && y.laborTarget != null ? (y.laborPct > y.laborTarget + 0.03 ? "bad" : y.laborPct > y.laborTarget + 0.005 ? "warn" : "good") : undefined} />
-              <Figure label="Profit (est.)" value={y.profit == null ? "—" : signedWhole(y.profit)} sub={y.labor <= 0 ? "after food (no labor yet)" : "after food and labor"} tone={y.profit != null && y.profit < 0 ? "bad" : undefined} />
+              <Figure label="Sales" help="brief.figure.sales" value={whole(y.sales)} sub={y.orders ? `${Math.round(y.orders)} orders` : "net of tax and tips"} />
+              <Figure label="vs forecast" help="brief.figure.vsForecast" value={y.vsForecast == null ? "—" : signedPct(y.vsForecast, 0)} sub={y.forecast ? `forecast ${whole(y.forecast)}` : "no forecast"} tone={y.vsForecast == null ? undefined : y.vsForecast >= -0.03 ? "good" : y.vsForecast <= -0.15 ? "warn" : undefined} />
+              <Figure label="Labor" help="brief.figure.labor" value={y.laborPct == null ? "—" : pct(y.laborPct, 0)} sub={y.labor <= 0 ? "no timecards yet" : y.laborTarget != null ? `target ${pct(y.laborTarget, 0)}` : `${whole(y.labor)} wages`} tone={y.laborPct != null && y.laborTarget != null ? (y.laborPct > y.laborTarget + 0.03 ? "bad" : y.laborPct > y.laborTarget + 0.005 ? "warn" : "good") : undefined} />
+              <Figure label="Profit (est.)" help="brief.figure.profit" value={y.profit == null ? "—" : signedWhole(y.profit)} sub={y.labor <= 0 ? "after food (no labor yet)" : "after food and labor"} tone={y.profit != null && y.profit < 0 ? "bad" : undefined} />
             </div>
             {y.flags.length > 0 && (
               <div className="flex flex-wrap gap-1.5 border-t border-border px-5 py-3 sm:px-6">
@@ -160,10 +162,10 @@ function YesterdayCard({ b }: { b: MorningBrief }) {
   );
 }
 
-function Figure({ label, value, sub, tone }: { label: string; value: string; sub: string; tone?: "good" | "warn" | "bad" }) {
+function Figure({ label, value, sub, tone, help }: { label: string; value: string; sub: string; tone?: "good" | "warn" | "bad"; help?: string }) {
   return (
     <div className="flex min-h-[5.5rem] min-w-0 flex-col justify-center border-border px-5 py-3 even:border-l max-sm:[&:nth-child(n+3)]:border-t sm:border-l sm:first:border-l-0 sm:px-6">
-      <div className="truncate text-xs text-muted">{label}</div>
+      <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted"><span className="truncate">{label}</span>{help && <HelpTip id={help} />}</div>
       <div className={cx("num mt-0.5 truncate text-[1.35rem] font-semibold tracking-tight", tone ? TEXT[tone] : "text-ink")}>{value}</div>
       <div className="truncate text-xs text-muted">{sub}</div>
     </div>
@@ -399,10 +401,10 @@ function WrapCard({ w }: { w: NonNullable<MorningBrief["wrap"]> }) {
       <Card className="overflow-hidden">
         <CardTitle icon={History} label={<>Last week · {shortDate(w.from)} – {shortDate(w.to)}</>} help="brief.wrap" action={<Link href={`/pnl?period=custom&from=${w.from}&to=${w.to}`} className="relative text-xs text-muted hover:text-ink after:absolute after:-inset-2 after:content-['']">P&amp;L →</Link>} />
         <div className="grid grid-cols-2 border-t border-border sm:grid-cols-4">
-          <Figure label="Sales" value={whole(w.sales)} sub={w.budget ? `budget ${whole(w.budget)}` : "no budget set"} />
+          <Figure label="Sales" help="pnl.sales" value={whole(w.sales)} sub={w.budget ? `budget ${whole(w.budget)}` : "no budget set"} />
           <Figure label={w.vsBudget != null ? "vs budget" : "vs week before"} value={w.vsBudget != null ? signedPct(w.vsBudget, 0) : w.vsPrev != null ? signedPct(w.vsPrev, 0) : "—"} sub={w.vsBudget != null && w.vsPrev != null ? `${signedPct(w.vsPrev, 0)} on the week before` : " "} tone={(w.vsBudget ?? w.vsPrev) == null ? undefined : (w.vsBudget ?? w.vsPrev)! >= -0.03 ? "good" : "warn"} />
-          <Figure label="Labor" value={w.laborPct == null ? "—" : pct(w.laborPct, 0)} sub="of sales" />
-          <Figure label="Profit (est.)" value={w.profit == null ? "—" : signedWhole(w.profit)} sub="before fixed costs" tone={w.profit != null && w.profit < 0 ? "bad" : undefined} />
+          <Figure label="Labor" help="brief.figure.labor" value={w.laborPct == null ? "—" : pct(w.laborPct, 0)} sub="of sales" />
+          <Figure label="Profit (est.)" help="brief.figure.profit" value={w.profit == null ? "—" : signedWhole(w.profit)} sub="before fixed costs" tone={w.profit != null && w.profit < 0 ? "bad" : undefined} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3.5 sm:px-6">
           <p className="min-w-0 text-sm text-ink-2">{w.best ? `Best day was ${dayDate(w.best.date)} at ${whole(w.best.sales)}.` : w.lines[0]}</p>

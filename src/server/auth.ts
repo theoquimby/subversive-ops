@@ -2,6 +2,7 @@ import "server-only";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { db } from "./db";
 import { env } from "./env";
 import { Session, SESSION_COOKIE, SESSION_TTL_SECONDS, signSession, verifySession } from "./session";
@@ -11,9 +12,36 @@ const LOCK_MINUTES = 10;
 // Compared against when the name is unknown, so both paths take the same time.
 const DUMMY_HASH = bcrypt.hashSync("not-a-real-pin", 10);
 
-export async function getSession(): Promise<Session | null> {
+/**
+ * The signed cookie says who you are; the database says what you can do. Reading
+ * the role (and whether the login is still switched on) fresh on every request
+ * means a manager's change on Settings → People applies right away: a demoted or
+ * switched-off login loses access on its next tap, without waiting for the
+ * two-week cookie to run out. `stale` = the cookie's copy differs (the app
+ * layout then re-issues the cookie so the edge middleware sees the new role).
+ */
+export const getSessionState = cache(async (): Promise<{ session: Session | null; stale: boolean }> => {
   const jar = await cookies();
-  return verifySession(jar.get(SESSION_COOKIE)?.value, env.SESSION_SECRET);
+  const s = await verifySession(jar.get(SESSION_COOKIE)?.value, env.SESSION_SECRET);
+  if (!s) return { session: null, stale: false };
+  const user = await db.user.findUnique({ where: { id: s.userId }, select: { name: true, role: true, active: true } });
+  if (!user || !user.active) return { session: null, stale: true };
+  return { session: { ...s, name: user.name, role: user.role }, stale: user.role !== s.role || user.name !== s.name };
+});
+
+export async function getSession(): Promise<Session | null> {
+  return (await getSessionState()).session;
+}
+
+/** Re-sign the cookie with the login's current name and role (see getSessionState). */
+export async function refreshSessionCookie(): Promise<Session | null> {
+  const { session } = await getSessionState();
+  if (!session) {
+    (await cookies()).delete(SESSION_COOKIE);
+    return null;
+  }
+  await startSession({ id: session.userId, name: session.name, role: session.role });
+  return session;
 }
 
 /** For pages/actions: require a signed-in user, optionally a manager. */

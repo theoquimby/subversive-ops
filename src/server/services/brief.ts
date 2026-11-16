@@ -1,4 +1,5 @@
 import "server-only";
+import { NEEDS_MANAGER } from "@/domain/swaps";
 import { busiestDays, weekStartOf } from "@/domain/budgets";
 import { addDays, businessDate, dateRange, daysBetween, ISODate, parseISODate, weekday } from "@/domain/dates";
 import { INVOICE_ISSUE_STATUSES } from "@/domain/alerts";
@@ -119,7 +120,7 @@ export async function weeklyBrief() {
     menuCosts(snap),
     countPoints(),
     db.timeOffRequest.count({ where: { status: "PENDING", endDate: { gte: parseISODate(today) } } }),
-    db.shiftSwap.count({ where: { status: "PENDING", shift: { start: { gte: new Date() } } } }),
+    db.shiftSwap.count({ where: { ...NEEDS_MANAGER, shift: { start: { gte: new Date() } } } }),
     unrepliedNegative(),
     reviewAlerts().catch((e): ReviewAlert[] => {
       console.error("brief: review alerts failed", e);

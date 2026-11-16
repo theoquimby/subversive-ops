@@ -466,7 +466,8 @@ def describe(data: dict, item: dict, start: str, p_from: float, p_to: float, m: 
             f"On {when} you started {what}.",
             summary + (f" (Raw counts said {pct_words(m['rawUnits'])}, but {'fewer' if traffic < 0 else 'more'} people came in.)" if abs(m["rawUnits"] - eff) >= 0.05 else ""),
             "Keep it." if gain >= 0 else f"Consider putting the {short} back to {exact_money(p_from) if p_from >= 10 else f'${p_from:.2f}'}.",
-            f"{'+' if gain >= 0 else '−'}{money(abs(gain))} a month so far, compared with keeping the old price.",
+            # "What you'd gain" is never a negative number: for a change to undo, it's what putting it back recovers.
+            f"+{money(abs(gain))} a month so far, compared with keeping the old price." if gain >= 0 else f"About {money(abs(gain))} a month back — what the {'rise' if up else 'cut'} has cost so far, compared with keeping the old price.",
         ),
         visual={"type": "compare", "unit": "money", "rows": [{"label": "Profit a month on it at the old price (today's traffic)", "value": round(m["profitOld"])}, {"label": "At the new price", "value": round(m["profitNew"]), "tone": "good" if gain >= 0 else "bad"}]},
     )

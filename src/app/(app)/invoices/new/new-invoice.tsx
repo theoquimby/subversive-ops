@@ -46,7 +46,7 @@ export function NewInvoice({ suppliers: initialSuppliers, orders, today, canRead
   const [addingPending, startAdd] = useTransition();
   const addSupplier = (name: string) =>
     startAdd(async () => {
-      const r = await quickAddSupplier(name);
+      const r = await quickAddSupplier(name, mode === "receipt");
       if (r.error || !r.supplier) return setError({ text: r.error ?? "Couldn't add that supplier." });
       const sup = r.supplier;
       setSuppliers((cur) => (cur.some((x) => x.id === sup.id) ? cur : [...cur, sup].sort((a, b) => a.name.localeCompare(b.name))));

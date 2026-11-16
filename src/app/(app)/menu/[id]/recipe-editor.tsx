@@ -53,6 +53,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
   const router = useRouter();
   const [r, setR] = useState(initial);
   const [error, setError] = useState<string | null>(null);
+  const [breakdown, setBreakdown] = useState(false);
   const [pending, start] = useTransition();
   const dirty = JSON.stringify(r) !== JSON.stringify(initial);
   const confirm = useConfirm();
@@ -225,7 +226,14 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
     <div className={cx(dirty || error ? "pb-24" : "pb-2")}>
       {/* Summary */}
       <HelpZone id="menu.editor.summary" tour="menu.summary" className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Summary label={isPrep ? "Batch cost" : "Plate cost"} value={money(total)} note={incomplete ? <Badge tone="warn">Missing prices</Badge> : null} />
+        <Summary
+          label={<span className="inline-flex items-center gap-1.5">{isPrep ? "Batch cost" : "Plate cost"} <HelpTip id="menu.editor.breakdown" /></span>}
+          value={money(total)}
+          onClick={r.lines.length ? () => setBreakdown((v) => !v) : undefined}
+          expanded={breakdown}
+          action={breakdown ? "Hide breakdown" : "Where it comes from"}
+          note={incomplete ? <Badge tone="warn">Missing prices</Badge> : null}
+        />
         {isPrep ? (
           <Summary label="Yield" value={`${r.yieldQty} ${r.yieldUnit}`} />
         ) : (
@@ -236,6 +244,26 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
           </>
         )}
       </HelpZone>
+
+      {breakdown && r.lines.length > 0 && (
+        <CostBreakdown
+          isPrep={isPrep}
+          total={total}
+          menuPrice={isPrep ? null : r.menuPrice}
+          target={target}
+          yieldText={isPrep ? `${qty(r.yieldQty)} ${r.yieldUnit}` : null}
+          rows={r.lines.map((l, idx) => ({
+            key: l.key,
+            name: (l.ingredientId ? ingById.get(l.ingredientId)?.name : l.subRecipeId ? recById.get(l.subRecipeId)?.name : null) ?? "Not chosen yet",
+            amount: `${qty(l.qty)} ${l.unit}`,
+            cost: costs[idx].cost,
+            problem: costs[idx].error ?? null,
+            href: l.ingredientId ? `/ingredients/${l.ingredientId}` : l.subRecipeId ? `/menu/${l.subRecipeId}` : null,
+            prep: !!l.subRecipeId,
+          }))}
+          onClose={() => setBreakdown(false)}
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Ingredients */}
@@ -375,12 +403,86 @@ function HouseMadeHint({ name, twin, onUse }: { name: string; twin: { id: string
   );
 }
 
-function Summary({ label, value, note, tone }: { label: React.ReactNode; value: React.ReactNode; note?: React.ReactNode; tone?: "good" | "bad" }) {
+function Summary({ label, value, note, tone, onClick, expanded, action }: { label: React.ReactNode; value: React.ReactNode; note?: React.ReactNode; tone?: "good" | "bad"; onClick?: () => void; expanded?: boolean; action?: string }) {
   return (
-    <Card className="p-4">
-      <div className="text-[0.8rem] text-muted">{label}</div>
+    <Card className={cx("relative p-4 transition-colors duration-120", onClick && "hover:bg-surface-2/50", expanded && "border-ink-2/40")}>
+      {/* The label's "?" sits above the card-wide button so both stay tappable. */}
+      <div className="relative z-10 w-fit text-[0.8rem] text-muted">{label}</div>
       <div className={cx("num mt-1 text-xl font-semibold tracking-tight", tone === "bad" && "text-bad", tone === "good" && "text-good")}>{value}</div>
-      {note && <div className="mt-1">{note}</div>}
+      {(note || onClick) && (
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          {note}
+          {onClick && (
+            <button type="button" onClick={onClick} aria-expanded={expanded} className="text-xs text-muted underline decoration-dotted underline-offset-2 after:absolute after:inset-0 after:rounded-xl after:content-[''] hover:text-ink">
+              {action}
+            </button>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+interface BreakdownRow { key: string; name: string; amount: string; cost: number | null; problem: string | null; href: string | null; prep: boolean }
+
+/**
+ * "Where the $3.01 comes from": every line's share of the plate (or batch), biggest
+ * first, with the sum written out — so the number on the card is never a mystery.
+ * Each line opens the ingredient (its price, supplier and yield) or the prep recipe.
+ */
+function CostBreakdown({ rows, total, isPrep, menuPrice, target, yieldText, onClose }: { rows: BreakdownRow[]; total: number; isPrep: boolean; menuPrice: number | null; target: number; yieldText: string | null; onClose: () => void }) {
+  const sorted = [...rows].sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1));
+  const missing = rows.filter((x) => x.cost == null);
+  const shade = (i: number) => Math.max(0.22, 0.95 - i * 0.16);
+  return (
+    <Card className="mb-6 p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold">Where the {money(total)} comes from</h2>
+          <p className="mt-0.5 text-xs text-muted">
+            {isPrep ? "Batch cost" : "Plate cost"} = each line&apos;s amount × what that ingredient costs per unit after trim and yield, at the latest price on file. Tap a line to see its price and supplier.
+          </p>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Hide breakdown" className="relative -m-1 rounded-md p-1.5 text-muted after:absolute after:-inset-1.5 after:content-[''] hover:bg-surface-2 hover:text-ink"><X className="size-4" /></button>
+      </div>
+      {total > 0 && (
+        <div className="mt-4 flex h-2.5 w-full overflow-hidden rounded-full bg-surface-2" aria-hidden>
+          {sorted.filter((x) => (x.cost ?? 0) > 0).map((x, i) => (
+            <span key={x.key} className="h-full border-r-2 border-surface bg-area last:border-r-0" style={{ width: `${((x.cost ?? 0) / total) * 100}%`, opacity: shade(i) }} />
+          ))}
+        </div>
+      )}
+      <ol className="mt-3 divide-y divide-border">
+        {sorted.map((x, i) => {
+          const share = x.cost != null && total > 0 ? x.cost / total : null;
+          const row = (
+            <>
+              <span aria-hidden className="size-2.5 shrink-0 rounded-[3px] bg-area" style={{ opacity: x.cost != null && x.cost > 0 ? shade(i) : 0.12 }} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-ink">{x.name}{x.prep && <span className="ml-1.5 text-xs text-muted">prep recipe</span>}</span>
+                <span className="num block text-xs text-muted">{x.amount}</span>
+              </span>
+              <span className="num w-12 shrink-0 text-right text-xs text-muted">{share != null ? pct(share, 0) : ""}</span>
+              <span className={cx("num w-20 shrink-0 text-right text-sm", x.cost == null && "text-warn")}>{x.cost != null ? money(x.cost) : x.problem === "Unit" ? "Unit?" : "No price"}</span>
+            </>
+          );
+          return (
+            <li key={x.key}>
+              {x.href ? <Link href={x.href} className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-surface-2/60">{row}</Link> : <div className="flex items-center gap-3 py-2">{row}</div>}
+            </li>
+          );
+        })}
+      </ol>
+      <div className="mt-2 space-y-1 border-t border-border pt-3 text-xs text-muted">
+        <p className="num flex justify-between gap-3"><span>Total of {rows.length} line{rows.length === 1 ? "" : "s"}</span><span className="font-medium text-ink">{money(total)}</span></p>
+        {yieldText && <p>One batch makes {yieldText}; menu items that use it pay their share of the batch.</p>}
+        {menuPrice != null && menuPrice > 0 && (
+          <p>Food cost = {money(total)} ÷ {money(menuPrice)} menu price = <span className="font-medium text-ink">{pct(total / menuPrice)}</span>. Under your {pct(target, 0)} target is good; over it means the price or the portion needs a look.</p>
+        )}
+        {missing.length > 0 && (
+          <p className="text-warn">{missing.length} line{missing.length === 1 ? " has" : "s have"} no cost yet, so the real {isPrep ? "batch" : "plate"} cost is higher than {money(total)}. Open {missing.length === 1 ? "it" : "each one"} to add a price or fix the unit.</p>
+        )}
+      </div>
     </Card>
   );
 }

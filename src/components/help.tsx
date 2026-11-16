@@ -38,7 +38,7 @@ import clsx from "clsx";
 import { BookOpen, CircleHelp, Gift, MousePointerClick, Route as RouteIcon, ScrollText } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Suspense, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { getHelp, helpForPath, type HelpEntry } from "@/help/content";
 import { tourForPath } from "@/help/tours";
 import { resumeTour, setTourNavigator, setTourUser, startTour, TourHost, useTour } from "./tour";
@@ -234,12 +234,15 @@ const popoverClass = "z-[66] w-72 max-w-[calc(100vw-24px)] rounded-xl border bor
 
 // ---- HelpTip ----------------------------------------------------------------------
 
+/** A popover is drawn at the page's top-left until Floating UI has measured it: keep it invisible until then so it never jumps into place. */
+const hideUntilPlaced = (placed: boolean): CSSProperties => (placed ? {} : { visibility: "hidden" });
+
 /** A small "?" next to a label. Hover or focus shows the help; tap toggles it on touch. Esc closes. */
 export function HelpTip({ id, placement = "top", className, label }: { id: string; placement?: Placement; className?: string; label?: string }) {
   const entry = getHelp(id);
   const [open, setOpen] = useState(false);
   const arrowRef = useRef<SVGSVGElement>(null);
-  const { refs, floatingStyles, context } = useFloating({
+  const { refs, floatingStyles, context, isPositioned } = useFloating({
     open,
     onOpenChange: setOpen,
     placement,
@@ -280,7 +283,7 @@ export function HelpTip({ id, placement = "top", className, label }: { id: strin
       </button>
       {isMounted && (
         <FloatingPortal>
-          <div ref={refs.setFloating} style={{ ...floatingStyles, ...motion }} className={popoverClass} {...getFloatingProps()}>
+          <div ref={refs.setFloating} style={{ ...floatingStyles, ...motion, ...hideUntilPlaced(isPositioned) }} className={popoverClass} {...getFloatingProps()}>
             <FloatingArrow ref={arrowRef} context={context} className="fill-surface [&>path:first-of-type]:stroke-border" strokeWidth={1} />
             <HelpCard entry={entry} onNavigate={() => setOpen(false)} />
           </div>
@@ -329,7 +332,7 @@ export function HelpZone({ id, tour, className, children }: { id: string; tour?:
   const key = useId();
   const { on, zone } = useModeState();
   const active = on && zone === key;
-  const { refs, floatingStyles, context } = useFloating({
+  const { refs, floatingStyles, context, isPositioned } = useFloating({
     open: active,
     onOpenChange: (o) => setMode({ zone: o ? key : null }),
     placement: "top-start",
@@ -379,7 +382,7 @@ export function HelpZone({ id, tour, className, children }: { id: string; tour?:
       {children}
       {isMounted && entry && (
         <FloatingPortal>
-          <div ref={refs.setFloating} id={`${key}-help`} role="tooltip" style={{ ...floatingStyles, ...motion }} className={clsx(popoverClass, !active && "pointer-events-none")} {...getFloatingProps()}
+          <div ref={refs.setFloating} id={`${key}-help`} role="tooltip" style={{ ...floatingStyles, ...motion, ...hideUntilPlaced(isPositioned) }} className={clsx(popoverClass, !active && "pointer-events-none")} {...getFloatingProps()}
             onPointerEnter={(e) => { if (e.pointerType === "mouse") { tipHovered = key; hoverZone(key, 0); } }}
             onPointerLeave={(e) => { if (e.pointerType === "mouse") { tipHovered = null; hoverZone(null); } }}>
             <HelpCard entry={entry} onNavigate={() => setHelpMode(false)} />
@@ -400,7 +403,7 @@ export function HelpButton({ className, compact }: { className?: string; compact
   const on = useHelpMode();
   const unseen = useWhatsNewUnseen();
   const [open, setOpen] = useState(false);
-  const { refs, floatingStyles, context } = useFloating({ open, onOpenChange: setOpen, placement: "bottom-start", transform: false, whileElementsMounted: autoUpdate, middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })] });
+  const { refs, floatingStyles, context, isPositioned } = useFloating({ open, onOpenChange: setOpen, placement: "bottom-start", transform: false, whileElementsMounted: autoUpdate, middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })] });
   const reduced = useReducedMotion();
   const { isMounted, styles: motion } = useTransitionStyles(context, popoverTransition(reduced));
   const click = useClick(context);

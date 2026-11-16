@@ -44,8 +44,12 @@ export function TableResize() {
       th.style.minWidth = px == null ? "" : `${px}px`;
     };
 
+    let pending = false;
     const enhance = (table: HTMLTableElement) => {
-      if (tables.has(table) || table.hasAttribute("data-no-resize") || table.closest("[data-no-resize]")) return;
+      if (tables.has(table) || table.hasAttribute("data-no-resize") || table.closest("[data-no-resize], .sr-only")) return;
+      // Not hydrated yet (a streamed section React hasn't reached): touching it now
+      // would make the server and client HTML differ. Try again in a moment.
+      if (!hydrated(table)) { pending = true; return; }
       const heads = headerCells(table);
       if (heads.length < 2) return;
       tables.add(table);
@@ -102,7 +106,11 @@ export function TableResize() {
       });
     };
 
-    const scan = () => root.querySelectorAll("table").forEach((t) => enhance(t as HTMLTableElement));
+    const scan = () => {
+      pending = false;
+      root.querySelectorAll("table").forEach((t) => enhance(t as HTMLTableElement));
+      if (pending) later(500);
+    };
     // Wait for React to finish hydrating before touching its DOM (handles added
     // earlier would make the server and client HTML differ). Streamed sections
     // arrive later, so new tables are picked up a moment after they settle.
@@ -117,6 +125,12 @@ export function TableResize() {
   }, [pathname]);
 
   return null;
+}
+
+/** React has hydrated this element (it carries React's internal fiber key). */
+function hydrated(el: Element): boolean {
+  for (const k in el) if (k.startsWith("__reactFiber$")) return true;
+  return false;
 }
 
 /** The header row's cells: the last row of <thead>, or the first row if it's all <th>. */

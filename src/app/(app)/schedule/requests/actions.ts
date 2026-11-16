@@ -4,11 +4,14 @@ import { addDays, toISODate } from "@/domain/dates";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { requestHours } from "@/server/services/payroll";
-import { hasOverlap, instantAt } from "@/server/services/scheduling";
+import { instantAt } from "@/server/services/scheduling";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { notifySwapDecided, notifyTimeOffDecided } from "@/server/services/notify";
+import { notifyTimeOffDecided } from "@/server/services/notify";
+import { decideSwapRequest, getSwapRules, saveSwapRules } from "@/server/services/swaps";
+import { notifySwapOutcome } from "@/server/services/workforceNotify";
+import { parseSwapRules, type SwapRules } from "@/domain/swaps";
 
 type Res = { error?: string; ok?: string };
 
@@ -49,23 +52,19 @@ export async function decideTimeOff(id: string, approve: boolean, opts: { openSh
 
 /** Approve: the shift moves to the taker (chosen here if nobody offered). */
 export async function decideSwap(id: string, approve: boolean, takerId?: string | null): Promise<Res> {
-  await requireUser("MANAGER");
-  const sw = await db.shiftSwap.findUnique({ where: { id }, include: { shift: true } });
-  if (!sw || sw.status !== "PENDING") return { error: "That request was already handled." };
-  if (!approve) {
-    await db.shiftSwap.update({ where: { id }, data: { status: "DENIED" } });
-    done();
-    after(() => notifySwapDecided(id).then(() => undefined));
-    return { ok: "Swap denied." };
-  }
-  const taker = takerId ?? sw.takerId;
-  if (!taker) return { error: "Pick who takes the shift." };
-  if (await hasOverlap(taker, sw.shift.start, sw.shift.end, sw.shiftId)) return { error: "They're already working then." };
-  await db.$transaction([
-    db.shift.update({ where: { id: sw.shiftId }, data: { employeeId: taker } }),
-    db.shiftSwap.update({ where: { id }, data: { status: "APPROVED", takerId: taker } }),
-  ]);
+  const me = await requireUser("MANAGER");
+  const r = await decideSwapRequest(id, approve, me.name, takerId);
   done();
-  after(() => notifySwapDecided(id).then(() => undefined));
-  return { ok: "Swap approved." };
+  if (!r.error) after(() => notifySwapOutcome(id).then(() => undefined));
+  return r;
+}
+
+/** Auto-approve and pickup rules for swaps (Requests → Swap rules). */
+export async function saveSwapSettings(patch: Partial<SwapRules>): Promise<Res> {
+  await requireUser("MANAGER");
+  const cur = await getSwapRules();
+  const next = parseSwapRules(JSON.stringify({ ...cur, ...patch }));
+  await saveSwapRules(next);
+  revalidatePath("/schedule/requests");
+  return { ok: "Saved." };
 }

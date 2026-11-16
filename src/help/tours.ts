@@ -339,6 +339,45 @@ export const TOURS: Tour[] = [
       { route: "/website/analytics", target: "webanalytics.google", title: "Google", body: "Search terms and the Google listing's calls and direction requests, straight from Google once it's connected.", helpId: "website.analytics.google", ifMissing: "skip" },
     ],
   },
+  {
+    id: "checklists",
+    title: "Opening and closing checklists",
+    description: "Tick steps on a phone, sign the list off, and see how the last two weeks went.",
+    audience: "all",
+    minutes: 1,
+    steps: [
+      { route: "/checklists", target: "checklists.today", title: "Today's lists", body: "Every list that runs today. Yours come first, with who's on the schedule for it.", helpId: "checklists.today" },
+      { route: "/checklists", target: "checklists.run", title: "Tick as you go", body: "Each tick saves with your name and the time. The arrow opens the page that helps, like scanning a kicked keg.", helpId: "checklists.page", ifMissing: "skip" },
+      { route: "/checklists", target: "checklists.signoff", title: "Sign it off", body: "When it's done, sign it. If something couldn't be done, add a note so the next shift knows.", helpId: "checklists.page", ifMissing: "skip" },
+      { title: "The morning after", body: "Managers see the last two weeks here, and a closing list left unfinished shows on the Overview and in the brief.", helpId: "checklists.history" },
+    ],
+  },
+  {
+    id: "upkeep",
+    title: "Upkeep and repairs",
+    description: "Draft lines and other recurring jobs, equipment details and logging a repair.",
+    audience: "manager",
+    minutes: 1,
+    steps: [
+      { route: "/upkeep", target: "upkeep.stats", title: "What needs looking after", body: "Jobs overdue or due this week, anything down for repair, and what repairs cost over the last year.", helpId: "upkeep.overdue" },
+      { route: "/upkeep", target: "upkeep.jobs", title: "Recurring jobs", body: "Most urgent first. Set when each was last done once; after that, tap Done and the next date moves on.", helpId: "upkeep.jobs" },
+      { route: "/upkeep", target: "upkeep.done", title: "Done", body: "Logs it today with your name. The … button logs it with another date, a cost or a note.", helpId: "upkeep.jobs", ifMissing: "skip" },
+      { route: "/upkeep", target: "upkeep.repair", title: "When something breaks", body: "Log what broke and what it cost. Out of action shows on the Overview until you mark it fixed.", helpId: "upkeep.log" },
+    ],
+  },
+  {
+    id: "beertax",
+    title: "Beer tax",
+    description: "Where the barrels come from, the tax on them, and marking returns filed.",
+    audience: "manager",
+    minutes: 1,
+    steps: [
+      { route: "/beer-tax", target: "beertax.returns", title: "Returns due", body: "Federal excise, the brewer's report and New York beer tax: the last finished period of each and when it's due.", helpId: "beertax.returns" },
+      { route: "/beer-tax", target: "beertax.period", title: "Pick a period", body: "Month, quarter or year, to match how you file. The arrows step back and forward.", helpId: "beertax.worksheet" },
+      { route: "/beer-tax", target: "beertax.stats", title: "The numbers for the return", body: "Taxable barrels from the keg history, and the federal and New York tax at your rates.", helpId: "beertax.taxable" },
+      { route: "/beer-tax", target: "beertax.adjust", title: "Anything not in a keg", body: "Cans from the tank, beer returned or dumped: type the gallons here.", helpId: "beertax.adjustments" },
+    ],
+  },
 ];
 
 const BY_ID = new Map(TOURS.map((t) => [t.id, t]));
@@ -366,6 +405,9 @@ export function tourForPath(pathname: string): Tour | undefined {
     [/^\/pnl/, "pnl"],
     [/^\/accounting/, "month-end"],
     [/^\/website/, "website"],
+    [/^\/checklists/, "checklists"],
+    [/^\/upkeep/, "upkeep"],
+    [/^\/beer-tax/, "beertax"],
   ];
   const hit = map.find(([re]) => re.test(pathname));
   return hit ? getTour(hit[1]) : undefined;

@@ -30,6 +30,11 @@ import { websiteAnalytics } from "./areas/websiteAnalytics";
 import { whatsNew } from "./areas/whatsNew";
 import { monthEnd } from "./areas/monthEnd";
 import { linking } from "./areas/linking";
+import { workforce } from "./areas/workforce";
+import { checklists } from "./areas/checklists";
+import { upkeep } from "./areas/upkeep";
+import { beerTax } from "./areas/beerTax";
+import { dailyUse } from "./areas/dailyUse";
 import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
 
@@ -66,6 +71,9 @@ export const AREAS: HelpArea[] = [
   { id: "kegs", title: "Kegs", description: "Scanning kegs on a phone, what's on tap, the walk-in, demand per beer, labels and importing." },
   { id: "website", title: "Website", description: "What guests see on the public website: hours, the notice, the menu, events and inquiries." },
   { id: "training", title: "Training & certificates", description: "ATAP, ServSafe and other certificates, expiry reminders and onboarding checklists." },
+  { id: "checklists", title: "Checklists", description: "Opening, mid and closing routines ticked on a phone and signed off." },
+  { id: "upkeep", title: "Upkeep", description: "Draft line cleaning, hood and fire system, equipment details and the repair log." },
+  { id: "beertax", title: "Beer tax", description: "Removals from the keg history, federal excise, the brewer's report and New York beer tax." },
 ];
 
 export const HELP: HelpEntry[] = [
@@ -103,6 +111,11 @@ export const HELP: HelpEntry[] = [
   ...websiteAnalytics,
   ...whatsNew,
   ...monthEnd,
+  ...checklists,
+  ...upkeep,
+  ...beerTax,
+  ...dailyUse,
+  ...workforce,
 ];
 
 const BY_ID = new Map(HELP.map((e) => [e.id, e]));
@@ -115,7 +128,7 @@ export const getArea = (id: HelpAreaId): HelpArea | undefined => AREA_BY_ID.get(
 export const canSee = (e: HelpEntry, role: "MANAGER" | "STAFF") => role === "MANAGER" || (e.audience ?? "manager") !== "manager";
 
 /** Pages staff can open (mirrors STAFF_PATHS in src/middleware.ts). */
-const STAFF_ROUTES = ["/my", "/count", "/waste", "/kegs", "/notes", "/prep", "/help"];
+const STAFF_ROUTES = ["/my", "/count", "/waste", "/kegs", "/notes", "/prep", "/checklists", "/help"];
 
 /**
  * Whether an in-app link in help content leads somewhere this role can go:

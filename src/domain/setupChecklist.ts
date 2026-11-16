@@ -12,10 +12,13 @@ export type SetupItemId =
   | "history"
   | "menuLinks"
   | "suppliers"
+  | "prices"
+  | "recipes"
   | "areas"
   | "team"
   | "morning"
   | "prep"
+  | "kegs"
   | "beers"
   | "ai"
   | "quickbooks"
@@ -37,18 +40,22 @@ export interface SetupItemDef {
 }
 
 export const SETUP_ITEMS: SetupItemDef[] = [
-  // Essentials: without these the numbers are empty or wrong.
-  { id: "square", group: "essentials", title: "Connect Square", why: "Sales, the menu and timecards come in by themselves.", href: "/settings/square", minutes: 6 },
-  { id: "history", group: "essentials", title: "Bring in your sales history", why: "More history makes the forecast, prep and ordering smarter.", href: "/settings/square", minutes: 1 },
-  { id: "menuLinks", group: "essentials", title: "Link Square items to recipes", why: "So every sale counts toward food cost and the prep list.", href: "/sales/square-menu", minutes: 15 },
+  // Essentials, in the order they build on each other: Square brings sales in, suppliers and
+  // prices say what things cost, recipes turn the two into food cost.
+  { id: "square", group: "essentials", title: "Connect Square", why: "Sales, the menu, tips and timecards come in by themselves.", href: "/settings/square", minutes: 6 },
+  { id: "history", group: "essentials", title: "Bring in your sales history", why: "More history makes the forecast, prep and ordering smarter.", href: "/settings/square#import", minutes: 1 },
   { id: "suppliers", group: "essentials", title: "Suppliers and delivery deadlines", why: "Ordering counts down to each order-by time.", href: "/settings/suppliers", minutes: 5 },
+  { id: "prices", group: "essentials", title: "Get your prices in", why: "Snap an invoice or receipt, or upload a price sheet — recipes then know what things cost.", href: "/invoices/new", minutes: 5 },
+  { id: "recipes", group: "essentials", title: "Add your recipes", why: "Paste them from a spreadsheet, link a Google Sheet, or photograph recipe cards.", href: "/import?for=recipes", minutes: 20 },
+  { id: "menuLinks", group: "essentials", title: "Link Square items to recipes", why: "So every sale counts toward food cost and the prep list.", href: "/sales/square-menu", minutes: 15 },
   { id: "areas", group: "essentials", title: "Storage areas, in walking order", why: "Counts follow the way you walk the kitchen.", href: "/settings/areas", minutes: 2 },
   { id: "team", group: "essentials", title: "Invite staff and set roles", why: "Staff get their shifts, prep, counts and kegs on their phones.", href: "/settings/people", minutes: 5 },
   { id: "morning", group: "essentials", title: "Pick your morning brief time", why: "Your day on one page, on your phone before you walk in.", href: "/brief", minutes: 1 },
   // Nice to have: each one turns on more.
+  { id: "ai", group: "nice", title: "Turn on AI features", why: "Reads invoices, receipts and price sheets from a photo, drafts recipes and answers questions.", href: "/settings/connections?open=ai", minutes: 3 },
   { id: "prep", group: "nice", title: "Set up the prep list", why: "Pars, shelf life and stations for what the kitchen makes.", href: "/prep/setup", minutes: 10 },
+  { id: "kegs", group: "nice", title: "Bring in your kegs", why: "Every keg, beer and account from Distribrewtion or your old keg app — old stickers keep working.", href: "/kegs/import", minutes: 10 },
   { id: "beers", group: "nice", title: "Beers and the tap list TV", why: "What's pouring, with prices, on the bar TV and the website.", href: "/kegs/beers", minutes: 10 },
-  { id: "ai", group: "nice", title: "Turn on AI features", why: "Reads invoices from a photo, drafts recipes and answers questions.", href: "/settings/connections?open=ai", minutes: 3 },
   { id: "quickbooks", group: "nice", title: "Connect QuickBooks", why: "Approved invoices go over as bills, photo attached.", href: "/settings/quickbooks", minutes: 20 },
   { id: "website", group: "nice", title: "Connect the website", why: "Hours, menu and events on the site update the moment you save.", href: "/settings/connections?open=website", minutes: 5, requiresRoute: "/website" },
   { id: "google", group: "nice", title: "Connect Google", why: "Search and Maps numbers next to your website visits.", href: "/website/analytics/google", minutes: 5, requiresRoute: "/website/analytics/google" },
@@ -96,4 +103,21 @@ export function menuLinksFact(linked: number, total: number): { done: boolean; d
 export const HISTORY_DAYS = 90;
 export function historyFact(importFinished: boolean, salesDays: number): { done: boolean; detail?: string } {
   return { done: importFinished || salesDays >= HISTORY_DAYS, detail: salesDays ? `${salesDays} days back` : undefined };
+}
+
+/**
+ * Prices count as in once most ingredients the recipes use have a price (that's what
+ * food cost needs). Before there are recipes, the first invoice or price sheet will do.
+ */
+export const PRICED_ENOUGH = 0.8;
+export function pricesFact(args: { usedInRecipes: number; priced: number; documents: number }): { done: boolean; detail?: string } {
+  const { usedInRecipes, priced, documents } = args;
+  if (usedInRecipes > 0) return { done: priced / usedInRecipes >= PRICED_ENOUGH, detail: `${priced} of ${usedInRecipes} recipe ingredients priced` };
+  return { done: documents > 0, detail: documents ? `${documents} ${documents === 1 ? "invoice or price sheet" : "invoices and price sheets"}` : undefined };
+}
+
+/** Recipes count as in once there are a handful with ingredients (a small menu is still a menu). */
+export const RECIPES_ENOUGH = 5;
+export function recipesFact(withIngredients: number): { done: boolean; detail?: string } {
+  return { done: withIngredients >= RECIPES_ENOUGH, detail: withIngredients ? `${withIngredients} ${withIngredients === 1 ? "recipe" : "recipes"} with ingredients` : undefined };
 }

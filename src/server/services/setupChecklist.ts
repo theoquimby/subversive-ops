@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { db } from "../db";
-import { buildChecklist, historyFact, menuLinksFact, type SetupChecklist, type SetupFacts } from "@/domain/setupChecklist";
+import { buildChecklist, historyFact, menuLinksFact, pricesFact, recipesFact, type SetupChecklist, type SetupFacts } from "@/domain/setupChecklist";
 import { isSecretName } from "@/domain/secretFormats";
 import { getSecret } from "./secrets";
 import { isSquareConnected } from "./square";
@@ -26,7 +26,7 @@ async function secretSet(name: string) {
 }
 
 export const setupChecklist = cache(async (): Promise<SetupChecklist> => {
-  const [square, backfill, firstSale, mappings, linked, suppliers, rules, settings, staff, prep, beers, ai, qbo, website] = await Promise.all([
+  const [square, backfill, firstSale, mappings, linked, suppliers, rules, settings, staff, prep, beers, ai, qbo, website, recipeIngredients, documents, recipes, kegs] = await Promise.all([
     quiet(isSquareConnected(), false),
     quiet(getBackfill(), null),
     db.dailySale.aggregate({ _min: { date: true } }),
@@ -41,6 +41,14 @@ export const setupChecklist = cache(async (): Promise<SetupChecklist> => {
     secretSet("ANTHROPIC_API_KEY"),
     quiet(isQuickBooksConnected(), false),
     secretSet("WEBSITE_URL"),
+    // Ingredients active recipes use, and whether each has a price from any supplier.
+    db.ingredient.findMany({
+      where: { active: true, recipeLines: { some: { recipe: { active: true } } } },
+      select: { products: { where: { active: true, prices: { some: {} } }, select: { id: true }, take: 1 } },
+    }),
+    Promise.all([db.invoice.count(), db.priceImport.count()]).then(([a, b]) => a + b),
+    db.recipe.count({ where: { active: true, lines: { some: {} } } }),
+    db.keg.count(),
   ]);
   const has = (k: string) => settings.some((s) => s.key === k);
   const areas = (() => {
@@ -62,6 +70,9 @@ export const setupChecklist = cache(async (): Promise<SetupChecklist> => {
       done: suppliers.length > 0 && withDays === suppliers.length && withRules > 0,
       detail: suppliers.length ? `${withDays} of ${suppliers.length} with delivery days${withRules ? `, ${withRules} with deadlines` : ""}` : undefined,
     },
+    prices: pricesFact({ usedInRecipes: recipeIngredients.length, priced: recipeIngredients.filter((i) => i.products.length > 0).length, documents }),
+    recipes: recipesFact(recipes),
+    kegs: { done: kegs > 0, detail: kegs ? `${kegs} ${kegs === 1 ? "keg" : "kegs"}` : undefined },
     areas: { done: areas > 0, detail: areas ? `${areas} areas` : undefined },
     team: { done: staff > 0, detail: staff ? `${staff} staff ${staff === 1 ? "login" : "logins"}` : undefined },
     morning: { done: has(MORNING_HOUR_KEY) },

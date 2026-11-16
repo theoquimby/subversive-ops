@@ -2,36 +2,19 @@
 
 import { GridCell } from "@/components/grid";
 import { HelpZone } from "@/components/help";
-import { Badge, Button, Card, cx, DatePicker, Input, Select } from "@/components/ui";
-import { shiftLabel } from "@/domain/schedule";
+import { Badge, Button, Card, cx, DatePicker, Input } from "@/components/ui";
 import type { SickBalance } from "@/domain/sickLeave";
 import { formatWindows, toMinutes } from "@/domain/timecards";
 import { dayDate, shortDate } from "@/lib/format";
-import { ArrowLeftRight, CalendarClock, CalendarOff, Hand, Thermometer } from "lucide-react";
+import { CalendarClock, CalendarOff, Thermometer } from "lucide-react";
 import { useToast } from "@/components/toast";
 import { useEffect, useState, useTransition } from "react";
-import { cancelSwap, cancelTimeOff, offerToTake, pickUpShift, requestSwap, requestTimeOff, resetMyAvailability, setMyAvailability } from "./actions";
+import { cancelTimeOff, requestTimeOff, resetMyAvailability, setMyAvailability } from "./actions";
 
-export interface MyShift {
-  id: string;
-  date: string;
-  startMin: number;
-  endMin: number;
-  hours: number;
-  position: string;
-  positionId: string;
-  color: string;
-  notes: string | null;
-}
 
 interface Props {
   today: string;
-  weekHours: number;
-  mine: (MyShift & { swap: { id: string; taker: string | null } | null })[];
-  open: MyShift[];
-  board: (MyShift & { swapId: string; from: string })[];
   timeOff: { id: string; start: string; end: string; note: string | null; status: "PENDING" | "APPROVED" | "DENIED"; type: LeaveType; hours: number | null }[];
-  team: { id: string; name: string; positionIds: string[] }[];
   sick: SickBalance | null;
   availability: Record<string, [string, string][]> | null;
   openingHours: Record<number, [number, number]>;
@@ -45,15 +28,12 @@ const LEAVE_TYPES = [
 ];
 const LEAVE_LABEL: Record<LeaveType, string> = { UNPAID: "Day off", SICK: "Sick", PTO: "PTO" };
 
-const fmtH = (h: number) => `${Number(h.toFixed(1))}h`;
 
-export function MyApp({ today, weekHours, mine, open, board, timeOff, team, sick, availability, openingHours }: Props) {
+export function MyApp({ today, timeOff, sick, availability, openingHours }: Props) {
   const [pending, start] = useTransition();
   const [toast, show] = useToast();
   // Rows hidden the moment they're tapped (picked up, offered, withdrawn); put back if the server says no.
   const [gone, setGone] = useState<Set<string>>(new Set());
-  const [swapFor, setSwapFor] = useState<string | null>(null);
-  const [taker, setTaker] = useState("");
   const [offOpen, setOffOpen] = useState(false);
   const [off, setOff] = useState<{ start: string; end: string; note: string; type: LeaveType; hours: string }>({ start: "", end: "", note: "", type: "UNPAID", hours: "" });
 
@@ -78,88 +58,10 @@ export function MyApp({ today, weekHours, mine, open, board, timeOff, team, sick
     setOffOpen(true);
     requestAnimationFrame(() => document.getElementById("time-off")?.scrollIntoView({ block: "start" }));
   }, [today]);
-  const openShown = open.filter((s) => !gone.has(s.id));
-  const boardShown = board.filter((s) => !gone.has(s.swapId));
 
   return (
     <div className="flex flex-col gap-10">
       {toast}
-
-      <HelpZone id="my.shifts"><section>
-        <div className="mb-3 flex items-end justify-between">
-          <h2 className="text-[0.95rem] font-semibold">Coming up</h2>
-          <span className="num text-sm text-muted">{fmtH(weekHours)} in the next 7 days</span>
-        </div>
-        {mine.length === 0 ? (
-          <Card className="px-4 py-6 text-center text-sm text-muted">Nothing on the schedule for you yet. Once a manager publishes the schedule your shifts show up here{open.length ? " — or pick up an open shift below" : ""}.</Card>
-        ) : (
-          <Card className="divide-y divide-border">
-            {mine.map((s) => (
-              <div key={s.id} className="px-4 py-3">
-                <ShiftRow s={s} today={today}>
-                  {s.swap ? (
-                    <Badge tone="warn">{s.swap.taker ? `Swap to ${s.swap.taker.split(" ")[0]} pending` : "Up for grabs"}</Badge>
-                  ) : (
-                    <Button variant="ghost" size="sm" className="max-sm:h-11 max-sm:px-3" aria-expanded={swapFor === s.id} onClick={() => { setSwapFor(swapFor === s.id ? null : s.id); setTaker(""); }}>
-                      <ArrowLeftRight className="size-3.5" aria-hidden /> Swap
-                    </Button>
-                  )}
-                </ShiftRow>
-                {s.swap && (
-                  <div className="mt-2 flex justify-end">
-                    <Button variant="ghost" size="sm" className="max-sm:h-11" disabled={pending} onClick={() => run(() => cancelSwap(s.swap!.id))}>Cancel swap</Button>
-                  </div>
-                )}
-                {swapFor === s.id && (
-                  <div className="mt-3 flex animate-rise-in flex-col gap-2 rounded-xl bg-surface-2/60 p-3 motion-reduce:animate-none sm:flex-row sm:items-center">
-                    <div className="flex-1">
-                      <Select
-                        aria-label="Who takes it"
-                        value={taker}
-                        onChange={(e) => setTaker(e.target.value)}
-                        options={[{ value: "", label: "Anyone who can cover" }, ...team.filter((t) => t.positionIds.includes(s.positionId)).map((t) => ({ value: t.id, label: t.name }))]}
-                        className="max-sm:h-12"
-                      />
-                    </div>
-                    <Button variant="primary" className="max-sm:h-12" disabled={pending} onClick={() => run(() => requestSwap(s.id, taker || null), { after: () => setSwapFor(null) })}>
-                      Ask to swap
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </Card>
-        )}
-      </section></HelpZone>
-
-      <HelpZone id="my.openShifts" tour="my.open"><section id="open" className="scroll-mt-20">
-        <h2 className="mb-1 text-[0.95rem] font-semibold">Open shifts</h2>
-        <p className="mb-3 text-sm text-muted">Shifts that need someone, for positions you work. First to tap gets it.</p>
-        {openShown.length === 0 && boardShown.length === 0 ? (
-          <Card className="px-4 py-6 text-center text-sm text-muted">Nothing open right now. When a shift needs someone, it shows up here first.</Card>
-        ) : (
-          <Card className="divide-y divide-border">
-            {openShown.map((s) => (
-              <div key={s.id} className="px-4 py-3">
-                <ShiftRow s={s} today={today}>
-                  <Button variant="primary" size="sm" className="max-sm:h-11 max-sm:px-3.5" disabled={pending} onClick={() => run(() => pickUpShift(s.id), { hide: s.id })}>
-                    <Hand className="size-3.5" aria-hidden /> Pick up
-                  </Button>
-                </ShiftRow>
-              </div>
-            ))}
-            {boardShown.map((s) => (
-              <div key={s.swapId} className="px-4 py-3">
-                <ShiftRow s={s} today={today} sub={`${s.from} wants to give this away`}>
-                  <Button size="sm" className="max-sm:h-11" disabled={pending} onClick={() => run(() => offerToTake(s.swapId), { hide: s.swapId })}>
-                    Offer to take
-                  </Button>
-                </ShiftRow>
-              </div>
-            ))}
-          </Card>
-        )}
-      </section></HelpZone>
 
       <HelpZone id="my.timeOff" tour="my.time-off"><section id="time-off" className="scroll-mt-20">
         <h2 className="mb-1 text-[0.95rem] font-semibold">Time off</h2>
@@ -263,7 +165,7 @@ function MyAvailability({ availability, openingHours }: { availability: Record<s
   const notSet = availability == null;
   const pct = (m: number) => `${(m / 1440) * 100}%`;
   return (
-    <HelpZone id="my.availability"><section>
+    <HelpZone id="my.availability"><section id="availability" className="scroll-mt-20">
       <h2 className="mb-1 flex items-center gap-2 text-[0.95rem] font-semibold"><CalendarClock className="size-4" strokeWidth={1.75} /> When you can work</h2>
       <p className="mb-3 text-sm text-muted">
         {notSet ? "Not set, so you can be scheduled any time the taproom is open." : "Type ranges like 4p-10p or 11-2, or “all day”. Leave a day blank if you can't work it. Saves as you go."}
@@ -293,26 +195,5 @@ function MyAvailability({ availability, openingHours }: { availability: Record<s
         </Card>
       )}
     </section></HelpZone>
-  );
-}
-
-function ShiftRow({ s, today, sub, children }: { s: MyShift; today: string; sub?: string; children?: React.ReactNode }) {
-  const d = new Date(`${s.date}T00:00:00Z`);
-  return (
-    <div className="flex items-center gap-3">
-      <div className={cx("flex w-12 shrink-0 flex-col items-center rounded-lg py-1.5", s.date === today ? "bg-primary text-primary-ink" : "bg-surface-2")}>
-        <span className="text-[11px] uppercase">{d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })}</span>
-        <span className="num text-base leading-tight font-semibold">{d.getUTCDate()}</span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="num text-sm font-medium">{shiftLabel(s.startMin, s.endMin)} <span className="font-normal text-muted">· {fmtH(s.hours)}</span></div>
-        <div className="flex items-center gap-1.5 truncate text-xs text-muted">
-          <span className="size-2 shrink-0 rounded-full" style={{ background: s.color }} />
-          {s.position}{s.date === today && " · today"}{!sub && s.notes ? ` · ${s.notes}` : ""}
-        </div>
-        {sub && <div className="text-xs text-muted">{sub}</div>}
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
   );
 }

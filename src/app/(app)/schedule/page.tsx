@@ -6,6 +6,7 @@ import { businessToday } from "@/server/services/sales";
 import { listAnnouncements, loadWeek } from "@/server/services/scheduling";
 import { AnnouncementsManager } from "../team/announcements";
 import { ScheduleBoard } from "./board";
+import { CoversStrip } from "./covers-strip";
 import { getAdjustments } from "@/server/services/planning";
 import { getReasons } from "@/server/services/forecasting";
 
@@ -24,6 +25,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
     <>
       <PageHeader help="schedule.page" title="Schedule" description="Build the week from the sales forecast, check it against labor rules, then publish it to the team." />
       <ScheduleBoard data={data} today={today} thisWeek={thisWeek} prevWeek={addDays(monday, -7)} nextWeek={addDays(monday, 7)} nudges={nudges} />
+      <CoversStrip dates={data.dates} today={today} days={data.summary.days.map((d) => ({ date: d.date, sales: d.sales, hours: d.hours }))} opening={data.opening} />
       <Section help="team.announcements" title="Announcements" description="Short notes for the team. They show at the top of everyone's My shifts." className="mt-10">
         <AnnouncementsManager items={notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() }))} />
       </Section>

@@ -44,6 +44,26 @@ export async function listTeamMembers(client: SquareClient): Promise<SquareTeamM
   return out;
 }
 
+/**
+ * Square's jobs (Team → Jobs) with their "tip eligible" switch, by lower-case
+ * title. Empty when the account or API version has no jobs list.
+ */
+export async function listJobTipFlags(client: SquareClient): Promise<Map<string, boolean>> {
+  const out = new Map<string, boolean>();
+  let cursor: string | undefined;
+  try {
+    do {
+      const page = await squareCall<{ jobs?: { title?: string; is_tip_eligible?: boolean }[]; cursor?: string }>(client, `/team-members/jobs${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+      for (const j of page.jobs ?? []) if (j.title?.trim() && typeof j.is_tip_eligible === "boolean") out.set(j.title.trim().toLowerCase(), j.is_tip_eligible);
+      cursor = page.cursor;
+    } while (cursor);
+  } catch (e) {
+    if (e instanceof SquareError && (e.status === 404 || e.status === 403)) return out;
+    throw e;
+  }
+  return out;
+}
+
 export interface SquareJob {
   title: string;
   hourlyRate: number | null; // dollars

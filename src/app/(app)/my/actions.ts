@@ -6,12 +6,14 @@ import { Prisma } from "@prisma/client";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { inBackground, notifyStaffRequest } from "@/server/services/notify";
+import { cancelOwnSwap, claimSwap, declineAsk, pickUpOpen, postShift } from "@/server/services/swaps";
+import { notifyShiftOffer, notifySwapClaimed } from "@/server/services/workforceNotify";
 import { businessToday } from "@/server/services/sales";
-import { employeeForUser, hasOverlap } from "@/server/services/scheduling";
+import { employeeForUser } from "@/server/services/scheduling";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-type Res = { error?: string; ok?: string };
+type Res = { error?: string; ok?: string; swapId?: string; auto?: boolean };
 
 async function me() {
   const s = await requireUser();
@@ -24,56 +26,55 @@ const done = () => {
   revalidatePath("/schedule", "layout");
 };
 
+async function staffMe() {
+  const e = await me();
+  return e ? { id: e.id, name: e.name } : null;
+}
+const NOT_LINKED = { error: "Your login isn't linked to a team member yet." };
+
 export async function pickUpShift(shiftId: string): Promise<Res> {
-  const e = await me();
-  if (!e) return { error: "Your login isn't linked to a team member yet." };
-  const s = await db.shift.findUnique({ where: { id: shiftId } });
-  if (!s || s.employeeId || !s.published) return { error: "Someone already took that shift." };
-  if (s.start < new Date()) return { error: "That shift has already started." };
-  if (!e.positions.some((p) => p.positionId === s.positionId)) return { error: "That shift is for a position you're not set up for." };
-  if (await hasOverlap(e.id, s.start, s.end)) return { error: "You're already working then." };
-  // Only take it if it's still open (two people tapping at once).
-  const r = await db.shift.updateMany({ where: { id: shiftId, employeeId: null }, data: { employeeId: e.id } });
-  if (r.count === 0) return { error: "Someone already took that shift." };
+  const e = await staffMe();
+  if (!e) return NOT_LINKED;
+  const r = await pickUpOpen(e, shiftId);
+  if (r.swapId && !r.error) inBackground(() => notifySwapClaimed(r.swapId!, !!r.auto));
   done();
-  return { ok: "It's yours. See you then!" };
+  return r;
 }
 
-export async function requestSwap(shiftId: string, takerId: string | null): Promise<Res> {
-  const e = await me();
-  if (!e) return { error: "Your login isn't linked to a team member yet." };
-  const s = await db.shift.findUnique({ where: { id: shiftId }, include: { swaps: { where: { status: "PENDING" } } } });
-  if (!s || s.employeeId !== e.id) return { error: "That isn't your shift." };
-  if (s.swaps.length) return { error: "You've already asked to swap this shift." };
-  if (takerId) {
-    const ok = await db.employeePosition.findUnique({ where: { employeeId_positionId: { employeeId: takerId, positionId: s.positionId } } });
-    if (!ok) return { error: "They can't work that position." };
-  }
-  const swap = await db.shiftSwap.create({ data: { shiftId, requesterId: e.id, takerId } });
-  inBackground(() => notifyStaffRequest({ swapId: swap.id }));
+/** Offer one of your shifts: give it away, trade it, or ask to drop it. `askId` asks one person directly. */
+export async function requestSwap(shiftId: string, takerId: string | null, kind: "GIVE" | "SWAP" | "DROP" = "GIVE", note?: string): Promise<Res> {
+  const e = await staffMe();
+  if (!e) return NOT_LINKED;
+  const r = await postShift(e, shiftId, kind, { askId: takerId, note });
+  if (r.swapId) inBackground(() => (kind === "DROP" ? notifyStaffRequest({ swapId: r.swapId! }) : notifyShiftOffer(r.swapId!)));
   done();
-  return { ok: takerId ? "Asked your manager to approve the swap." : "Posted. Anyone who can cover it can offer, then your manager approves." };
+  return r;
 }
 
-export async function offerToTake(swapId: string): Promise<Res> {
-  const e = await me();
-  if (!e) return { error: "Your login isn't linked to a team member yet." };
-  const sw = await db.shiftSwap.findUnique({ where: { id: swapId }, include: { shift: true } });
-  if (!sw || sw.status !== "PENDING" || sw.takerId) return { error: "Someone already offered." };
-  if (sw.requesterId === e.id) return { error: "That's your own shift." };
-  if (!e.positions.some((p) => p.positionId === sw.shift.positionId)) return { error: "That shift is for a position you're not set up for." };
-  if (await hasOverlap(e.id, sw.shift.start, sw.shift.end)) return { error: "You're already working then." };
-  await db.shiftSwap.update({ where: { id: swapId }, data: { takerId: e.id } });
+/** Take a posted shift; for a trade, pass the shift of yours you give back. */
+export async function offerToTake(swapId: string, offeredShiftId?: string | null): Promise<Res> {
+  const e = await staffMe();
+  if (!e) return NOT_LINKED;
+  const r = await claimSwap(e, swapId, offeredShiftId);
+  if (r.swapId && !r.error) inBackground(() => notifySwapClaimed(r.swapId!, !!r.auto));
   done();
-  return { ok: "Offered. Your manager will confirm." };
+  return r;
+}
+
+export async function declineSwapAsk(swapId: string): Promise<Res> {
+  const e = await staffMe();
+  if (!e) return NOT_LINKED;
+  const r = await declineAsk(e, swapId);
+  done();
+  return r;
 }
 
 export async function cancelSwap(swapId: string): Promise<Res> {
-  const e = await me();
-  if (!e) return { error: "Your login isn't linked to a team member yet." };
-  await db.shiftSwap.deleteMany({ where: { id: swapId, status: "PENDING", requesterId: e.id } });
+  const e = await staffMe();
+  if (!e) return NOT_LINKED;
+  const r = await cancelOwnSwap(e, swapId);
   done();
-  return { ok: "Swap request cancelled." };
+  return r;
 }
 
 const timeOff = z.object({

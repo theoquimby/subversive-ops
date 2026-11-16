@@ -14,7 +14,7 @@ export default async function ImportPage() {
       <PageHeader
         help="prices.import"
         title="Import price sheet"
-        description="Upload the distributor's download as-is. You'll see every price change before anything is saved."
+        description="Upload the distributor's download as-is, or a PDF or photo of a paper price sheet. You'll see every price change before anything is saved."
         back={{ href: "/prices", label: "Prices" }}
       />
       <ImportWizard suppliers={suppliers} today={businessToday()} />

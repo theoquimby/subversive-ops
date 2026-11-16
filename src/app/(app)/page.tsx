@@ -21,7 +21,7 @@ import { onboardingState } from "@/server/services/onboarding";
 import { ratingTrend } from "@/domain/alerts";
 import { env } from "@/server/env";
 import { buildContext } from "@/server/services/costing";
-import { CircleCheck, ChevronRight, ClipboardList, FileCheck, GraduationCap, Beer, MessageSquareText, ShoppingCart, CalendarCheck, Users, Truck, type LucideIcon } from "lucide-react";
+import { CircleCheck, ChevronRight, ClipboardList, FileCheck, GraduationCap, Beer, MessageSquareText, ShoppingCart, CalendarCheck, Users, Truck, ListChecks, Wrench, Landmark, type LucideIcon } from "lucide-react";
 import { SetupCard } from "./_overview/setup-card";
 import { setupChecklist } from "@/server/services/setupChecklist";
 import { TodayChart, WeekStrip } from "./_overview/charts";
@@ -33,7 +33,7 @@ export const metadata = { title: "Overview" };
 const whole = (n: number) => money(n, { whole: true });
 const signedWhole = (n: number) => (Math.round(n) < 0 ? `−${whole(-n)}` : whole(Math.max(0, n) || 0));
 
-const ATTENTION_ICON: Record<string, LucideIcon> = { orders: ShoppingCart, invoices: FileCheck, kegs: Beer, requests: Users, schedule: CalendarCheck, certs: GraduationCap, reviews: MessageSquareText };
+const ATTENTION_ICON: Record<string, LucideIcon> = { orders: ShoppingCart, invoices: FileCheck, kegs: Beer, requests: Users, schedule: CalendarCheck, certs: GraduationCap, reviews: MessageSquareText, checklists: ListChecks, upkeep: Wrench, "upkeep.down": Wrench, "beertax.federal": Landmark, "beertax.brop": Landmark, "beertax.ny": Landmark };
 const toneChip = { bad: "bg-bad-bg text-bad", warn: "bg-warn-bg text-warn", neutral: "bg-surface-2 text-ink-2" } as const;
 
 export default async function OverviewPage() {
@@ -237,7 +237,8 @@ export default async function OverviewPage() {
             hint={<span className="flex flex-col gap-1">{hasPrev && !prevGap && !nowGap && <Delta value={weekB.profit - prevB.profit} format={fmt.money} label="vs week before" compact />}{(prevGap || nowGap) && <Missing>{nowGap ? `This week: ${nowGap}` : `Week before had ${prevGap}`} — not compared</Missing>}<span className="truncate">{pct(weekB.margin, 0)} of sales{weekB.estimated || nowGap ? " · est." : ""}</span></span>}
           />
           <Stat
-            label="Labor"
+            help="overview.labor"
+            label={<span className="inline-flex items-center gap-1.5">Labor <HelpTip id="overview.labor" /></span>}
             tone={budget?.laborPct != null && costTone(t.laborPct, budget.laborPct) !== "good" ? costTone(t.laborPct, budget.laborPct) : undefined}
             value={laborOk ? pct(t.laborPct) : "—"}
             hint={laborOk ? <span className="flex flex-col gap-1">{hasPrev && prevLaborOk ? <Delta value={pointsChange(t.laborPct, prevWeek.total.laborPct)} format={fmt.pts} label="vs week before" goodWhenUp={false} flatBelow={0.0025} compact /> : hasPrev ? <Missing>Week before had no timecards</Missing> : null}{week.missingRates > 0 && <Missing href="/team">{week.missingRates} shift{week.missingRates === 1 ? "" : "s"} with no pay rate</Missing>}<span className="truncate">{whole(t.labor)} · {money(t.salesPerLaborHour, { whole: true })} sales per labor hour{budget?.laborPct != null ? ` · target ${pct(budget.laborPct, 0)}` : ""}</span></span> : <Missing href="/team">No timecards this week — connect Square Team or add shifts</Missing>}
@@ -259,7 +260,7 @@ export default async function OverviewPage() {
           <Link href="/reviews" className="block h-full rounded-xl [&>*]:h-full">
             <Stat
               help="overview.rating"
-              label="Rating, 30 days"
+              label={<span className="inline-flex items-center gap-1.5">Rating, 30 days <HelpTip id="overview.rating" /></span>}
               value={rating.avg != null ? `${rating.avg.toFixed(1)}★` : "—"}
               hint={rating.avg == null ? (reviewsEver ? "No reviews in 30 days" : <Missing>Reviews aren&apos;t coming in yet — connect Google</Missing>) : `${rating.count} review${rating.count === 1 ? "" : "s"}${rating.delta != null && Math.abs(rating.delta) >= 0.05 ? ` · ${rating.delta > 0 ? "▲" : "▼"} ${Math.abs(rating.delta).toFixed(1)} vs prior` : rating.delta != null ? " · steady" : ""}`}
               tone={rating.delta != null && rating.delta <= -0.3 ? "warn" : undefined}

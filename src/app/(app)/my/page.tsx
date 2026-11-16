@@ -4,12 +4,14 @@ import { shiftLabel } from "@/domain/schedule";
 import { greeting, relativeDay, type QuickAction } from "@/domain/staffHome";
 import { cn } from "@/lib/cn";
 import { areaStyle, type Area } from "@/lib/areas";
-import { dayDate, shortDate } from "@/lib/format";
+import { dayDate, money, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { pushReady, vapidPublicKey } from "@/server/services/push";
 import { employeeForUser } from "@/server/services/scheduling";
 import { staffHome, type HomeShift } from "@/server/services/staffHome";
-import { AlertTriangle, ArrowLeftRight, Beer, CalendarCheck, ChefHat, ChevronRight, CircleCheck, ClipboardList, FileSignature, GraduationCap, Hand, Megaphone, NotebookPen, Pin, ScanLine, Sparkles, Trash2, type LucideIcon } from "lucide-react";
+import { myPayThisPeriod, type MyPayView } from "@/server/services/myPay";
+import { getRecognitionConfig, recentShoutouts } from "@/server/services/recognition";
+import { AlertTriangle, ArrowLeftRight, Beer, CalendarCheck, ChefHat, ChevronRight, CircleCheck, ClipboardList, FileSignature, GraduationCap, Hand, ListChecks, Megaphone, MessageCircle, NotebookPen, PartyPopper, Pin, ScanLine, Sparkles, Trash2, Wallet, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { ShiftCountdown } from "./countdown";
 import { HomeSetup } from "./home-setup";
@@ -46,7 +48,14 @@ export default async function TodayPage() {
     );
   }
   const now = Date.now();
-  const [home, canPush, vapid] = await Promise.all([staffHome(me, new Date(now)), pushReady(), vapidPublicKey()]);
+  const [home, canPush, vapid, pay, shoutouts, recog] = await Promise.all([
+    staffHome(me, new Date(now)),
+    pushReady(),
+    vapidPublicKey(),
+    myPayThisPeriod(me.id, new Date(now)).catch(() => null),
+    recentShoutouts({ days: 14, limit: 3 }).catch(() => []),
+    getRecognitionConfig(),
+  ]);
   const todayLabel = new Date(`${home.today}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
 
   return (
@@ -57,6 +66,8 @@ export default async function TodayPage() {
           <h1 className="mt-0.5 text-[1.75rem] leading-tight font-semibold tracking-tight text-ink">{greeting(home.hour)}, {home.name}</h1>
         </header>
       </HelpZone>
+
+      {home.onboarding && <OnboardingBanner o={home.onboarding} />}
 
       <HelpZone id="my.nextShift" tour="my.next-shift">
         {home.next ? <NextShift s={home.next} crew={home.crew} today={home.today} now={now} week={home.week} /> : <NoShift />}
@@ -104,7 +115,28 @@ export default async function TodayPage() {
         </section>
       </HelpZone>
 
+      {pay && <PayCard pay={pay} />}
+
       <HomeSetup pushReady={canPush} vapidKey={vapid} />
+
+      {shoutouts.length > 0 && (
+        <HelpZone id="my.shoutouts">
+          <section aria-labelledby="shout-h">
+            <h2 id="shout-h" className="mb-2.5 flex items-center justify-between gap-1.5 px-1 text-[0.95rem] font-semibold">
+              <span className="flex items-center gap-1.5"><Sparkles className="size-4 text-muted" aria-hidden /> Shout-outs</span>
+              <Link href="/my/kudos" className="inline-flex min-h-10 items-center text-sm font-medium text-ink-2">{recog.peerShoutouts ? "Thank someone" : "See all"}</Link>
+            </h2>
+            <Card className="divide-y divide-border">
+              {shoutouts.map((s) => (
+                <article key={s.id} className="px-4 py-3.5">
+                  <p className="text-[0.95rem] leading-snug text-ink"><span className="font-medium">{s.to.split(" ")[0]}</span> — {s.body}</p>
+                  <p className="mt-1 text-xs text-muted">{s.value ? `${s.value} · ` : ""}{s.from} · {when(s.createdAt)}</p>
+                </article>
+              ))}
+            </Card>
+          </section>
+        </HelpZone>
+      )}
 
       {home.kudos && (
         <section aria-label="Kudos" className="relative overflow-hidden rounded-2xl border border-good/25 bg-good-bg px-4 py-4">
@@ -129,6 +161,8 @@ export default async function TodayPage() {
           </section>
         </HelpZone>
       )}
+
+      <MoreForYou onboarding={!!home.onboarding} />
 
       <p className="pb-2 text-center text-sm text-muted">
         New here? <Link href="/my?tour=today" className="inline-flex min-h-11 items-center font-medium text-ink-2 underline underline-offset-2">Take the 1-minute tour</Link>
@@ -181,6 +215,80 @@ function NextShift({ s, crew, today, now, week }: { s: HomeShift; crew: Awaited<
         <span className="flex items-center gap-1 opacity-70"><span className="num">{week.shifts} in 7 days · {Number(week.hours.toFixed(1))}h</span><ChevronRight className="size-4" aria-hidden /></span>
       </Link>
     </section>
+  );
+}
+
+function OnboardingBanner({ o }: { o: NonNullable<Awaited<ReturnType<typeof staffHome>>["onboarding"]> }) {
+  const pct = o.total ? Math.round((o.done / o.total) * 100) : 0;
+  return (
+    <HelpZone id="my.onboarding">
+      <Link href="/my/onboarding" className="block rounded-2xl border border-border bg-surface px-4 py-4 transition-colors duration-120 active:bg-surface-2">
+        <div className="flex items-center gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-good-bg text-good" aria-hidden><PartyPopper className="size-5" strokeWidth={1.9} /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[0.95rem] font-medium text-ink">{o.seen ? "Your first-week checklist" : "Welcome aboard! Start here"}</span>
+            <span className="block text-[0.8rem] text-muted">{o.requiredLeft ? `${o.requiredLeft} thing${o.requiredLeft === 1 ? "" : "s"} left${o.dueOn ? ` · by ${shortDate(o.dueOn)}` : ""}` : "All the must-dos are done"}</span>
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+        </div>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Checklist progress">
+          <div className="h-full rounded-full bg-good transition-[width] duration-300" style={{ width: `${pct}%` }} />
+        </div>
+      </Link>
+    </HelpZone>
+  );
+}
+
+function PayCard({ pay }: { pay: MyPayView }) {
+  return (
+    <HelpZone id="my.pay">
+      <Link href="/my/pay" className="block rounded-2xl border border-border bg-surface px-4 py-3.5 transition-colors duration-120 active:bg-surface-2">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[0.8rem] font-medium text-muted">This pay period · {shortDate(pay.period.start)} – {shortDate(pay.period.end)}</span>
+          <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+        </div>
+        <div className="mt-1.5 grid grid-cols-2 gap-3">
+          <div>
+            <div className="num text-xl font-semibold text-ink">{Number(pay.workedHours.toFixed(1))}h</div>
+            <div className="text-xs text-muted">worked{pay.scheduledHours ? ` · ${Number(pay.scheduledHours.toFixed(1))}h to go` : ""}</div>
+          </div>
+          {pay.tips.basis !== "none" && (
+            <div>
+              <div className="num text-xl font-semibold text-ink">{money(pay.tips.total, { whole: true })}</div>
+              <div className="text-xs text-muted">tips{pay.tips.basis === "finalized" ? "" : " · estimate"}</div>
+            </div>
+          )}
+        </div>
+      </Link>
+    </HelpZone>
+  );
+}
+
+const MORE: { href: string; label: string; icon: LucideIcon; onboarding?: boolean }[] = [
+  { href: "/my/onboarding", label: "My checklist", icon: ListChecks, onboarding: true },
+  { href: "/my/pay", label: "Hours & tips", icon: Wallet },
+  { href: "/my/kudos", label: "Shout-outs", icon: Sparkles },
+  { href: "/my/message", label: "Message a manager", icon: MessageCircle },
+  { href: "/my/me#documents", label: "Documents", icon: FileSignature },
+  { href: "/my/me#training", label: "Training & certificates", icon: GraduationCap },
+];
+
+function MoreForYou({ onboarding }: { onboarding: boolean }) {
+  return (
+    <HelpZone id="my.more">
+      <nav aria-labelledby="more-h">
+        <h2 id="more-h" className="mb-2.5 px-1 text-[0.95rem] font-semibold">More for you</h2>
+        <Card className="divide-y divide-border overflow-hidden">
+          {MORE.filter((m) => !m.onboarding || onboarding).map((m) => (
+            <Link key={m.href} href={m.href} className="flex min-h-13 items-center gap-3 px-4 py-2.5 text-[0.95rem] transition-colors duration-120 active:bg-surface-2">
+              <m.icon className="size-[1.1rem] shrink-0 text-muted" strokeWidth={1.9} aria-hidden />
+              <span className="flex-1 text-ink">{m.label}</span>
+              <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+            </Link>
+          ))}
+        </Card>
+      </nav>
+    </HelpZone>
   );
 }
 

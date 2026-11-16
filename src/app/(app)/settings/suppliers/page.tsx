@@ -3,7 +3,8 @@ import { cutoffRule } from "@/domain/ordering";
 import { requireUser } from "@/server/auth";
 import { db, num } from "@/server/db";
 import { loadCutoffRules } from "@/server/services/planning";
-import { pendingSuggestions } from "@/server/services/learned";
+import { getLearned, pendingSuggestions, refreshLearned } from "@/server/services/learned";
+import { after } from "next/server";
 import { SupplierSuggestionList } from "../learned-cards";
 import { SuppliersTable } from "./suppliers-table";
 
@@ -11,10 +12,13 @@ export const metadata = { title: "Suppliers" };
 
 export default async function SuppliersSettingsPage() {
   await requireUser("MANAGER");
+  const snapshot = await getLearned().catch(() => null);
+  // Delivery days and deadlines are worked out nightly; before the first night, work them out now (after the page is sent).
+  if (!snapshot) after(() => refreshLearned().then(() => undefined, () => undefined));
   const [suppliers, cutoffs, learned] = await Promise.all([
     db.supplier.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }], include: { _count: { select: { products: true } } } }),
     loadCutoffRules(),
-    pendingSuggestions(),
+    pendingSuggestions(snapshot),
   ]);
   const rows = suppliers.map((s) => ({
     id: s.id, name: s.name, kind: s.kind, email: s.email, leadTimeDays: s.leadTimeDays, minOrder: num(s.minOrder), deliveryDays: s.deliveryDays, active: s.active, notes: s.notes,

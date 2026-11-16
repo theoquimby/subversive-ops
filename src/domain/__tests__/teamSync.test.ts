@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeDiff, mergePositionRate, mergeTeamMember, parseTeamDiffs } from "../teamSync";
+import { describeDiff, mergePositionRate, mergeTeamMember, newPositionDefaults, parseTeamDiffs } from "../teamSync";
 
 const sq = { name: "Jamie Rivera", email: "jamie@sq.com", phone: "(518) 555-0101", hourlyRate: 16, active: true };
 
@@ -34,5 +34,17 @@ describe("Square team merge", () => {
   it("parses stored differences defensively", () => {
     expect(parseTeamDiffs(JSON.stringify({ e1: [{ field: "email", ops: "a", square: "b" }, { nope: 1 }], e2: "x" }))).toEqual({ e1: [{ field: "email", ops: "a", square: "b" }] });
     expect(parseTeamDiffs("[")).toEqual({});
+  });
+});
+
+describe("newPositionDefaults", () => {
+  it("uses Square's tip flag when it has one", () => {
+    expect(newPositionDefaults("Server", false)).toEqual({ area: "FOH", tipEligible: false, tipPoints: 0 });
+    expect(newPositionDefaults("Line cook", true)).toEqual({ area: "BOH", tipEligible: true, tipPoints: 1 });
+  });
+  it("guesses from the title otherwise", () => {
+    expect(newPositionDefaults("Dishwasher", null)).toEqual({ area: "BOH", tipEligible: false, tipPoints: 0 });
+    expect(newPositionDefaults("Bartender", undefined)).toEqual({ area: "BAR", tipEligible: true, tipPoints: 1 });
+    expect(newPositionDefaults("Host", null).area).toBe("FOH");
   });
 });

@@ -75,6 +75,18 @@ const tokens = (s: string) =>
  * single word of the text starting with the same character, in either direction
  * ("chkn" ~ "chicken", "boneless" ~ "bnls"); longer words weigh more.
  */
+/**
+ * `short` stands for `long`: its letters appear in order in it, and it is
+ * either most of the word ("shred" → "shredded") or a vowel-less shorthand
+ * ("chkn" → "chicken", "bnls" → "boneless"). A short real word inside a longer
+ * one is not an abbreviation ("butt" isn't "buttermilk", "cont" isn't "cornstarch"),
+ * nor are a few consonants of a much longer word ("blk" isn't "buttermilk").
+ */
+function abbreviates(short: string, long: string): boolean {
+  if (short.length > long.length || fuzzyScore(short, long) == null) return false;
+  return short.length >= 0.6 * long.length || (short.length >= 0.35 * long.length && !/[aeiou]/.test(short.slice(1)));
+}
+
 export function descriptionSimilarity(query: string, text: string): number {
   const q = tokens(query);
   const words = tokens(text);
@@ -83,7 +95,7 @@ export function descriptionSimilarity(query: string, text: string): number {
   let all = 0;
   for (const t of q) {
     all += t.length;
-    if (words.some((w) => w[0] === t[0] && (fuzzyScore(t, w) != null || fuzzyScore(w, t) != null))) hit += t.length;
+    if (words.some((w) => w[0] === t[0] && (abbreviates(t, w) || abbreviates(w, t)))) hit += t.length;
   }
   return hit / all;
 }

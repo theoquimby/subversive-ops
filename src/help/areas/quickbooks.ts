@@ -45,6 +45,15 @@ It's free: every Intuit app starts on its no-cost plan. QuickBooks keeps the app
     related: ["settings.connections.quickbooks"],
   },
   {
+    id: "settings.quickbooks.what",
+    area: "settings",
+    route: "/settings/quickbooks",
+    title: "What goes to QuickBooks",
+    body: "Approved supplier invoices and store receipts go over as bills (one line per account, photo attached), and suppliers as vendors. Sales, tips and card fees aren't sent automatically — download the sales journal from Invoices → Exports, or use Square's own QuickBooks link. Nothing is ever paid from here.",
+    related: ["settings.quickbooks.accounts", "settings.quickbooks.vendors", "invoices.exports"],
+    keywords: ["what syncs", "bills", "vendors", "sales", "sync"],
+  },
+  {
     id: "settings.quickbooks.accounts",
     area: "settings",
     route: "/settings/quickbooks",

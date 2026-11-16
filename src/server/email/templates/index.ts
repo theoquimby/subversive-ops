@@ -8,6 +8,7 @@ import { schedulePublishedEmail } from "./schedule-published";
 import { shiftUpdateEmail } from "./shift-update";
 import { weeklyBriefEmail } from "./weekly-brief";
 import { MORNING_SAMPLE, morningBriefEmail } from "./morning-brief";
+import { teamNoteEmail } from "./team-note";
 
 export { badReviewEmail, certReminderEmail, creditRequestEmail, invoiceIssueEmail, priceSpikesEmail, staffRequestEmail, purchaseOrderEmail, schedulePublishedEmail, shiftUpdateEmail, weeklyBriefEmail };
 export type { CertReminderEmail, CertReminderItem } from "./certificates";
@@ -19,6 +20,8 @@ export type { ScheduleShift, SchedulePublishedEmail } from "./schedule-published
 export type { ShiftUpdate, ShiftUpdateEmail } from "./shift-update";
 export type { BriefDigest, BriefDigestItem, WeeklyBriefEmail } from "./weekly-brief";
 export { morningBriefEmail } from "./morning-brief";
+export { teamNoteEmail } from "./team-note";
+export type { TeamNoteEmail } from "./team-note";
 export type { MorningBriefEmail, MorningDigest } from "./morning-brief";
 
 const BASE = "https://ops.example.com";
@@ -189,6 +192,47 @@ export const SAMPLES = {
     label: "Certificate expiring (staff)",
     render: () =>
       certReminderEmail({ name: "Jamie Rivera", audience: "self", baseUrl: BASE, items: [{ person: "Jamie Rivera", cert: "ATAP", expiresOn: "2026-11-20", stage: "7" }] }),
+  },
+  "shift-offer": {
+    label: "Shift you can pick up",
+    render: () =>
+      teamNoteEmail({
+        name: "Jamie Rivera",
+        subject: "Sam is giving away Fri, Nov 20",
+        title: "A shift you could take",
+        lines: ["Sam can't make this one. You're free and set up for the position — tap to take it."],
+        rows: [{ title: "Fri, Nov 20", detail: "Server", value: "4:30p–11p" }],
+        action: { path: "/my/shifts#board", label: "See the shift" },
+        audience: "staff",
+        baseUrl: BASE,
+      }),
+  },
+  "shoutout": {
+    label: "Shout-out",
+    render: () =>
+      teamNoteEmail({
+        name: "Jamie Rivera",
+        subject: "Max gave you a shout-out",
+        title: "You got a shout-out",
+        status: { label: "Got your back", tone: "good" },
+        lines: ["“Covered the patio solo during the rush and kept every table happy.” — Max"],
+        action: { path: "/my/kudos", label: "See it" },
+        audience: "staff",
+        baseUrl: BASE,
+      }),
+  },
+  "team-message": {
+    label: "Message from the team",
+    render: () =>
+      teamNoteEmail({
+        name: "Max",
+        subject: "Question from Jamie",
+        title: "New message from the team",
+        lines: ["Jamie asked: can we get a second bar mat for the far well?"],
+        action: { path: "/team/messages", label: "Reply" },
+        audience: "manager",
+        baseUrl: BASE,
+      }),
   },
   "cert-roundup": {
     label: "Certificates expiring (managers)",

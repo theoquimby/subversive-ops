@@ -125,7 +125,7 @@ describe("notification prefs", () => {
     expect(p.events.priceSpikes).toEqual(DEFAULT_PREFS.events.priceSpikes);
   });
   it("staff only see staff events", () => {
-    expect(eventsFor("STAFF")).toEqual(["schedulePublished", "shiftChanges", "certificates"]);
+    expect(eventsFor("STAFF")).toEqual(["schedulePublished", "shiftChanges", "certificates", "shiftOffers", "recognition"]);
     expect(eventsFor("MANAGER")).toEqual(EVENT_KEYS);
   });
   it("morning brief is for managers, on the phone only by default", () => {

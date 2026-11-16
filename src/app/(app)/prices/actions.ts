@@ -131,3 +131,32 @@ export async function setProductsActive(ids: string[], active: boolean): Promise
   revalidatePath("/", "layout");
   return { message: `${active ? "Restored" : "Hid"} ${plural(r.count, "product")}.` };
 }
+
+const linkPairs = z.array(z.object({ productId: z.string().min(1).max(64), ingredientId: z.string().min(1).max(64) })).min(1).max(500);
+
+/** Apply the suggested product → ingredient links the manager ticked (Prices → "We can link these"). */
+export async function applyLinkSuggestions(pairs: { productId: string; ingredientId: string }[]): Promise<BulkResult> {
+  await requireUser("MANAGER");
+  const p = linkPairs.safeParse(pairs);
+  if (!p.success) return { error: "Tick at least one link." };
+  const [products, ingredients] = await Promise.all([
+    db.supplierProduct.findMany({ where: { id: { in: p.data.map((x) => x.productId) }, ingredientId: null } }),
+    db.ingredient.findMany({ where: { id: { in: p.data.map((x) => x.ingredientId) } }, select: { id: true, baseUnit: true } }),
+  ]);
+  const byId = new Map(products.map((x) => [x.id, x]));
+  const ingById = new Map(ingredients.map((x) => [x.id, x]));
+  const ops = p.data.flatMap(({ productId, ingredientId }) => {
+    const product = byId.get(productId);
+    const ing = ingById.get(ingredientId);
+    if (!product || !ing) return [];
+    const pack = product.packQtyBase ?? inferPackQty(product.packText, ing.baseUnit as BaseUnit);
+    return [
+      db.supplierProduct.update({ where: { id: productId }, data: { ingredientId, packQtyBase: pack == null ? undefined : new Prisma.Decimal(Number(pack).toFixed(4)) } }),
+      db.ingredient.updateMany({ where: { id: ingredientId, preferredProductId: null }, data: { preferredProductId: productId } }),
+    ];
+  });
+  if (!ops.length) return { error: "Those are already linked." };
+  await db.$transaction(ops);
+  revalidatePath("/", "layout");
+  return { message: `Linked ${plural(ops.length / 2, "product")}. Their prices now count toward plate costs.` };
+}

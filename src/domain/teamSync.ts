@@ -117,3 +117,26 @@ export function parseTeamDiffs(raw: string | null | undefined): Record<string, T
     return {};
   }
 }
+
+// ---- New positions from Square jobs ------------------------------------------------
+
+export interface NewPositionDefaults {
+  area: "FOH" | "BOH" | "BAR";
+  tipEligible: boolean;
+  /** Share of the tip pool per hour (0 when not tipped). */
+  tipPoints: number;
+}
+
+const BOH = /\b(cook|chef|kitchen|line|prep|dish|dishwasher|porter|sous|grill|fry|pizza|baker|boh)\b/i;
+const BAR = /\b(bar|bartender|barback|beertender|brewer|cellar|taproom)\b/i;
+
+/**
+ * Defaults for a position first seen as a Square job title. Square's own
+ * "tip eligible" flag wins; without it, kitchen jobs aren't tipped and
+ * front-of-house jobs are. The area comes from the title.
+ */
+export function newPositionDefaults(title: string, squareTipEligible: boolean | null | undefined): NewPositionDefaults {
+  const area = BOH.test(title) ? "BOH" : BAR.test(title) ? "BAR" : "FOH";
+  const tipEligible = squareTipEligible ?? area !== "BOH";
+  return { area, tipEligible, tipPoints: tipEligible ? 1 : 0 };
+}

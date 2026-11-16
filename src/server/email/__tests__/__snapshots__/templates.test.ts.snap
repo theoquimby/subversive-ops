@@ -211,6 +211,38 @@ Subversive · Catskill, NY",
 }
 `;
 
+exports[`email templates > shift-offer > matches the snapshot 1`] = `
+{
+  "subject": "Sam is giving away Fri, Nov 20",
+  "text": "Hi Jamie,
+
+A shift you could take. Sam can't make this one. You're free and set up for the position — tap to take it.
+
+- Fri, Nov 20: 4:30p–11p · Server
+
+See the shift: https://ops.example.com/my/shifts#board
+
+—
+Subversive
+Subversive · Catskill, NY",
+}
+`;
+
+exports[`email templates > shoutout > matches the snapshot 1`] = `
+{
+  "subject": "Max gave you a shout-out",
+  "text": "Hi Jamie,
+
+You got a shout-out. “Covered the patio solo during the rush and kept every table happy.” — Max
+
+See it: https://ops.example.com/my/kudos
+
+—
+Subversive
+Subversive · Catskill, NY",
+}
+`;
+
 exports[`email templates > staff-request > matches the snapshot 1`] = `
 {
   "subject": "Line Hansen asked for time off",
@@ -240,6 +272,21 @@ My shifts: https://ops.example.com/my/shifts
 
 —
 Subversive schedule
+Subversive · Catskill, NY",
+}
+`;
+
+exports[`email templates > team-message > matches the snapshot 1`] = `
+{
+  "subject": "Question from Jamie",
+  "text": "Hi Max,
+
+New message from the team. Jamie asked: can we get a second bar mat for the far well?
+
+Reply: https://ops.example.com/team/messages
+
+—
+Subversive
 Subversive · Catskill, NY",
 }
 `;

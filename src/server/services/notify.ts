@@ -402,7 +402,7 @@ export function notifyStaffRequest(ref: { timeOffId: string } | { swapId: string
       });
       if (!s || s.status !== "PENDING") return [];
       const v = shiftView(s.shift);
-      request = { kind: "swap", employee: s.requester.name, shift: { date: v.date, startMin: v.startMin, endMin: v.endMin, position: s.shift.position.name }, taker: s.taker?.name ?? null };
+      request = { kind: "swap", employee: s.requester.name, shift: { date: v.date, startMin: v.startMin, endMin: v.endMin, position: s.shift.position.name }, taker: s.kind === "PICKUP" ? null : (s.taker?.name ?? null), swapKind: s.kind };
       tag = `request-swap-${s.id}`;
     }
     const base = appUrl();

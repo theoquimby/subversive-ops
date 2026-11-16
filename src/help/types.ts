@@ -34,7 +34,10 @@ export type HelpAreaId =
   | "prep"
   | "notes"
   | "website"
-  | "accounting";
+  | "accounting"
+  | "checklists"
+  | "upkeep"
+  | "beertax";
 
 export type Audience = "manager" | "staff" | "all";
 

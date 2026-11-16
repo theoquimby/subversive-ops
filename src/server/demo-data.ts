@@ -248,6 +248,10 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
     const { seedPrivateEvents } = await import("./demo/privateEvents");
     await seedPrivateEvents(db, today);
   }
+  if ((await db.onboarding.count()) === 0 && (await db.shoutout.count()) === 0 && (await db.staffMessage.count()) === 0) {
+    const { seedWorkforce } = await import("./demo/workforce");
+    await seedWorkforce(db);
+  }
 
   await db.setting.create({ data: { key: "square.lastSync", value: new Date(Date.now() - 3 * 3600_000).toISOString() } });
 

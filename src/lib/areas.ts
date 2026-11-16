@@ -8,6 +8,7 @@
  */
 
 import {
+  Banknote,
   Beer,
   BookOpen,
   Calculator,
@@ -25,6 +26,8 @@ import {
   FileUp,
   FolderOpen, GraduationCap,
   Globe,
+  Landmark,
+  ListChecks,
   HandCoins,
   LayoutGrid,
   Lightbulb,
@@ -40,8 +43,10 @@ import {
   Target,
   Trash2,
   TrendingUp,
+  UserPlus,
   Users,
   Wheat,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import type { CSSProperties } from "react";
@@ -76,6 +81,8 @@ export const MANAGER_NAV: NavGroup[] = [
     item("people", "/team/documents", "Documents", FolderOpen),
     item("people", "/team/training", "Training", GraduationCap),
     item("people", "/labor", "Timecards & payroll", Clock),
+    item("people", "/labor/handoff", "Payroll hand-off", Banknote),
+    item("people", "/team/onboarding", "Onboarding", UserPlus),
     item("people", "/tips", "Tips", HandCoins),
     item("people", "/my/shifts", "My shifts", CalendarCheck),
   ] },
@@ -86,6 +93,7 @@ export const MANAGER_NAV: NavGroup[] = [
     item("numbers", "/sales", "Sales & forecast", ChartLine),
     item("numbers", "/events", "Events", CalendarDays),
     item("numbers", "/budgets", "Budgets", Target),
+    item("numbers", "/beer-tax", "Beer tax", Landmark),
     item("numbers", "/reviews", "Reviews", MessageSquareText),
     item("numbers", "/website", "Website", Globe),
   ] },
@@ -94,6 +102,8 @@ export const MANAGER_NAV: NavGroup[] = [
     item("floor", "/waste", "Waste", Trash2),
     item("floor", "/kegs", "Kegs", Beer),
     item("floor", "/prep", "Prep list", ChefHat),
+    item("floor", "/checklists", "Checklists", ListChecks),
+    item("floor", "/upkeep", "Upkeep", Wrench),
   ] },
   { title: "Setup", area: "setup", items: [
     item("setup", "/import", "Import sheets", FileUp),
@@ -111,6 +121,7 @@ export const STAFF_NAV: NavGroup[] = [
   ] },
   { title: "Floor", area: "floor", items: [
     item("floor", "/prep", "Prep list", ChefHat),
+    item("floor", "/checklists", "Checklists", ListChecks),
     item("floor", "/kegs", "Kegs & taps", Beer),
     item("floor", "/count", "Count", ClipboardList),
     item("floor", "/waste", "Waste", Trash2),

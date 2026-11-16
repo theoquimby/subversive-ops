@@ -454,7 +454,7 @@ export async function saveSalesTaxRate(value: string) {
 }
 
 /** Add a supplier from the invoice form (a store run, a new distributor). Reuses one with the same name. */
-export async function quickAddSupplier(rawName: string): Promise<{ error?: string; supplier?: { id: string; name: string } }> {
+export async function quickAddSupplier(rawName: string, store = false): Promise<{ error?: string; supplier?: { id: string; name: string } }> {
   await requireUser("MANAGER");
   const name = String(rawName ?? "").trim().replace(/\s+/g, " ").slice(0, 80);
   if (!name) return { error: "Type the supplier's name." };
@@ -463,7 +463,9 @@ export async function quickAddSupplier(rawName: string): Promise<{ error?: strin
     if (!existing.active) await db.supplier.update({ where: { id: existing.id }, data: { active: true } });
     return { supplier: { id: existing.id, name: existing.name } };
   }
-  const supplier = await db.supplier.create({ data: { name, kind: "DISTRIBUTOR", leadTimeDays: 0, deliveryDays: [] }, select: { id: true, name: true } });
+  // A store run (a receipt, or a known store like Price Chopper) is a local buy, not a distributor.
+  const kind = store || knownStore(name) ? "LOCAL" : "DISTRIBUTOR";
+  const supplier = await db.supplier.create({ data: { name, kind, leadTimeDays: 0, deliveryDays: [] }, select: { id: true, name: true } });
   revalidatePath("/settings");
   revalidatePath("/ordering");
   revalidatePath("/invoices");
