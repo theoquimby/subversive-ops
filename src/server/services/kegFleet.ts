@@ -106,3 +106,36 @@ export async function fleetNeedsLook(): Promise<{ out: OutGroup[]; idle: IdleKeg
   const today = businessToday();
   return { out: outTooLong(kegs, events, today, cfg.overdueDays), idle: notSeenLately(kegs, events, today, cfg.idleDays), overdueDays: cfg.overdueDays, idleDays: cfg.idleDays };
 }
+
+export interface KegHome {
+  /** Kegs in service by status. */
+  byStatus: Record<KegStatus, number>;
+  inService: number;
+  stats: FleetStats;
+  /** The last 12 weeks of where the fleet was; empty with no history. */
+  weeks: WeekPoint[];
+  out: OutGroup[];
+  idle: IdleKeg[];
+  overdueDays: number;
+  idleDays: number;
+}
+
+/** What the Kegs home leads with for managers: the fleet now, its last 12 weeks, and the kegs that need a look. One read of the history. */
+export async function kegHome(): Promise<KegHome> {
+  const [{ events, kegs, today, first }, cfg] = await Promise.all([fleetData(), kegConfig()]);
+  const byStatus: Record<KegStatus, number> = { EMPTY: 0, FILLED: 0, COLD: 0, ON_TAP: 0, KICKED: 0, OUT: 0, CLEANING: 0 };
+  for (const k of kegs) if (k.active) byStatus[k.status]++;
+  // Twelve whole weeks: this one and the eleven before it.
+  const from = new Date(`${today}T00:00:00Z`);
+  from.setUTCDate(from.getUTCDate() - 77);
+  return {
+    byStatus,
+    inService: kegs.filter((k) => k.active).length,
+    stats: fleetStats(cycles(events, kegs), kegs, today),
+    weeks: first ? weeklyFleet(events, kegs, weekStarts(from.toISOString().slice(0, 10), today)) : [],
+    out: outTooLong(kegs, events, today, cfg.overdueDays),
+    idle: notSeenLately(kegs, events, today, cfg.idleDays),
+    overdueDays: cfg.overdueDays,
+    idleDays: cfg.idleDays,
+  };
+}

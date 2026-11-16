@@ -65,8 +65,8 @@ function Grid({ W, max, y, pad }: { W: number; max: number; y: (v: number) => nu
 }
 
 /** How many kegs were full, on tap or out, dirty and clean at the end of each week, stacked. */
-export function FleetArea({ points }: { points: WeekPoint[] }) {
-  const W = 640, H = 190, pad = 26, bottom = 18;
+export function FleetArea({ points, compact }: { points: WeekPoint[]; compact?: boolean }) {
+  const W = 640, H = compact ? 150 : 190, pad = 26, bottom = 18;
   const total = (p: WeekPoint) => p.full + p.out + p.dirty + p.clean;
   const max = niceMax(Math.max(1, ...points.map(total)));
   const n = points.length;
@@ -86,7 +86,7 @@ export function FleetArea({ points }: { points: WeekPoint[] }) {
   const marks = n > 2 ? [0, Math.floor((n - 1) / 2), n - 1] : n === 2 ? [0, 1] : [0];
   return (
     <>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-48 w-full" role="img" aria-label="Kegs full, on tap or out, dirty and clean at the end of each week">
+      <svg viewBox={`0 0 ${W} ${H}`} className={compact ? "h-auto w-full" : "h-48 w-full"} role="img" aria-label="Kegs full, on tap or out, dirty and clean at the end of each week">
         <Grid W={W} max={max} y={y} pad={pad} />
         {n > 1 && layers.map((l) => <path key={l.b} d={l.d} fill={BUCKET_FILL[l.b].fill} opacity={BUCKET_FILL[l.b].opacity} />)}
         {n === 1 && BUCKETS.reduce<{ el: React.ReactNode[]; at: number }>((acc, b) => {

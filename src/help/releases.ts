@@ -30,6 +30,7 @@ export const RELEASES: Release[] = [
     summary: "Take an order from an account, see how many full kegs are free to promise, and fill it by scanning each keg as it leaves.",
     entries: ["2026-11-16.keg-orders", "2026-11-16.keg-order-scan"],
     fixed: [
+      "The Kegs home now leads with the fleet: one bar showing where every keg is, the last 12 weeks beside it, and a single Needs you list (taps about to run dry, what to fill, kegs out too long, kegs gone quiet).",
       "Orders is in the Kegs menu and on the Kegs page. Open orders also show on the Kegs page, for whoever is loading them.",
       "Each account's page lists its orders, with a New order button.",
       "Overview: keg orders due today or overdue show under Needs you.",

@@ -1,53 +1,133 @@
 import { HelpTip, HelpZone } from "@/components/help";
-import { Card, EmptyState, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
+import { Card, EmptyState, LinkButton, PageHeader, Section } from "@/components/ui";
 import { progressLabel } from "@/domain/kegOrders";
 import { displayCode, sinceLabel } from "@/domain/kegs";
 import { requireUser } from "@/server/auth";
-import { fleetNeedsLook } from "@/server/services/kegFleet";
+import { kegHome } from "@/server/services/kegFleet";
 import { openOrders } from "@/server/services/kegOrders";
-import { stockSummary, tapBoard } from "@/server/services/kegs";
-import { Beer, ChartColumn, FileText, FileUp, History, ListChecks, ListOrdered, Printer, ScanLine, Settings2, Store, TrendingUp, Truck, Warehouse } from "lucide-react";
+import { beerDemand, stockSummary, tapBoard } from "@/server/services/kegs";
+import { ArrowRight, ListOrdered, ScanLine, Truck, Warehouse } from "lucide-react";
 import Link from "next/link";
 import { BeerDot, daysText, LeftBar, pctText, sizeShort } from "./bits";
+import { BUCKET_KEY, FleetArea, Key } from "./fleet/charts";
+import { FleetBar, NeedsList, type FleetPart, type NeedsItem } from "./home";
 import { DueBadge, linesSummary } from "./orders/bits";
 import { QueueWatcher } from "./scanner";
 
 export const metadata = { title: "Kegs" };
 
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** "Gose: about 60 pints a week…" under a title that already names the beer reads better as "About 60 pints a week…". */
+const sayWithoutName = (sentence: string, name: string) => {
+  const rest = sentence.startsWith(`${name}: `) ? sentence.slice(name.length + 2) : sentence;
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+};
+
+/** A source for the manager's summary that must never take the page down. */
+const soft = <T,>(what: string, p: Promise<T>): Promise<T | null> =>
+  p.catch((e) => {
+    console.error(`kegs: ${what} skipped`, (e as Error).message);
+    return null;
+  });
+
 export default async function KegsPage() {
   const me = await requireUser();
   const manager = me.role === "MANAGER";
-  const [{ taps, yield: yi }, stock, look, orders] = await Promise.all([
+  const [{ taps, yield: yi }, stock, home, demand, orders] = await Promise.all([
     tapBoard(),
     stockSummary(),
-    manager ? fleetNeedsLook() : null,
-    // Open keg orders, so staff can start scanning one. A problem with orders never takes this page down.
-    openOrders().catch((e) => {
-      console.error("kegs: open orders skipped", (e as Error).message);
-      return null;
-    }),
+    manager ? soft("fleet", kegHome()) : null,
+    manager ? soft("demand", beerDemand()) : null,
+    // Open keg orders, so staff can start scanning one.
+    soft("open orders", openOrders()),
   ]);
-  const outKegs = look?.out.reduce((s, g) => s + g.kegs.length, 0) ?? 0;
-  const idleKegs = look?.idle.length ?? 0;
   const onTap = taps.filter((t) => t.keg);
   const dry = onTap.filter((t) => t.keg?.beerId && t.backups === 0 && (t.estimate?.daysLeft ?? 99) < 7);
+
+  // What needs someone, most urgent first. Staff see the taps about to run dry; managers the rest too.
+  const needs: NeedsItem[] = dry.map((t) => ({
+    key: `dry-${t.line}`,
+    tone: "bad" as const,
+    title: `${t.keg!.beer} on tap ${t.line} has nothing full behind it`,
+    detail: `${daysText(t.estimate?.daysLeft) ?? pctText(t.estimate?.pctLeft)} · fill it, or plan what goes on that line`,
+    href: `/kegs/k/${t.keg!.code}`,
+  }));
+  if (manager) {
+    const dryBeers = new Set(dry.map((t) => t.keg!.beerId));
+    for (const r of (demand?.rows ?? []).filter((r) => r.plan.toFill > 0 && !dryBeers.has(r.beerId)).slice(0, 3)) {
+      needs.push({ key: `fill-${r.beerId}`, tone: r.plan.tone === "bad" ? "bad" : "warn", title: `Fill ${plural(r.plan.toFill, "keg")} of ${r.name}`, detail: sayWithoutName(r.plan.sentence, r.name), href: "/kegs/demand" });
+    }
+    const outKegs = home?.out.reduce((s, g) => s + g.kegs.length, 0) ?? 0;
+    if (home && outKegs > 0) {
+      needs.push({ key: "out", tone: "warn", title: `${plural(outKegs, "keg")} out at ${plural(home.out.length, "account")} for more than ${home.overdueDays} days`, detail: `Longest: ${home.out[0].account}, ${home.out[0].longest} days`, href: "/kegs/accounts" });
+    }
+    if (home && home.idle.length > 0) {
+      needs.push({ key: "idle", tone: "warn", title: `${plural(home.idle.length, "keg")} not scanned in ${home.idleDays} days`, detail: "Find and scan them, or retire them", href: "/kegs/fleet#look" });
+    }
+  }
+
+  const s = home?.byStatus;
+  const parts: FleetPart[] = s
+    ? [
+        { key: "full", label: "Full", count: s.FILLED + s.COLD, href: "/kegs/cooler", fill: "var(--area)", opacity: 0.85 },
+        { key: "tap", label: "On tap", count: s.ON_TAP, href: "/kegs/all?status=ON_TAP", fill: "var(--ink)" },
+        { key: "out", label: "Out", count: s.OUT, href: "/kegs/accounts", fill: "var(--ink-2)", opacity: 0.55 },
+        { key: "dirty", label: "To clean", count: s.CLEANING + s.KICKED, href: "/kegs/all?status=CLEANING", fill: "var(--warn)", opacity: 0.6 },
+        { key: "empty", label: "Empty", count: s.EMPTY, href: "/kegs/all?status=EMPTY", fill: "var(--border-strong)" },
+      ]
+    : [];
+  const scan = (
+    <LinkButton href="/kegs/scan" variant="primary" className="hidden h-10 sm:inline-flex sm:h-9">
+      <ScanLine className="size-4" /> Scan a keg
+    </LinkButton>
+  );
 
   return (
     <>
       <PageHeader
         help="kegs.page"
         title="Kegs"
-        description={manager ? "What's on tap, how much is left, and what's in the walk-in. Staff scan kegs when they kick." : "Scan a keg when it kicks, goes on, or moves. Tap a line to see the keg."}
-        actions={manager ? <LinkButton href="/kegs/fleet"><TrendingUp className="size-4" /> Fleet & trends</LinkButton> : undefined}
+        description={manager ? "Where every keg is, what needs you, and how much is left on each tap." : "Scan a keg when it kicks, goes on, or moves. Tap a line to see the keg."}
+        actions={manager ? scan : undefined}
       />
 
       <div className="mb-4"><QueueWatcher /></div>
 
-      <HelpZone id="kegs.scan" tour="kegs.scan-button" className="mb-8">
+      {/* The big button is for a phone in one hand; managers at a desk have it in the header. */}
+      <HelpZone id="kegs.scan" tour="kegs.scan-button" className={manager ? "mb-8 sm:hidden" : "mb-8"}>
         <LinkButton href="/kegs/scan" variant="primary" size="lg" className="h-16 w-full rounded-2xl text-lg sm:w-auto sm:px-8">
           <ScanLine className="size-6" /> Scan a keg
         </LinkButton>
       </HelpZone>
+
+      {manager && home && home.inService > 0 && (
+        <Section
+          help="kegs.home.fleet"
+          title={<span className="inline-flex items-center gap-1">The fleet right now <HelpTip id="kegs.home.fleet" /></span>}
+          description={`${plural(home.inService, "keg")} in service${home.stats.turns != null && home.stats.fills12 > 0 ? ` · filled ${home.stats.turns.toFixed(1)} times a year each${home.stats.medianCycleDays != null ? ` · ${home.stats.medianCycleDays} days from a fill to back dirty` : ""}` : ""}`}
+          actions={<LinkButton href="/kegs/fleet" size="sm" className="h-10 sm:h-8">Analytics <ArrowRight className="size-4" /></LinkButton>}
+        >
+          <Card className="grid gap-x-8 gap-y-6 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+            <div className="flex min-w-0 flex-col justify-center">
+              <FleetBar parts={parts} />
+            </div>
+            {home.weeks.length > 1 && (
+              <div className="min-w-0 border-t border-border pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+                <div className="mb-1 text-xs font-medium text-muted">The last 12 weeks</div>
+                <FleetArea points={home.weeks} compact />
+                <div className="mt-2"><Key items={BUCKET_KEY} /></div>
+              </div>
+            )}
+          </Card>
+        </Section>
+      )}
+
+      {needs.length > 0 && (
+        <Section title={manager ? "Needs you" : `Nothing full behind ${dry.length === 1 ? "this one" : "these"}`}>
+          <NeedsList items={needs} />
+        </Section>
+      )}
 
       {orders && orders.rows.length > 0 && (
         <Section
@@ -71,15 +151,6 @@ export default async function KegsPage() {
             ))}
           </Card>
         </Section>
-      )}
-
-      {dry.length > 0 && (
-        <Card className="mb-8 border-bad/25 bg-bad-bg p-4">
-          <div className="text-sm font-semibold text-bad">Nothing full behind {dry.length === 1 ? "this one" : "these"}</div>
-          <ul className="mt-1 space-y-0.5 text-sm text-ink-2">
-            {dry.map((t) => <li key={t.line}>{t.keg!.beer} on tap {t.line} · {daysText(t.estimate?.daysLeft) ?? pctText(t.estimate?.pctLeft)} · 0 full in cold storage</li>)}
-          </ul>
-        </Card>
       )}
 
       <Section help="kegs.taps" title={<span className="inline-flex items-center gap-1">On tap <HelpTip id="kegs.taps" /></span>} description={`Estimated from Square pours since each keg went on. You get about ${Math.round(yi.pintsPerHalf)} pints from a 1/2 bbl${yi.measured ? ` (from ${yi.samples} kicked keg${yi.samples === 1 ? "" : "s"})` : " until a few kegs kick and we can measure it"}.`} actions={<LinkButton href="/kegs/taps" size="sm" className="h-10 sm:h-8"><ListOrdered className="size-4" /> Tap list</LinkButton>}>
@@ -129,47 +200,6 @@ export default async function KegsPage() {
           </div>
         )}
       </Section>
-
-      {manager && look && outKegs + idleKegs > 0 && (
-        <Link href="/kegs/fleet#look" className="mb-8 block rounded-xl border border-warn/25 bg-warn-bg p-4 transition-colors duration-120 hover:border-warn/45">
-          <div className="text-sm font-semibold text-warn">Needs a look</div>
-          <ul className="num mt-1 space-y-0.5 text-sm text-ink-2">
-            {outKegs > 0 && <li>{outKegs} keg{outKegs === 1 ? "" : "s"} out at {look.out.length} account{look.out.length === 1 ? "" : "s"} for more than {look.overdueDays} days</li>}
-            {idleKegs > 0 && <li>{idleKegs} keg{idleKegs === 1 ? "" : "s"} not scanned in {look.idleDays} days</li>}
-          </ul>
-        </Link>
-      )}
-
-      {manager && (
-        <Section title="Manage">
-          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Stat label="Kegs" value={stock.total} hint={`${onTap.length} on tap`} />
-            <Stat label="Pints per 1/2 bbl" value={`~${Math.round(yi.pintsPerHalf)}`} hint={yi.measured ? `Measured from ${yi.samples} kicks` : "Assumed 90% until kegs kick"} help="kegs.yield" />
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {[
-              { href: "/kegs/taps", label: "Tap list & TV", icon: ListOrdered, hint: "Board order, coming soon" },
-              { href: "/kegs/beers", label: "Beers", icon: Beer, hint: "Style, ABV, prices, labels" },
-              { href: "/kegs/cooler", label: "Walk-in board", icon: Warehouse, hint: "Where every keg is" },
-              { href: "/kegs/demand", label: "Demand per beer", icon: ChartColumn, hint: "What to fill next" },
-              { href: "/kegs/fleet", label: "Fleet & trends", icon: TrendingUp, hint: "Turns, fills, kegs out too long" },
-              { href: "/kegs/accounts", label: "Accounts", icon: Store, hint: "Kegs at each account, deliveries" },
-              { href: "/kegs/orders", label: "Orders", icon: Truck, hint: "What accounts asked for, filled by scanning" },
-              { href: "/kegs/reports", label: "Reports", icon: FileText, hint: "Volume, kegs at accounts, export" },
-              { href: "/kegs/all", label: "All kegs & labels", icon: Printer, hint: "Add kegs, print stickers" },
-              { href: "/kegs/setup", label: "Setup", icon: Settings2, hint: "Beers, spots, taps, pour sizes" },
-              { href: "/kegs/history", label: "History", icon: History, hint: "Every scan, who and when" },
-              { href: "/kegs/import", label: "Import", icon: FileUp, hint: "From your old keg app" },
-            ].map(({ href, label, icon: Icon, hint }) => (
-              <Link key={href} href={href} className="flex min-h-[4.5rem] items-start gap-3 rounded-xl border border-border bg-surface p-3.5 transition-colors duration-120 hover:bg-surface-2/60">
-                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-area/10 text-area"><Icon className="size-4" /></span>
-                <span className="min-w-0"><span className="block text-sm font-medium">{label}</span><span className="block text-xs text-muted">{hint}</span></span>
-              </Link>
-            ))}
-          </div>
-          <p className="mt-3 flex items-center gap-1.5 text-xs text-muted"><ListChecks className="size-3.5" /> Staff see Scan, On tap, the walk-in and full kegs per beer.</p>
-        </Section>
-      )}
     </>
   );
 }

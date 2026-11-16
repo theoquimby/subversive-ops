@@ -14,6 +14,20 @@ export const kegs: HelpEntry[] = [
     keywords: ["kegs", "draft", "taps", "beer", "walk-in", "keg tracking"],
   },
   {
+    id: "kegs.home.fleet",
+    area: "kegs",
+    route: "/kegs",
+    title: "The fleet right now",
+    body: "Every keg in service as one bar, split by where it is: full, on tap, out at accounts, waiting to be cleaned, and clean and empty. Tap a part to see those kegs.",
+    article: `The bar is the whole fleet. A healthy one has a good share **full**, and not too much sitting **to clean** or **clean, empty**.
+
+Beside it is the same split for each of the **last 12 weeks**, so you can see whether today is normal.
+
+The line under the title is how hard the kegs work: how many times a year each is filled, and how many days a fill takes to come back dirty. [Analytics](/kegs/fleet) has the full picture.`,
+    related: ["kegs.fleet", "kegs.fleet.look", "kegs.stock"],
+    keywords: ["fleet", "dashboard", "summary", "how many kegs", "where are my kegs"],
+  },
+  {
     id: "kegs.scan",
     area: "kegs",
     route: "/kegs/scan",
