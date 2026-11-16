@@ -69,6 +69,29 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.13 (keg accounts and reports) ----
+  {
+    id: "2026-11-16.keg-accounts",
+    date: "2026-11-16",
+    title: "A page for every keg account",
+    line: "Which kegs each account has and for how long, what they take, and every delivery.",
+    icon: "keg",
+    area: "floor",
+    href: "/kegs/accounts",
+    help: "kegs.accounts",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-16.keg-reports",
+    date: "2026-11-16",
+    title: "Keg reports you can export",
+    line: "Volume by beer and by account for any period, and kegs sitting at accounts too long.",
+    icon: "table",
+    area: "floor",
+    href: "/kegs/reports",
+    help: "kegs.reports",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.12 (keg scanning, pop-open menu) ----
   {
     id: "2026-11-16.scan-many",

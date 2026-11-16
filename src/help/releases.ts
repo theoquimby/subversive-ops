@@ -24,6 +24,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.13",
+    date: "2026-11-16",
+    title: "Keg accounts and reports",
+    summary: "A page for every account you send kegs to, and two reports you can export: volume for any period, and kegs sitting at accounts.",
+    entries: ["2026-11-16.keg-accounts", "2026-11-16.keg-reports"],
+    fixed: [
+      "Accounts and Reports are in the Kegs menu and on the Kegs page.",
+      "On Keg setup, each account's name links to its page.",
+    ],
+  },
+  {
     version: "1.12",
     date: "2026-11-16",
     title: "Scan many kegs, keep your stickers",

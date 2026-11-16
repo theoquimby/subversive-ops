@@ -4,7 +4,7 @@ import { displayCode, sinceLabel } from "@/domain/kegs";
 import { requireUser } from "@/server/auth";
 import { fleetNeedsLook } from "@/server/services/kegFleet";
 import { stockSummary, tapBoard } from "@/server/services/kegs";
-import { Beer, ChartColumn, FileUp, History, ListChecks, ListOrdered, Printer, ScanLine, Settings2, TrendingUp, Warehouse } from "lucide-react";
+import { Beer, ChartColumn, FileText, FileUp, History, ListChecks, ListOrdered, Printer, ScanLine, Settings2, Store, TrendingUp, Warehouse } from "lucide-react";
 import Link from "next/link";
 import { BeerDot, daysText, LeftBar, pctText, sizeShort } from "./bits";
 import { QueueWatcher } from "./scanner";
@@ -117,8 +117,10 @@ export default async function KegsPage() {
               { href: "/kegs/cooler", label: "Walk-in board", icon: Warehouse, hint: "Where every keg is" },
               { href: "/kegs/demand", label: "Demand per beer", icon: ChartColumn, hint: "What to fill next" },
               { href: "/kegs/fleet", label: "Fleet & trends", icon: TrendingUp, hint: "Turns, fills, kegs out too long" },
+              { href: "/kegs/accounts", label: "Accounts", icon: Store, hint: "Kegs at each account, deliveries" },
+              { href: "/kegs/reports", label: "Reports", icon: FileText, hint: "Volume, kegs at accounts, export" },
               { href: "/kegs/all", label: "All kegs & labels", icon: Printer, hint: "Add kegs, print stickers" },
-              { href: "/kegs/setup", label: "Setup", icon: Settings2, hint: "Beers, spots, taps, accounts" },
+              { href: "/kegs/setup", label: "Setup", icon: Settings2, hint: "Beers, spots, taps, pour sizes" },
               { href: "/kegs/history", label: "History", icon: History, hint: "Every scan, who and when" },
               { href: "/kegs/import", label: "Import", icon: FileUp, hint: "From your old keg app" },
             ].map(({ href, label, icon: Icon, hint }) => (

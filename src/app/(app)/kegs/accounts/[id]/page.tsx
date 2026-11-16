@@ -30,7 +30,7 @@ export default async function KegAccountPage({ params, searchParams }: { params:
   return (
     <>
       <PageHeader
-        help="kegs.setup.accounts"
+        help="kegs.accounts.page"
         title={a.name}
         back={{ href: "/kegs/accounts", label: "Accounts" }}
         description={`${kindLabel(a.kind)}${a.active ? "" : ", no longer used"}. Every number here is counted from keg scans, so a keg that left or came back without a scan is missing.`}

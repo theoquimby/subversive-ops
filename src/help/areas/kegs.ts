@@ -115,6 +115,49 @@ This is the real yield for draft costing: if it's well under the yield on [Draft
     related: ["kegs.demand"],
   },
   {
+    id: "kegs.accounts",
+    area: "kegs",
+    route: "/kegs/accounts",
+    title: "Accounts",
+    body: "Every bar, restaurant and shop you send kegs to: how many kegs each has now, how long the oldest has been there, and how often you deliver.",
+    article: `Sorted with the accounts holding the most kegs first. A tan badge means a keg has been there longer than the number of days set on [Setup](/kegs/setup).
+
+Tap an account for its own page. **Add account** makes a new one; accounts you no longer deliver to can be switched off on their page and sit under **Show all**.
+
+Everything here comes from scans: a delivery is a keg scanned **Out to an account**. A keg sent out with no scan won't show.`,
+    related: ["kegs.accounts.page", "kegs.reports", "kegs.fleet.look"],
+    keywords: ["buyers", "customers", "wholesale", "accounts", "bars", "kegs out", "who has my kegs"],
+  },
+  {
+    id: "kegs.accounts.page",
+    area: "kegs",
+    route: "/kegs/accounts",
+    title: "One account",
+    body: "An account's details, the kegs it has right now and for how long, what it takes by beer, deliveries per month and its full delivery history.",
+    article: `**Details** save as you type: contact, phone, email, address and notes.
+
+**Kegs here now** lists each keg with the beer, size and days there. Tap a code to open the keg.
+
+**Delivery history** shows when each keg came back. **No return scan** means the keg turned up somewhere else, or was filled again, without being scanned back in.
+
+**Median days a keg stays** is the middle of every stay that has a scanned return, so one keg left for a year doesn't skew it.`,
+    related: ["kegs.accounts", "kegs.reports"],
+  },
+  {
+    id: "kegs.reports",
+    area: "kegs",
+    route: "/kegs/reports",
+    title: "Keg reports",
+    body: "Two reports you can export: volume for any period by where the beer went, by beer and by account; and the kegs sitting at each account, with the ones there too long counted.",
+    article: `**Volume** counts barrels, gallons and kegs for the period you pick: tapped here, sent to accounts, and filled then back with no scan. Then the same by beer and by account. It counts scans, not sales, so a keg nobody scanned out is in the "no scan" line. For tax, use [Beer tax](/beer-tax).
+
+**Kegs at accounts** lists every account holding kegs, how many, and how many have been there longer than the number of days you pick.
+
+Each table has its own **Export** button, which saves a file a spreadsheet can open.`,
+    related: ["kegs.accounts", "kegs.fleet", "kegs.fleet.went"],
+    keywords: ["report", "export", "csv", "volume", "consumption", "barrels", "snapshot", "TTB"],
+  },
+  {
     id: "kegs.scanMany",
     area: "kegs",
     route: "/kegs/scan",

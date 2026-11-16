@@ -21,7 +21,7 @@ export default async function KegAccountsPage({ searchParams }: { searchParams: 
   return (
     <>
       <PageHeader
-        help="kegs.setup.accounts"
+        help="kegs.accounts"
         title="Accounts"
         back={{ href: "/kegs", label: "Kegs" }}
         description="Everywhere your kegs go out to: what's there now, how long it has been there, and how often each account takes a delivery. Counted from keg scans."
