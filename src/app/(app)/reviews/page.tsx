@@ -61,7 +61,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
         help="reviews.page"
         title="Reviews"
         description={`What guests are saying, lined up against what happened on the floor and in the kitchen that day.${settings.googleConfigured && settings.placeId ? ` Google checked ${relativeTime(lastSync)}, and every morning.` : ""}`}
-        actions={<HelpZone id="reviews.import" className="flex flex-wrap items-center gap-2"><ImportActions googleReady={settings.googleConfigured && Boolean(settings.placeId)} googleHint={!settings.googleConfigured ? "Turn on Google reviews in Settings → Connections first" : "Pick your business in Settings → Connections → Google reviews first"} /></HelpZone>}
+        actions={<HelpZone id="reviews.import" className="flex flex-wrap items-center gap-2"><ImportActions googleReady={settings.googleConfigured && Boolean(settings.placeId)} googleHint={!settings.googleConfigured ? "Turn on Google reviews in Settings → Connections → Google first" : "Pick your business in Settings → Connections → Google first"} /></HelpZone>}
       />
 
       {reviews.length === 0 ? (
@@ -176,7 +176,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
                     : "Off. A 5-minute guide with pictures turns it on."}
               </div>
             </div>
-            <LinkButton href="/settings/connections?open=google" size="sm">{settings.googleConfigured && settings.placeId ? "Change" : "Set up"}</LinkButton>
+            <LinkButton href="/settings/connections/google#reviews" size="sm">{settings.googleConfigured && settings.placeId ? "Change" : "Set up"}</LinkButton>
           </div>
           <div className="grid gap-1 px-4 py-3 sm:grid-cols-[14rem_1fr] sm:items-center sm:gap-4">
             <div>

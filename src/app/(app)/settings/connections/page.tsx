@@ -1,4 +1,6 @@
+import { permanentRedirect } from "next/navigation";
 import { PageHeader } from "@/components/ui";
+import { GOOGLE_HUB_HREF } from "@/domain/googleHub";
 import { SECRET_NAMES, type SecretName } from "@/domain/secretFormats";
 import type { SecretStatus } from "@/domain/secrets";
 import { requireUser } from "@/server/auth";
@@ -8,23 +10,25 @@ import { emailForUser } from "@/server/services/notify";
 import { getBusinessProfile } from "@/server/services/onboarding";
 import { isLocalOrigin, publicOrigin, QUICKBOOKS_PRIVACY_PATH, QUICKBOOKS_REDIRECT_PATH, QUICKBOOKS_TERMS_PATH, SQUARE_REDIRECT_PATH, SQUARE_WEBHOOK_PATH } from "@/server/services/public-url";
 import { pushDeviceCount } from "@/server/services/push";
-import { SETTING_PLACE_ID } from "@/server/services/reviews";
 import { secretStatus } from "@/server/services/secrets";
 import { lastWebhookSeen, squareStatus } from "@/server/services/square";
 import { loadQuickBooksData } from "../quickbooks/data";
 import type { ServiceId, TestResult } from "./actions";
-import { Connections, type ConnectionsData } from "./connections-client";
-import { GoogleSearchTile } from "../../website/analytics/google-tile";
+import { Connections, type ConnectionsData, type TileId } from "./connections-client";
+import { GoogleTile } from "./google-tile";
 import { MetaTile } from "../../online/meta/tile";
 
 export const metadata = { title: "Connections" };
 
 const SERVICES: ServiceId[] = ["square", "email", "push", "ai", "google", "quickbooks", "website"];
-const isService = (s: string | undefined): s is ServiceId => !!s && (SERVICES as string[]).includes(s);
+const TILES: TileId[] = ["square", "email", "push", "ai", "quickbooks", "website"];
+const isTile = (s: string | undefined): s is TileId => !!s && (TILES as string[]).includes(s);
 
 export default async function ConnectionsPage({ searchParams }: { searchParams: Promise<{ open?: string; error?: string; connected?: string }> }) {
   const me = await requireUser("MANAGER");
   const sp = await searchParams;
+  // Google has its own page now; old links and bookmarks (?open=google) land there.
+  if (sp.open === "google") permanentRedirect(GOOGLE_HUB_HREF);
   const [secrets, square, origin, webhookSeen, devices, myEmail, profile, rows, quickbooks] = await Promise.all([
     secretStatus(),
     squareStatus(),
@@ -33,7 +37,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
     pushDeviceCount(),
     emailForUser(me.userId),
     getBusinessProfile(),
-    db.setting.findMany({ where: { OR: [{ key: { startsWith: "connections.test." } }, { key: { in: [SETTING_PLACE_ID, "reviews.googlePlaceName"] } }] } }),
+    db.setting.findMany({ where: { key: { startsWith: "connections.test." } } }),
     loadQuickBooksData(),
   ]);
   const get = (k: string) => rows.find((r) => r.key === k)?.value ?? null;
@@ -69,7 +73,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
     },
     email: { me: myEmail },
     push: { devices },
-    google: { placeId: get(SETTING_PLACE_ID), placeName: get("reviews.googlePlaceName"), businessName: profile.name },
+    businessName: profile.name,
     quickbooks: {
       ...quickbooks,
       redirectUrl: `${origin}${QUICKBOOKS_REDIRECT_PATH}`,
@@ -80,7 +84,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
       host: origin.replace(/^https?:\/\//, ""),
     },
     tests,
-    open: isService(sp.open) ? sp.open : null,
+    open: isTile(sp.open) ? sp.open : null,
     flash: sp.error
       ? { error: sp.error }
       : sp.connected
@@ -96,9 +100,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
         title="Connections"
         description="Link the outside services that turn extra features on. Each one has a step-by-step guide with pictures — no technical know-how needed, and everything works without them."
       />
-      <Connections data={data} />
-      <GoogleSearchTile />
-      <MetaTile />
+      <Connections data={data} tiles={{ google: <GoogleTile />, meta: <MetaTile /> }} />
     </>
   );
 }

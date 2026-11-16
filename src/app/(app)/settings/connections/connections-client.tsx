@@ -2,7 +2,7 @@
 
 import { RelativeTime } from "@/components/relative-time";
 import { useConfirm } from "@/components/dialog";
-import { HelpTip, HelpZone } from "@/components/help";
+import { HelpZone } from "@/components/help";
 import { useReducedMotion } from "@/components/motion";
 import { PushToggle } from "@/components/push-toggle";
 import { Badge, Button, Card, cx, Field, Input, LinkButton, type Tone } from "@/components/ui";
@@ -10,15 +10,18 @@ import { validateSecret, type SecretName } from "@/domain/secretFormats";
 import { checkAccessToken, SQUARE_WEBHOOK_EVENTS } from "@/domain/squareWebhooks";
 import type { SecretStatus } from "@/domain/secrets";
 import { areaStyle, type Area } from "@/lib/areas";
-import { ArrowLeft, ArrowRight, BellRing, Check, ChevronRight, Copy, ExternalLink, Globe, Mail, Receipt, Search, Sparkles, Star, Store, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, BellRing, Check, ChevronRight, Copy, ExternalLink, Globe, Mail, Receipt, Sparkles, Store, X, type LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { Chips } from "../square/square-client";
 import type { QuickBooksData } from "../quickbooks/data";
 import { AccountMapping, EnvironmentPicker, QboConnectButton, QboDisconnect, QboTestButton, SendOptions } from "../quickbooks/quickbooks-client";
-import { findBusiness, forgetBusiness, makeRevalidateSecret, pickBusiness, removeKey, saveKey, testAI, testEmail, testSquare, testWebsite, turnOnInstantUpdates, turnOnPush, type ServiceId, type TestResult } from "./actions";
+import { makeRevalidateSecret, removeKey, saveKey, testAI, testEmail, testSquare, testWebsite, turnOnInstantUpdates, turnOnPush, type ServiceId, type TestResult } from "./actions";
 import * as Art from "./illustrations";
+
+/** The connections with a tile and guide on this page. Google has its own page (Settings → Connections → Google). */
+export type TileId = Exclude<ServiceId, "google">;
 
 export interface ConnectionsData {
   origin: string;
@@ -30,10 +33,10 @@ export interface ConnectionsData {
   square: { connected: boolean; merchantName: string | null; locations: number; source: "oauth" | "token" | "env" | null; sandbox: boolean; oauthReady: boolean; webhookSeen: string | null };
   email: { me: string | null };
   push: { devices: number };
-  google: { placeId: string | null; placeName: string | null; businessName: string };
+  businessName: string;
   quickbooks: QuickBooksData & { redirectUrl: string; privacyUrl: string; termsUrl: string; launchUrl: string; disconnectUrl: string; host: string };
   tests: Record<ServiceId, TestResult | null>;
-  open: ServiceId | null;
+  open: TileId | null;
   flash: { error?: string; message?: string } | null;
 }
 
@@ -42,7 +45,7 @@ export const SQUARE_EVENTS = SQUARE_WEBHOOK_EVENTS;
 // ---- Status ---------------------------------------------------------------------------
 
 interface ServiceMeta {
-  id: ServiceId;
+  id: TileId;
   title: string;
   icon: LucideIcon;
   area: Area;
@@ -56,14 +59,21 @@ const SERVICES: ServiceMeta[] = [
   { id: "email", title: "Email", icon: Mail, area: "today", turnsOn: "Sends orders to suppliers, schedules to staff and the weekly brief by email.", time: "About 10 minutes, plus a short wait", guide: "Set up email" },
   { id: "push", title: "Phone notifications", icon: BellRing, area: "people", turnsOn: "Pops up alerts on phones: new schedules, shift swaps, price spikes and more.", time: "1 minute per phone", guide: "Turn on phone notifications" },
   { id: "ai", title: "AI features", icon: Sparkles, area: "assist", turnsOn: "Reads invoices from a photo, drafts review replies and answers questions in Ask.", time: "About 3 minutes", guide: "Turn on AI features" },
-  { id: "google", title: "Google reviews", icon: Star, area: "online", turnsOn: "Brings in new Google reviews every morning, with alerts for low ratings.", time: "About 5 minutes", guide: "Bring in Google reviews" },
   { id: "website", title: "Website", icon: Globe, area: "online", turnsOn: "Tells the public website to refresh the moment you save hours, the menu or events, and accepts its inquiry form.", time: "About 5 minutes", guide: "Connect the website" },
   { id: "quickbooks", title: "QuickBooks", icon: Receipt, area: "numbers", turnsOn: "Sends approved supplier invoices to QuickBooks Online as bills, with the photo attached.", time: "About 20 minutes, plus Intuit's review", guide: "Connect QuickBooks" },
 ];
 
+/** Tiles grouped by what they're for. Google and Instagram & Facebook have their own pages, so their tiles come from the server. */
+type Slot = TileId | "google" | "meta";
+const GROUPS: { id: string; title: string; items: Slot[] }[] = [
+  { id: "money", title: "Sales and money", items: ["square", "quickbooks"] },
+  { id: "online", title: "Online", items: ["google", "meta", "website"] },
+  { id: "helpers", title: "Messages and helpers", items: ["email", "push", "ai"] },
+];
+
 type Status = { tone: Tone; label: string; detail: string };
 
-function statusOf(id: ServiceId, d: ConnectionsData, pushReady: boolean): Status {
+function statusOf(id: TileId, d: ConnectionsData, pushReady: boolean): Status {
   const s = d.secrets;
   const test = d.tests[id];
   const failed = test && !test.ok ? " · last test failed" : "";
@@ -83,10 +93,6 @@ function statusOf(id: ServiceId, d: ConnectionsData, pushReady: boolean): Status
     case "ai":
       if (s.ANTHROPIC_API_KEY.set) return { tone: test && !test.ok ? "bad" : "good", label: test && !test.ok ? "Needs attention" : "On", detail: `Claude key ${s.ANTHROPIC_API_KEY.hint}${failed}` };
       return { tone: "neutral", label: "Not set up", detail: "Invoices are typed in by hand; reviews use simple keyword themes." };
-    case "google":
-      if (s.GOOGLE_PLACES_API_KEY.set && d.google.placeId) return { tone: test && !test.ok ? "bad" : "good", label: test && !test.ok ? "Needs attention" : "On", detail: d.google.placeName ?? "Business picked" };
-      if (s.GOOGLE_PLACES_API_KEY.set) return { tone: "warn", label: "Pick your business", detail: "The key is saved. Now find your business on Google." };
-      return { tone: "neutral", label: "Not set up", detail: "You can still paste reviews in on the Reviews page." };
     case "quickbooks":
       return quickbooksStatusOf(d);
     case "website":
@@ -122,15 +128,15 @@ function StatusPill({ status }: { status: Status }) {
 
 // ---- Page -----------------------------------------------------------------------------
 
-export function Connections({ data }: { data: ConnectionsData }) {
-  const [open, setOpen] = useState<ServiceId | null>(data.open);
+export function Connections({ data, tiles }: { data: ConnectionsData; tiles: Record<"google" | "meta", ReactNode> }) {
+  const [open, setOpen] = useState<TileId | null>(data.open);
   // A finished connection opens on "manage" (what's connected, test, remove); the guide is one tap away.
   const [guide, setGuide] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
   const pushReady = data.secrets.VAPID_PUBLIC_KEY.set && data.secrets.VAPID_PRIVATE_KEY.set;
 
-  const choose = (id: ServiceId | null) => {
+  const choose = (id: TileId | null) => {
     setOpen(id);
     setGuide(false);
     try {
@@ -163,12 +169,60 @@ export function Connections({ data }: { data: ConnectionsData }) {
         </Card>
       )}
 
+      {GROUPS.map((g) => (
+        <section key={g.id} aria-labelledby={`connections-${g.id}`} className="mb-8">
+          <h2 id={`connections-${g.id}`} className="mb-3 text-[0.95rem] font-semibold text-ink">{g.title}</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {g.items.map((id) => {
+              if (id === "google" || id === "meta") return <div key={id} className="h-full min-w-0">{tiles[id]}</div>;
+              const s = SERVICES.find((x) => x.id === id)!;
+              return (
+                <HelpZone key={s.id} id={`settings.connections.${s.id}`} className="h-full min-w-0">
+                  <ServiceTile meta={s} status={statusOf(s.id, data, pushReady)} selected={open === s.id} href={s.id === "square" && data.square.connected ? "/settings/square" : s.id === "quickbooks" && data.quickbooks.status.connected && data.quickbooks.status.mappingReady ? "/settings/quickbooks" : undefined} onOpen={() => choose(open === s.id ? null : s.id)} />
+                </HelpZone>
+              );
+            })}
+          </div>
+          {/* The open guide sits right under its own group. */}
+          {meta && g.items.includes(meta.id) && (
+            <div ref={panel} className="scroll-mt-20">
+              <HelpZone id={`settings.connections.${meta.id}`} className="mt-4">
+                <Card key={meta.id} className="animate-rise-in overflow-hidden" style={areaStyle(meta.area)}>
+                  <div className="flex items-start justify-between gap-3 border-b border-border p-5">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <IconChip icon={meta.icon} />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-base font-semibold">{managing ? meta.title : meta.guide}</h3>
+                          <StatusPill status={statusOf(meta.id, data, pushReady)} />
+                        </div>
+                        <p className="mt-0.5 text-sm text-muted">{meta.turnsOn}</p>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="sm" className="size-10 shrink-0 p-0 sm:size-8" aria-label="Close the guide" onClick={() => choose(null)}>
+                      <X className="size-4" />
+                    </Button>
+                  </div>
+                  {managing ? (
+                    <Manage id={meta.id} d={data} pushReady={pushReady} onGuide={() => setGuide(true)} />
+                  ) : (
+                    <>
+                      {meta.id === "square" && <SquareGuide d={data} />}
+                      {meta.id === "email" && <EmailGuide d={data} />}
+                      {meta.id === "push" && <PushGuide d={data} ready={pushReady} />}
+                      {meta.id === "ai" && <AIGuide d={data} />}
+                      {meta.id === "quickbooks" && <QuickBooksGuide d={data} />}
+                      {meta.id === "website" && <WebsiteGuide d={data} />}
+                    </>
+                  )}
+                </Card>
+              </HelpZone>
+            </div>
+          )}
+        </section>
+      ))}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {SERVICES.map((s) => (
-          <HelpZone key={s.id} id={`settings.connections.${s.id}`} className="h-full min-w-0">
-            <ServiceTile meta={s} status={statusOf(s.id, data, pushReady)} selected={open === s.id} href={s.id === "square" && data.square.connected ? "/settings/square" : s.id === "quickbooks" && data.quickbooks.status.connected && data.quickbooks.status.mappingReady ? "/settings/quickbooks" : undefined} onOpen={() => choose(open === s.id ? null : s.id)} />
-          </HelpZone>
-        ))}
         <HelpZone id="settings.connections.more" className="h-full min-w-0">
           <Card className="flex h-full flex-col justify-between gap-4 border-dashed bg-transparent p-5">
             <div>
@@ -178,43 +232,6 @@ export function Connections({ data }: { data: ConnectionsData }) {
             <LinkButton href="/settings/square" variant="ghost" className="self-start px-0 hover:bg-transparent">Square page: locations and history <ChevronRight className="size-4" /></LinkButton>
           </Card>
         </HelpZone>
-      </div>
-
-      <div ref={panel} className="scroll-mt-20">
-        {meta && (
-          <HelpZone id={`settings.connections.${meta.id}`} className="mt-6">
-            <Card key={meta.id} className="animate-rise-in overflow-hidden" style={areaStyle(meta.area)}>
-              <div className="flex items-start justify-between gap-3 border-b border-border p-5">
-                <div className="flex min-w-0 items-center gap-3">
-                  <IconChip icon={meta.icon} />
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-base font-semibold">{managing ? meta.title : meta.guide}</h2>
-                      <StatusPill status={statusOf(meta.id, data, pushReady)} />
-                    </div>
-                    <p className="mt-0.5 text-sm text-muted">{meta.turnsOn}</p>
-                  </div>
-                </div>
-                <Button variant="ghost" size="sm" className="size-10 shrink-0 p-0 sm:size-8" aria-label="Close the guide" onClick={() => choose(null)}>
-                  <X className="size-4" />
-                </Button>
-              </div>
-              {managing ? (
-                <Manage id={meta.id} d={data} pushReady={pushReady} onGuide={() => setGuide(true)} />
-              ) : (
-                <>
-                  {meta.id === "square" && <SquareGuide d={data} />}
-                  {meta.id === "email" && <EmailGuide d={data} />}
-                  {meta.id === "push" && <PushGuide d={data} ready={pushReady} />}
-                  {meta.id === "ai" && <AIGuide d={data} />}
-                  {meta.id === "google" && <GoogleGuide d={data} />}
-                  {meta.id === "quickbooks" && <QuickBooksGuide d={data} />}
-                  {meta.id === "website" && <WebsiteGuide d={data} />}
-                </>
-              )}
-            </Card>
-          </HelpZone>
-        )}
       </div>
     </>
   );
@@ -257,11 +274,8 @@ function ServiceTile({ meta, status, selected, onOpen, href }: { meta: ServiceMe
 // ---- Manage ---------------------------------------------------------------------------
 
 /** A connection that's working: what it's connected to, a test, and how to change or remove it. */
-function Manage({ id, d, pushReady, onGuide }: { id: ServiceId; d: ConnectionsData; pushReady: boolean; onGuide: () => void }) {
+function Manage({ id, d, pushReady, onGuide }: { id: TileId; d: ConnectionsData; pushReady: boolean; onGuide: () => void }) {
   const s = d.secrets;
-  const [pending, start] = useTransition();
-  const router = useRouter();
-  const confirm = useConfirm();
   const status = statusOf(id, d, pushReady);
   return (
     <div className="space-y-5 p-5">
@@ -283,26 +297,6 @@ function Manage({ id, d, pushReady, onGuide }: { id: ServiceId; d: ConnectionsDa
         <>
           <TestButton run={testAI} last={d.tests.ai} />
           <SecretField name="ANTHROPIC_API_KEY" status={s.ANTHROPIC_API_KEY} label="Claude key" placeholder="sk-ant-…" hint="Starts with sk-ant-." />
-        </>
-      )}
-      {id === "google" && (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-3.5 py-3 text-sm">
-            <span className="min-w-0"><span className="text-muted">Business · </span><span className="font-medium">{d.google.placeName ?? "Picked"}</span></span>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={pending}
-              onClick={async () => {
-                if (await confirm({ title: "Pick a different business?", body: "New reviews stop coming in until you pick one again. Reviews already brought in stay.", confirmLabel: "Unlink" })) {
-                  start(async () => { await forgetBusiness(); router.refresh(); });
-                }
-              }}
-            >
-              Pick a different one
-            </Button>
-          </div>
-          <SecretField name="GOOGLE_PLACES_API_KEY" status={s.GOOGLE_PLACES_API_KEY} label="Google key" placeholder="AIza…" hint="Starts with AIza, 39 characters." />
         </>
       )}
       {id === "quickbooks" && <QuickBooksManage d={d} />}
@@ -333,7 +327,7 @@ function Manage({ id, d, pushReady, onGuide }: { id: ServiceId; d: ConnectionsDa
 
 // ---- Stepper --------------------------------------------------------------------------
 
-interface Step {
+export interface Step {
   id: string;
   title: string;
   done?: boolean;
@@ -343,7 +337,7 @@ interface Step {
   art?: ReactNode;
 }
 
-function Stepper({ steps, parts, startAt }: { steps: Step[]; parts?: { id: string; title: string; note: string; optional?: boolean }[]; startAt?: string }) {
+export function Stepper({ steps, parts, startAt }: { steps: Step[]; parts?: { id: string; title: string; note: string; optional?: boolean }[]; startAt?: string }) {
   const [i, setI] = useState(() => {
     const at = steps.findIndex((s) => s.id === startAt);
     if (at >= 0) return at;
@@ -499,7 +493,7 @@ function CopyChip({ value, label, block }: { value: string; label: string; block
   );
 }
 
-function Outbound({ href, children }: { href: string; children: ReactNode }) {
+export function Outbound({ href, children }: { href: string; children: ReactNode }) {
   return (
     <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-border-strong bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:bg-surface-2 sm:h-9">
       {children} <ExternalLink className="size-3.5 text-muted" />
@@ -507,7 +501,7 @@ function Outbound({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
-function Note({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
+export function Note({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
   return <div className={cx("rounded-lg px-3 py-2.5 text-sm", { good: "bg-good-bg text-good", warn: "bg-warn-bg text-warn", bad: "bg-bad-bg text-bad", neutral: "bg-surface-2 text-ink-2" }[tone])}>{children}</div>;
 }
 
@@ -516,7 +510,7 @@ function Note({ tone = "neutral", children }: { tone?: Tone; children: ReactNode
  * errors), saves on a valid paste, then shows "Saved ✓ · ends in …ab12" with
  * Replace / Remove. The saved value itself never comes back to the browser.
  */
-function SecretField({ name, status, label, placeholder, hint, sensitive = true }: { name: SecretName; status: SecretStatus; label: string; placeholder: string; hint?: ReactNode; sensitive?: boolean }) {
+export function SecretField({ name, status, label, placeholder, hint, sensitive = true }: { name: SecretName; status: SecretStatus; label: string; placeholder: string; hint?: ReactNode; sensitive?: boolean }) {
   const [editing, setEditing] = useState(!status.set);
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -732,7 +726,7 @@ export function InstantUpdates({ on, lastSeen, local }: { on: boolean; lastSeen:
 }
 
 /** Extra detail, hidden until asked for — keeps each step to one instruction. */
-function More({ children }: { children: ReactNode }) {
+export function More({ children }: { children: ReactNode }) {
   return (
     <details className="group text-sm text-muted">
       <summary className="inline-flex cursor-pointer list-none items-center gap-1 select-none hover:text-ink [&::-webkit-details-marker]:hidden">
@@ -934,16 +928,16 @@ function EmailGuide({ d }: { d: ConnectionsData }) {
         <>
           <p>Type the name and address people will see, like <i>Subversive &lt;orders@yourrestaurant.com&gt;</i>.</p>
           <More>It must use the website address you verified. It doesn&apos;t need to be a real inbox — replies go to each manager&apos;s own email.</More>
-          <SecretField name="EMAIL_FROM" status={s.EMAIL_FROM} label="Send emails from" placeholder={`${d.google.businessName} <orders@yourrestaurant.com>`} hint={<>For example <span className="font-mono text-[0.8rem]">{d.google.businessName} &lt;orders@yourrestaurant.com&gt;</span></>} sensitive={false} />
+          <SecretField name="EMAIL_FROM" status={s.EMAIL_FROM} label="Send emails from" placeholder={`${d.businessName} <orders@yourrestaurant.com>`} hint={<>For example <span className="font-mono text-[0.8rem]">{d.businessName} &lt;orders@yourrestaurant.com&gt;</span></>} sensitive={false} />
         </>
       ),
       art: (
         <div className="space-y-2 rounded-lg border border-border bg-surface p-4 text-sm">
           <div className="text-xs text-muted">How it looks in a supplier&apos;s inbox</div>
           <div className="flex items-center gap-2.5 border-t border-border pt-2">
-            <span className="grid size-8 place-items-center rounded-full bg-area/15 text-sm font-semibold text-area">{d.google.businessName.slice(0, 1)}</span>
+            <span className="grid size-8 place-items-center rounded-full bg-area/15 text-sm font-semibold text-area">{d.businessName.slice(0, 1)}</span>
             <div className="min-w-0">
-              <div className="truncate font-semibold">{s.EMAIL_FROM.hint?.replace(/\s*<.*$/, "") || d.google.businessName}</div>
+              <div className="truncate font-semibold">{s.EMAIL_FROM.hint?.replace(/\s*<.*$/, "") || d.businessName}</div>
               <div className="truncate text-muted">Order for Thursday · 14 items</div>
             </div>
           </div>
@@ -1163,133 +1157,6 @@ function WebsiteGuide({ d }: { d: ConnectionsData }) {
     },
   ];
   return <Stepper steps={steps} />;
-}
-
-// ---- Google ---------------------------------------------------------------------------
-
-function GoogleGuide({ d }: { d: ConnectionsData }) {
-  const s = d.secrets;
-  const steps: Step[] = [
-    {
-      id: "google-project",
-      title: "Create a project",
-      done: s.GOOGLE_PLACES_API_KEY.set,
-      art: <Art.GoogleProject />,
-      body: (
-        <>
-          <p>Open Google Cloud, sign in with any Google account, and create a project called <i>Subversive Ops</i>.</p>
-          <More>Google Cloud is how Google lets apps read your reviews. Use the project picker at the top → <b>New project</b> → <b>Create</b>.</More>
-          <Outbound href="https://console.cloud.google.com/projectcreate">Open Google Cloud</Outbound>
-        </>
-      ),
-    },
-    {
-      id: "google-enable",
-      title: "Turn on Places",
-      done: s.GOOGLE_PLACES_API_KEY.set && d.tests.google?.ok,
-      art: <Art.GoogleEnable />,
-      body: (
-        <>
-          <p>Search the top bar for <b>Places API (New)</b> (1), open it and press <b>Enable</b> (2).</p>
-          <More>Google asks for a card the first time. Reading reviews once a day stays inside Google&apos;s free allowance, so it costs nothing in practice.</More>
-          <Outbound href="https://console.cloud.google.com/apis/library/places.googleapis.com">Open Places API (New)</Outbound>
-        </>
-      ),
-    },
-    {
-      id: "google-key",
-      title: "Copy the key here",
-      done: s.GOOGLE_PLACES_API_KEY.set,
-      art: <Art.GoogleKey />,
-      body: (
-        <>
-          <p>Go to <b>Credentials</b> → <b>Create credentials</b> → <b>API key</b>. Copy it and paste it here.</p>
-          <SecretField name="GOOGLE_PLACES_API_KEY" status={s.GOOGLE_PLACES_API_KEY} label="Google key" placeholder="AIza…" hint="Starts with AIza, 39 characters." />
-        </>
-      ),
-    },
-    {
-      id: "google-find",
-      title: "Find your business",
-      done: !!d.google.placeId,
-      body: <FindBusiness d={d} />,
-    },
-  ];
-  return <Stepper steps={steps} />;
-}
-
-function FindBusiness({ d }: { d: ConnectionsData }) {
-  const [q, setQ] = useState(d.google.businessName);
-  const [places, setPlaces] = useState<{ id: string; name: string; address: string; rating: number | null; reviews: number | null }[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  const router = useRouter();
-  const ready = d.secrets.GOOGLE_PLACES_API_KEY.set;
-
-  if (d.google.placeId && !places) {
-    return (
-      <>
-        <Note tone="good">
-          Linked to <b>{d.google.placeName ?? "your business"}</b>. New Google reviews come in every morning.
-        </Note>
-        <div className="flex flex-wrap gap-2">
-          <LinkButton href="/reviews">See reviews</LinkButton>
-          <Button variant="ghost" onClick={() => setPlaces([])}>Pick a different business</Button>
-          <Button variant="danger" disabled={pending} onClick={() => start(async () => { await forgetBusiness(); router.refresh(); })}>Unlink</Button>
-        </div>
-      </>
-    );
-  }
-
-  const search = () =>
-    start(async () => {
-      setError(null);
-      const r = await findBusiness(q);
-      if (r.error) {
-        setError(r.error);
-        setPlaces([]);
-      } else setPlaces(r.places ?? []);
-      router.refresh();
-    });
-
-  return (
-    <>
-      <p>Search for your restaurant the way you would on Google Maps — the name and town. Then tap the right one.</p>
-      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); search(); }}>
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Business name and town" className="pl-9" aria-label="Business name and town" disabled={!ready} />
-        </div>
-        <Button type="submit" variant="primary" disabled={pending || !ready || q.trim().length < 3}>{pending ? "Searching…" : "Find"}</Button>
-      </form>
-      {!ready && <p className="text-sm text-muted">Paste the Google key in step 3 first.</p>}
-      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
-      {places && places.length > 0 && (
-        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-          {places.map((p) => (
-            <li key={p.id}>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => start(async () => { const r = await pickBusiness(p); if (r.error) setError(r.error); else { setPlaces(null); router.refresh(); } })}
-                className="flex w-full items-center justify-between gap-3 bg-surface px-3 py-3 text-left transition-colors hover:bg-surface-2"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate font-medium text-ink">{p.name}</span>
-                  <span className="block truncate text-xs text-muted">{p.address}</span>
-                </span>
-                <span className="flex shrink-0 items-center gap-2 text-xs text-muted">
-                  {p.rating != null && <span className="num">★ {p.rating.toFixed(1)}{p.reviews != null && ` · ${p.reviews}`}</span>}
-                  <span className="rounded-md border border-border-strong px-2 py-1 font-medium text-ink">This one</span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="text-xs text-muted">The search doubles as the connection test: if Google answers, the key works.<HelpTip id="settings.connections.google" className="ml-1 align-middle" /></p>
-    </>
-  );
 }
 
 // ---- QuickBooks ---------------------------------------------------------------------------

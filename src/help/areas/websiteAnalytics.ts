@@ -160,19 +160,23 @@ Even then it's a link, not proof: a busy day brings both more clicks and more sa
     route: "/website/analytics",
     title: "Google",
     body: "Google's own numbers live under Online, so nothing is shown twice: the searches that show the website are on Online → Overview, and the listing's views, calls and direction requests are on Online → Google listing.",
-    related: ["online.page", "online.google", "website.analytics.googleSetup"],
+    related: ["online.page", "online.google", "settings.google"],
   },
   {
     id: "website.analytics.googleSetup",
-    area: "website",
-    route: "/website/analytics/google",
-    title: "Connect Google",
-    body: "Make a Google sign-in for the app (Client ID and secret), then the owner presses Connect Google. Search Console works straight away; the listing's numbers need Google to approve Business Profile API access first.",
-    article: `1. In Google Cloud, turn on the **Google Search Console API** (and, once approved, the three Business Profile APIs).
+    area: "settings",
+    route: "/settings/connections/google",
+    title: "Your Google sign-in",
+    body: "One sign-in covers Search Console, your Google listing and, soon, Google Analytics. Make a sign-in for the app (Client ID and secret), then the owner presses Connect Google. Search Console works straight away; the listing needs Google's OK first.",
+    article: `On [Settings → Connections → Google](/settings/connections/google), open **How to set this up** under Your Google sign-in:
+
+1. In Google Cloud, turn on the **Google Search Console API** (and, once approved, the three Business Profile APIs).
 2. Set up the consent screen and **Publish** it. While it's in Testing, Google ends the sign-in after 7 days.
 3. Create an **OAuth client** (Web application) with the redirect address the page shows.
 4. Paste the Client ID and secret, then **Connect Google** with the account that owns the listing.
-5. For the listing: send Google's **Application for Basic API Access** form. The listing must be verified for 60+ days and have a website. Approved projects show 300 requests a minute in Quotas; 0 means not yet.
+5. For the listing: send Google's **Application for Basic API Access** form (under Google listing → How to set this up). The listing must be verified for 60+ days and have a website. Approved projects show 300 requests a minute in Quotas; 0 means not yet.
+
+While Google reviews the request, the Google listing row says **Waiting on Google**. That is not an error: the sign-in is fine and Search Console keeps working.
 
 The app reads nightly; nothing is ever posted to the listing.`,
     keywords: ["search console", "business profile", "google my business", "gbp", "oauth", "maps"],

@@ -9,6 +9,7 @@ import { db } from "@/server/db";
 import { env } from "@/server/env";
 import { loadAccounts, loadTaxRate } from "@/server/services/accounting";
 import { getFixedCosts, getRange } from "@/server/services/analytics";
+import { googleHubData } from "@/server/services/googleHub";
 import { location } from "@/server/services/forecasting";
 import { classSettings, targetFoodCost } from "@/server/services/insights";
 import { storageAreasWithCounts } from "@/server/services/inventory";
@@ -27,7 +28,7 @@ const pctShort = (f: number) => `${Math.round(f * 1000) / 10}%`;
 
 /** The current value of every setting on the Settings home, keyed by registry item id. */
 export async function settingsSummary(): Promise<{ values: Record<string, string>; connected: number; connectionsTotal: number }> {
-  const [contact, regular, seasons, loc, users, positions, rules, wageAuto, laborDefault, autoDraft, food, cls, spike, suppliers, areas, tax, tol, auto, accounts, fixed, range, reviews, square, qbo, secrets] = await Promise.all([
+  const [contact, regular, seasons, loc, users, positions, rules, wageAuto, laborDefault, autoDraft, food, cls, spike, suppliers, areas, tax, tol, auto, accounts, fixed, range, reviews, square, qbo, secrets, google] = await Promise.all([
     getBusinessContact(),
     getRegularHours(),
     getSeasonalHours(),
@@ -53,6 +54,7 @@ export async function settingsSummary(): Promise<{ values: Record<string, string
     squareStatus(),
     quickbooksStatus(),
     secretStatus(),
+    googleHubData().catch(() => null),
   ]);
   const has = (n: string) => secrets.some((x) => x.name === n && x.set);
   const links = [square.connected, has("RESEND_API_KEY") && has("EMAIL_FROM"), has("VAPID_PUBLIC_KEY") && has("VAPID_PRIVATE_KEY"), has("ANTHROPIC_API_KEY"), has("GOOGLE_PLACES_API_KEY") && !!reviews.placeId, qbo.connected];
@@ -94,6 +96,7 @@ export async function settingsSummary(): Promise<{ values: Record<string, string
     "conn.all": `${connected} of ${links.length} on`,
     "conn.square": square.connected ? `Live${square.merchantName ? ` · ${square.merchantName}` : ""}` : "Not connected",
     "conn.qbo": qbo.connected ? `Live${qbo.companyName ? ` · ${qbo.companyName}` : ""}` : "Not set up",
+    ...(google ? { "conn.google": google.hub.summary } : {}),
   };
   return { values, connected, connectionsTotal: links.length };
 }

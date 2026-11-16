@@ -25,7 +25,7 @@ export default async function InsightsSettingsPage() {
         <SettingRow wide label="Review reply voice" help="settings.insights.tone" what="A few short notes every drafted reply follows. Leave blank for a warm, short default.">
           <ToneNotes value={reviews.toneNotes} />
         </SettingRow>
-        <LinkRow href="/settings/connections?open=google" label="Google listing" what="Which Google business reviews are imported from." value={reviews.placeName || (reviews.placeId ? "Set" : "Not set")} />
+        <LinkRow href="/settings/connections/google#reviews" label="Google listing" what="Which Google business reviews are imported from." value={reviews.placeName || (reviews.placeId ? "Set" : "Not set")} />
       </SettingGroup>
     </div>
   );

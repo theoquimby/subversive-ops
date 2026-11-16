@@ -58,7 +58,7 @@ export const SETUP_ITEMS: SetupItemDef[] = [
   { id: "beers", group: "nice", title: "Beers and the tap list TV", why: "What's pouring, with prices, on the bar TV and the website.", href: "/kegs/beers", minutes: 10 },
   { id: "quickbooks", group: "nice", title: "Connect QuickBooks", why: "Approved invoices go over as bills, photo attached.", href: "/settings/quickbooks", minutes: 20 },
   { id: "website", group: "nice", title: "Connect the website", why: "Hours, menu and events on the site update the moment you save.", href: "/settings/connections?open=website", minutes: 5, requiresRoute: "/website" },
-  { id: "google", group: "nice", title: "Connect Google", why: "Search and Maps numbers next to your website visits.", href: "/website/analytics/google", minutes: 5, requiresRoute: "/website/analytics/google" },
+  { id: "google", group: "nice", title: "Connect Google", why: "Search Console, your Google listing and Google reviews, all on one page.", href: "/settings/connections/google", minutes: 20 },
 ];
 
 export type SetupFacts = Partial<Record<SetupItemId, { done: boolean; detail?: string }>>;

@@ -1,4 +1,5 @@
 import { addDays, daysBetween, type ISODate } from "./dates";
+import { GOOGLE_HUB_HREF } from "./googleHub";
 
 /**
  * Online: how guests find the business (Google Search, the Google listing,
@@ -423,7 +424,7 @@ export interface SourceState {
 }
 
 const READY: SourceState = { kind: "ready", title: "", body: "", href: null, action: null };
-export const GOOGLE_SETUP_HREF = "/website/analytics/google";
+export const GOOGLE_SETUP_HREF = GOOGLE_HUB_HREF;
 export const TRACKING_SETUP_HREF = "/website/analytics#tracking";
 
 /** What the app knows about the Google connection (from googleStatus()). */
@@ -509,7 +510,7 @@ export function listingState(f: GoogleFacts): SourceState {
   return {
     kind: "waiting",
     title: "Waiting on Google's approval",
-    body: `Your Google sign-in is done and nothing is broken. Google reviews each request to read a listing's numbers by hand, usually within two weeks, and emails when it's approved. After that, press Find again on the Connect Google page and this shows ${LISTING_WILL_SHOW}.${f.listingAllowed ? "" : " Business Profile wasn't ticked at sign-in, so connect Google again when the approval arrives."}`,
+    body: `Your Google sign-in is done and nothing is broken. Google reviews each request to read a listing's numbers by hand, usually within two weeks, and emails when it's approved. After that, press Find again on Settings → Connections → Google and this shows ${LISTING_WILL_SHOW}.${f.listingAllowed ? "" : " Business Profile wasn't ticked at sign-in, so connect Google again when the approval arrives."}`,
     href: GOOGLE_SETUP_HREF,
     action: "See the status",
   };

@@ -304,7 +304,7 @@ describe("what each block says when its source isn't ready", () => {
     expect(s.title).toBe("Waiting on Google's approval");
     expect(s.body).toMatch(/Search and Maps/);
     expect(s.body).toMatch(/calls, direction requests and website clicks/);
-    expect(s.href).toBe("/website/analytics/google");
+    expect(s.href).toBe("/settings/connections/google");
   });
   it("adds what to do when the listing wasn't allowed at sign-in", () => {
     expect(listingState(facts({ listingAllowed: false })).body).toMatch(/connect Google again/i);
@@ -316,7 +316,7 @@ describe("what each block says when its source isn't ready", () => {
   });
   it("asks to connect, connect again, or pick the website", () => {
     expect(listingState(facts({ connected: false })).kind).toBe("connect");
-    expect(searchState(facts({ connected: false, hasSearchData: false, siteUrl: null }))).toMatchObject({ kind: "connect", href: "/website/analytics/google", action: "Connect Google" });
+    expect(searchState(facts({ connected: false, hasSearchData: false, siteUrl: null }))).toMatchObject({ kind: "connect", href: "/settings/connections/google", action: "Connect Google" });
     expect(searchState(facts({ needsReconnect: true, connected: false, hasSearchData: false })).kind).toBe("reconnect");
     expect(listingState(facts({ needsReconnect: true, connected: false })).kind).toBe("reconnect");
     expect(searchState(facts({ hasSearchData: false, siteUrl: null })).kind).toBe("pick");
@@ -358,11 +358,11 @@ describe("worth a look", () => {
   it("lists a source that still needs setting up, but not one that is only waiting on Google", () => {
     const out = worthALook(base({ states: [{ key: "search", state: searchState(facts({ connected: false, hasSearchData: false })) }, { key: "listing", state: listingState(facts()) }, { key: "website", state: websiteState({ hasVisits: false, hasAddress: false }) }] }));
     expect(out.map((i) => i.key)).toEqual(["setup-search", "setup-website"]);
-    expect(out[0]).toMatchObject({ tone: "neutral", href: "/website/analytics/google" });
+    expect(out[0]).toMatchObject({ tone: "neutral", href: "/settings/connections/google" });
     expect(out[1].href).toBe("/website/analytics#tracking");
   });
   it("warns when a sign-in has expired or a source has stopped updating", () => {
-    const out = worthALook(base({ states: [{ key: "search", state: searchState(facts({ needsReconnect: true, connected: false, hasSearchData: false })) }], stale: [{ key: "listing", label: "The Google listing's numbers", through: "2026-10-20", href: "/website/analytics/google" }] }));
+    const out = worthALook(base({ states: [{ key: "search", state: searchState(facts({ needsReconnect: true, connected: false, hasSearchData: false })) }], stale: [{ key: "listing", label: "The Google listing's numbers", through: "2026-10-20", href: "/settings/connections/google" }] }));
     expect(out.map((i) => [i.key, i.tone])).toEqual([["setup-search", "warn"], ["stale-listing", "warn"]]);
     expect(out[1].title).toBe("The Google listing's numbers stopped on Oct 20");
   });

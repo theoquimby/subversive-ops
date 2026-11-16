@@ -24,6 +24,21 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.19",
+    date: "2026-11-16",
+    title: "Everything Google in one place",
+    summary: "Every Google connection now lives on one page, Settings → Connections → Google, with each part's state and the one thing to do next.",
+    entries: ["2026-11-16.google-hub"],
+    fixed: [
+      "The page explains it in a sentence: Google needs one sign-in (Search Console, your Google listing and, soon, Google Analytics) and one key (Google reviews). Nothing is ever posted or changed on Google.",
+      "Each part says whether it's working, waiting on Google, needs fixing or isn't set up, which page it feeds, and when it last synced. The full setup steps are folded away under How to set this up.",
+      "While Google reviews the request to read your listing, the Google listing row says so calmly: the sign-in is fine and nothing needs fixing.",
+      "Google Analytics shows what to get ready before it's brought in: add the sign-in's Google account as a Viewer and note the property ID.",
+      "Settings → Connections is grouped by what each connection is for: Sales and money, Online, and Messages and helpers. One Google card replaces the two there were.",
+      "Old links to Connect Google and to the Google reviews card land on the new page.",
+    ],
+  },
+  {
     version: "1.17",
     date: "2026-11-16",
     title: "Instagram and your Facebook Page",

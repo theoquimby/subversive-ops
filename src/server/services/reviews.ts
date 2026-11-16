@@ -244,7 +244,7 @@ export async function importPastedReviews(text: string, defaultSource: ReviewSou
 export async function importGoogleReviews() {
   const { placeId } = await reviewSettings();
   if (!(await googlePlacesReady())) return { error: GOOGLE_NOT_SET_UP };
-  if (!placeId) return { error: "Pick your business first: Settings → Connections → Google reviews → Find my business." };
+  if (!placeId) return { error: "Pick your business first: Settings → Connections → Google → Google reviews key → Find your business." };
   try {
     const rows = await fetchGoogleReviews(placeId);
     const created: string[] = [];

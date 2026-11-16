@@ -43,7 +43,7 @@ export interface SyncState {
 const emptyState = (): SyncState => ({ search: { lastDay: null, at: null, error: null }, profile: { lastDay: null, at: null, error: null }, keywords: { lastMonth: null, at: null, error: null } });
 
 export class GoogleNotConnectedError extends Error {
-  constructor(message = "Google isn't connected yet. Connect it on Website → Analytics → Google.") {
+  constructor(message = "Google isn't connected yet. Connect it on Settings → Connections → Google.") {
     super(message);
   }
 }
@@ -145,7 +145,7 @@ export async function discover(): Promise<{ sites: GscSite[]; siteUrl: string | 
     try {
       sites = await withToken((t) => listSites(t));
       siteUrl = siteUrl && sites.some((x) => x.siteUrl === siteUrl) ? siteUrl : pickSite(sites, await mainWebsiteOrigin());
-      if (!siteUrl) notes.push(sites.length ? "Pick which Search Console property is the website." : "This Google account has no Search Console property yet. Add the website in Search Console (step 7).");
+      if (!siteUrl) notes.push(sites.length ? "Pick which Search Console property is the website." : "This Google account has no Search Console property yet. Add the website in Search Console: see How to set this up under Search Console.");
     } catch (e) {
       notes.push((e as Error).message);
     }

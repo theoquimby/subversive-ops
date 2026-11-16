@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { googleAuthorizeUrl } from "@/domain/googleData";
+import { GOOGLE_HUB_HREF } from "@/domain/googleHub";
 import { getSession } from "@/server/auth";
 import { GOOGLE_REDIRECT_PATH, googleApp } from "@/server/services/googleSearch";
 import { publicOrigin } from "@/server/services/public-url";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 const STATE_COOKIE = "so_google_state";
 const REDIRECT_COOKIE = "so_google_redirect";
-const BACK = "/website/analytics/google";
+const BACK = GOOGLE_HUB_HREF;
 
 /**
  * Manager-only: send the browser to Google's consent screen. Asks for

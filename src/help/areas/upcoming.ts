@@ -962,7 +962,7 @@ export const reviews: HelpEntry[] = [
     route: "/reviews",
     title: "Reviews",
     body: "Guest reviews grouped into themes and lined up against what happened that day, with reply drafts and a monthly list of what to fix. Import from Google, or paste reviews from anywhere.",
-    article: `- **Google** reviews come in every morning once Google reviews is set up in [Settings → Connections](/settings/connections?open=google). Google only shares the five most relevant at a time. **Yelp, TripAdvisor and others**: paste them in.
+    article: `- **Google** reviews come in every morning once the Google reviews key is set up in [Settings → Connections → Google](/settings/connections/google#reviews). Google only shares the five most relevant at a time. **Yelp, TripAdvisor and others**: paste them in.
 - **What to fix this month**: up to three concrete fixes from the last 90 days of themes and what operations looked like on those days. Claude writes it once AI features are on; otherwise it comes from the most-mentioned complaints. Refresh it any time.
 - **Rating is slipping**: shown here and in the weekly brief when the last 30 days average 0.3★ or more below the 90 days before.`,
     related: ["reviews.themes", "reviews.reply", "brief.page"],
@@ -987,7 +987,7 @@ export const reviews: HelpEntry[] = [
     area: "reviews",
     route: "/reviews",
     title: "Bring reviews in",
-    body: "Import from Google fetches the latest Google reviews once your business is picked in Settings → Connections (they're also checked every morning). Paste reviews adds ones copied from Yelp, TripAdvisor or anywhere else.",
+    body: "Import from Google fetches the latest Google reviews once your business is picked in Settings → Connections → Google (they're also checked every morning). Paste reviews adds ones copied from Yelp, TripAdvisor or anywhere else.",
   },
   {
     id: "reviews.average",
@@ -1053,7 +1053,7 @@ export const reviews: HelpEntry[] = [
     area: "reviews",
     route: "/reviews",
     title: "Review settings",
-    body: "Whether Google reviews are coming in (set up in Settings → Connections), and tone notes the AI follows when drafting replies — like how to sign off or what never to offer in public.",
+    body: "Whether Google reviews are coming in (set up in Settings → Connections → Google), and tone notes the AI follows when drafting replies — like how to sign off or what never to offer in public.",
   },
 ];
 
