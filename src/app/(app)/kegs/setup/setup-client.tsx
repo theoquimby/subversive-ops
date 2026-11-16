@@ -105,7 +105,7 @@ export function SpotsEditor({ areas, spots, counts }: { areas: string[]; spots: 
   );
 }
 
-export function TapsConfig({ config, areas }: { config: { tapLines: number; tapArea: string; coldArea: string; fillDays: number }; areas: string[] }) {
+export function TapsConfig({ config, areas }: { config: { tapLines: number; tapArea: string; coldArea: string; fillDays: number; overdueDays: number; idleDays: number }; areas: string[] }) {
   const opts = areas.map((a) => ({ value: a, label: a }));
   const row = (label: string, hint: string, el: React.ReactNode) => (
     <div className="grid grid-cols-1 items-center gap-1 border-b border-border px-4 py-2.5 last:border-b-0 sm:grid-cols-[14rem_1fr_12rem]">
@@ -120,6 +120,8 @@ export function TapsConfig({ config, areas }: { config: { tapLines: number; tapA
       {row("Taps are in", "Kegs on tap, and just kicked, are here.", <GridSelect ariaLabel="Tap area" value={config.tapArea} options={opts} onSave={(v) => saveConfig({ tapArea: v })} />)}
       {row("Cold storage", "Offered first for “Into the walk-in”.", <GridSelect ariaLabel="Cold storage" value={config.coldArea} options={opts} onSave={(v) => saveConfig({ coldArea: v })} />)}
       {row("Fill to ready, days", "Days from filling a keg to cold and pourable. Used for run-out warnings.", <GridCell grid="taps" col="v" type="number" ariaLabel="Days from fill to ready" value={config.fillDays} onSave={(v) => saveConfig({ fillDays: Number(v) })} />)}
+      {row("Out too long, days", "A keg at an account longer than this shows under Needs a look.", <GridCell grid="taps" col="v" type="number" ariaLabel="Days out at an account before a keg needs a look" value={config.overdueDays} onSave={(v) => saveConfig({ overdueDays: Number(v) })} />)}
+      {row("Not seen, days", "A keg nobody has scanned for this long shows under Needs a look.", <GridCell grid="taps" col="v" type="number" ariaLabel="Days without a scan before a keg needs a look" value={config.idleDays} onSave={(v) => saveConfig({ idleDays: Number(v) })} />)}
     </div>
   );
 }

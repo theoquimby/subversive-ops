@@ -250,7 +250,7 @@ export async function setAccountField(id: string, field: "name" | "kind" | "cont
   return {};
 }
 
-const configSchema = z.object({ tapLines: z.number().int().min(1).max(60).optional(), tapArea: z.string().trim().min(1).max(60).optional(), coldArea: z.string().trim().min(1).max(60).optional(), fillDays: z.number().int().min(1).max(60).optional() });
+const configSchema = z.object({ tapLines: z.number().int().min(1).max(60).optional(), tapArea: z.string().trim().min(1).max(60).optional(), coldArea: z.string().trim().min(1).max(60).optional(), fillDays: z.number().int().min(1).max(60).optional(), overdueDays: z.number().int().min(1).max(365).optional(), idleDays: z.number().int().min(7).max(730).optional() });
 
 export async function saveConfig(patch: z.infer<typeof configSchema>): Promise<{ error?: string }> {
   await requireUser("MANAGER");

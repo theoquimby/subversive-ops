@@ -33,10 +33,14 @@ export interface KegConfig {
   pours: Record<string, number>;
   /** Days from "fill it" to a cold keg ready to pour, for run-out alerts. */
   fillDays: number;
+  /** A keg out at an account longer than this many days needs a look. */
+  overdueDays: number;
+  /** A keg nobody has scanned for this many days needs a look. */
+  idleDays: number;
 }
 
 const CONFIG_KEY = "kegs.config";
-const DEFAULT_CONFIG: KegConfig = { tapLines: 12, tapArea: "Bar", coldArea: "Walk-in", pours: {}, fillDays: 7 };
+const DEFAULT_CONFIG: KegConfig = { tapLines: 12, tapArea: "Bar", coldArea: "Walk-in", pours: {}, fillDays: 7, overdueDays: 14, idleDays: 90 };
 
 export async function kegConfig(): Promise<KegConfig> {
   const row = await settingValue(CONFIG_KEY); // once per render
@@ -48,6 +52,8 @@ export async function kegConfig(): Promise<KegConfig> {
       coldArea: typeof v.coldArea === "string" && v.coldArea.trim() ? v.coldArea : DEFAULT_CONFIG.coldArea,
       pours: v.pours && typeof v.pours === "object" ? Object.fromEntries(Object.entries(v.pours).filter(([, n]) => typeof n === "number" && n >= 0 && n <= 200)) : {},
       fillDays: Number.isFinite(v.fillDays) && v.fillDays! > 0 && v.fillDays! < 90 ? v.fillDays! : DEFAULT_CONFIG.fillDays,
+      overdueDays: Number.isInteger(v.overdueDays) && v.overdueDays! >= 1 && v.overdueDays! <= 365 ? v.overdueDays! : DEFAULT_CONFIG.overdueDays,
+      idleDays: Number.isInteger(v.idleDays) && v.idleDays! >= 7 && v.idleDays! <= 730 ? v.idleDays! : DEFAULT_CONFIG.idleDays,
     };
   } catch {
     return DEFAULT_CONFIG;
