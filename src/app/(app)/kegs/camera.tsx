@@ -130,8 +130,10 @@ export type KegCamera = ReturnType<typeof useKegCamera>;
 /** The viewfinder: video, an aiming square, a line of status, and what to do when there's no camera. */
 export function CameraFrame({ cam, status, compact }: { cam: KegCamera; status?: string; compact?: boolean }) {
   const s = cam.state;
+  // With no camera to show, a tall black box only pushes the type-the-code box off the screen.
+  const noCamera = s === "denied" || s === "none";
   return (
-    <div data-tour="kegs.camera" className={`relative w-full overflow-hidden rounded-3xl bg-black ${compact ? "aspect-[4/3] max-h-[42dvh]" : "aspect-[3/4] max-h-[62dvh] sm:aspect-square"}`}>
+    <div data-tour="kegs.camera" className={`relative w-full overflow-hidden rounded-3xl bg-black ${noCamera ? "h-40" : compact ? "aspect-[4/3] max-h-[42dvh]" : "aspect-[3/4] max-h-[62dvh] sm:aspect-square"}`}>
       <video ref={cam.video} playsInline muted className="absolute inset-0 size-full object-cover" aria-label="Camera" />
       <canvas ref={cam.canvas} className="hidden" />
       {s === "on" && (
@@ -141,14 +143,14 @@ export function CameraFrame({ cam, status, compact }: { cam: KegCamera; status?:
           </div>
         </div>
       )}
-      <div className="absolute inset-x-0 bottom-0 p-4 text-center text-sm font-medium text-white/90">
+      <div className={`absolute inset-x-0 bottom-0 p-4 text-center text-sm font-medium text-white/90 ${noCamera ? "hidden" : ""}`}>
         {status ?? (s === "on" ? "Point at the keg's sticker" : s === "starting" ? "Starting the camera…" : s === "denied" ? "Camera is blocked for this site" : s === "none" ? "No camera here" : "")}
       </div>
       {(s === "denied" || s === "none" || s === "off") && (
         <div className="absolute inset-0 grid place-items-center p-6 text-center text-white">
           <div>
-            <CameraOff className="mx-auto size-8 opacity-70" />
-            <p className="mt-2 text-sm opacity-90">{s === "denied" ? "Allow the camera in your browser's settings for this site, or type the code below." : "Type the code printed under the QR code."}</p>
+            <CameraOff className="mx-auto size-7 opacity-70" />
+            <p className="mt-2 text-sm opacity-90">{s === "denied" ? "The camera is blocked for this site. Allow it in your browser's settings, or type the code below." : s === "none" ? "No camera here. Type the code printed under the QR code." : "Type the code printed under the QR code."}</p>
             {s !== "none" && <Button className="mt-3" onClick={() => void cam.start()}><Camera className="size-4" /> Try the camera</Button>}
           </div>
         </div>
