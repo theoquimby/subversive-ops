@@ -56,8 +56,8 @@ const SERVICES: ServiceMeta[] = [
   { id: "email", title: "Email", icon: Mail, area: "today", turnsOn: "Sends orders to suppliers, schedules to staff and the weekly brief by email.", time: "About 10 minutes, plus a short wait", guide: "Set up email" },
   { id: "push", title: "Phone notifications", icon: BellRing, area: "people", turnsOn: "Pops up alerts on phones: new schedules, shift swaps, price spikes and more.", time: "1 minute per phone", guide: "Turn on phone notifications" },
   { id: "ai", title: "AI features", icon: Sparkles, area: "assist", turnsOn: "Reads invoices from a photo, drafts review replies and answers questions in Ask.", time: "About 3 minutes", guide: "Turn on AI features" },
-  { id: "google", title: "Google reviews", icon: Star, area: "food", turnsOn: "Brings in new Google reviews every morning, with alerts for low ratings.", time: "About 5 minutes", guide: "Bring in Google reviews" },
-  { id: "website", title: "Website", icon: Globe, area: "numbers", turnsOn: "Tells the public website to refresh the moment you save hours, the menu or events, and accepts its inquiry form.", time: "About 5 minutes", guide: "Connect the website" },
+  { id: "google", title: "Google reviews", icon: Star, area: "online", turnsOn: "Brings in new Google reviews every morning, with alerts for low ratings.", time: "About 5 minutes", guide: "Bring in Google reviews" },
+  { id: "website", title: "Website", icon: Globe, area: "online", turnsOn: "Tells the public website to refresh the moment you save hours, the menu or events, and accepts its inquiry form.", time: "About 5 minutes", guide: "Connect the website" },
   { id: "quickbooks", title: "QuickBooks", icon: Receipt, area: "numbers", turnsOn: "Sends approved supplier invoices to QuickBooks Online as bills, with the photo attached.", time: "About 20 minutes, plus Intuit's review", guide: "Connect QuickBooks" },
 ];
 

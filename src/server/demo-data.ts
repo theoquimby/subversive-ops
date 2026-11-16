@@ -252,6 +252,11 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
     const { seedWorkforce } = await import("./demo/workforce");
     await seedWorkforce(db);
   }
+  // Google Search and the Google listing, for the Online pages (it only ever adds rows).
+  if ((await db.googleSearchDaily.count()) === 0 && (await db.googleProfileDaily.count()) === 0) {
+    const { seedOnline } = await import("./demo/online");
+    await seedOnline(db, today);
+  }
 
   await db.setting.create({ data: { key: "square.lastSync", value: new Date(Date.now() - 3 * 3600_000).toISOString() } });
 

@@ -30,6 +30,7 @@ import {
   CircleHelp,
   ClipboardList,
   Clock,
+  Compass,
   FileCheck,
   FileUp,
   FolderOpen, GraduationCap,
@@ -39,6 +40,7 @@ import {
   HandCoins,
   LayoutGrid,
   Lightbulb,
+  MapPin,
   MessageSquareText,
   NotebookPen,
   Receipt,
@@ -59,7 +61,7 @@ import {
 } from "lucide-react";
 import type { CSSProperties } from "react";
 
-export type Area = "today" | "food" | "people" | "numbers" | "floor" | "setup" | "assist";
+export type Area = "today" | "food" | "people" | "numbers" | "online" | "floor" | "setup" | "assist";
 
 /**
  * A section inside a nav item's area, listed under it when the item is popped
@@ -67,7 +69,8 @@ export type Area = "today" | "food" | "people" | "numbers" | "floor" | "setup" |
  * on those pages); `also` names other paths that belong to it.
  */
 export type SubItem = { href: string; label: string; icon: LucideIcon; tabs?: { href: string; label: string }[]; also?: string[] };
-export type NavItem = { href: string; label: string; icon: LucideIcon; area: Area; children?: SubItem[] };
+/** `heading`: the name to show where the group title isn't on screen (the phone top bar), for a label like "Overview" that needs its group to make sense. */
+export type NavItem = { href: string; label: string; icon: LucideIcon; area: Area; children?: SubItem[]; heading?: string };
 export type NavGroup = { title?: string; area: Area; items: NavItem[] };
 
 const item = (area: Area, href: string, label: string, icon: LucideIcon, children?: SubItem[]): NavItem => ({ href, label, icon, area, ...(children ? { children } : {}) });
@@ -164,8 +167,13 @@ export const MANAGER_NAV: NavGroup[] = [
     item("numbers", "/events", "Events", CalendarDays),
     item("numbers", "/budgets", "Budgets", Target),
     item("numbers", "/beer-tax", "Beer tax", Landmark),
-    item("numbers", "/reviews", "Reviews", MessageSquareText),
-    item("numbers", "/website", "Website", Globe, WEBSITE_PAGES),
+  ] },
+  // Where guests find the business: its website, its Google listing, and the reviews they leave.
+  { title: "Online", area: "online", items: [
+    { ...item("online", "/online", "Overview", Compass), heading: "Online" },
+    item("online", "/website", "Website", Globe, WEBSITE_PAGES),
+    item("online", "/online/google", "Google listing", MapPin),
+    item("online", "/reviews", "Reviews", MessageSquareText),
   ] },
   { title: "Floor", area: "floor", items: [
     item("floor", "/count", "Counts", ClipboardList),

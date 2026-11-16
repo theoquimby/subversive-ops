@@ -24,6 +24,21 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.16",
+    date: "2026-11-16",
+    title: "Online: how guests find you",
+    summary: "A new Online section in the menu puts Google Search, the Google listing, the website and reviews side by side, with a page of its own for the listing.",
+    entries: ["2026-11-16.online", "2026-11-16.google-listing"],
+    fixed: [
+      "The menu has a new Online group: Overview, Website, Google listing and Reviews. Website and Reviews moved there from Numbers; every link still works.",
+      "Online → Overview: how often you showed up in Google Search and on the Google listing, and how many visited the website, then what people did next on the listing and on the website, side by side.",
+      "Online → Google listing: times shown on Maps and in Search, on phones and computers; calls, direction requests, website clicks and menu views over time; and what people searched for. It says Waiting on Google's approval until Google grants access.",
+      "Worth a look: a short list for a count that dropped sharply, a source not set up yet, or reviews waiting for a reply.",
+      "Periods on the Online pages are whole weeks ending yesterday, and Google's rows end on the last day Google has reported, so late numbers never read as a drop.",
+      "Website → Analytics no longer repeats Google's numbers; it links to their new home.",
+    ],
+  },
+  {
     version: "1.15",
     date: "2026-11-16",
     title: "Wholesale keg orders",

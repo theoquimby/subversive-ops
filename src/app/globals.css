@@ -28,11 +28,16 @@
    * soft backgrounds only - never body text, never status (good/warn/bad).
    * Validated as a categorical set (dataviz validate_palette, adjacent pairs
    * in nav order) against #fff here and #1a1a18 in dark. Setup is a neutral slate.
+   * Online is a plum. Every mid-lightness hue was already taken, so it is set
+   * apart by depth here (OKLab distance 20 or more from each of the other seven)
+   * and by lightness in dark (16 or more), where it sits above the validator's
+   * dark lightness band on purpose.
    */
   --area-today: #0891a8;
   --area-food: #d06e16;
   --area-people: #3a6a17;
   --area-numbers: #2563eb;
+  --area-online: #851980;
   --area-floor: #d9467a;
   --area-assist: #b05fe0;
   --area-setup: #64748b;
@@ -64,6 +69,7 @@
     --area-food: #d9772c;
     --area-people: #4a7a2c;
     --area-numbers: #3d76ea;
+    --area-online: #f0a0ea;
     --area-floor: #de5a88;
     --area-assist: #b06cdf;
     --area-setup: #94a3b8;

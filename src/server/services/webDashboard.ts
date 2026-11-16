@@ -1,6 +1,5 @@
 import "server-only";
-import { addDays, daysBetween, parseISODate, toISODate, type ISODate } from "@/domain/dates";
-import { GBP_METRICS, isBrandQuery, sumGsc, type GbpMetric } from "@/domain/googleData";
+import { addDays, parseISODate, toISODate, type ISODate } from "@/domain/dates";
 import {
   ACTIONS,
   addTotals,
@@ -25,15 +24,14 @@ import {
 } from "@/domain/webAnalytics";
 import { salesLink, type SalesLink } from "@/domain/webStats";
 import { db } from "../db";
-import { googleStatus, profileKeywords, profileRows, searchRows, type GoogleStatus } from "./googleSearch";
-import { SETTING_PLACE_ID } from "./reviews";
 import { businessToday, dailyNetSalesExcludingIgnored } from "./sales";
 import { dailyRows, firstHitDay, inquiryFunnelRows, mainWebsiteOrigin, refreshRollups, websiteOrigins, type DailyRow } from "./webAnalytics";
 
 /**
  * Everything /website/analytics shows, read from the daily rollups (plus
- * today's, rebuilt at most every 10 minutes), the Google tables, Square sales
- * and private events. One call per page view.
+ * today's, rebuilt at most every 10 minutes), Square sales and private
+ * events. One call per page view. Google Search and the Google listing have
+ * their own home on the Online pages (./online.ts).
  */
 
 export interface Kpi {
@@ -81,29 +79,6 @@ export interface WebDashboard {
   eventPages: { path: string; views: number; sessions: number; tickets: number; rsvps: number; rate: number | null }[];
   link: { directions: SalesLink; all: SalesLink; days: { x: ISODate; sales: number | null; directions: number; actions: number; event: boolean }[] };
   inquiries: { rows: InquiryBySource[]; total: InquiryBySource; unattributed: number };
-  google: GoogleBlock;
-}
-
-export interface GoogleBlock {
-  status: GoogleStatus;
-  reviews: { placeName: string | null; connected: boolean };
-  search: null | {
-    totals: { clicks: Kpi; impressions: Kpi; ctr: number | null; prevCtr: number | null; position: number | null; prevPosition: number | null };
-    brandShare: number | null;
-    queries: { query: string; clicks: number; impressions: number; ctr: number | null; position: number | null; brand: boolean }[];
-    pages: { page: string; clicks: number; impressions: number }[];
-    series: { x: ISODate; y: number }[];
-    through: ISODate | null;
-  };
-  profile: null | {
-    metrics: { metric: GbpMetric; cur: number; prev: number; change: number | null; clear: boolean }[];
-    views: Kpi;
-    actions: Kpi;
-    series: { x: ISODate; directions: number; calls: number; website: number }[];
-    keywords: { keyword: string; value: number | null; threshold: number | null }[];
-    keywordMonth: string | null;
-    through: ISODate | null;
-  };
 }
 
 const sum = (rows: DailyRow[]) => rows.reduce((t, r) => addTotals(t, r), ZERO);
@@ -118,13 +93,12 @@ export async function webDashboard(periodId: PeriodId): Promise<WebDashboard> {
   const today = businessToday();
   const { cur, prev } = periods(periodId, today);
   const linkFrom = addDays(today, -365);
-  const [rows, prevRows, origins, website, firstDay, google] = await Promise.all([
+  const [rows, prevRows, origins, website, firstDay] = await Promise.all([
     dailyRows(cur.from, cur.to, ["total", "page", "source", "medium", "campaign", "device", "country", "city", "action", "eventSource", "eventPage"]),
     dailyRows(prev.from, prev.to, ["total", "action", "source"]),
     websiteOrigins(),
     mainWebsiteOrigin(),
     firstHitDay(),
-    googleBlock(cur.from, cur.to, prev.from, prev.to),
   ]);
   const by = (dim: string, rs = rows) => rs.filter((r) => r.dim === dim);
   const t = sum(by("total"));
@@ -242,7 +216,6 @@ export async function webDashboard(periodId: PeriodId): Promise<WebDashboard> {
     eventPages,
     link,
     inquiries,
-    google,
   };
 }
 
@@ -275,82 +248,6 @@ async function inquiryBlock(from: ISODate, to: ISODate): Promise<WebDashboard["i
   const total = rows.reduce((t, r) => ({ ...t, inquiries: t.inquiries + r.inquiries, quoted: t.quoted + r.quoted, booked: t.booked + r.booked, revenue: t.revenue + r.revenue }), { source: "all", inquiries: 0, quoted: 0, booked: 0, revenue: 0 });
   const unattributed = rows.find((r) => r.source === "(not set)")?.inquiries ?? 0;
   return { rows: rows.map((r) => ({ ...r })), total, unattributed };
-}
-
-/** Google runs a few days behind: compare windows that end on its last day, so the missing days don't read as a drop. */
-function behind(latest: ISODate | null, from: ISODate, to: ISODate, pfrom: ISODate, pto: ISODate) {
-  if (!latest || latest >= to) return { from, to, pfrom, pto };
-  const lag = daysBetween(latest, to);
-  return { from: addDays(from, -lag), to: latest, pfrom: addDays(pfrom, -lag), pto: addDays(pto, -lag) };
-}
-
-async function googleBlock(from0: ISODate, to0: ISODate, pfrom0: ISODate, pto0: ISODate): Promise<GoogleBlock> {
-  const [status, reviewRows] = await Promise.all([googleStatus(), db.setting.findMany({ where: { key: { in: [SETTING_PLACE_ID, "reviews.googlePlaceName"] } } })]);
-  const reviews = { placeName: reviewRows.find((r) => r.key === "reviews.googlePlaceName")?.value ?? null, connected: reviewRows.some((r) => r.key === SETTING_PLACE_ID) };
-  let search: GoogleBlock["search"] = null;
-  if (status.hasSearchData) {
-    const last = await db.googleSearchDaily.findFirst({ where: { dim: "total" }, orderBy: { day: "desc" }, select: { day: true } });
-    const { from, to, pfrom, pto } = behind(last ? toISODate(last.day) : null, from0, to0, pfrom0, pto0);
-    const [cur, prev] = await Promise.all([searchRows(from, to, ["total", "query", "page"]), searchRows(pfrom, pto, ["total"])]);
-    const tc = sumGsc(cur.filter((r) => r.dim === "total"));
-    const tp = sumGsc(prev);
-    const q = new Map<string, { clicks: number; impressions: number; pos: number }>();
-    for (const r of cur.filter((r) => r.dim === "query")) {
-      const x = q.get(r.key) ?? { clicks: 0, impressions: 0, pos: 0 };
-      x.clicks += r.clicks;
-      x.impressions += r.impressions;
-      x.pos += r.position * r.impressions;
-      q.set(r.key, x);
-    }
-    const queries = [...q.entries()]
-      .map(([query, x]) => ({ query, clicks: x.clicks, impressions: x.impressions, ctr: x.impressions ? x.clicks / x.impressions : null, position: x.impressions ? x.pos / x.impressions : null, brand: isBrandQuery(query) }))
-      .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
-      .slice(0, 15);
-    const allQ = [...q.entries()];
-    const brandClicks = allQ.filter(([k]) => isBrandQuery(k)).reduce((s, [, x]) => s + x.clicks, 0);
-    const qClicks = allQ.reduce((s, [, x]) => s + x.clicks, 0);
-    const pg = new Map<string, { clicks: number; impressions: number }>();
-    for (const r of cur.filter((r) => r.dim === "page")) {
-      const x = pg.get(r.key) ?? { clicks: 0, impressions: 0 };
-      x.clicks += r.clicks;
-      x.impressions += r.impressions;
-      pg.set(r.key, x);
-    }
-    const through = cur.filter((r) => r.dim === "total").reduce<ISODate | null>((m, r) => (!m || r.day > m ? r.day : m), null);
-    search = {
-      totals: { clicks: kpi(tc.clicks, tp.clicks), impressions: kpi(tc.impressions, tp.impressions), ctr: tc.ctr, prevCtr: tp.ctr, position: tc.position, prevPosition: tp.position },
-      brandShare: share(brandClicks, qClicks),
-      queries,
-      pages: [...pg.entries()].map(([page, x]) => ({ page, ...x })).sort((a, b) => b.clicks - a.clicks).slice(0, 8),
-      series: dailySeries(cur.filter((r) => r.dim === "total").map((r) => ({ day: r.day, value: r.clicks })), from, to),
-      through,
-    };
-  }
-  let profile: GoogleBlock["profile"] = null;
-  if (status.hasProfileData) {
-    const last = await db.googleProfileDaily.findFirst({ where: { value: { gt: 0 } }, orderBy: { day: "desc" }, select: { day: true } });
-    const { from, to, pfrom, pto } = behind(last ? toISODate(last.day) : null, from0, to0, pfrom0, pto0);
-    const [cur, prev] = await Promise.all([profileRows(from, to), profileRows(pfrom, pto)]);
-    const tot = (rs: typeof cur, m: string) => rs.filter((r) => r.metric === m).reduce((s, r) => s + r.value, 0);
-    const metrics = GBP_METRICS.map((m) => ({ metric: m, cur: tot(cur, m), prev: tot(prev, m), change: change(tot(cur, m), tot(prev, m)), clear: changeIsClear(tot(cur, m), tot(prev, m)) }));
-    const views = (rs: typeof cur) => rs.filter((r) => r.metric.startsWith("BUSINESS_IMPRESSIONS")).reduce((s, r) => s + r.value, 0);
-    const acts = (rs: typeof cur) => rs.filter((r) => ["BUSINESS_DIRECTION_REQUESTS", "CALL_CLICKS", "WEBSITE_CLICKS", "BUSINESS_FOOD_MENU_CLICKS"].includes(r.metric)).reduce((s, r) => s + r.value, 0);
-    const series = dailySeries([], from, to).map(({ x }) => ({ x, directions: cur.filter((r) => r.day === x && r.metric === "BUSINESS_DIRECTION_REQUESTS").reduce((s, r) => s + r.value, 0), calls: cur.filter((r) => r.day === x && r.metric === "CALL_CLICKS").reduce((s, r) => s + r.value, 0), website: cur.filter((r) => r.day === x && r.metric === "WEBSITE_CLICKS").reduce((s, r) => s + r.value, 0) }));
-    // The last complete month's search terms (the current month is still filling in).
-    const lastMonth = to.slice(0, 7) === businessToday().slice(0, 7) ? toISODate(new Date(Date.UTC(Number(to.slice(0, 4)), Number(to.slice(5, 7)) - 2, 1))).slice(0, 7) : to.slice(0, 7);
-    const kws = await profileKeywords([lastMonth]);
-    const through = cur.reduce<ISODate | null>((m, r) => (r.value > 0 && (!m || r.day > m) ? r.day : m), null);
-    profile = {
-      metrics,
-      views: kpi(views(cur), views(prev)),
-      actions: kpi(acts(cur), acts(prev)),
-      series,
-      keywords: kws.map((k) => ({ keyword: k.keyword, value: k.value, threshold: k.threshold })).sort((a, b) => (b.value ?? 0) - (a.value ?? 0)).slice(0, 15),
-      keywordMonth: kws.length ? lastMonth : null,
-      through,
-    };
-  }
-  return { status, reviews, search, profile };
 }
 
 export type { Totals };

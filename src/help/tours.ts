@@ -328,7 +328,7 @@ export const TOURS: Tour[] = [
   {
     id: "webanalytics",
     title: "Website analytics",
-    description: "Visits, where they come from, what people do next, and how it lines up with sales and Google.",
+    description: "Visits, where they come from, what people do next, and how it lines up with sales.",
     audience: "manager",
     minutes: 1,
     steps: [
@@ -336,7 +336,7 @@ export const TOURS: Tour[] = [
       { route: "/website/analytics", target: "webanalytics.funnel", title: "Visit to visit-in-person", body: "All visits, the ones that looked at the menu or an event, and the ones that called, got directions, ordered or booked. Look at the biggest drop first.", helpId: "website.analytics.funnel", ifMissing: "skip" },
       { route: "/website/analytics", target: "webanalytics.sources", title: "Where they come from", body: "Google, Maps, Instagram, typed in. The dot is how often those visits act; Better or Lower only shows when it's more than chance.", helpId: "website.analytics.sources", ifMissing: "skip" },
       { route: "/website/analytics", target: "webanalytics.sales", title: "Website and sales", body: "Whether busier website days go with busier days at the taproom, weekday and events allowed for. It never claims more than the numbers show.", helpId: "website.analytics.salesLink", ifMissing: "skip" },
-      { route: "/website/analytics", target: "webanalytics.google", title: "Google", body: "Search terms and the Google listing's calls and direction requests, straight from Google once it's connected.", helpId: "website.analytics.google", ifMissing: "skip" },
+      { route: "/website/analytics", target: "webanalytics.google", title: "Google", body: "Google Search and the Google listing have their own pages under Online. These two rows take you there.", helpId: "website.analytics.google", ifMissing: "skip" },
     ],
   },
   {

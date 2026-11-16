@@ -242,7 +242,9 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
   const [open, setOpen] = useState(false);
   const tabs = role === "MANAGER" ? MANAGER_TABS : STAFF_TABS;
   const all = groups.flatMap((g) => g.items);
-  const current = all.find((i) => isActive(pathname, i.href)) ?? (pathname.startsWith("/help") ? { label: "Help" } : null);
+  // The top bar has no group title beside it, so "Overview" under Online reads as "Online" there.
+  const here = all.find((i) => isActive(pathname, i.href));
+  const current = here ? { label: here.heading ?? here.label } : pathname.startsWith("/help") ? { label: "Help" } : null;
   const cols = tabs.length + 1;
   // Most specific tab wins (/my/shifts lights Shifts, not Today).
   const activeTab = tabs.reduce((best, t, i) => (isTabActive(pathname, t.href) && (best < 0 || t.href.length > tabs[best].href.length) ? i : best), -1);

@@ -1,6 +1,6 @@
 import type { HelpEntry } from "../types";
 
-/** Website → Analytics: the website's own cookieless analytics, Google Search Console and the Google listing. */
+/** Website → Analytics: the website's own cookieless analytics, and connecting Google (its numbers show on the Online pages). */
 export const websiteAnalytics: HelpEntry[] = [
   {
     id: "website.analytics",
@@ -17,7 +17,7 @@ export const websiteAnalytics: HelpEntry[] = [
 
 Changes against the period before are only coloured when they're bigger than normal ups and downs.
 
-Google Search Console and the Google listing have their own cards at the bottom: [Connect Google](/website/analytics/google).`,
+Google's own numbers have their own pages: Google Search on [Online → Overview](/online) and the listing on [Online → Google listing](/online/google).`,
     tour: "webanalytics",
     related: ["website.analytics.funnel", "website.analytics.sources", "website.analytics.salesLink", "website.analytics.setup", "website.analytics.googleSetup"],
     keywords: ["analytics", "traffic", "visitors", "conversion", "google analytics", "website stats", "utm"],
@@ -159,8 +159,8 @@ Even then it's a link, not proof: a busy day brings both more clicks and more sa
     area: "website",
     route: "/website/analytics",
     title: "Google",
-    body: "Straight from Google: the searches that show the website (Search Console) and how the Google listing is seen and used on Search and Maps. Google's numbers run 2–3 days behind.",
-    related: ["website.analytics.googleSetup", "reviews.page"],
+    body: "Google's own numbers live under Online, so nothing is shown twice: the searches that show the website are on Online → Overview, and the listing's views, calls and direction requests are on Online → Google listing.",
+    related: ["online.page", "online.google", "website.analytics.googleSetup"],
   },
   {
     id: "website.analytics.googleSetup",

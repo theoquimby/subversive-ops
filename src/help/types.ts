@@ -34,6 +34,7 @@ export type HelpAreaId =
   | "prep"
   | "notes"
   | "website"
+  | "online"
   | "accounting"
   | "checklists"
   | "upkeep"
