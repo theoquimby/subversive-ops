@@ -117,11 +117,14 @@ export function formatPrepQty(qtyBase: number, u: PrepUnit): string {
 /** "2 batches", "½ batch", "1½ batches". */
 export function formatBatches(b: number): string {
   const halves = Math.round(b * 2);
-  if (Math.abs(b * 2 - halves) > 0.02) return `${round(b, 1)} batches`;
+  if (Math.abs(b * 2 - halves) > 0.02) {
+    const r = round(b, 1);
+    return `${r} batch${r === 1 ? "" : "es"}`;
+  }
   const whole = Math.floor(halves / 2);
   const half = halves % 2 === 1;
   const text = `${whole || ""}${half ? "½" : ""}` || "0";
-  return `${text} batch${b > 1 ? "es" : ""}`;
+  return `${text} batch${halves > 2 ? "es" : ""}`;
 }
 
 // ---- Rounding ------------------------------------------------------------------

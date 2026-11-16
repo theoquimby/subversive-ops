@@ -80,6 +80,8 @@ describe("prep units", () => {
     expect(formatPrepQty(29.6, { name: "each", baseQty: 1 })).toBe("30 each");
     expect(formatBatches(2)).toBe("2 batches");
     expect(formatBatches(1)).toBe("1 batch");
+    expect(formatBatches(1.04)).toBe("1 batch");
+    expect(formatBatches(1.01)).toBe("1 batch");
     expect(formatBatches(0.5)).toBe("½ batch");
     expect(formatBatches(1.5)).toBe("1½ batches");
     expect(amountText(7 * QT, 3.5 * QT, { name: "qt", baseQty: QT })).toBe("2 batches · 7 qt");
