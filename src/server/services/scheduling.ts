@@ -7,6 +7,7 @@ import {
   Availability, availabilityConflicts, clipAvailability, coverage, curveHours, dayRequirement, fitSliderToTarget, HourDemand, hourlySalesOrFallback, inclusiveDates,
   intensityFromSlider, localParts, parseAvailability, ScheduledShift, ScheduleSummary, splitLongBlocks, staffVsDemand, summarizeSchedule, weekDates, weekStartOf, zonedInstant,
 } from "@/domain/schedule";
+import { startLabel } from "@/domain/showWindow";
 import { db, num } from "../db";
 import { env } from "../env";
 import { hourlySalesForecast } from "./forecasting";
@@ -487,13 +488,58 @@ export async function hasOverlap(employeeId: string, start: Date, end: Date, exc
 
 // ---- Announcements ---------------------------------------------------------------------
 
-/** Team notes for My shifts: pinned first, then the last 30 days, newest first. */
-export async function listAnnouncements(limit = 10) {
-  const since = new Date(Date.now() - 30 * 86_400_000);
-  const now = new Date();
-  return db.announcement.findMany({
-    where: { AND: [{ OR: [{ pinned: true }, { createdAt: { gte: since } }] }, { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }] },
+/**
+ * Team notes staff can see now, for My shifts and the managers' list: pinned
+ * first, then the last 30 days, newest first. A note scheduled for later is
+ * left out until its start; once it starts it counts as posted then
+ * (`shownAt`), so it lands at the top and stays its full 30 days.
+ */
+export async function listAnnouncements(limit = 10, now = new Date()) {
+  const since = new Date(now.getTime() - 30 * 86_400_000);
+  const rows = await db.announcement.findMany({
+    where: {
+      AND: [
+        { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+        { OR: [{ pinned: true }, { createdAt: { gte: since } }, { startsAt: { gte: since } }] },
+        { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+      ],
+    },
     orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
-    take: limit,
+    take: limit * 2,
   });
+  return rows
+    .map((r) => ({ ...r, shownAt: r.startsAt ?? r.createdAt }))
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.shownAt.getTime() - a.shownAt.getTime())
+    .slice(0, limit);
+}
+
+/** Notes written ahead that staff can't see yet, soonest first (managers only). */
+export async function listScheduledAnnouncements(now = new Date()) {
+  return db.announcement.findMany({ where: { startsAt: { gt: now } }, orderBy: { startsAt: "asc" } });
+}
+
+/** An announcement as the managers' list shows it. Times are in the business timezone. */
+export interface AnnouncementView {
+  id: string;
+  body: string;
+  author: string | null;
+  pinned: boolean;
+  /** When staff saw (or will see) it first, ISO. */
+  shownAt: string;
+  /** Scheduled only: "Fri Nov 20 at 4:30 pm", and the day/minutes for editing it. */
+  starts: { label: string; date: ISODate; minutes: number } | null;
+}
+
+/** Both groups for Team and Schedule: what staff see now, and what's scheduled. */
+export async function announcementsForManagers(now = new Date()): Promise<{ live: AnnouncementView[]; scheduled: AnnouncementView[] }> {
+  const [live, later] = await Promise.all([listAnnouncements(10, now), listScheduledAnnouncements(now)]);
+  const view = (r: { id: string; body: string; author: string | null; pinned: boolean; createdAt: Date; startsAt: Date | null }, scheduled: boolean): AnnouncementView => ({
+    id: r.id,
+    body: r.body,
+    author: r.author,
+    pinned: r.pinned,
+    shownAt: (r.startsAt ?? r.createdAt).toISOString(),
+    starts: scheduled && r.startsAt ? { label: startLabel(r.startsAt, now, TZ), ...localParts(r.startsAt, TZ) } : null,
+  });
+  return { live: live.map((r) => view(r, false)), scheduled: later.map((r) => view(r, true)) };
 }

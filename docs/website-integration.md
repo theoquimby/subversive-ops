@@ -88,7 +88,8 @@ plus Website → Hours & notice (exact minutes, kitchen close, notice, links, ph
 - `seasons`: every season with its own week and its `MM-DD` window (inclusive, may wrap the
   year), so the site can work out future dates. `season` is the label in force today.
 - `notice`: `null`, or one line (≤ 280 chars) with `until` = the last day it shows
-  (inclusive, `null` = until removed). Ops stops sending it after `until`. The website should
+  (inclusive, `null` = until removed). A notice written ahead isn't sent until its start day
+  (New York); the shape is the same, the start never appears. Ops stops sending it after `until`. The website should
   still hide it after `until` in case its cache is old. This is never the internal
   `Announcement` model.
 - `name`, `address`, `phone`, `email`: each is `null` when not filled in, or when it doesn't
@@ -386,7 +387,9 @@ content-type: application/json
 - Triggers: Website hub edits (notice, exact hours, links, menu web fields, sections, beer web
   fields, event web fields, pictures, the holiday setting), Events (add/edit/delete/holidays),
   Settings → Business (contact, hours, seasons), Kegs (keg actions such as tap/kick/undo,
-  beer details, labels, board order) and Menu costs (recipe save/archive/restore).
+  beer details, labels, board order) and Menu costs (recipe save/archive/restore). Also the
+  daily-ops cron (5:23am New York in winter, 6:23am in summer) sends `site` when a scheduled
+  notice has started or ended since the website was last told.
 - `tags` is a hint: `events`, `menu`, `site`. The website's route today ignores the body and
   revalidates `events`. It should revalidate the tags sent (see the checklist).
 - Ops debounces (2.5 s per server instance, so a burst of edits sends one ping), sends it after

@@ -9,7 +9,8 @@ import { describeDiff } from "@/domain/teamSync";
 import { lastLaborSync, loadTeam, squareTeamDiffs } from "@/server/services/labor";
 import { getLaborRules, getOpeningHours } from "@/server/services/labor-rules";
 import { sickBalances } from "@/server/services/payroll";
-import { listAnnouncements } from "@/server/services/scheduling";
+import { announcementsForManagers } from "@/server/services/scheduling";
+import { businessToday } from "@/server/services/sales";
 import { teamCertChips } from "@/server/services/training";
 import { AnnouncementsManager } from "./announcements";
 import { PeopleNotesSection } from "./people-section";
@@ -29,7 +30,7 @@ const td = "border-b border-border px-2 py-1 align-middle [tr:last-child_&]:bord
 
 export default async function TeamPage() {
   await requireUser("MANAGER");
-  const [{ positions, employees, users }, openingHours, lastSync, rules, sick, notes, certChips] = await Promise.all([loadTeam(), getOpeningHours(), lastLaborSync(), getLaborRules(), sickBalances(), listAnnouncements(), teamCertChips().catch(() => new Map())]);
+  const [{ positions, employees, users }, openingHours, lastSync, rules, sick, notes, certChips] = await Promise.all([loadTeam(), getOpeningHours(), lastLaborSync(), getLaborRules(), sickBalances(), announcementsForManagers(), teamCertChips().catch(() => new Map())]);
   const diffs = await squareTeamDiffs();
   const differing = employees.filter((e) => diffs[e.id]?.length);
   const tipEligible = new Map(positions.map((p) => [p.id, p.tipEligible]));
@@ -160,7 +161,7 @@ export default async function TeamPage() {
       <PeopleNotesSection />
 
       <Section help="team.announcements" title="Announcements" description="Short notes for the team. They show at the top of everyone's My shifts.">
-        <AnnouncementsManager items={notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() }))} />
+        <AnnouncementsManager items={notes.live} scheduled={notes.scheduled} today={businessToday()} />
       </Section>
     </>
   );

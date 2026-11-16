@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.26 (schedule notices) ----
+  {
+    id: "2026-11-16.schedule-notices",
+    date: "2026-11-16",
+    title: "Schedule notices ahead",
+    line: "Write the website notice or a team announcement now and pick when it starts showing.",
+    icon: "website",
+    area: "online",
+    href: "/website/hours",
+    help: "website.notice",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.25 (kitchen ordering) ----
   {
     id: "2026-11-16.order-cadence",

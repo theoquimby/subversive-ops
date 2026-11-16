@@ -7,7 +7,7 @@ import { parseAddress, parseLinks, parsePhone, isEmailAddress, type WebLinks } f
 import { feedAnnouncements, type StoredAnnouncement } from "@/domain/websiteAnnouncements";
 import { feedPage, parseStoredPage } from "@/domain/websiteEventPage";
 import { feedEvent, slugFor, type WebEventIn } from "@/domain/websiteEvents";
-import { liveNotice, parseExactHours, parseNotice, webSeasons, webWeek, type ExactHours, type SiteNotice } from "@/domain/websiteHours";
+import { liveNotice, parseExactHours, parseNotice, webSeasons, webWeek, type ExactHours, type StoredNotice } from "@/domain/websiteHours";
 import { buildMenu, DEFAULT_NOTICES, type MenuRecipeIn, type MenuWarning, type SectionMetaIn, type TapBeerIn } from "@/domain/websiteMenu";
 import { eventsFeedSchema, siteFeedSchema, SITE_TIMEZONE, type EventsFeed, type SiteFeed, type WebMenu } from "@/domain/websiteSchema";
 import { db, num } from "../db";
@@ -29,6 +29,8 @@ import { tapList } from "./taps";
 
 export const WEBSITE_KEYS = {
   notice: "website.notice",
+  /** The notice the website was last told about (for the morning start/end ping). */
+  noticeSent: "website.notice.sent",
   exactHours: "website.hours",
   links: "website.links",
   phoneNote: "website.phoneNote",
@@ -54,7 +56,7 @@ async function writeJson(key: string, value: unknown) {
 }
 
 export interface WebsiteSettings {
-  notice: SiteNotice | null;
+  notice: StoredNotice | null;
   exactHours: ExactHours;
   links: WebLinks;
   phoneNote: string;
@@ -304,6 +306,28 @@ export function pingWebsite(...tags: WebsiteTag[]) {
   } catch {
     void task();
   }
+}
+
+/**
+ * The website only hears about a save, so a notice that starts or ends on its
+ * own needs a ping that day. Run each morning (daily-ops cron): when the notice
+ * guests should see today differs from the one last sent, mark the site feed
+ * changed and ping "site". Idempotent: the notice sent is remembered.
+ */
+export async function noticeTurnover(): Promise<{ showing: boolean; pinged: boolean; ping?: PingResult }> {
+  const live = liveNotice((await websiteSettings()).notice, businessToday());
+  const now = JSON.stringify(live);
+  if ((await readJson<string>(WEBSITE_KEYS.noticeSent)) === now) return { showing: !!live, pinged: false };
+  await writeJson(WEBSITE_KEYS.changed("site"), new Date().toISOString());
+  const ping = await sendPing(["site"]);
+  await writeJson(WEBSITE_KEYS.noticeSent, now);
+  return { showing: !!live, pinged: true, ping };
+}
+
+/** After a save that pings the website itself: remember what it was told, so the morning run doesn't repeat it. */
+export async function rememberNoticeSent(): Promise<void> {
+  const live = liveNotice((await websiteSettings()).notice, businessToday());
+  await writeJson(WEBSITE_KEYS.noticeSent, JSON.stringify(live));
 }
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;

@@ -675,6 +675,8 @@ model Announcement {
   author    String?
   pinned    Boolean   @default(false)
   expiresAt DateTime?
+  /// Shows to staff from this moment; null = as soon as it's posted.
+  startsAt  DateTime?
   createdAt DateTime  @default(now())
 
   @@index([createdAt])

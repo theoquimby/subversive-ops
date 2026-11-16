@@ -9,7 +9,8 @@ import { isIsoDate, LINK_KEYS, WEEKDAYS, type LinkKey, type Weekday } from "@/do
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessToday } from "@/server/services/sales";
-import { pingWebsite, saveWebsiteSetting, sendPing, websiteSettings, type PingResult, type WebsiteTag } from "@/server/services/website";
+import { checkDayWindow } from "@/domain/showWindow";
+import { pingWebsite, rememberNoticeSent, saveWebsiteSetting, sendPing, websiteSettings, type PingResult, type WebsiteTag } from "@/server/services/website";
 import { revalidatePath } from "next/cache";
 
 type R = { error?: string };
@@ -28,14 +29,14 @@ const dateOrNull = (raw: string): Date | null | undefined => {
 
 // ---- Notice, hours, contact -----------------------------------------------------------
 
-export async function saveNotice(input: { text: string; until: string | null }): Promise<R> {
+export async function saveNotice(input: { text: string; from?: string | null; until: string | null }): Promise<R> {
   await requireUser("MANAGER");
   const text = String(input.text ?? "").replace(/\s+/g, " ").trim();
   if (text.length > NOTICE_MAX) return { error: `Keep it under ${NOTICE_MAX} characters — it's one line on the website.` };
-  const until = input.until ? String(input.until) : null;
-  if (until && !isIsoDate(until)) return { error: "Pick the last day it shows." };
-  if (until && until < businessToday()) return { error: "That day has passed. Pick today or later." };
-  await saveWebsiteSetting("notice", text ? { text, until } : null);
+  const when = checkDayWindow(input.from ? String(input.from) : null, input.until ? String(input.until) : null, businessToday());
+  if ("error" in when) return { error: when.error };
+  await saveWebsiteSetting("notice", text ? { text, from: when.from, until: when.until } : null);
+  await rememberNoticeSent();
   return done("site");
 }
 

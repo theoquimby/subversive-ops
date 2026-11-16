@@ -77,8 +77,16 @@ describe("website notice", () => {
     expect(liveNotice({ text: "Hi", until: null }, "2030-01-01")).toEqual({ text: "Hi", until: null });
     expect(liveNotice({ text: "  ", until: null }, "2026-01-01")).toBeNull();
   });
+  it("waits for its start day, and the website never sees the start", () => {
+    const n = { text: "Closed Thanksgiving Day", from: "2026-11-20", until: "2026-11-26" };
+    expect(liveNotice(n, "2026-11-19")).toBeNull();
+    expect(liveNotice(n, "2026-11-20")).toStrictEqual({ text: "Closed Thanksgiving Day", until: "2026-11-26" });
+    expect(liveNotice(n, "2026-11-27")).toBeNull();
+  });
   it("parses stored notices", () => {
-    expect(parseNotice({ text: "x", until: "bad" })).toEqual({ text: "x", until: null });
+    expect(parseNotice({ text: "x", until: "bad" })).toEqual({ text: "x", from: null, until: null });
+    expect(parseNotice({ text: "x", from: "2026-11-20", until: "2026-11-26" })).toEqual({ text: "x", from: "2026-11-20", until: "2026-11-26" });
+    expect(parseNotice({ text: "x" })).toEqual({ text: "x", from: null, until: null });
     expect(parseNotice({ text: "" })).toBeNull();
     expect(parseNotice("x")).toBeNull();
   });

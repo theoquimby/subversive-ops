@@ -61,9 +61,12 @@ Edit cells in place like any other grid — they save as you go.`,
     area: "team",
     route: "/team",
     title: "Announcements",
-    body: "Post a short note from Team or Schedule. Everyone sees it on their Today. Pin the ones that should stay; the rest drop off after 30 days.",
+    body: "Post a short note from Team or Schedule. Everyone sees it on their Today. Schedule it for later to pick when it shows. Pin the ones that should stay; the rest drop off after 30 days.",
+    article: `Post a short note from Team or Schedule. Everyone sees it on their Today. Pin the ones that should stay; the rest drop off after 30 days.
+
+To write one ahead, press **Schedule it for later** and pick the day and time it shows from. Staff don't see it until then. It waits under **Scheduled** with when it'll appear; edit it there, show it now, or delete it. Once it shows, it counts as posted then.`,
     related: ["my.page"],
-    keywords: ["message", "notice", "news"],
+    keywords: ["message", "notice", "news", "schedule", "later", "ahead"],
   },
   {
     id: "team.squareSync",

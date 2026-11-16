@@ -6,6 +6,7 @@ import { autoDraftNextWeek } from "@/server/services/scheduling";
 import { certificateReminders } from "@/server/services/training";
 import { refreshAnalytics } from "@/server/services/analytics";
 import { refreshLearned } from "@/server/services/learned";
+import { noticeTurnover } from "@/server/services/website";
 import { weekday } from "@/domain/dates";
 import { businessToday } from "@/server/services/sales";
 
@@ -19,8 +20,10 @@ export const maxDuration = 300;
  * expiring in 30/7 days or just expired, refresh learned settings
  * suggestions (hours, delivery days, minimums), and (Fri/Sat) draft next
  * week's schedule if auto-draft is on, and last, recompute Insights (the
- * Python analytics service) on the fresh data. Each job is isolated
- * so one failing doesn't stop the others.
+ * Python analytics service) on the fresh data. First of all, it tells the
+ * website when a scheduled notice has started or ended overnight (the website
+ * only hears about saves otherwise). Each job is isolated so one failing
+ * doesn't stop the others. Runs 10:23 UTC: 5:23am New York in winter, 6:23am in summer.
  */
 export async function GET(req: Request) {
   if (!env.CRON_SECRET || req.headers.get("authorization") !== `Bearer ${env.CRON_SECRET}`) {
@@ -36,6 +39,8 @@ export async function GET(req: Request) {
   };
   const results = Object.assign(
     {},
+    // A scheduled website notice that starts today, or one that ended yesterday: refresh the website.
+    await run("websiteNotice", () => noticeTurnover()),
     await run("orders", () => autoDraftOrders()),
     await run("reviews", () => importGoogleReviewsDaily()),
     await run("priceSpikes", () => alertPriceSpikes()),
