@@ -121,6 +121,7 @@ describe("site feed schema", () => {
     email: "hello@example.com",
     links: { instagram: "https://www.instagram.com/subversivebeer/" },
     updatedAt: "2026-11-15T12:00:00.000Z",
+    announcements: [{ id: "thanksgiving-2026", text: "Closed Thanksgiving Day.", tone: "closure", from: "2026-11-20", until: "2026-11-26" }],
   };
   it("accepts a good feed and refuses extra or wrong fields", () => {
     expect(siteFeedSchema.safeParse(ok).success).toBe(true);
@@ -297,6 +298,16 @@ describe("website events", () => {
     expect(e).not.toHaveProperty("ticketUrl");
     expect(e).not.toHaveProperty("kitchenCloseOverride");
     expect(feedEvent(ev({ kind: "WEIRD" }), null, { holidaysClosed: false })!.kind).toBe("OTHER");
+  });
+
+  it("sends a featured event's page, and keeps the event if the page wouldn't pass", () => {
+    const page = { hero: "https://ops.example.com/api/public/images/abc", heroAlt: "The long tables in the yard", intro: "Two days in the yard.", schedule: [{ time: "12:00", what: "First pour" }] };
+    const e = feedEvent(ev(), w({ featured: true, page }), { holidaysClosed: false })!;
+    expect(e.page).toEqual(page);
+    expect(eventsFeedSchema.safeParse({ timezone: "America/New_York", events: [e] }).success).toBe(true);
+    const bad = feedEvent(ev(), w({ page: { hero: "http://localhost/x.jpg" } }), { holidaysClosed: false })!;
+    expect(bad.id).toBe("e1");
+    expect(bad).not.toHaveProperty("page");
   });
 
   it("reads days and pastDays", () => {

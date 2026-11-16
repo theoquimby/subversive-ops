@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 export const WEBSITE_TABS = [
   { href: "/website", label: "Overview" },
   { href: "/website/hours", label: "Hours & notice" },
+  { href: "/website/announcements", label: "Announcements" },
   { href: "/website/menu", label: "Menu" },
   { href: "/website/events", label: "Events" },
   { href: "/website/inquiries", label: "Inquiries" },

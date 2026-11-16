@@ -12,8 +12,9 @@ export const website: HelpEntry[] = [
 
 - **Overview** — what's live now, and whether the website connection works.
 - **Hours & notice** — exact opening minutes, kitchen close, the one-line notice, links.
+- **Announcements** — short lines in a band under the header on every page, each with its days and colour.
 - **Menu** — which menu items and add-ons show, with web names, descriptions and tags. Draft beer comes from the tap list.
-- **Events** — pictures, prices, ticket links and late closes for calendar events.
+- **Events** — pictures, prices, ticket links and late closes for calendar events, and a page of their own for big nights.
 - **Inquiries** — private event requests from the website form.
 - **Site content** — where each part of the website comes from.
 
@@ -127,6 +128,62 @@ If Ops can't be reached, the website keeps showing its own copy, so nothing brea
     body: "Games, music, holidays and closures from Events, with what only the website needs: a picture, price, ticket or RSVP link, featured, and a late kitchen or bar close. Private bookings never show. Hide any event here.",
     related: ["website.events.late", "website.events.holidays", "events.upcoming"],
     keywords: ["events", "picture", "image", "tickets", "rsvp", "featured", "price"],
+  },
+  {
+    id: "website.events.page",
+    area: "website",
+    route: "/website/events/[id]",
+    title: "An event's own page",
+    body: "For a big night like Oktoberfest: a photo at the top, an intro, up to 8 sections, a schedule and up to 6 links, shown on the event's page on the website below the date and description. Preview shows roughly how it looks. Save and the website has it within a minute.",
+    article: `Open **Website → Events**, then **Add page** on the event.
+
+- **Photo at the top**: a landscape photo, at least 1600 px wide. A phone photo or the original from the camera is right; a screenshot or a photo saved from a message is usually too small, and the app says so. It's resized before upload and saved at once.
+- **What's in the photo**: one line read aloud to people who can't see it.
+- **Intro**: a few sentences, up to 600 characters.
+- **Sections**: a heading and some words each. Leave a blank line between paragraphs.
+- **Schedule**: a time in any wording (12:00, Noon, All day) and what happens.
+- **Links**: tickets, a band's page, a map. They must start with https://.
+
+The page lives at the event's web address, so an announcement can link to it. Change the address on Events → Web address and announcements that link to it follow.`,
+    related: ["website.events", "website.events.page.photo", "website.announcements"],
+    keywords: ["oktoberfest", "event page", "festival", "schedule", "hero", "photo", "lineup", "featured"],
+  },
+  {
+    id: "website.events.page.photo",
+    area: "website",
+    route: "/website/events/[id]",
+    title: "Photo at the top of an event page",
+    body: "Landscape (wider than tall) and at least 1600 px wide, so it stays sharp on a big screen. Use the original from the camera or phone, not a screenshot. It's served from Ops, and the website shows it only from there.",
+    related: ["website.events.page"],
+    keywords: ["hero", "photo", "image", "picture", "1600"],
+  },
+  {
+    id: "website.announcements",
+    area: "website",
+    route: "/website/announcements",
+    title: "Announcements",
+    body: "Short lines in a band under the website's header, on every page: orange for a closure, yellow for a big night, plain for anything else. Pick the days and each comes and goes by itself. The first three that are on today show, in your order. Visitors can close one.",
+    article: `Website → **Announcements**.
+
+- **What it says**: up to 140 characters. Under about 90 stays on two lines on a phone.
+- **Colour**: Closure (orange), Event (yellow) or Plain.
+- **Link**: an event's page on the website, or a full https:// address, with a word or two like Details.
+- **Days**: the first and last day it shows (New York time, both included). Leave them empty to show it until you turn it off.
+- **Order**: the website shows the first three that are on today. Use the arrows to put the one that matters most first.
+
+A visitor can close a line, and that browser doesn't show it again. Fixing a typo keeps it closed for them. For a new message, tick **Show again to people who closed it** so everyone sees it.
+
+These are for guests. Staff announcements on the home screen are separate and never reach the website.`,
+    related: ["website.announcements.band", "website.notice", "website.events.page"],
+    keywords: ["banner", "band", "closed", "closure", "thanksgiving", "message", "alert", "notice", "header"],
+  },
+  {
+    id: "website.announcements.band",
+    area: "website",
+    route: "/website/announcements",
+    title: "The band today",
+    body: "What the band under the website's header shows today, on a phone: the first three announcements that are on and whose days include today. The website reads them again within five minutes, or at once when the connection is set up.",
+    related: ["website.announcements", "website.connection"],
   },
   {
     id: "website.events.kind",

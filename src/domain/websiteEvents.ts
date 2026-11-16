@@ -5,7 +5,7 @@
  */
 
 import { kebab } from "./websiteMenu";
-import { feedEventSchema, isHHmm, WEB_EVENT_KINDS, type FeedEvent, type WebEventKind } from "./websiteSchema";
+import { feedEventSchema, isHHmm, WEB_EVENT_KINDS, type FeedEvent, type FeedEventPage, type WebEventKind } from "./websiteSchema";
 
 export const FINER_KINDS = ["TRIVIA", "MOVIE"] as const;
 export type FinerKind = (typeof FINER_KINDS)[number];
@@ -35,6 +35,8 @@ export interface WebEventIn {
   featured: boolean;
   kitchenCloseOverride: string | null;
   barCloseOverride: string | null;
+  /** The event's own page, already built for the feed (websiteEventPage.feedPage). */
+  page?: FeedEventPage;
   updatedAt: string;
 }
 
@@ -100,10 +102,16 @@ export function feedEvent(e: EventIn, w: WebEventIn | null, opts: EventFeedOptio
     if (w.kitchenCloseOverride && isHHmm(w.kitchenCloseOverride)) out.kitchenCloseOverride = w.kitchenCloseOverride;
     if (w.barCloseOverride && isHHmm(w.barCloseOverride)) out.barCloseOverride = w.barCloseOverride;
     if (w.featured) out.featured = true;
+    if (w.page) out.page = w.page;
   }
   if (updated) out.updatedAt = updated;
   const ok = feedEventSchema.safeParse(out);
-  return ok.success ? ok.data : null;
+  if (ok.success) return ok.data;
+  // A page that doesn't pass is left off; the event itself still goes.
+  if (!out.page) return null;
+  delete out.page;
+  const again = feedEventSchema.safeParse(out);
+  return again.success ? again.data : null;
 }
 
 /** pastDays and days from the query string, clamped. */

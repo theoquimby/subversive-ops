@@ -159,6 +159,19 @@ export type WebEventKind = (typeof WEB_EVENT_KINDS)[number];
 
 const optionalText = z.string().min(1).optional();
 
+// A featured event's own page (website src/lib/events/schema.ts eventPageSchema).
+const line = (max: number) => z.string().trim().min(1).max(max);
+const httpsUrl = z.url({ protocol: /^https$/ });
+export const feedEventPageSchema = z.strictObject({
+  hero: httpsUrl.optional(),
+  heroAlt: line(200).optional(),
+  intro: line(600).optional(),
+  sections: z.array(z.strictObject({ title: line(80), body: line(4000) })).max(8).optional(),
+  schedule: z.array(z.strictObject({ time: line(20), what: line(140) })).max(24).optional(),
+  links: z.array(z.strictObject({ label: line(60), href: httpsUrl })).max(6).optional(),
+});
+export type FeedEventPage = z.infer<typeof feedEventPageSchema>;
+
 export const feedEventSchema = z.strictObject({
   id: z.string().min(1),
   date: isoDate,
@@ -177,6 +190,7 @@ export const feedEventSchema = z.strictObject({
   kitchenCloseOverride: hhmm.optional(),
   barCloseOverride: hhmm.optional(),
   featured: z.boolean().optional(),
+  page: feedEventPageSchema.optional(),
   updatedAt: optionalText,
 });
 
@@ -200,6 +214,23 @@ export type LinkKey = (typeof LINK_KEYS)[number];
 
 const url = z.url();
 
+// The band under the website's header (website src/lib/site/announcements.ts).
+export const ANNOUNCEMENT_TONES = ["closure", "event", "info"] as const;
+export type AnnouncementTone = (typeof ANNOUNCEMENT_TONES)[number];
+
+/** A path on the website ("/events/oktoberfest") or a full https address; nothing else. */
+export const isWebsiteHref = (s: string) => (s.startsWith("/") && !s.startsWith("//") && !/\s/.test(s)) || /^https:\/\/[^\s]+$/.test(s);
+
+export const feedAnnouncementSchema = z.strictObject({
+  id: z.string().min(1).max(64),
+  text: line(140),
+  tone: z.enum(ANNOUNCEMENT_TONES),
+  link: z.strictObject({ href: z.string().min(1).refine(isWebsiteHref, "expected /path or https URL"), label: line(40) }).optional(),
+  from: isoDate.optional(),
+  until: isoDate.optional(),
+});
+export type FeedAnnouncement = z.infer<typeof feedAnnouncementSchema>;
+
 export const siteFeedSchema = z.strictObject({
   timezone: z.literal(SITE_TIMEZONE),
   /** The week in force today (seasonal hours applied). */
@@ -217,6 +248,8 @@ export const siteFeedSchema = z.strictObject({
   links: z.strictObject(Object.fromEntries(LINK_KEYS.map((k) => [k, url.optional()])) as Record<LinkKey, z.ZodOptional<typeof url>>),
   /** Last time anything here was saved in Ops (null until the first save). */
   updatedAt: z.string().nullable(),
+  /** Lines for the band under the header: active, in order, not yet ended (future ones too; the website filters by day). */
+  announcements: z.array(feedAnnouncementSchema),
 });
 
 export type SiteFeed = z.infer<typeof siteFeedSchema>;

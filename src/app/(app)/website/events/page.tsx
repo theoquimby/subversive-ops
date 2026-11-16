@@ -1,4 +1,5 @@
 import { addDays, toISODate } from "@/domain/dates";
+import { isEmptyPage, pageSummary, parseStoredPage } from "@/domain/websiteEventPage";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessToday } from "@/server/services/sales";
@@ -44,6 +45,8 @@ export default async function WebsiteEventsPage({ searchParams }: { searchParams
       featured: w?.featured ?? false,
       kitchenCloseOverride: w?.kitchenCloseOverride ?? null,
       barCloseOverride: w?.barCloseOverride ?? null,
+      page: pageSummary(parseStoredPage(w?.page ?? null), !!w?.heroImageId),
+      hasPage: !!w && (!!w.heroImageId || !isEmptyPage(parseStoredPage(w.page))),
     };
   });
   return <EventsTab rows={view} past={past} holidaysClosed={s.holidaysClosed} />;

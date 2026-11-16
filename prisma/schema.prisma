@@ -1628,7 +1628,35 @@ model WebEvent {
   featured             Boolean  @default(false)
   kitchenCloseOverride String?
   barCloseOverride     String?
+  /// The event's own page on the website (featured nights): { intro, sections[], schedule[], links[] }
+  page                 Json?
+  /// Landscape photo at the top of that page (a WebImage, at least 1600 px wide)
+  heroImageId          String?
+  heroAlt              String?
   updatedAt            DateTime @updatedAt
+}
+
+/// A line in the band under the website's header (never the staff Announcement).
+model WebAnnouncement {
+  id        String    @id @default(cuid())
+  /// The id the website sees. Visitors who close a line don't see this id again, so a changed message gets a new one.
+  publicId  String    @unique @db.VarChar(64)
+  /// Up to 140 characters
+  text      String
+  /// closure | event | info
+  tone      String    @default("info")
+  /// A path on the website (/events/…) or a full https address
+  linkHref  String?
+  linkLabel String?
+  /// First and last day it shows (New York), both included; null = no limit
+  from      DateTime? @db.Date
+  until     DateTime? @db.Date
+  sort      Int       @default(0)
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([active, sort])
 }
 
 /// An image uploaded for the website (resized in the browser, ≤ 1.5 MB).

@@ -297,6 +297,8 @@ export async function setEventWebField(eventId: string, field: EventField, raw: 
     }
   }
   await db.webEvent.update({ where: { eventId: w.eventId }, data });
+  // Announcements that link to this event follow it to its new address.
+  if (field === "slug" && data.slug !== w.slug) await db.webAnnouncement.updateMany({ where: { linkHref: `/events/${w.slug}` }, data: { linkHref: `/events/${String(data.slug)}` } });
   return done("events", "site");
 }
 

@@ -69,6 +69,29 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.23 (website announcements and event pages) ----
+  {
+    id: "2026-11-16.website-announcements",
+    date: "2026-11-16",
+    title: "Announcements on the website",
+    line: "A line at the top of every page for a closure or a big night. Pick the days; it comes and goes by itself.",
+    icon: "website",
+    area: "online",
+    href: "/website/announcements",
+    help: "website.announcements",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-16.website-event-pages",
+    date: "2026-11-16",
+    title: "A page for big nights",
+    line: "Give an event like Oktoberfest its own page: a photo, sections, a schedule and links.",
+    icon: "party",
+    area: "online",
+    href: "/website/events",
+    help: "website.events.page",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.22 (feedback from any page) ----
   {
     id: "2026-11-16.feedback",

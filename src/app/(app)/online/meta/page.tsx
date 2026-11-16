@@ -33,6 +33,7 @@ export default async function MetaConnectPage({ searchParams }: { searchParams: 
           <p className="mt-1 max-w-2xl text-sm text-pretty text-muted">
             One sign-in with Facebook by the owner connects both, because Instagram shares its numbers through the Facebook Page it is linked to. Read-only: the app brings in totals and your own posts every night. It never posts, replies or messages, and it never sees who follows you or who liked what.
           </p>
+          <p className="mt-1 max-w-2xl text-sm text-pretty text-muted">Also shows your latest posts on the website once the website reads them from Ops.</p>
         </HelpZone>
       </div>
 

@@ -4,6 +4,8 @@ import { addDays, toISODate } from "@/domain/dates";
 import { hoursOn, seasonOn } from "@/domain/openingHours";
 import { beerColor } from "@/domain/kegs";
 import { parseAddress, parseLinks, parsePhone, isEmailAddress, type WebLinks } from "@/domain/websiteContact";
+import { feedAnnouncements, type StoredAnnouncement } from "@/domain/websiteAnnouncements";
+import { feedPage, parseStoredPage } from "@/domain/websiteEventPage";
 import { feedEvent, slugFor, type WebEventIn } from "@/domain/websiteEvents";
 import { liveNotice, parseExactHours, parseNotice, webSeasons, webWeek, type ExactHours, type SiteNotice } from "@/domain/websiteHours";
 import { buildMenu, DEFAULT_NOTICES, type MenuRecipeIn, type MenuWarning, type SectionMetaIn, type TapBeerIn } from "@/domain/websiteMenu";
@@ -90,9 +92,15 @@ export async function saveWebsiteSetting<K extends keyof WebsiteSettings>(key: K
 
 // ---- Site feed --------------------------------------------------------------------------
 
+/** Website announcements as stored, for the feed (never the staff Announcement model). */
+export async function storedAnnouncements(): Promise<StoredAnnouncement[]> {
+  const rows = await db.webAnnouncement.findMany({ orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
+  return rows.map((r) => ({ publicId: r.publicId, text: r.text, tone: r.tone, linkHref: r.linkHref, linkLabel: r.linkLabel, from: iso(r.from), until: iso(r.until), sort: r.sort, active: r.active }));
+}
+
 export async function siteFeed(): Promise<{ feed: SiteFeed; stale: ReturnType<typeof webWeek>["stale"] }> {
   const today = businessToday();
-  const [regular, seasons, s, contact, changed] = await Promise.all([getRegularHours(), getSeasonalHours(), websiteSettings(), getBusinessContact(), readJson<string>(WEBSITE_KEYS.changed("site"))]);
+  const [regular, seasons, s, contact, changed, announcements] = await Promise.all([getRegularHours(), getSeasonalHours(), websiteSettings(), getBusinessContact(), readJson<string>(WEBSITE_KEYS.changed("site")), storedAnnouncements()]);
   const week = webWeek(hoursOn(today, regular, seasons), s.exactHours);
   const phone = parsePhone(contact.phone);
   const feed: SiteFeed = {
@@ -107,13 +115,16 @@ export async function siteFeed(): Promise<{ feed: SiteFeed; stale: ReturnType<ty
     email: isEmailAddress(contact.email) ? contact.email.trim() : null,
     links: s.links,
     updatedAt: changed ?? null,
+    announcements: feedAnnouncements(announcements, today),
   };
   return { feed: siteFeedSchema.parse(feed), stale: week.stale };
 }
 
 // ---- Menu feed --------------------------------------------------------------------------
 
-const iso = (d: Date | null | undefined) => (d ? toISODate(d) : null);
+function iso(d: Date | null | undefined) {
+  return d ? toISODate(d) : null;
+}
 const nyDate = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: env.BUSINESS_TIMEZONE }).format(d);
 
 /** What the menu screen and the feed both need: recipes with web fields, sections, taps. */
@@ -193,8 +204,9 @@ export async function eventsFeed(opts: { days: number; pastDays: number; origin:
   const events = rows
     .map((e) => {
       const w = byId.get(e.id);
+      const hero = imageUrl(opts.origin, w?.heroImageId);
       const web: WebEventIn | null = w
-        ? { slug: w.slug, hidden: w.hidden, webKind: w.webKind, closed: w.closed, imageUrl: imageUrl(opts.origin, w.imageId), imageAlt: w.imageAlt, ticketUrl: w.ticketUrl, rsvpUrl: w.rsvpUrl, priceLabel: w.priceLabel, featured: w.featured, kitchenCloseOverride: w.kitchenCloseOverride, barCloseOverride: w.barCloseOverride, updatedAt: w.updatedAt.toISOString() }
+        ? { slug: w.slug, hidden: w.hidden, webKind: w.webKind, closed: w.closed, imageUrl: imageUrl(opts.origin, w.imageId), imageAlt: w.imageAlt, ticketUrl: w.ticketUrl, rsvpUrl: w.rsvpUrl, priceLabel: w.priceLabel, featured: w.featured, kitchenCloseOverride: w.kitchenCloseOverride, barCloseOverride: w.barCloseOverride, page: feedPage(parseStoredPage(w.page), hero ? { url: hero, alt: w.heroAlt } : null), updatedAt: w.updatedAt.toISOString() }
         : null;
       return feedEvent({ id: e.id, date: toISODate(e.date), title: e.title, kind: e.kind, startTime: e.startTime, endTime: e.endTime, notes: e.notes, updatedAt: e.updatedAt.toISOString() }, web, { holidaysClosed: s.holidaysClosed });
     })
@@ -322,7 +334,9 @@ export async function feedsHealth(origin: string): Promise<FeedHealth[]> {
       const { feed, stale } = await siteFeed();
       const open = Object.values(feed.hours).filter(Boolean).length;
       const n = Object.keys(stale).length;
-      return { count: open, detail: n ? `${n} day${n === 1 ? "" : "s"} with exact times that no longer fit` : feed.notice ? "Notice showing" : "No notice" };
+      const a = feed.announcements.length;
+      const extra = a ? ` · ${plural(a, "announcement")}` : "";
+      return { count: open, detail: (n ? `${n} day${n === 1 ? "" : "s"} with exact times that no longer fit` : feed.notice ? "Notice showing" : "No notice") + extra };
     }),
     run("menu", "/api/public/menu", "items", async () => {
       const m = await menuFeed();
@@ -330,7 +344,8 @@ export async function feedsHealth(origin: string): Promise<FeedHealth[]> {
     }),
     run("events", "/api/public/events", "upcoming", async () => {
       const f = await eventsFeed({ days: 120, pastDays: 0, origin });
-      return { count: f.events.length, detail: plural(f.events.filter((e) => e.closed).length, "closed day") + ` · ${f.events.filter((e) => e.imageUrl).length} with a picture` };
+      const pages = f.events.filter((e) => e.page).length;
+      return { count: f.events.length, detail: plural(f.events.filter((e) => e.closed).length, "closed day") + ` · ${f.events.filter((e) => e.imageUrl).length} with a picture` + (pages ? ` · ${plural(pages, "event page")}` : "") };
     }),
     run("taps", "/api/public/taps", "taps", async () => {
       const t = await tapList();

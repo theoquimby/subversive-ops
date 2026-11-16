@@ -10,6 +10,31 @@ import { addDays, type ISODate } from "@/domain/dates";
 
 const EVENTS: { offset: number; title: string; kind: string; start: string | null; end: string | null; notes: string | null; web?: Record<string, unknown> }[] = [
   { offset: 2, title: "Subversive Overtime: Knicks vs. Blazers", kind: "GAME", start: "19:30", end: "22:00", notes: "We're staying open late for Knicks basketball. Tipoff at 7:30.", web: { kitchenCloseOverride: "20:15", featured: true } },
+  {
+    offset: 16,
+    title: "Winterfest",
+    kind: "FESTIVAL",
+    start: "12:00",
+    end: "20:00",
+    notes: "A day in the heated tent with our winter beers, a fire pit and live music.",
+    web: {
+      featured: true,
+      priceLabel: "Free entry",
+      page: {
+        intro: "Our winter beers on tap all day, a fire pit in the yard and the Catskill Ramblers in the tent. Bring the dog.",
+        sections: [
+          { title: "Beer", body: "Every winter beer we make, plus a first pour of this year's Baltic porter at noon.\n\nFlights all day." },
+          { title: "Food", body: "Smash burgers, brats with kraut and soft pretzels. The kitchen stays open until 7." },
+        ],
+        schedule: [
+          { time: "Noon", what: "Doors, and the first pour of the Baltic porter" },
+          { time: "2:00", what: "Fire pit lit, s'mores at the bar" },
+          { time: "5:00", what: "The Catskill Ramblers in the tent" },
+        ],
+        links: [{ label: "The Catskill Ramblers", href: "https://ramblers.example.com/" }],
+      },
+    },
+  },
   { offset: 5, title: "Trivia with Smarty Pints", kind: "OTHER", start: "18:30", end: "20:30", notes: "Biweekly trivia. The winning team takes home a 4-pack.", web: { webKind: "TRIVIA", priceLabel: "Free" } },
   { offset: 9, title: "Thanksgiving", kind: "HOLIDAY", start: null, end: null, notes: null },
   { offset: 12, title: "Live music: The Catskill Ramblers", kind: "MUSIC", start: "18:00", end: "20:30", notes: "Bluegrass in the heated tent.", web: { priceLabel: "$10 at the door", ticketUrl: "https://tickets.example.com/ramblers" } },
@@ -49,6 +74,16 @@ export async function seedWebsite(db: PrismaClient, today: ISODate): Promise<voi
   await set("website.hours", { mon: { open: "16:30" }, wed: { open: "16:30" }, thu: { open: "16:30" }, fri: { open: "16:30", close: "20:30", kitchenClose: "20:15" }, sat: { close: "20:30", kitchenClose: "20:15" }, sun: { close: "18:30", kitchenClose: "18:15" } });
   await set("website.links", { order: "https://subversiveonline.square.site/", instagram: "https://www.instagram.com/subversivebeer/", facebook: "https://www.facebook.com/subversivemaltnbrew/", map: "https://g.page/subversivebeer?share" });
   await set("website.phoneNote", "Only answered during taproom hours.");
+
+  // Announcements: a closure for Thanksgiving week and a line pointing at Winterfest's page.
+  await db.webAnnouncement.deleteMany({ where: { publicId: { startsWith: "demo-" } } });
+  const winterfest = addDays(today, 16);
+  await db.webAnnouncement.createMany({
+    data: [
+      { publicId: "demo-thanksgiving", text: "Closed Thanksgiving Day. Open Friday from noon.", tone: "closure", from: new Date(`${addDays(today, 4)}T00:00:00Z`), until: new Date(`${addDays(today, 9)}T00:00:00Z`), sort: 1 },
+      { publicId: "demo-winterfest", text: "Winterfest: winter beers, a fire pit and live music in the tent.", tone: "event", linkHref: `/events/${winterfest}-winterfest`, linkLabel: "Details", until: new Date(`${winterfest}T00:00:00Z`), sort: 2 },
+    ],
+  });
 
   await db.webInquiry.deleteMany({ where: { ipHash: "demo" } });
   const pe = await db.privateEvent.create({ data: { clientName: "Jordan Alvarez", clientEmail: "jordan@example.com", type: "PARTY", date: new Date(`${addDays(today, 30)}T00:00:00Z`), headcount: 35, notes: "From the website form · Birthday.\n\nCould we have the tent for a 40th? Around 6pm." } });
