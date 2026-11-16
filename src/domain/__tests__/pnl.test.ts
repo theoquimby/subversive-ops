@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addInputs, countsToward, rollupKpis, costTone, gapTone, hourlyShape, mondayOf, periodRange, projectClose, proratedBudget, salesTone, splitCents, summarize, theoreticalByDay, toCsv } from "../pnl";
+import { addInputs, countsToward, rollupKpis, costTone, gapTone, hourlyShape, mondayOf, oneOffHours, paceStartHour, periodRange, projectClose, proratedBudget, salesTone, splitCents, summarize, theoreticalByDay, toCsv } from "../pnl";
 
 describe("periodRange", () => {
   const today = "2026-11-13"; // Friday
@@ -113,6 +113,55 @@ describe("projectClose", () => {
   });
   it("has no pace before anything was expected", () => {
     expect(projectClose(new Array(24).fill(0), forecast, 9, 0).pace).toBeNull();
+  });
+  it("waits for a meaningful share of the day before comparing (no 714329% on a morning sale)", () => {
+    // Monday: closed until 4:30pm, a few cents of forecast in the morning.
+    const f = new Array(24).fill(0);
+    f[11] = 0.45;
+    f[16] = 100;
+    f[17] = 300;
+    f[18] = 444;
+    const actual = new Array(24).fill(0);
+    actual[11] = 3195;
+    const p = projectClose(actual, f, 12, 0);
+    expect(p.forecastSoFar).toBeCloseTo(0.45);
+    expect(p.pace).toBeNull();
+    // From 5pm the forecast has expected 100.45 of 844.45: past 10% and $50, so pace compares.
+    expect(projectClose(actual, f, 17, 0).pace).not.toBeNull();
+  });
+  it("says from which hour pace can compare", () => {
+    const f = new Array(24).fill(0);
+    f[16] = 100;
+    f[17] = 300;
+    f[18] = 444;
+    expect(paceStartHour(f)).toBe(17);
+    expect(paceStartHour(new Array(24).fill(0))).toBeNull();
+  });
+});
+
+describe("oneOffHours", () => {
+  it("flags an hour that is one big order, like a deposit, against a small day's forecast", () => {
+    const sales = new Array(24).fill(0);
+    const orders = new Array(24).fill(0);
+    sales[11] = 3195;
+    orders[11] = 1;
+    sales[17] = 400;
+    orders[17] = 20;
+    expect(oneOffHours(sales, orders, 844)).toEqual([{ hour: 11, amount: 3195, orders: 1 }]);
+  });
+  it("leaves a busy hour of ordinary checks alone", () => {
+    const sales = new Array(24).fill(0);
+    const orders = new Array(24).fill(0);
+    sales[18] = 1500;
+    orders[18] = 40;
+    expect(oneOffHours(sales, orders, 3000)).toEqual([]);
+  });
+  it("leaves a large tab on a big day alone", () => {
+    const sales = new Array(24).fill(0);
+    const orders = new Array(24).fill(0);
+    sales[20] = 600;
+    orders[20] = 1;
+    expect(oneOffHours(sales, orders, 6000)).toEqual([]);
   });
 });
 

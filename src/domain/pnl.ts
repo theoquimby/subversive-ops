@@ -250,7 +250,44 @@ export function projectClose(actualByHour: number[], forecastByHour: number[], h
   const cur = forecastByHour[hour] ?? 0;
   const thisHourLeft = Math.max(0, cur * (1 - frac) - Math.max(0, (actualByHour[hour] ?? 0) - cur * frac));
   const forecastDay = forecastByHour.reduce((a, b) => a + b, 0);
-  return { soFar, forecastSoFar, forecastDay, projected: soFar + thisHourLeft + later, pace: forecastSoFar > 0 ? soFar / forecastSoFar : null };
+  return { soFar, forecastSoFar, forecastDay, projected: soFar + thisHourLeft + later, pace: forecastSoFar >= paceFloor(forecastDay) ? soFar / forecastSoFar : null };
+}
+
+/**
+ * Pace only compares once the forecast has expected a real share of the day:
+ * at least 10% of it and at least $50. Before that a single sale against a
+ * few cents of forecast reads as "714329% ahead".
+ */
+export const PACE_MIN_SHARE = 0.1;
+export const PACE_MIN_DOLLARS = 50;
+const paceFloor = (forecastDay: number) => Math.max(PACE_MIN_DOLLARS, forecastDay * PACE_MIN_SHARE, Number.EPSILON);
+
+/** The first hour by whose start the forecast has expected enough for pace to compare; null when the day never gets there. */
+export function paceStartHour(forecastByHour: number[]): number | null {
+  const floor = paceFloor(forecastByHour.reduce((a, b) => a + b, 0));
+  let sum = 0;
+  for (let h = 0; h < forecastByHour.length; h++) {
+    sum += forecastByHour[h] ?? 0;
+    if (sum >= floor) return h + 1;
+  }
+  return null;
+}
+
+/**
+ * Hours that are one or two unusually big orders (a deposit, an event or a
+ * catering payment): an average ticket of $400 or more that alone is at least
+ * a third of the day's forecast. Pace leaves them out so one payment doesn't
+ * read as a record day.
+ */
+export const ONE_OFF_TICKET = 400;
+export const ONE_OFF_SHARE = 1 / 3;
+export function oneOffHours(salesByHour: number[], ordersByHour: number[], forecastDay: number): { hour: number; amount: number; orders: number }[] {
+  const out: { hour: number; amount: number; orders: number }[] = [];
+  salesByHour.forEach((s, hour) => {
+    const n = ordersByHour[hour] ?? 0;
+    if (n > 0 && n <= 2 && s / n >= ONE_OFF_TICKET && s >= forecastDay * ONE_OFF_SHARE) out.push({ hour, amount: s, orders: n });
+  });
+  return out;
 }
 
 /**

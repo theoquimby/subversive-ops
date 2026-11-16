@@ -1,7 +1,7 @@
 import "server-only";
 import { addDays, dateRange, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
 import { backtest } from "@/domain/forecastAccuracy";
-import { mondayOf, PeriodKind, projectClose, proratedBudget, summarize } from "@/domain/pnl";
+import { mondayOf, oneOffHours, paceStartHour, PeriodKind, projectClose, proratedBudget, summarize } from "@/domain/pnl";
 import { fixedTotal } from "@/domain/analytics";
 import { bridge, comparisonRanges, fixedForDays, PeriodFigures, storyNotes, unlinkedSales, weeklyTrend } from "@/domain/pnlStory";
 import type { GroupSplit } from "@/domain/revenueClass";
@@ -331,7 +331,14 @@ export async function todaySoFar(now = new Date()) {
   const mins = localMinutes(now, tz());
   const hour = Math.floor(mins / 60);
   const minute = mins % 60;
-  const proj = projectClose(day.hours.map((h) => h.sales), forecast?.hours ?? new Array(24).fill(0), hour, minute);
+  const fHours = forecast?.hours ?? new Array(24).fill(0);
+  const proj = projectClose(day.hours.map((h) => h.sales), fHours, hour, minute);
+  // A deposit or event payment in one big order would read as a record day: pace and "vs forecast" leave it out.
+  // Already marked "not sales" on Square items (most of it ignored)? Then it's handled; don't flag it again.
+  const found = forecast ? oneOffHours(day.hours.map((h) => h.sales), day.hours.map((h) => h.orders), forecast.qty) : [];
+  const oneOffs = found.reduce((a, o) => a + o.amount, 0) * 0.5 <= (num(ignored._sum.netSales) ?? 0) ? [] : found;
+  const oneOffSet = new Set(oneOffs.map((o) => o.hour));
+  const usual = oneOffs.length ? projectClose(day.hours.map((h) => (oneOffSet.has(h.hour) ? 0 : h.sales)), fHours, hour, minute) : proj;
   const ignoredSales = num(ignored._sum.netSales) ?? 0;
   const soFar = Math.max(0, proj.soFar - ignoredSales);
   const projected = Math.max(soFar, proj.projected - ignoredSales);
@@ -351,7 +358,13 @@ export async function todaySoFar(now = new Date()) {
     forecastDay: forecast ? forecast.qty : null,
     forecastSoFar: forecast ? proj.forecastSoFar : null,
     projected: forecast ? projected : null,
-    pace: proj.pace,
+    pace: usual.pace,
+    /** Where the day would close without the one-off orders (for "vs forecast"). */
+    projectedUsual: forecast ? Math.max(0, usual.projected - (oneOffs.length ? 0 : ignoredSales)) : null,
+    /** Big single orders left out of pace (a deposit, event or catering payment). */
+    oneOff: oneOffs.length ? { amount: oneOffs.reduce((a, o) => a + o.amount, 0), hour: oneOffs[0].hour, orders: oneOffs.reduce((a, o) => a + o.orders, 0) } : null,
+    /** The hour from which pace can compare with the forecast. */
+    paceFrom: forecast ? paceStartHour(fHours) : null,
     projectedLaborPct: forecast && projected > 0 && day.hasSchedule ? projectedLabor / projected : null,
     hasSchedule: day.hasSchedule,
     lastSync,

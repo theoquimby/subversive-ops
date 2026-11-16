@@ -11,7 +11,7 @@ import { ITEMS, searchSettings, SECTIONS, sectionOf, type SettingsItem } from ".
 /** Old links (the command bar's "Suppliers") pointed at /settings#suppliers. */
 const LEGACY_HASH: Record<string, string> = { "#suppliers": "/settings/suppliers" };
 
-function Row({ item, value, showSection, waiting }: { item: SettingsItem; value?: string; showSection?: boolean; waiting?: number }) {
+function Row({ item, value, showSection, waiting, fresh }: { item: SettingsItem; value?: string; showSection?: boolean; waiting?: number; fresh?: number }) {
   return (
     <Link href={item.href} className="group flex items-center gap-3 px-4 py-3.5 transition-colors duration-120 hover:bg-surface-2/60 focus-visible:bg-surface-2/60 sm:px-5">
       <div className="min-w-0 flex-1">
@@ -19,6 +19,7 @@ function Row({ item, value, showSection, waiting }: { item: SettingsItem; value?
           <span className="text-sm font-medium text-ink">{item.label}</span>
           {showSection && <span className="text-xs text-muted">{sectionOf(item.section).title}</span>}
           {!!waiting && <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[0.7rem] font-medium text-primary-ink"><Sparkles aria-hidden className="size-3" />{waiting} suggestion{waiting === 1 ? "" : "s"}</span>}
+          {!!fresh && <span className="num inline-flex items-center rounded-full bg-surface-2 px-2 py-0.5 text-[0.7rem] font-medium text-ink-2 ring-1 ring-border">{fresh} new</span>}
         </div>
         <p className={cn("mt-0.5 text-[0.8rem] text-muted", !showSection && "hidden sm:block")}>{item.what}</p>
       </div>
@@ -28,8 +29,8 @@ function Row({ item, value, showSection, waiting }: { item: SettingsItem; value?
   );
 }
 
-/** `suggestions`: learned suggestions waiting, per item id (a badge on the row). */
-export function SettingsIndex({ values, suggestions = {} }: { values: Record<string, string>; suggestions?: Record<string, number> }) {
+/** `suggestions`: learned suggestions waiting, per item id (a badge on the row). `fresh`: new things to look at, per item id ("3 new"). */
+export function SettingsIndex({ values, suggestions = {}, fresh = {} }: { values: Record<string, string>; suggestions?: Record<string, number>; fresh?: Record<string, number> }) {
   const [q, setQ] = useState("");
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -72,7 +73,7 @@ export function SettingsIndex({ values, suggestions = {} }: { values: Record<str
           <div className="mb-2.5 px-1 text-sm text-muted">{results.length ? `${results.length} setting${results.length === 1 ? "" : "s"}` : `Nothing matches "${q.trim()}".`}</div>
           {results.length > 0 ? (
             <div className="divide-y divide-border rounded-xl border border-border bg-surface">
-              {results.map((it) => <Row key={it.id} item={it} value={values[it.id]} waiting={suggestions[it.id]} showSection />)}
+              {results.map((it) => <Row key={it.id} item={it} value={values[it.id]} waiting={suggestions[it.id]} fresh={fresh[it.id]} showSection />)}
             </div>
           ) : (
             <p className="px-1 text-sm text-muted">Try a simpler word, or <Link href="/help" className="text-ink underline-offset-2 hover:underline">search the help center</Link>.</p>
@@ -88,7 +89,7 @@ export function SettingsIndex({ values, suggestions = {} }: { values: Record<str
                 <p className="mt-0.5 text-sm text-muted">{s.blurb}</p>
               </div>
               <div className={cn("divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface")}>
-                {items.map((it) => <Row key={it.id} item={it} value={values[it.id]} waiting={suggestions[it.id]} />)}
+                {items.map((it) => <Row key={it.id} item={it} value={values[it.id]} waiting={suggestions[it.id]} fresh={fresh[it.id]} />)}
               </div>
             </section>
           );

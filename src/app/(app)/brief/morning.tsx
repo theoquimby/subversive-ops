@@ -17,6 +17,7 @@ import {
   History,
   Lightbulb,
   type LucideIcon,
+  MessageSquarePlus,
   MessageSquareText,
   NotebookPen,
   PackageCheck,
@@ -37,6 +38,8 @@ import { CompactHero } from "@/app/(app)/insights/deck";
 import { toDeck } from "@/app/(app)/insights/deck-data";
 import { insightFeed } from "@/server/services/analytics";
 import { morningBrief, type MorningBrief, type TonightItem } from "@/server/services/morningBrief";
+import { newFeedbackCount } from "@/server/services/feedback";
+import { newFeedbackLine } from "@/domain/feedback";
 import { usual86 } from "@/server/services/shiftNotes";
 import { NoteCard } from "../notes/note-card";
 
@@ -61,7 +64,8 @@ const clock = (hhmm: string | null) => {
 
 /** The daily brief (default view of /brief). */
 export async function MorningView({ name, viewer }: { name: string; viewer: { userId: string; role: "MANAGER" | "STAFF" } }) {
-  const [b, feed, usual] = await Promise.all([morningBrief(), insightFeed({ limit: 6 }).catch(() => ({ items: [] })), usual86().catch(() => [])]);
+  const [b, feed, usual, feedback] = await Promise.all([morningBrief(), insightFeed({ limit: 6 }).catch(() => ({ items: [] })), usual86().catch(() => []), viewer.role === "MANAGER" ? newFeedbackCount().catch(() => 0) : 0]);
+  const feedbackLine = newFeedbackLine(feedback);
   const lead = leadSentence(b);
 
   return (
@@ -84,6 +88,13 @@ export async function MorningView({ name, viewer }: { name: string; viewer: { us
         <TodayCard b={b} />
         <TeamCard />
         <TonightCard b={b} />
+        {feedbackLine && (
+          <Link href="/settings/feedback?status=new" className="-mt-2 flex min-h-10 items-center gap-2 px-1 text-sm text-muted transition-colors duration-120 hover:text-ink">
+            <MessageSquarePlus aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
+            <span>{feedbackLine}</span>
+            <ChevronRight aria-hidden className="size-3.5 shrink-0" />
+          </Link>
+        )}
         {feed.items.length > 0 && (
           <HelpZone id="brief.insight">
             <section id="insight" className="scroll-mt-20">

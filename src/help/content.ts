@@ -6,6 +6,7 @@
 
 import { fuzzyScore } from "@/domain/search";
 import { basics } from "./areas/basics";
+import { feedback } from "./areas/feedback";
 import { menu, ingredients, overview, prices } from "./areas/costing";
 import { counts, importing, ordering, sales, settings, variance, waste } from "./areas/operations";
 import { upcoming } from "./areas/upcoming";
@@ -122,6 +123,7 @@ export const HELP: HelpEntry[] = [
   ...beerTax,
   ...dailyUse,
   ...workforce,
+  ...feedback,
 ];
 
 const BY_ID = new Map(HELP.map((e) => [e.id, e]));

@@ -39,7 +39,7 @@ export const SECTIONS: SettingsSection[] = [
   { id: "insights", title: "Insights & reviews", blurb: "How much history Insights learns from, and how review replies sound.", pages: [{ href: "/settings/insights", label: "Insights & reviews" }] },
   { id: "connections", title: "Connections", blurb: "Square, QuickBooks, Google, Instagram & Facebook, email, phone alerts and AI.", pages: [{ href: "/settings/connections", label: "Connections" }, { href: "/settings/square", label: "Square" }, { href: "/settings/quickbooks", label: "QuickBooks" }, { href: "/settings/connections/google", label: "Google" }] },
   { id: "notifications", title: "Notifications", blurb: "Which alerts you get, by email and on your phone.", pages: [{ href: "/settings/notifications", label: "Notifications" }] },
-  { id: "data", title: "Data & help", blurb: "Import, export, demo data, starting over, and where to get help.", pages: [{ href: "/settings/data", label: "Data" }, { href: "/settings/about", label: "Help & about" }] },
+  { id: "data", title: "Data & help", blurb: "Import, export, demo data, starting over, feedback from the team, and where to get help.", pages: [{ href: "/settings/data", label: "Data" }, { href: "/settings/feedback", label: "Feedback" }, { href: "/settings/about", label: "Help & about" }] },
 ];
 
 export const ITEMS: SettingsItem[] = [
@@ -101,6 +101,7 @@ export const ITEMS: SettingsItem[] = [
   { id: "data.import", section: "data", label: "Import sheets", what: "Bring in ingredients, prices and recipes from a spreadsheet.", href: "/settings/data#import", help: "settings.data.import", keywords: "import excel csv spreadsheet" },
   { id: "data.export", section: "data", label: "Export", what: "Payroll, accounting and table downloads.", href: "/settings/data#export", help: "settings.data.export", keywords: "export download csv backup" },
   { id: "data.clear", section: "data", label: "Start over", what: "Clear all food, sales and order data. Logins stay.", href: "/settings/data#clear", help: "settings.clear", keywords: "clear reset wipe delete demo" },
+  { id: "data.feedback", section: "data", label: "Feedback", what: "Notes sent from the Feedback button: reply, plan, and copy them for Claude.", href: "/settings/feedback", help: "settings.feedback", keywords: "feedback ideas problems bugs questions requests suggestions inbox claude" },
   { id: "data.help", section: "data", label: "Help & about", what: "The help center, guided tours and what's running.", href: "/settings/about", help: "settings.about", keywords: "help tour support version" },
 ];
 

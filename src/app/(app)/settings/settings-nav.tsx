@@ -5,8 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SECTIONS } from "./registry";
 
-/** Desktop only: every Settings page, grouped by section, with the current one marked. */
-export function SettingsNav() {
+/** Desktop only: every Settings page, grouped by section, with the current one marked. `counts`: a small number beside a page (new feedback). */
+export function SettingsNav({ counts = {} }: { counts?: Record<string, number> }) {
   const path = usePathname();
   const under = (href: string) => path === href || path.startsWith(`${href}/`);
   const hrefs = SECTIONS.flatMap((s) => s.pages.map((p) => p.href));
@@ -18,9 +18,10 @@ export function SettingsNav() {
         key={href}
         href={href}
         aria-current={on ? "page" : undefined}
-        className={cn("block truncate rounded-md px-2.5 py-1.5 text-sm transition-colors duration-120", on ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:bg-surface-2/60 hover:text-ink")}
+        className={cn("flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors duration-120", on ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:bg-surface-2/60 hover:text-ink")}
       >
-        {label}
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {!!counts[href] && <span className="num shrink-0 rounded-full bg-surface-2 px-1.5 text-[11px] font-medium text-ink-2 ring-1 ring-border">{counts[href]}<span className="sr-only"> new</span></span>}
       </Link>
     );
   };

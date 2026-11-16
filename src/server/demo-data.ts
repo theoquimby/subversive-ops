@@ -257,6 +257,11 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
     const { seedWorkforce } = await import("./demo/workforce");
     await seedWorkforce(db);
   }
+  // Notes from the Feedback button, in every state.
+  if ((await db.appFeedback.count()) === 0) {
+    const { seedFeedback } = await import("./demo/feedback");
+    await seedFeedback(db);
+  }
   // Brewing recipes (after the kegs, so they link to the beers). Only where no real recipe exists yet.
   if ((await db.brewRecipe.count({ where: { OR: [{ sourceKey: null }, { NOT: { sourceKey: { startsWith: "demo:" } } }] } })) === 0) {
     const { seedBrewRecipes } = await import("./demo/brewRecipes");

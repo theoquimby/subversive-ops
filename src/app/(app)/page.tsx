@@ -1,6 +1,7 @@
 import { refreshIfStale } from "@/server/services/square-sync";
 import { addDays, businessDate, WEEKDAYS, weekday, zonedMidnightUTC } from "@/domain/dates";
 import { dayDate, money, pct, qty, relativeTime, shortDate, signedPct } from "@/lib/format";
+import { hourLabel } from "@/domain/openingHours";
 import { TopInsights } from "@/app/(app)/insights/top-insights";
 import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import { costTone } from "@/domain/pnl";
@@ -94,7 +95,8 @@ export default async function OverviewPage() {
 
   // Today: pace against what the forecast expected by now.
   const pace = live.pace;
-  const vsForecast = live.projected != null && live.forecastDay ? live.projected / live.forecastDay - 1 : null;
+  // "vs forecast" leaves out one-off orders (a deposit or event payment), like pace does.
+  const vsForecast = live.projectedUsual != null && live.forecastDay ? live.projectedUsual / live.forecastDay - 1 : null;
   const scale = Math.max(1, live.forecastDay ?? 0, live.projected ?? 0, live.soFar);
   const paceTone = pace == null ? "neutral" : pace >= 1.02 ? "good" : pace >= 0.9 ? "neutral" : "warn";
   const paceText =
@@ -136,6 +138,14 @@ export default async function OverviewPage() {
               </div>
               {paceText && <p className={cx("mt-3 text-[0.95rem]", paceTone === "good" ? "text-good" : paceTone === "warn" ? "text-warn" : "text-ink-2")}>{paceText}.</p>}
               {!live.hasSales && live.forecastDay != null && <p className="mt-3 text-[0.95rem] text-ink-2">The forecast for {wd} is {whole(live.forecastDay)}. Pace shows once today&apos;s first sales sync.</p>}
+              {live.hasSales && pace == null && live.paceFrom != null && live.forecastDay != null && live.forecastDay > 0 && (
+                <p className="mt-3 text-[0.95rem] text-ink-2">Too early to compare: the forecast expects most of {wd}&apos;s sales later. Pace starts around {hourLabel(live.paceFrom)}.</p>
+              )}
+              {live.oneOff && (
+                <p className="mt-2 text-sm text-muted">
+                  Includes {live.oneOff.orders === 1 ? "one" : live.oneOff.orders} {whole(live.oneOff.amount)} order{live.oneOff.orders === 1 ? "" : "s"} around {hourLabel(live.oneOff.hour)}, left out of the pace. A deposit or event payment? If it isn&apos;t a sale, mark its item <Link href="/sales#square-items" className="underline underline-offset-2 hover:text-ink">Not sales</Link>.
+                </p>
+              )}
 
               {live.forecastDay != null && live.forecastDay > 0 && (
                 <div className="mt-5">

@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.22 (feedback from any page) ----
+  {
+    id: "2026-11-16.feedback",
+    date: "2026-11-16",
+    title: "Send feedback from any page",
+    line: "Tap Feedback beside Help to send an idea, a problem or praise. The page you're on goes with it.",
+    icon: "notes",
+    area: "assist",
+    href: "/help/feedback.button",
+    help: "feedback.button",
+    audience: "all",
+  },
   // ---- 16 Nov · 1.21 (long lists) ----
   {
     id: "2026-11-16.keg-tables",

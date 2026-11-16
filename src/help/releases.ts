@@ -24,6 +24,22 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.22",
+    date: "2026-11-16",
+    title: "Feedback from any page",
+    summary: "A Feedback button beside Help on every page sends an idea, a problem, a question or praise with the page attached, and managers get one inbox to reply, plan and copy notes for Claude.",
+    entries: ["2026-11-16.feedback"],
+    fixed: [
+      "Feedback: pick Idea, Problem, Question or Love it, write a line, add a photo or screenshot if it helps. The page, its title, your device and the app version go along by themselves.",
+      "No signal? The note waits on the phone and sends when the connection is back.",
+      "Your feedback (in the same sheet) lists what you've sent with its status — New, Planned, Done or Won't do — and any reply.",
+      "Settings → Feedback: every note in one table, filtered to New and Planned to start, with search, filters by kind, who and page area, CSV and bulk status changes. A note opens with its photo, a status and a reply box.",
+      "Copy for Claude turns the notes shown, or the ones ticked, into one tidy Markdown list to paste into Claude Code.",
+      "New feedback shows as one quiet line in the morning brief and a count beside Feedback in Settings.",
+      "Overview: Today so far no longer reads \"714329% ahead\" on a quiet morning. Pace waits until the forecast expects a real share of the day, and one big order (a deposit or event payment) is shown on its own, left out of the pace.",
+    ],
+  },
+  {
     version: "1.21",
     date: "2026-11-16",
     title: "Long lists in Kegs and the Brewery",
