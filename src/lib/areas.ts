@@ -22,7 +22,12 @@ import {
   Calculator,
   CalendarCheck,
   CalendarDays,
+  CalendarClock,
   CalendarRange,
+  Cylinder,
+  Factory,
+  FlaskConical,
+  Layers,
   Camera,
   Carrot,
   ChefHat,
@@ -103,6 +108,17 @@ export const KEG_SECTIONS: SubItem[] = [
   ] },
 ];
 const STAFF_KEG_SECTIONS: SubItem[] = KEG_SECTIONS.slice(0, 3);
+// Brewery: what's in each tank now, the tank schedule, recipes with live costs, every brew, and setup.
+export const BREWERY_SECTIONS: SubItem[] = [
+  { href: "/brewery", label: "Tanks", icon: Cylinder },
+  { href: "/brewery/schedule", label: "Schedule", icon: CalendarClock },
+  { href: "/brewery/recipes", label: "Recipes", icon: FlaskConical },
+  { href: "/brewery/batches", label: "Brews", icon: Layers },
+  { href: "/brewery/setup", label: "Setup", icon: Settings2, tabs: [
+    { href: "/brewery/setup", label: "Tanks & defaults" },
+    { href: "/brewery/import", label: "Import" },
+  ] },
+];
 const WEBSITE_PAGES: SubItem[] = [
   { href: "/website", label: "Overview", icon: LayoutGrid },
   { href: "/website/hours", label: "Hours & notice", icon: Clock },
@@ -184,6 +200,7 @@ export const MANAGER_NAV: NavGroup[] = [
     item("floor", "/count", "Counts", ClipboardList),
     item("floor", "/waste", "Waste", Trash2),
     item("floor", "/kegs", "Kegs", Beer, KEG_SECTIONS),
+    item("floor", "/brewery", "Brewery", Factory, BREWERY_SECTIONS),
     item("floor", "/prep", "Prep list", ChefHat),
     item("floor", "/checklists", "Checklists", ListChecks),
     item("floor", "/upkeep", "Upkeep", Wrench),

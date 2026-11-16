@@ -34,6 +34,7 @@ import { linking } from "./areas/linking";
 import { workforce } from "./areas/workforce";
 import { checklists } from "./areas/checklists";
 import { upkeep } from "./areas/upkeep";
+import { brewery } from "./areas/brewery";
 import { beerTax } from "./areas/beerTax";
 import { dailyUse } from "./areas/dailyUse";
 import { getTour } from "./tours";
@@ -70,6 +71,7 @@ export const AREAS: HelpArea[] = [
   { id: "insights", title: "Insights", description: "The Insights Lab: one thing to do at a time, how your numbers connect, and a tile for every question." },
   { id: "prep", title: "Prep list", description: "What the kitchen makes today: amounts from the forecast, on hand, pars, shelf life and stations." },
   { id: "kegs", title: "Kegs", description: "Scanning kegs on a phone, what's on tap, the walk-in, demand per beer, labels and importing." },
+  { id: "brewery", title: "Brewery", description: "Tanks, the tank schedule, brewing recipes with live costs, and every brew." },
   { id: "online", title: "Online", description: "How guests find you on Google Search, the Google listing and the website, and what they do next." },
   { id: "website", title: "Website", description: "What guests see on the public website: hours, the notice, the menu, events and inquiries." },
   { id: "training", title: "Training & certificates", description: "ATAP, ServSafe and other certificates, expiry reminders and onboarding checklists." },
@@ -116,6 +118,7 @@ export const HELP: HelpEntry[] = [
   ...monthEnd,
   ...checklists,
   ...upkeep,
+  ...brewery,
   ...beerTax,
   ...dailyUse,
   ...workforce,

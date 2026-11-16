@@ -125,6 +125,7 @@ model Ingredient {
   /// When the photo was last set (cache-busts the image URL); null = no photo.
   photoAt     DateTime?
   photo       CountPhoto?
+  brewLines   BrewRecipeLine[]
 }
 
 /// One photo per count item (an ingredient or a prep recipe), shown on the count sheet. Compressed in the browser first.
@@ -1078,6 +1079,8 @@ model Beer {
   fills        KegFill[]
   batches      KegBatch[]
   orderLines   KegOrderLine[]
+  brewRecipes  BrewRecipe[]
+  brewBatches  BrewBatch[]
 }
 
 /// A small label/logo image for a beer on the tap list (≤ 300 KB, resized in the browser).
@@ -1099,6 +1102,8 @@ model KegBatch {
   notes      String?
   extra      Json?
   fills      KegFill[]
+  /// The brewery batch this keg batch was packaged from, when it was brewed in Ops.
+  brewBatch  BrewBatch?
 }
 
 /// A named spot inside a storage area ("back left · stack 2"). Managers define them.
@@ -2158,4 +2163,145 @@ model OnlinePost {
 
   @@unique([channel, externalId])
   @@index([channel, postedAt])
+}
+
+// ---- Brewery: tanks, brewing recipes, batches and the tank schedule ----------------
+
+enum TankKind {
+  FERMENTER
+  BRITE
+  OTHER
+}
+
+enum BrewStatus {
+  PLANNED // on the schedule, not brewed yet
+  FERMENTING // brewed, in a fermenter
+  CONDITIONING // in a brite tank
+  PACKAGED // in kegs (or cans); done
+  DUMPED // lost or poured out
+}
+
+/// A tank in the brewery: fermenters and brite tanks, with their size in barrels.
+model Tank {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  kind        TankKind   @default(FERMENTER)
+  capacityBbl Decimal    @db.Decimal(6, 2)
+  sort        Int        @default(0)
+  active      Boolean    @default(true)
+  notes       String?
+  stays       TankStay[]
+}
+
+/// A brewing recipe (grain bill, hops, yeast, process) for one beer. Costed live from ingredient prices.
+model BrewRecipe {
+  id            String           @id @default(cuid())
+  name          String           @unique
+  beerId        String?
+  beer          Beer?            @relation(fields: [beerId], references: [id], onDelete: SetNull)
+  style         String?
+  /// "live" (brewed), "dev" (in development) or "archived"
+  status        String           @default("live")
+  /// Finished batch size in US beer barrels (31 gal)
+  batchBbl      Decimal          @default(7) @db.Decimal(6, 2)
+  /// Brewhouse efficiency, percent (e.g. 72)
+  efficiencyPct Decimal          @default(72) @db.Decimal(5, 2)
+  boilMinutes   Int              @default(60)
+  targetOg      Decimal?         @db.Decimal(5, 3)
+  targetFg      Decimal?         @db.Decimal(5, 3)
+  /// Usual days in a fermenter, then in a brite tank (drives the tank schedule)
+  fermentDays   Int              @default(14)
+  conditionDays Int              @default(7)
+  notes         String?
+  extra         Json?
+  /// Where it was imported from, e.g. "brewmanager:<id>" (re-imports update instead of duplicating)
+  sourceKey     String?          @unique
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  lines         BrewRecipeLine[]
+  batches       BrewBatch[]
+
+  @@index([beerId])
+}
+
+/// One ingredient in a brewing recipe. Matched to an Ingredient for its price when possible.
+model BrewRecipeLine {
+  id             String      @id @default(cuid())
+  recipeId       String
+  recipe         BrewRecipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  /// "grain" | "hop" | "yeast" | "adjunct" | "water" | "other"
+  kind           String
+  /// As written in the recipe (kept even when matched to an ingredient)
+  name           String
+  ingredientId   String?
+  ingredient     Ingredient? @relation(fields: [ingredientId], references: [id], onDelete: SetNull)
+  qty            Decimal     @db.Decimal(14, 4)
+  /// lb, oz, kg, g, gal, l, ml, pkg, each
+  unit           String
+  /// Grain: extract potential as specific gravity points per pound per gallon (e.g. 37)
+  potentialPpg   Decimal?    @db.Decimal(5, 2)
+  /// Grain: colour in degrees Lovibond
+  colorL         Decimal?    @db.Decimal(6, 1)
+  /// Hop: alpha acid percent
+  alphaPct       Decimal?    @db.Decimal(4, 1)
+  /// Hop: "boil" | "whirlpool" | "dryhop" | "firstwort" | "mash"
+  use            String?
+  /// Hop: minutes in the boil or whirlpool; dry hop: days
+  minutes        Int?
+  /// Yeast: apparent attenuation percent
+  attenuationPct Decimal?    @db.Decimal(4, 1)
+  sort           Int         @default(0)
+
+  @@index([recipeId])
+  @@index([ingredientId])
+}
+
+/// One brew: planned or done, with where it sat and when it was packaged.
+model BrewBatch {
+  id         String      @id @default(cuid())
+  /// Batch code, e.g. "26-031"
+  code       String      @unique
+  recipeId   String?
+  recipe     BrewRecipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  beerId     String?
+  beer       Beer?       @relation(fields: [beerId], references: [id], onDelete: SetNull)
+  status     BrewStatus  @default(PLANNED)
+  plannedOn  DateTime?   @db.Date
+  brewedOn   DateTime?   @db.Date
+  packagedOn DateTime?   @db.Date
+  /// Volume in barrels (planned, then actual)
+  bbl        Decimal?    @db.Decimal(6, 2)
+  og         Decimal?    @db.Decimal(5, 3)
+  fg         Decimal?    @db.Decimal(5, 3)
+  /// Ingredient cost of the brew, worked out when it was brewed (prices change later)
+  cost       Decimal?    @db.Decimal(10, 2)
+  /// The keg batch its kegs were filled from
+  kegBatchId String?     @unique
+  kegBatch   KegBatch?   @relation(fields: [kegBatchId], references: [id], onDelete: SetNull)
+  notes      String?
+  extra      Json?
+  sourceKey  String?     @unique
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  stays      TankStay[]
+
+  @@index([status])
+  @@index([beerId])
+}
+
+/// A batch's time in one tank (planned or actual). A batch usually has a fermenter stay, then a brite stay.
+model TankStay {
+  id      String    @id @default(cuid())
+  tankId  String
+  tank    Tank      @relation(fields: [tankId], references: [id], onDelete: Cascade)
+  batchId String
+  batch   BrewBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  start   DateTime  @db.Date
+  /// Planned or actual last day in the tank; null = still in it with no end planned
+  end     DateTime? @db.Date
+  /// false once the batch actually went in
+  planned Boolean   @default(true)
+
+  @@index([tankId, start])
+  @@index([batchId])
 }
