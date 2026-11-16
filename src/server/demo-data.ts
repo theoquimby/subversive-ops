@@ -252,6 +252,11 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
     const { seedWorkforce } = await import("./demo/workforce");
     await seedWorkforce(db);
   }
+  // Brewing recipes (after the kegs, so they link to the beers). Only where no real recipe exists yet.
+  if ((await db.brewRecipe.count({ where: { OR: [{ sourceKey: null }, { NOT: { sourceKey: { startsWith: "demo:" } } }] } })) === 0) {
+    const { seedBrewRecipes } = await import("./demo/brewRecipes");
+    await seedBrewRecipes(db);
+  }
   // Google Search and the Google listing, for the Online pages (it only ever adds rows).
   if ((await db.googleSearchDaily.count()) === 0 && (await db.googleProfileDaily.count()) === 0) {
     const { seedOnline } = await import("./demo/online");

@@ -393,5 +393,8 @@ export async function setBrewingPrice(ingredientId: string, price: number, unit:
   }
   const packPrice = (price * product.packQtyBase!.toNumber()) / perUnitBase;
   await recordManualPrice(product.id, packPrice, businessToday());
+  // Costing uses the preferred product first: when the price went on another one
+  // (a supplier was picked), that one becomes preferred so the typed price counts.
+  if (ing.preferredProductId && ing.preferredProductId !== product.id) await db.ingredient.update({ where: { id: ing.id }, data: { preferredProductId: product.id } });
   return {};
 }
