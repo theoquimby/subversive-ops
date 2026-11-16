@@ -156,3 +156,20 @@ export function categoryForKind(kind: BrewLineKind): "Malt" | "Hops" | "Yeast" |
 }
 
 export const BREWING_CATEGORIES = ["Malt", "Hops", "Yeast", "Brewing"];
+
+/** A recipe's brew-day targets and timing (shared by the server and the editor in the browser). */
+export interface RecipeProcess {
+  targetMt: number | null;
+  targetBk: number | null;
+  targetKo: number | null;
+  strikeF: number | null;
+  mashF: number | null;
+  mashMinutes: number | null;
+  /** "hazy" | "sour" | "lager" | "pale" | "custom" | null */
+  profile: string | null;
+  dryHopDay: number | null;
+  tapDay: number | null;
+  artworkDone: boolean;
+}
+
+export const BLANK_PROCESS: RecipeProcess = { targetMt: null, targetBk: null, targetKo: null, strikeF: null, mashF: null, mashMinutes: null, profile: null, dryHopDay: null, tapDay: null, artworkDone: false };

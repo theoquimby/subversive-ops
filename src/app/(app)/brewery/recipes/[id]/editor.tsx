@@ -9,7 +9,8 @@ import { BREW_UNITS, grainDefaults, MASS_UNITS, recipeStats, scaleQty, type Brew
 import { brewToBase, categoryForKind, costBrewRecipe, HOP_USE_LABEL, KIND_LABEL, PACKAGING_LOSS, RECIPE_STATUSES, type BrewRecipeStatus, type PricedIngredient } from "@/domain/brewRecipes";
 import { formatGravity, sgToPlato, type GravityUnit } from "@/domain/gravity";
 import { money, pct, qty, shortDate } from "@/lib/format";
-import { BLANK_PROCESS, type BrewCatalogIngredient, type BrewLineData, type BrewRecipeData, type RecipeProcess } from "@/server/services/brewRecipes";
+import type { BrewCatalogIngredient, BrewLineData, BrewRecipeData } from "@/server/services/brewRecipes";
+import { BLANK_PROCESS, type RecipeProcess } from "@/domain/brewRecipes";
 import { Check, Circle, Copy, Play, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

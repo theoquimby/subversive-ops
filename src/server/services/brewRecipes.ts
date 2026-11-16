@@ -164,21 +164,8 @@ export interface BrewRecipeData {
 }
 
 /** Brew-day targets (gravities as SG; strike and mash °F) and the timing profile with its days. */
-export interface RecipeProcess {
-  targetMt: number | null;
-  targetBk: number | null;
-  targetKo: number | null;
-  strikeF: number | null;
-  mashF: number | null;
-  mashMinutes: number | null;
-  /** "hazy" | "sour" | "lager" | "pale" | "custom" | null */
-  profile: string | null;
-  dryHopDay: number | null;
-  tapDay: number | null;
-  artworkDone: boolean;
-}
-
-export const BLANK_PROCESS: RecipeProcess = { targetMt: null, targetBk: null, targetKo: null, strikeF: null, mashF: null, mashMinutes: null, profile: null, dryHopDay: null, tapDay: null, artworkDone: false };
+export { BLANK_PROCESS, type RecipeProcess } from "@/domain/brewRecipes";
+import type { RecipeProcess } from "@/domain/brewRecipes";
 
 export async function brewRecipeData(id: string): Promise<(BrewRecipeData & { process: RecipeProcess; brews: number; sourceKey: string | null; extra: unknown; batches: { id: string; code: string; status: string; plannedOn: string | null; brewedOn: string | null; inProgress: boolean }[] }) | null> {
   const r = await db.brewRecipe.findUnique({
