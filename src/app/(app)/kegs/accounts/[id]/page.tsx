@@ -1,13 +1,16 @@
-import { Badge, Card, cx, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, Card, cx, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import { displayCode } from "@/domain/kegs";
 import { requireUser } from "@/server/auth";
 import { accountPage, type AccountRange } from "@/server/services/kegAccounts";
+import { accountOrders } from "@/server/services/kegOrders";
+import { Plus } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BeerDot, sizeShort } from "../../bits";
 import { AccountDetails } from "../accounts-client";
 import { bbl, Chip, dated, daysWord, gal, kindLabel } from "../bits";
 import { DeliveryBars } from "../charts";
+import { OrderTable } from "../../orders/bits";
 
 export const metadata = { title: "Keg account" };
 
@@ -17,7 +20,14 @@ export default async function KegAccountPage({ params, searchParams }: { params:
   await requireUser("MANAGER");
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   const range: AccountRange = sp.range === "all" ? "all" : "12m";
-  const r = await accountPage(id, range);
+  const [r, orders] = await Promise.all([
+    accountPage(id, range),
+    // A problem with orders leaves the section out; the rest of the page still shows.
+    accountOrders(id).catch((e) => {
+      console.error("keg account: orders skipped", (e as Error).message);
+      return null;
+    }),
+  ]);
   if (!r) notFound();
 
   const { account: a, numbers: n } = r;
@@ -74,6 +84,23 @@ export default async function KegAccountPage({ params, searchParams }: { params:
           )}
         </Section>
       </div>
+
+      {orders && (
+        <Section
+          title="Orders"
+          description={orders.open.length || orders.closed.length ? "Open orders, then the last few fulfilled. Tap one to open it." : undefined}
+          actions={a.active ? <LinkButton href={`/kegs/orders/new?account=${a.id}`} size="sm" className="h-10 sm:h-8"><Plus className="size-4" /> New order</LinkButton> : undefined}
+        >
+          {orders.open.length === 0 && orders.closed.length === 0 ? (
+            <p className="text-sm text-muted">No orders for this account yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {orders.open.length > 0 ? <OrderTable rows={orders.open} today={orders.today} account={false} /> : <p className="text-sm text-muted">No open orders.</p>}
+              {orders.closed.length > 0 && <OrderTable rows={orders.closed} today={orders.today} closed account={false} />}
+            </div>
+          )}
+        </Section>
+      )}
 
       <Section title="Deliveries per month" description={`Kegs scanned out here each month, ${range === "all" ? `since ${dated(r.from)}` : "for the last 12 months"}. Hover a month for barrels.`}>
         {delivered === 0 ? (

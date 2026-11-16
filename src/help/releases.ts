@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.15",
+    date: "2026-11-16",
+    title: "Wholesale keg orders",
+    summary: "Take an order from an account, see how many full kegs are free to promise, and fill it by scanning each keg as it leaves.",
+    entries: ["2026-11-16.keg-orders", "2026-11-16.keg-order-scan"],
+    fixed: [
+      "Orders is in the Kegs menu and on the Kegs page. Open orders also show on the Kegs page, for whoever is loading them.",
+      "Each account's page lists its orders, with a New order button.",
+      "Overview: keg orders due today or overdue show under Needs you.",
+      "Undoing a keg's last scan from its card also takes it off the open order it was scanned for.",
+    ],
+  },
+  {
     version: "1.14",
     date: "2026-11-16",
     title: "Kegs everywhere you look",

@@ -158,6 +158,84 @@ Each table has its own **Export** button, which saves a file a spreadsheet can o
     keywords: ["report", "export", "csv", "volume", "consumption", "barrels", "snapshot", "TTB"],
   },
   {
+    id: "kegs.orders",
+    area: "kegs",
+    route: "/kegs/orders",
+    title: "Keg orders",
+    body: "What your wholesale accounts have asked for: open orders with the soonest first, how many kegs have gone out on each, and the last ones finished. Below them, how many full kegs are free to promise.",
+    article: `An order is for one account: delivery or pickup, a date if there is one, and lines of beer, keg size and how many.
+
+1. Tap **New order**, pick the account and add a line for each beer and size.
+2. When the kegs are leaving, open the order and tap **Scan kegs for this order**. Each keg is checked against the order and sent out to the account in the same scan.
+3. When every line has its kegs, tap **Mark fulfilled**.
+
+**Today** means the order is due today; **Overdue** means its date has passed. Both show under Needs you on the [Overview](/).
+
+The search box finds an order by account, beer or order number, and looks further back than the page shows.`,
+    related: ["kegs.orders.new", "kegs.orders.order", "kegs.orders.scan", "kegs.orders.availability", "kegs.accounts"],
+    keywords: ["orders", "wholesale", "delivery", "pickup", "preorder", "reserve", "sales order", "distribrewtion"],
+  },
+  {
+    id: "kegs.orders.new",
+    area: "kegs",
+    route: "/kegs/orders/new",
+    title: "Making an order",
+    body: "Pick the account, delivery or pickup and a date if you have one, then add a line for each beer and keg size. Under each line you see how many full kegs are free right now, and how many would need filling.",
+    related: ["kegs.orders", "kegs.orders.availability"],
+    keywords: ["new order", "add order", "lines", "quantity"],
+  },
+  {
+    id: "kegs.orders.availability",
+    area: "kegs",
+    route: "/kegs/orders",
+    title: "Available, reserved, preordered",
+    body: "Available: full kegs no open order needs. Reserved: full kegs that open orders will take. Preordered: kegs on open orders that aren't full yet, so they still need filling. Full means filled or in cold storage.",
+    related: ["kegs.orders", "kegs.demand"],
+    keywords: ["available", "reserved", "preordered", "stock", "promise", "full kegs"],
+  },
+  {
+    id: "kegs.orders.order",
+    area: "kegs",
+    route: "/kegs/orders",
+    title: "One order",
+    body: "An order's lines with how many kegs have gone out, the kegs scanned for it, its notes, and the buttons to fulfil or cancel it. While it's open you can change the lines, the date and delivery or pickup.",
+    article: `While an order is **open**:
+
+- **Kegs wanted**: change how many on a line, add a line, or remove one. Once a keg has gone out on a line its beer and size are fixed; you can still change how many.
+- **Delivered without scanning** is for kegs whose stickers can't be read. Type how many went out on that line. They count toward the order and a note says who marked them, but no keg is changed, so those kegs still show wherever the app last saw them.
+- **Details**: delivery or pickup and the date save as you change them. The account can change until the first keg goes out.
+
+A tan line above the scan button means the order needs more kegs than are full right now.
+
+**Mark fulfilled** shows when every line has its kegs. **Fulfil with 2 of 3** closes the order short. **Cancel order** closes it without fulfilling; kegs already sent out stay out at the account, so scan them back in when they return.
+
+Fulfilled and cancelled orders can't be changed. Notes can still be added.`,
+    related: ["kegs.orders", "kegs.orders.scan", "kegs.orders.availability"],
+    keywords: ["fulfil", "fulfill", "cancel", "short", "notes", "edit order", "without scanning"],
+  },
+  {
+    id: "kegs.orders.scan",
+    area: "kegs",
+    route: "/kegs",
+    title: "Scanning kegs for an order",
+    body: "Open the order and scan each keg as it leaves. The app checks the keg is full and the right beer and size, sends it out to the account, and counts it on the order.",
+    article: `1. On **Kegs**, tap the order under **Orders to send out**. A manager can also open the order and tap **Scan kegs for this order**.
+2. Scan each keg's sticker. A tick means the keg was sent out to the account and counted on the order.
+3. When nothing is left to scan, tap **Mark fulfilled**.
+
+A keg is refused, and nothing changes, when it:
+
+- isn't full (the app says what it is: empty, on tap, already out)
+- is a beer or a size the order doesn't have
+- is already on this order
+- belongs to a line that already has all its kegs
+
+**Undo** sits on the last keg in the list and puts it back where it was. With no signal, scans wait on the page and send themselves when signal is back; keep the page open until they have. For a worn sticker, tap **Type a code instead**.`,
+    audience: "all",
+    related: ["kegs.scan", "kegs.scanMany"],
+    keywords: ["order", "delivery", "load", "truck", "fulfil", "scan out", "wrong beer"],
+  },
+  {
     id: "kegs.scanMany",
     area: "kegs",
     route: "/kegs/scan",

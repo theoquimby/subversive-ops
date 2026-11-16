@@ -6,6 +6,7 @@ import { cleanAreaName } from "@/domain/storageAreas";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { checkKegStock } from "@/server/services/keg-alerts";
+import { forgetUndoneOrderKegs } from "@/server/services/kegOrders";
 import { adoptSticker, doKegAction, findKegByScan, freshCodes, kegCard, KEG_ACTIONS, kegConfig, nextKegOf, saveKegConfig, undoKegEvents, type DoActionResult, type KegCard } from "@/server/services/kegs";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -138,6 +139,8 @@ export async function scanMany(input: ScanManyForm): Promise<ScanManyResult> {
 export async function undoKegAction(ref: { eventId?: string; groupId?: string }) {
   const me = await requireUser();
   const r = await undoKegEvents({ userId: me.userId, role: me.role }, ref);
+  // A keg that was scanned onto an open order and is undone here comes off that order too.
+  if ("ok" in r) await forgetUndoneOrderKegs(ref).catch((e) => console.error("kegs: order not updated after undo", (e as Error).message));
   refresh();
   pingWebsite("menu");
   return r;

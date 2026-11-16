@@ -84,7 +84,8 @@ export const KEG_SECTIONS: SubItem[] = [
     { href: "/kegs/demand", label: "Demand" },
     { href: "/kegs/reports", label: "Reports" },
   ] },
-  { href: "/kegs/accounts", label: "Wholesale", icon: Store, tabs: [
+  { href: "/kegs/orders", label: "Wholesale", icon: Store, tabs: [
+    { href: "/kegs/orders", label: "Orders" },
     { href: "/kegs/accounts", label: "Accounts" },
   ] },
   { href: "/kegs/all", label: "Manage", icon: Settings2, tabs: [

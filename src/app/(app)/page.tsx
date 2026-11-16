@@ -33,7 +33,7 @@ export const metadata = { title: "Overview" };
 const whole = (n: number) => money(n, { whole: true });
 const signedWhole = (n: number) => (Math.round(n) < 0 ? `−${whole(-n)}` : whole(Math.max(0, n) || 0));
 
-const ATTENTION_ICON: Record<string, LucideIcon> = { orders: ShoppingCart, invoices: FileCheck, kegs: Beer, "kegs.out": Beer, "kegs.idle": Beer, requests: Users, schedule: CalendarCheck, certs: GraduationCap, reviews: MessageSquareText, checklists: ListChecks, upkeep: Wrench, "upkeep.down": Wrench, "beertax.federal": Landmark, "beertax.brop": Landmark, "beertax.ny": Landmark };
+const ATTENTION_ICON: Record<string, LucideIcon> = { orders: ShoppingCart, invoices: FileCheck, kegs: Beer, "kegs.out": Beer, "kegs.idle": Beer, "kegs.orders": Truck, requests: Users, schedule: CalendarCheck, certs: GraduationCap, reviews: MessageSquareText, checklists: ListChecks, upkeep: Wrench, "upkeep.down": Wrench, "beertax.federal": Landmark, "beertax.brop": Landmark, "beertax.ny": Landmark };
 const toneChip = { bad: "bg-bad-bg text-bad", warn: "bg-warn-bg text-warn", neutral: "bg-surface-2 text-ink-2" } as const;
 
 export default async function OverviewPage() {

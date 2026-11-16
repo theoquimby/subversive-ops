@@ -26,6 +26,7 @@ function rng(seed: number) {
 
 export async function seedKegs(db: PrismaClient, today: ISODate): Promise<void> {
   const r = rng(42);
+  await db.kegOrder.deleteMany({});
   await db.kegEvent.deleteMany({});
   await db.kegFill.deleteMany({});
   await db.keg.deleteMany({});
