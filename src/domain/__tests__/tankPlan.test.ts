@@ -29,9 +29,10 @@ const batch = (id: string, over: Partial<PlanBatch> = {}): PlanBatch => ({ id, c
 const stay = (id: string, tankId: string, batchId: string, start: string, end: string | null, planned = false): PlanStay => ({ id, tankId, batchId, start, end, planned });
 
 describe("plansFor", () => {
-  it("plans brews for active beers", () => {
-    expect(plansFor({ active: true })).toBe(true);
-    expect(plansFor({ active: false })).toBe(false);
+  it("plans brews for core beers only", () => {
+    expect(plansFor({ active: true, core: true })).toBe(true);
+    expect(plansFor({ active: true, core: false })).toBe(false);
+    expect(plansFor({ active: false, core: true })).toBe(false);
   });
 });
 
@@ -187,7 +188,7 @@ describe("planBrew", () => {
 
 describe("suggestBrews", () => {
   const defaults = { fermentDays: 14, conditionDays: 7 };
-  const beer = (id: string, runOutOn: string | null, over = {}) => ({ id, name: id, active: true, runOutOn, fermentDays: null, conditionDays: null, ...over });
+  const beer = (id: string, runOutOn: string | null, over = {}) => ({ id, name: id, active: true, core: true, runOutOn, fermentDays: null, conditionDays: null, ...over });
   it("works back from the run-out date by ferment and condition days", () => {
     const [s] = suggestBrews({ today, beers: [beer("Lager", "2026-12-31", { fermentDays: 21, conditionDays: 14 })], defaults, batches: [] });
     expect(s).toMatchObject({ beerId: "Lager", brewBy: "2026-11-26", leadDays: 35, state: "soon", daysToBrewBy: 10, alreadyOut: false, planned: null });

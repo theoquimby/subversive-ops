@@ -19,15 +19,13 @@
  */
 
 import { addDays, daysBetween, type ISODate } from "./dates";
+import { nagsAbout } from "./beerStanding";
 
 export type TankKind = "FERMENTER" | "BRITE" | "OTHER";
 export type BrewStatus = "PLANNED" | "FERMENTING" | "CONDITIONING" | "PACKAGED" | "DUMPED";
 
-/**
- * Which beers to plan brews for. Every active beer for now; this becomes
- * "core beers" (the ones we never want to run out of) once Beer.core exists.
- */
-export const plansFor = (b: { active: boolean }) => b.active;
+/** Which beers to suggest brews for: core beers, the ones we never want to run out of. */
+export const plansFor = (b: { active: boolean; core: boolean }) => nagsAbout(b);
 
 export interface PlanTank {
   id: string;
@@ -372,6 +370,7 @@ export interface SuggestBeer {
   id: string;
   name: string;
   active: boolean;
+  core: boolean;
   /** When the forecast says its full kegs run out; null = no forecast. */
   runOutOn: ISODate | null;
   /** From its recipe; null = use the setup defaults. */

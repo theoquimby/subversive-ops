@@ -248,7 +248,7 @@ async function runOutDates(today: ISODate) {
 export async function brewSuggestions(today: ISODate = businessToday()): Promise<BrewSuggestion[]> {
   const [runOut, beers, recipes, live, defaults] = await Promise.all([
     runOutDates(today),
-    db.beer.findMany({ select: { id: true, name: true, active: true } }),
+    db.beer.findMany({ select: { id: true, name: true, active: true, core: true } }),
     db.brewRecipe.findMany({ where: { status: "live", beerId: { not: null } }, orderBy: { updatedAt: "desc" }, select: { beerId: true, fermentDays: true, conditionDays: true } }),
     db.brewBatch.findMany({ where: { status: { in: ["PLANNED", "FERMENTING", "CONDITIONING"] } }, select: { id: true, code: true, beerId: true, status: true, plannedOn: true } }),
     breweryDefaults(),
@@ -259,7 +259,7 @@ export async function brewSuggestions(today: ISODate = businessToday()): Promise
     defaults,
     beers: beers.map((b) => {
       const r = recipes.find((x) => x.beerId === b.id);
-      return { id: b.id, name: b.name, active: b.active, runOutOn: runOutOf.get(b.id) ?? null, fermentDays: r?.fermentDays ?? null, conditionDays: r?.conditionDays ?? null };
+      return { id: b.id, name: b.name, active: b.active, core: b.core, runOutOn: runOutOf.get(b.id) ?? null, fermentDays: r?.fermentDays ?? null, conditionDays: r?.conditionDays ?? null };
     }),
     batches: live.map((b) => ({ ...b, plannedOn: iso(b.plannedOn) })),
   });
