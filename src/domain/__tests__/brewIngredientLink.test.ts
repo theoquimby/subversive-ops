@@ -118,8 +118,8 @@ describe("helpers", () => {
   it("key, sku and purchase unit", () => {
     expect(ingredientKey("Cascade hops (NYS) · NY Hop Guild")).toBe("cascade hops nys ny hop guild");
     expect(productSkuFor("cascade hops nys ny hop guild")).toBe("BM-CASCADE-HOPS-NYS-NY-HOP-GUILD");
-    expect(purchaseUnitFor("g")).toEqual({ unit: "lb", packQtyBase: 453.592 });
-    expect(purchaseUnitFor("ml")).toEqual({ unit: "gal", packQtyBase: 3785.41 });
+    expect(purchaseUnitFor("g")).toEqual({ unit: "lb", packQtyBase: 453.59237 });
+    expect(purchaseUnitFor("ml")).toEqual({ unit: "gal", packQtyBase: 3785.411784 });
     expect(purchaseUnitFor("each")).toEqual({ unit: "pkg", packQtyBase: 1 });
   });
 });

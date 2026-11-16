@@ -176,7 +176,8 @@ export interface BrewOrder {
   lines: OrderLine[];
 }
 
-const EPS = 1e-9;
+// A millionth of a pack: unit conversion and batch scaling leave float dust (750 lb read back as 750.0000001).
+const EPS = 1e-6;
 
 export function planBrewOrders(i: { today: ISODate; brews: PlannedBrew[]; suppliers: OrderSupplier[]; onHand: ReadonlyMap<string, number> }): BrewOrder[] {
   const suppliers = new Map(i.suppliers.map((s) => [s.id, s]));

@@ -99,6 +99,13 @@ describe("what to order when", () => {
   const pils = (qtyBase: number) => ({ ingredientId: "pils", name: "Pils", qtyBase, dryHop: false, supplierId: "hvm", pack: { qtyBase: 50, unit: "sack" } });
   const citraDh = (qtyBase: number) => ({ ingredientId: "citra", name: "Citra", qtyBase, dryHop: true, supplierId: "yak" });
 
+  it("orders 750 lb as 750 lb, not 751, when the pound pack is stored to four decimals", () => {
+    // Recipe maths uses 453.59237 g a pound; the product's pack is stored as 453.5924 (Decimal 14,4).
+    const line = { ingredientId: "pils", name: "Pils", qtyBase: 750 * 453.59237, dryHop: false, supplierId: "hvm", pack: { qtyBase: 453.5924, unit: "lb" } };
+    const [o] = planBrewOrders({ today, suppliers: NO_LABELS, onHand: new Map(), brews: [brew({ id: "b", brewOn: "2026-12-10", lines: [line] })] });
+    expect(o.lines[0].packs).toBe(750);
+  });
+
   it("gives stock to the earliest brew first; later brews order the rest", () => {
     const orders = planBrewOrders({
       today,

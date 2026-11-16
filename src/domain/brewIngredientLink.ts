@@ -35,6 +35,7 @@ import { foldName } from "./brewImport";
 import { type BrewLineKind } from "./brewMath";
 import { baseUnitForBrewUnit, brewToBase, categoryForKind } from "./brewRecipes";
 import type { BaseUnit, CustomConversion } from "./units";
+import { G_PER_LB, ML_PER_GAL } from "./brewMath";
 
 export interface LinkLine {
   kind: BrewLineKind | string;
@@ -151,7 +152,7 @@ export const productSkuFor = (key: string) => `BM-${key.trim().replace(/\s+/g, "
 
 /** How a brewery supplier sells it, until a price sheet says otherwise: by the pound, the gallon or the package. */
 export function purchaseUnitFor(base: BaseUnit): { unit: "lb" | "gal" | "pkg"; packQtyBase: number } {
-  return base === "g" ? { unit: "lb", packQtyBase: 453.592 } : base === "ml" ? { unit: "gal", packQtyBase: 3785.41 } : { unit: "pkg", packQtyBase: 1 };
+  return base === "g" ? { unit: "lb", packQtyBase: G_PER_LB } : base === "ml" ? { unit: "gal", packQtyBase: ML_PER_GAL } : { unit: "pkg", packQtyBase: 1 };
 }
 
 /** The line's unit works for this ingredient (a standard conversion, or one the ingredient has). */
