@@ -64,7 +64,7 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
       onHand: st?.known ? st.qty / perUnit : null,
       countedOn: st?.known ? st.countedOn ?? null : null,
       par: par == null ? null : Math.round((par / perUnit) * 100) / 100,
-      hasSupplier: !!i.preferredProduct,
+      hasSupplier: !!i.preferredProductId,
       recipes: [...(recipesUsing.get(i.id) ?? [])].sort(),
       products: (productsOf.get(i.id) ?? []).map((p) => ({ id: p.id, supplier: p.supplier.name, description: p.description, sku: p.sku, pack: p.packText, unit: p.purchaseUnit, preferred: p.id === i.preferredProductId })),
       history: prefHist.filter((h) => h.date <= today).slice(-24),

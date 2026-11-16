@@ -2,9 +2,9 @@
 
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { countUnitsFor } from "@/server/services/inventory";
+import { COUNT_UNITS_INCLUDE, countUnitsFor } from "@/server/services/inventory";
 import { setPar } from "@/server/services/planning";
-import { canConvert, toBase } from "@/domain/units";
+import { canConvert, toBase, type BaseUnit } from "@/domain/units";
 import { archivedName, baseName } from "@/domain/archiveName";
 import { shortDate } from "@/lib/format";
 import { businessToday } from "@/server/services/sales";
@@ -43,12 +43,12 @@ export async function saveIngredient(id: string | null, _: unknown, form: FormDa
   };
   try {
     if (id) {
-      const current = await db.ingredient.findUniqueOrThrow({ where: { id }, include: { conversions: true } });
+      const current = await db.ingredient.findUniqueOrThrow({ where: { id }, include: COUNT_UNITS_INCLUDE });
       if (current.baseUnit !== v.baseUnit) {
         const used = await db.recipeLine.count({ where: { ingredientId: id } });
         if (used > 0) return { error: "Base unit can't change while recipes use this ingredient." };
       }
-      if (data.countUnit && !canConvert(data.countUnit, v.baseUnit, current.conversions.map((c) => ({ unit: c.unit, baseQty: c.baseQty.toNumber() })))) {
+      if (data.countUnit && !canConvert(data.countUnit, v.baseUnit, countUnitsFor({ ...current, baseUnit: v.baseUnit }).conversions)) {
         return { error: `Count unit "${data.countUnit}" doesn't convert to ${v.baseUnit} — add a conversion first.` };
       }
       await db.ingredient.update({ where: { id }, data });
@@ -158,7 +158,7 @@ export async function restoreIngredient(id: string): Promise<{ error?: string }>
 /** Minimum on hand, typed in the ingredient's count unit. Used for items no recipe uses. */
 export async function setMinOnHand(ingredientId: string, raw: string) {
   await requireUser("MANAGER");
-  const ing = await db.ingredient.findUnique({ where: { id: ingredientId }, include: { conversions: true, preferredProduct: { select: { purchaseUnit: true, packQtyBase: true } } } });
+  const ing = await db.ingredient.findUnique({ where: { id: ingredientId }, include: COUNT_UNITS_INCLUDE });
   if (!ing) return { error: "That ingredient is gone." };
   const text = raw.trim();
   if (text === "") {
@@ -232,4 +232,33 @@ export async function archiveIngredients(ids: string[]): Promise<BulkResult> {
   }
   if (!done) return { error: `${kept.length === 1 ? `${kept[0]} is` : "All of them are"} still used in recipes.` };
   return { message: `Archived ${count(done)}.${kept.length ? ` Kept ${kept.slice(0, 3).join(", ")}${kept.length > 3 ? ` and ${kept.length - 3} more` : ""}: still in recipes.` : ""}` };
+}
+
+/**
+ * Another way to buy this ingredient: link a supplier product (moving it from
+ * whatever it was linked to). Several packs — a case of #10 cans and single
+ * jugs — then all count and cost as the same ingredient. The pack size is kept
+ * only when the base unit matches; otherwise it's read from the pack text or left for you to set.
+ */
+export async function addPackToIngredient(ingredientId: string, productId: string): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const [ing, product] = await Promise.all([
+    db.ingredient.findUnique({ where: { id: ingredientId } }),
+    db.supplierProduct.findUnique({ where: { id: productId }, include: { ingredient: { select: { id: true, baseUnit: true, preferredProductId: true } } } }),
+  ]);
+  if (!ing || !product) return { error: "That's gone. Refresh and try again." };
+  if (product.ingredientId === ingredientId) return {};
+  const { inferPackQty } = await import("@/domain/priceSheet");
+  const sameBase = product.ingredient?.baseUnit === ing.baseUnit;
+  const pack = sameBase ? product.packQtyBase : inferPackQty(product.packText, ing.baseUnit as BaseUnit);
+  await db.$transaction([
+    ...(product.ingredient?.preferredProductId === productId ? [db.ingredient.update({ where: { id: product.ingredient.id }, data: { preferredProductId: null } })] : []),
+    db.supplierProduct.update({ where: { id: productId }, data: { ingredientId, packQtyBase: pack == null ? null : new Prisma.Decimal(Number(pack).toFixed(4)) } }),
+    db.ingredient.updateMany({ where: { id: ingredientId, preferredProductId: null }, data: { preferredProductId: productId } }),
+  ]);
+  revalidatePath(`/ingredients/${ingredientId}`);
+  if (product.ingredientId) revalidatePath(`/ingredients/${product.ingredientId}`);
+  revalidatePath("/prices");
+  revalidatePath("/count", "layout");
+  return {};
 }

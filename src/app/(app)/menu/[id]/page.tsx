@@ -16,10 +16,10 @@ import { allergenLabel } from "@/domain/allergens";
 import Link from "next/link";
 import { DraftStart } from "./draft-start";
 
-export default async function RecipePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ kind?: string }> }) {
+export default async function RecipePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ kind?: string; name?: string }> }) {
   await requireUser("MANAGER");
   const { id } = await params;
-  const { kind } = await searchParams;
+  const { kind, name: givenName } = await searchParams;
   const isNew = id === "new";
   const snap = await loadCostingSnapshot();
   const today = businessToday();
@@ -84,7 +84,8 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
       }
     : {
         id: null,
-        name: "",
+        // "Make this a prep recipe" from a recipe line arrives with the name filled in.
+        name: (givenName ?? "").replace(/\s*\((keg|bought|purchased)\)\s*$/i, "").slice(0, 120),
         kind: kind === "PREP" || kind === "MODIFIER" ? kind : "MENU",
         category: kind === "PREP" ? "Prep" : "Food",
         menuPrice: null,

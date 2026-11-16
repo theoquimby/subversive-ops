@@ -10,7 +10,7 @@ import type { BaseUnit } from "@/domain/units";
 import { canConvert } from "@/domain/units";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { countUnitsFor } from "@/server/services/inventory";
+import { COUNT_UNITS_INCLUDE, countUnitsFor } from "@/server/services/inventory";
 import { recordManualPrice } from "@/server/services/priceImport";
 import { businessToday } from "@/server/services/sales";
 import { Prisma } from "@prisma/client";
@@ -46,7 +46,7 @@ export async function setIngredientField(id: string, field: "name" | "category" 
       if (field === "safetyPct" && (n < 0 || n > 200)) return { error: "Buffer is 0–200%" };
       await db.ingredient.update({ where: { id }, data: { [field]: new Prisma.Decimal(n / 100) } });
     } else if (field === "countUnit") {
-      const ing = await db.ingredient.findUniqueOrThrow({ where: { id }, include: { conversions: true, preferredProduct: { select: { purchaseUnit: true, packQtyBase: true } } } });
+      const ing = await db.ingredient.findUniqueOrThrow({ where: { id }, include: COUNT_UNITS_INCLUDE });
       if (value && !canConvert(value, ing.baseUnit as BaseUnit, countUnitsFor(ing).conversions)) return { error: `"${value}" doesn't convert — add it as a custom unit` };
       await db.ingredient.update({ where: { id }, data: { countUnit: value || null } });
     }

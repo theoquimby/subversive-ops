@@ -5,26 +5,29 @@ import { useConfirm } from "@/components/dialog";
 import { GridSelect } from "@/components/grid";
 import { Badge, Button, cx } from "@/components/ui";
 import { money, qty } from "@/lib/format";
-import { setSquareMapping } from "@/server/actions/inline";
 import type { SquareItemRow } from "@/server/services/square-menu";
 import { Check, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { acceptSuggestions, applySquarePrices, createRecipesFromSquare, ignoreItems, rejectSuggestions, unignoreItems } from "./square-menu/actions";
 import { draftSquareItems } from "../menu/drafts/actions";
+import { setLinkFromGrid } from "./link/actions";
 
 export type { SquareItemRow };
 
-type Status = "suggested" | "open" | "linked" | "ignored" | "removed";
-export const statusOf = (r: SquareItemRow): Status => (r.deleted ? "removed" : r.recipeId ? "linked" : r.ignored ? "ignored" : r.suggestion ? "suggested" : "open");
+type Status = "suggested" | "open" | "linked" | "bought" | "ignored" | "removed";
+export const statusOf = (r: SquareItemRow): Status => (r.deleted ? "removed" : r.recipeId ? "linked" : r.ignored ? "ignored" : r.unitCost != null ? "bought" : r.suggestion ? "suggested" : "open");
 const STATUS: Record<Status, { label: string; tone: "good" | "warn" | "neutral" | "bad" }> = {
   suggested: { label: "Suggested match", tone: "warn" },
   open: { label: "Not matched", tone: "warn" },
   linked: { label: "Linked", tone: "good" },
+  bought: { label: "Cost each", tone: "good" },
   ignored: { label: "Ignored", tone: "neutral" },
   removed: { label: "Removed from Square", tone: "neutral" },
 };
 const differs = (r: SquareItemRow) => !!r.drift;
+const linkValue = (r: SquareItemRow) => (r.ignored ? "__ignore" : r.recipeId ?? (r.unitCost != null ? "__cost" : ""));
+const saveLink = async (squareId: string, v: string) => (v === "__cost" ? undefined : setLinkFromGrid(squareId, v));
 const pctLabel = (c: number) => `${Math.round(c * 100)}%`;
 
 /** Accept / not this one, inline. */
@@ -68,7 +71,9 @@ export function SquareItemsTable({ id, rows, recipes, showSold = true, defaultFi
   const confirm = useConfirm();
   const router = useRouter();
   const recipeOptions = useMemo(() => recipes.map((r) => ({ value: r.id, label: `${r.name}${r.kind === "MODIFIER" ? " (add-on)" : ""}` })), [recipes]);
-  const linkOptions = useMemo(() => [{ value: "", label: "Not linked" }, { value: "__ignore", label: "Ignore (drinks, merch, gift cards)" }, ...recipeOptions], [recipeOptions]);
+  const linkOptions = useMemo(() => [{ value: "", label: "Not linked" }, { value: "__ignore", label: "Leave out of sales (gift cards, fees)" }, ...recipeOptions], [recipeOptions]);
+  // A bought-in item shows its cost each; picking it again changes nothing (set it on Link your sales).
+  const optionsFor = useCallback((r: SquareItemRow) => (r.unitCost != null ? [{ value: "__cost", label: `Bought in · ${money(r.unitCost)} each` }, ...linkOptions] : linkOptions), [linkOptions]);
 
   const columns = useMemo<Column<SquareItemRow>[]>(() => [
     {
@@ -94,9 +99,9 @@ export function SquareItemsTable({ id, rows, recipes, showSold = true, defaultFi
       help: "sales.mapping",
       edit: true,
       width: 240,
-      sort: (r) => r.recipeName ?? (r.ignored ? "~ignored" : null),
-      csv: (r) => r.recipeName ?? (r.ignored ? "Ignored" : ""),
-      cell: (r) => <GridSelect value={r.ignored ? "__ignore" : r.recipeId ?? ""} options={linkOptions} onSave={setSquareMapping.bind(null, r.squareId)} ariaLabel={`Recipe for ${r.name}`} className="max-w-64 border-border" />,
+      sort: (r) => r.recipeName ?? (r.ignored ? "~ignored" : r.unitCost != null ? "~bought" : null),
+      csv: (r) => r.recipeName ?? (r.ignored ? "Left out" : r.unitCost != null ? `${r.unitCost} each` : ""),
+      cell: (r) => <GridSelect value={linkValue(r)} options={optionsFor(r)} onSave={saveLink.bind(null, r.squareId)} ariaLabel={`Recipe for ${r.name}`} className="max-w-64 border-border" />,
     },
     { id: "category", header: "Category", sort: (r) => r.category, csv: (r) => r.category, cell: (r) => r.category ?? <span className="text-muted">—</span>, defaultHidden: true },
     {
@@ -113,7 +118,7 @@ export function SquareItemsTable({ id, rows, recipes, showSold = true, defaultFi
         </span>
       )),
     },
-  ], [linkOptions, showSold]);
+  ], [optionsFor, showSold]);
 
   const filters = useMemo<Filter<SquareItemRow>[]>(() => [
     { id: "status", label: "Status", kind: "facet", values: (r) => statusOf(r), options: (Object.keys(STATUS) as Status[]).map((s) => ({ value: s, label: STATUS[s].label })), param: "status" },
@@ -169,7 +174,7 @@ export function SquareItemsTable({ id, rows, recipes, showSold = true, defaultFi
           </section>
           <section>
             <div className="mb-1.5 text-xs font-medium text-muted">Recipe</div>
-            <GridSelect value={r.ignored ? "__ignore" : r.recipeId ?? ""} options={linkOptions} onSave={setSquareMapping.bind(null, r.squareId)} ariaLabel={`Recipe for ${r.name}`} className="border-border" />
+            <GridSelect value={linkValue(r)} options={optionsFor(r)} onSave={saveLink.bind(null, r.squareId)} ariaLabel={`Recipe for ${r.name}`} className="border-border" />
           </section>
           {r.suggestion && (
             <section>

@@ -162,18 +162,22 @@ export const salesByRecipe = cache(async (from: ISODate, toExclusive: ISODate) =
 
 /**
  * Item sales for [from, toExclusive) summed per business date and linked
- * recipe, ignored items left out (null recipe: not linked). Once per render per range.
+ * recipe, ignored items left out (null recipe: not linked), plus bought-in items
+ * (a cost each, no recipe) per revenue class. Once per render per range.
  */
 export const itemSalesByDay = cache(async (from: ISODate, toExclusive: ISODate) => {
+  // Bought-in items (no recipe, a cost each) come back per revenue class with their cost.
   const rows = await db.$queryRaw<ItemDaySum[]>`
     SELECT to_char(ds.date, 'YYYY-MM-DD') AS date,
            sm."recipeId" AS "recipeId",
+           CASE WHEN sm."recipeId" IS NULL AND sm."unitCost" IS NOT NULL THEN COALESCE(sm."costClass", 'retail') END AS "fixedClass",
            SUM(ds.qty)::float8 AS qty,
-           SUM(ds."netSales")::float8 AS sales
+           SUM(ds."netSales")::float8 AS sales,
+           SUM(CASE WHEN sm."recipeId" IS NULL THEN ds.qty * sm."unitCost" END)::float8 AS "fixedCost"
     FROM "DailySale" ds
     LEFT JOIN "SquareMapping" sm ON sm."squareId" = ds."squareId"
     WHERE ds.date >= ${from}::date AND ds.date < ${toExclusive}::date AND sm.ignored IS NOT TRUE
-    GROUP BY 1, 2`;
+    GROUP BY 1, 2, 3`;
   return foldItemSales(rows);
 });
 

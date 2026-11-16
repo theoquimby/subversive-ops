@@ -3,7 +3,7 @@
 import { toBase, type BaseUnit } from "@/domain/units";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { countUnitsFor } from "@/server/services/inventory";
+import { COUNT_UNITS_INCLUDE, countUnitsFor } from "@/server/services/inventory";
 import { buildContext, loadCostingSnapshot } from "@/server/services/costing";
 import { businessToday } from "@/server/services/sales";
 import { explodeWaste } from "@/domain/prepWaste";
@@ -30,7 +30,7 @@ export type WasteEntry = z.input<typeof entrySchema>;
 async function wasteIngredient(s: Who, ingredientId: string, qty: number, unit: string, reason: string, batchId: string | null): Promise<Res> {
   if (!ingredientId) return { error: "Pick an item." };
   if (!(qty > 0)) return { error: "Enter how much." };
-  const ing = await db.ingredient.findUnique({ where: { id: ingredientId }, include: { conversions: true, preferredProduct: { select: { purchaseUnit: true, packQtyBase: true } } } });
+  const ing = await db.ingredient.findUnique({ where: { id: ingredientId }, include: COUNT_UNITS_INCLUDE });
   if (!ing) return { error: "That item isn't available any more — pick another." };
   const { units, conversions } = countUnitsFor(ing);
   if (!unit) return { error: "Pick a unit." };

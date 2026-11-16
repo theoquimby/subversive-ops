@@ -23,6 +23,8 @@ export interface SelectOption {
   group?: string;
   disabled?: boolean;
   hint?: string;
+  /** A small type label before the name ("Ingredient", "Prep recipe"); still searchable. */
+  badge?: string;
 }
 
 type ChangeEvent = { target: { value: string; name?: string } };
@@ -166,7 +168,7 @@ function Menu({ open, setOpen, buttonRef, listId, options, current, commit, show
   const reduced = useReducedMotion();
   const { isMounted, styles: motion } = useTransitionStyles(context, phone ? sheetTransition(reduced) : popoverTransition(reduced));
 
-  const filtered = useMemo(() => (query ? fuzzyFilter(options, query, (o) => `${o.label} ${o.group ?? ""}`, 200) : options), [options, query]);
+  const filtered = useMemo(() => (query ? fuzzyFilter(options, query, (o) => `${o.label} ${o.group ?? ""} ${o.badge ?? ""}`, 200) : options), [options, query]);
   const close = () => { setOpen(false); setQuery(""); };
   const pick = (o: SelectOption) => { if (o.disabled) return; setQuery(""); commit(o); };
 
@@ -257,7 +259,10 @@ function Menu({ open, setOpen, buttonRef, listId, options, current, commit, show
                     o.value === "" && "text-muted",
                   )}
                 >
-                  <span className="truncate">{o.label}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    {o.badge && <span className="shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-ink-2 ring-1 ring-border">{o.badge}</span>}
+                    <span className="truncate">{o.label}</span>
+                  </span>
                   <span className="flex shrink-0 items-center gap-2">
                     {o.hint && <span className="text-xs text-muted">{o.hint}</span>}
                     {o.value === current && <Check className="size-3.5 text-ink" strokeWidth={2.5} />}

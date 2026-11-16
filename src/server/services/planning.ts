@@ -2,7 +2,8 @@ import "server-only";
 import { CostingContext, explodeUsage } from "@/domain/costing";
 import { addDays, dateRange, daysBetween, ISODate, nextWeekdayOnOrAfter, parseISODate, toISODate, todayIn, zonedMidnightUTC } from "@/domain/dates";
 import { DayForecast, forecastSeries } from "@/domain/forecast";
-import { CutoffRule, cutoffRule, estimateOnHand, hoursUntil, nextCutoff, OrderSuggestion, shouldAutoDraft, suggestLine } from "@/domain/ordering";
+import type { BaseUnit } from "@/domain/units";
+import { CutoffRule, cutoffRule, defaultPack, estimateOnHand, hoursUntil, nextCutoff, OrderSuggestion, packOptions, shouldAutoDraft, suggestLine } from "@/domain/ordering";
 import { dayDate } from "@/lib/format";
 import { Prisma } from "@prisma/client";
 import { db, num } from "../db";
@@ -123,14 +124,16 @@ async function computePlans(requests: { supplierId: string; override?: { deliver
     }
     const deliveryDate = override?.deliveryDate ?? win.deliveryDate;
     const coverUntil = override?.coverUntil ?? win.coverUntil;
-    // Only one product per ingredient is ordered from a supplier: the preferred one, else the first.
+    // One line per ingredient; when the supplier sells it in several packs, the line offers them all.
     const byIngredient = new Map<string, (typeof supplier.products)[number]>();
+    const packsOf = new Map<string, (typeof supplier.products)[number][]>();
     for (const p of supplier.products) {
       const ing = p.ingredient!;
       const cur = byIngredient.get(ing.id);
       if (!cur || ing.preferredProductId === p.id) byIngredient.set(ing.id, p);
+      packsOf.set(ing.id, [...(packsOf.get(ing.id) ?? []), p]);
     }
-    return { supplier, deliveryDate, coverUntil, byIngredient };
+    return { supplier, deliveryDate, coverUntil, byIngredient, packsOf };
   });
   const allIngredients = [...new Set(jobs.flatMap((j) => [...j.byIngredient.keys()]))];
 
@@ -152,17 +155,32 @@ async function computePlans(requests: { supplierId: string; override?: { deliver
     return total;
   };
 
-  for (const { supplier, deliveryDate, coverUntil, byIngredient } of jobs) {
+  // The pack each ingredient was last ordered in, per supplier: the builder starts there.
+  const lastOrdered = new Map<string, string>();
+  const multi = jobs.flatMap((j) => [...j.packsOf].filter(([, ps]) => ps.length > 1).flatMap(([, ps]) => ps.map((p) => p.id)));
+  if (multi.length) {
+    const recent = await db.purchaseOrderLine.findMany({ where: { supplierProductId: { in: multi }, qty: { gt: 0 } }, orderBy: { order: { createdAt: "desc" } }, select: { supplierProductId: true, product: { select: { ingredientId: true, supplierId: true } } } });
+    for (const r of recent) {
+      const k = `${r.product.supplierId}:${r.product.ingredientId}`;
+      if (!lastOrdered.has(k)) lastOrdered.set(k, r.supplierProductId);
+    }
+  }
+
+  for (const { supplier, deliveryDate, coverUntil, byIngredient, packsOf } of jobs) {
     const ingredientIds = [...byIngredient.keys()];
     const incoming = await incomingBy(ingredientIds, deliveryDate);
     const forecastDates = dateRange(today, coverUntil);
     const onHandNotes = new Map<string, string>();
     const lines: OrderSuggestion[] = [];
-    for (const [ingredientId, product] of byIngredient) {
-      const ing = product.ingredient!;
+    for (const [ingredientId, preferred] of byIngredient) {
+      const ing = preferred.ingredient!;
+      const packs = packsOf.get(ingredientId) ?? [preferred];
+      const priced = packs.map((p) => ({ supplierProductId: p.id, description: p.description, sku: p.sku, packText: p.packText, purchaseUnit: p.purchaseUnit, packQtyBase: num(p.packQtyBase), unitPrice: priceAsOf(snap.priceHistory.get(p.id), today) }));
+      const chosenId = packs.length > 1 ? defaultPack(packOptions(1, priced), lastOrdered.get(`${supplier.id}:${ingredientId}`) ?? null, ing.preferredProductId)?.supplierProductId : preferred.id;
+      const product = packs.find((p) => p.id === chosenId) ?? preferred;
       const st = stock.get(ingredientId)!;
       onHandNotes.set(ingredientId, st.countedOn ? `counted ${st.countedOn}` : "not counted yet");
-      lines.push(
+      const line = (
         suggestLine(
           {
             supplierProductId: product.id,
@@ -185,8 +203,13 @@ async function computePlans(requests: { supplierId: string; override?: { deliver
             daysUntilDelivery: Math.max(0, daysBetween(today, deliveryDate)),
             coverDays: Math.max(0, daysBetween(deliveryDate, coverUntil)),
           },
-        ),
+        )
       );
+      if (packs.length > 1) {
+        line.options = packOptions(line.shortfall, priced);
+        line.baseUnit = ing.baseUnit as BaseUnit;
+      }
+      lines.push(line);
     }
     const rank = (l: OrderSuggestion) => (l.status === "runs-out" ? 2 : l.suggestedUnits > 0 ? 1 : 0);
     lines.sort((a, b) => rank(b) - rank(a) || a.ingredientName.localeCompare(b.ingredientName));

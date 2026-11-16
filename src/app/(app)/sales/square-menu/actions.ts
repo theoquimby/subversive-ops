@@ -4,6 +4,7 @@ import { planRecipesFromSquare } from "@/domain/squareMenu";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { addRejected, loadSquareMenu } from "@/server/services/square-menu";
+import { writeLinks } from "@/server/services/linking";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -11,6 +12,7 @@ import { z } from "zod";
 type Result = { error?: string; message?: string };
 
 const refresh = () => {
+  revalidatePath("/sales/link");
   revalidatePath("/sales/square-menu");
   revalidatePath("/sales");
   revalidatePath("/menu");
@@ -20,14 +22,15 @@ const pairs = z.array(z.object({ squareId: z.string().min(1).max(128), recipeId:
 
 /** Link Square items to the suggested recipes. */
 export async function acceptSuggestions(input: z.input<typeof pairs>): Promise<Result> {
-  await requireUser("MANAGER");
+  const user = await requireUser("MANAGER");
   const p = pairs.safeParse(input);
   if (!p.success) return { error: "Nothing to accept." };
-  const recipes = new Set((await db.recipe.findMany({ where: { id: { in: p.data.map((x) => x.recipeId) } }, select: { id: true } })).map((r) => r.id));
+  const recipes = new Set((await db.recipe.findMany({ where: { id: { in: p.data.map((x) => x.recipeId) }, kind: { not: "PREP" } }, select: { id: true } })).map((r) => r.id));
   const ok = p.data.filter((x) => recipes.has(x.recipeId));
-  await db.$transaction(ok.map((x) => db.squareMapping.updateMany({ where: { squareId: x.squareId }, data: { recipeId: x.recipeId, ignored: false } })));
+  // Logged, so it shows on Link your sales → Changes and can be undone there.
+  const r = await writeLinks(ok.map((x) => ({ squareId: x.squareId, to: { recipeId: x.recipeId, ignored: false, unitCost: null, costClass: null } })), user.name);
   refresh();
-  return { message: `Linked ${ok.length} item${ok.length === 1 ? "" : "s"}.` };
+  return { message: `Linked ${r.changed} item${r.changed === 1 ? "" : "s"}.` };
 }
 
 const ids = z.array(z.string().min(1).max(128)).min(1).max(1000);
@@ -61,12 +64,13 @@ export async function createRecipesFromSquare(input: string[]): Promise<Result> 
 
 /** Mark Square items as having no recipe (drinks bought in, merch, gift cards). */
 export async function ignoreItems(input: string[]): Promise<Result> {
-  await requireUser("MANAGER");
+  const user = await requireUser("MANAGER");
   const p = ids.safeParse(input);
   if (!p.success) return { error: "Pick at least one item." };
-  const r = await db.squareMapping.updateMany({ where: { squareId: { in: p.data }, recipeId: null }, data: { ignored: true } });
+  const open = await db.squareMapping.findMany({ where: { squareId: { in: p.data }, recipeId: null }, select: { squareId: true } });
+  const r = await writeLinks(open.map((m) => ({ squareId: m.squareId, to: { recipeId: null, ignored: true, unitCost: null, costClass: null } })), user.name);
   refresh();
-  return { message: `Ignored ${r.count} item${r.count === 1 ? "" : "s"}.` };
+  return { message: `Left ${r.changed} item${r.changed === 1 ? "" : "s"} out of sales.` };
 }
 
 const prices = z.array(z.object({ recipeId: z.string().min(1).max(64), price: z.number().min(0).max(100_000) })).min(1).max(1000);
@@ -94,10 +98,11 @@ export async function rejectSuggestions(input: z.input<typeof pairs>): Promise<R
 
 /** Undo Ignore: back to the "still to match" pile. */
 export async function unignoreItems(input: string[]): Promise<Result> {
-  await requireUser("MANAGER");
+  const user = await requireUser("MANAGER");
   const p = ids.safeParse(input);
   if (!p.success) return { error: "Pick at least one item." };
-  const r = await db.squareMapping.updateMany({ where: { squareId: { in: p.data }, ignored: true }, data: { ignored: false } });
+  const left = await db.squareMapping.findMany({ where: { squareId: { in: p.data }, ignored: true }, select: { squareId: true } });
+  const r = await writeLinks(left.map((m) => ({ squareId: m.squareId, to: { recipeId: null, ignored: false, unitCost: null, costClass: null } })), user.name);
   refresh();
-  return { message: `${r.count} item${r.count === 1 ? " is" : "s are"} back to match.` };
+  return { message: `${r.changed} item${r.changed === 1 ? " is" : "s are"} back to match.` };
 }

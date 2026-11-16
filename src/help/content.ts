@@ -29,6 +29,7 @@ import { website } from "./areas/website";
 import { websiteAnalytics } from "./areas/websiteAnalytics";
 import { whatsNew } from "./areas/whatsNew";
 import { monthEnd } from "./areas/monthEnd";
+import { linking } from "./areas/linking";
 import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
 
@@ -81,6 +82,7 @@ export const HELP: HelpEntry[] = [
   ...waste,
   ...variance,
   ...sales,
+  ...linking,
   ...importing,
   ...settings,
   ...settingsPages,

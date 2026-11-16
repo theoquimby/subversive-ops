@@ -1,5 +1,6 @@
 import "server-only";
-import { LinkedPrice, priceDrift, RecipeLite, SquareMenuItem, suggestMatches } from "@/domain/squareMenu";
+import { LinkedPrice, priceDrift, RecipeLite, SquareMenuItem } from "@/domain/squareMenu";
+import { rankCandidates } from "@/domain/linking";
 import { db, num } from "../db";
 import { squareCatalogMeta } from "./sales";
 import { readSettingJSON, writeSettingJSON } from "./square";
@@ -19,6 +20,8 @@ export interface SquareMenuRow extends SquareMenuItem {
   recipeId: string | null;
   recipeName: string | null;
   ignored: boolean;
+  /** Bought in, no recipe: cost of one (counts as linked). */
+  unitCost: number | null;
   archived: boolean;
   deleted: boolean;
   /** Catalog metadata (price, category) has been synced for this item. */
@@ -30,7 +33,7 @@ export async function loadSquareMenu() {
   const [mappings, meta, recipes] = await Promise.all([
     db.squareMapping.findMany({ include: { recipe: { select: { name: true } } }, orderBy: { squareName: "asc" } }),
     squareCatalogMeta(),
-    db.recipe.findMany({ where: { active: true, kind: { in: ["MENU", "MODIFIER"] } }, select: { id: true, name: true, kind: true, menuPrice: true, _count: { select: { lines: true } } }, orderBy: { name: "asc" } }),
+    db.recipe.findMany({ where: { active: true, kind: { in: ["MENU", "MODIFIER"] } }, select: { id: true, name: true, kind: true, category: true, menuPrice: true, _count: { select: { lines: true } } }, orderBy: { name: "asc" } }),
   ]);
   const items: SquareMenuRow[] = mappings.map((m) => {
     const x = meta[m.squareId];
@@ -44,21 +47,28 @@ export async function loadSquareMenu() {
       recipeId: m.recipeId,
       recipeName: m.recipe?.name ?? null,
       ignored: m.ignored,
+      unitCost: num(m.unitCost),
       archived: x?.archived ?? false,
       deleted: x?.deleted ?? false,
       known: !!x,
     };
   });
   const recipeLite: RecipeLite[] = recipes.map((r) => ({ id: r.id, name: r.name, kind: r.kind as RecipeLite["kind"], menuPrice: num(r.menuPrice) }));
-  return { items, recipes: recipeLite, emptyRecipes: new Set(recipes.filter((r) => r._count.lines === 0).map((r) => r.id)), hasMeta: Object.keys(meta).length > 0 };
+  return { items, recipes: recipeLite, categories: recipes.map((r) => ({ id: r.id, category: r.category })), emptyRecipes: new Set(recipes.filter((r) => r._count.lines === 0).map((r) => r.id)), hasMeta: Object.keys(meta).length > 0 };
 }
 
 export async function squareMenuReview() {
-  const { items, recipes, emptyRecipes, hasMeta } = await loadSquareMenu();
-  const open = items.filter((i) => !i.recipeId && !i.ignored && !i.deleted);
+  const { items, recipes, emptyRecipes, hasMeta, categories } = await loadSquareMenu();
+  const open = items.filter((i) => !i.recipeId && !i.ignored && i.unitCost == null && !i.deleted);
   const rejected = await loadRejected();
   // Rejected pairs are taken out before matching, so the next-best recipe can still be suggested.
-  const suggestions = open.flatMap((it) => suggestMatches([it], recipes.filter((r) => !rejected[it.squareId]?.includes(r.id))));
+  // Same ranking as Link your sales (name, category, price, size), so both pages suggest the same recipe.
+  const catOf = new Map(categories.map((r) => [r.id, r.category]));
+  const ranked = recipes.map((r) => ({ id: r.id, name: r.name, kind: r.kind, category: catOf.get(r.id) ?? "", menuPrice: r.menuPrice, cost: null, incomplete: false, lines: 1 }));
+  const suggestions = open.flatMap((it) => {
+    const [best] = rankCandidates({ squareId: it.squareId, name: it.name, baseName: it.baseName, modifier: it.squareType === "MODIFIER", category: it.category, price: it.price }, ranked, { rejected: new Set(rejected[it.squareId] ?? []), limit: 1 });
+    return best && best.confidence >= 0.7 ? [{ squareId: it.squareId, recipeId: best.recipeId, recipeName: best.recipeName, confidence: best.confidence }] : [];
+  });
   const priceOf = new Map(recipes.map((r) => [r.id, r]));
   const linked: LinkedPrice[] = items
     .filter((i) => i.recipeId && !i.deleted && !i.archived)
@@ -87,6 +97,8 @@ export interface SquareItemRow {
   recipeId: string | null;
   recipeName: string | null;
   ignored: boolean;
+  /** Bought in, no recipe: cost of one. */
+  unitCost: number | null;
   archived: boolean;
   deleted: boolean;
   sold: number;
@@ -121,6 +133,7 @@ export async function squareItemRows() {
       recipeId: i.recipeId,
       recipeName: i.recipeName,
       ignored: i.ignored,
+      unitCost: i.unitCost,
       archived: i.archived,
       deleted: i.deleted,
       sold: sold.get(i.squareId) ?? 0,

@@ -112,6 +112,56 @@ model Ingredient {
   wasteLogs   WasteLog[]
   /// Major US allergens this ingredient contains (see src/domain/allergens.ts ALLERGENS).
   allergens   String[]     @default([])
+  /// Count setup (managers): "how to count this" note shown to whoever counts.
+  countNote   String?
+  /// Shelf order within the storage area on the count sheet (lower first; null = after, by name).
+  countOrder  Int?
+  /// More home areas it's listed in on counts, besides storageArea (opened ones in the walk-in, full ones on the shelf).
+  countAreas  String[]     @default([])
+  /// Units staff may count in. Empty = every unit the item can be measured in.
+  countUnits  String[]     @default([])
+  /// How often it's counted: "every" count (default), "monthly" (due 30+ days after the last count) or "changes" (only when someone adds it; the last count carries forward).
+  countEvery  String       @default("every")
+  /// When the photo was last set (cache-busts the image URL); null = no photo.
+  photoAt     DateTime?
+  photo       CountPhoto?
+}
+
+/// One photo per count item (an ingredient or a prep recipe), shown on the count sheet. Compressed in the browser first.
+model CountPhoto {
+  id           String      @id @default(cuid())
+  ingredientId String?     @unique
+  ingredient   Ingredient? @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  recipeId     String?     @unique
+  recipe       Recipe?     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  mime         String
+  bytes        Bytes
+  updatedAt    DateTime    @updatedAt
+}
+
+/// Containers a prep item is counted in: "1/3 pan" = 30 each.
+model RecipeCountUnit {
+  id       String  @id @default(cuid())
+  recipeId String
+  recipe   Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  unit     String
+  baseQty  Decimal @db.Decimal(14, 4)
+
+  @@unique([recipeId, unit])
+}
+
+/// A prep item (house-made sauce, portioned protein) counted on an inventory count. Approving the count records it as the prep list's on-hand.
+model StockCountPrepLine {
+  id       String     @id @default(cuid())
+  countId  String
+  count    StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  recipeId String
+  recipe   Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  qtyBase  Decimal    @db.Decimal(14, 4)
+  parts    Json?
+
+  @@unique([countId, recipeId])
+  @@index([recipeId])
 }
 
 // Ingredient-specific units: "1 slice = 21 g", "1 cup = 120 g" (flour), "1 bun = 1 each"
@@ -194,6 +244,19 @@ model Recipe {
   usedIn     RecipeLine[] @relation("SubRecipe")
   squareMaps SquareMapping[]
   wasteLogs  WasteLog[]
+  /// Prep items on the inventory count: the storage area they're counted in (null = not on the count).
+  countArea   String?
+  /// More home areas it's listed in on counts.
+  countAreas  String[]     @default([])
+  countOrder  Int?
+  countNote   String?
+  countUnit   String?
+  countUnits  String[]     @default([])
+  countEvery  String       @default("every")
+  photoAt     DateTime?
+  photo       CountPhoto?
+  countUnitList RecipeCountUnit[]
+  countLines  StockCountPrepLine[]
 }
 
 model RecipeLine {
@@ -221,6 +284,10 @@ model SquareMapping {
   recipeId   String?
   recipe     Recipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
   ignored    Boolean @default(false) // e.g. gift cards, merch
+  /// Bought in, no recipe (cans, soda, merch): what one sold costs us. Counts as linked at this cost.
+  unitCost   Decimal? @db.Decimal(10, 2)
+  /// Revenue class for a bought-in item ("food" | "beer" | "otherBev" | "retail"); null = by its Square category.
+  costClass  String?
 
   @@index([recipeId]) // perf
 }
@@ -244,7 +311,14 @@ model StockCount {
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   area      String?
   completed Boolean  @default(false)
+  /// Staff finished counting; waiting for a manager to approve (completed stays false until then).
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  approvedBy  String?
+  /// "Something's missing?" notes from whoever counted, for the manager.
+  staffNote   String?
   lines     StockCountLine[]
+  prepLines StockCountPrepLine[]
 
   @@index([completed, takenAt]) // perf: latest completed counts
 }
@@ -256,6 +330,8 @@ model StockCountLine {
   ingredientId String
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
   qtyBase      Decimal    @db.Decimal(14, 4)
+  /// What was typed, per area, when it was counted in more than one unit or place, e.g. [{"area":"Walk-in","qty":2,"unit":"jug"},{"area":"Dry storage","qty":3,"unit":"can"}]. qtyBase is the total.
+  parts        Json?
 
   @@unique([countId, ingredientId])
   @@index([ingredientId]) // perf: last count per ingredient
@@ -1575,4 +1651,22 @@ model GoogleProfileKeyword {
   threshold Int?
 
   @@id([month, keyword])
+}
+
+/// Every change to how a Square item is linked (recipe, ignored, bought-in cost), so it can be undone.
+model LinkChange {
+  id         String    @id @default(cuid())
+  at         DateTime  @default(now())
+  /// Changes made together (a bulk accept) share a batch and undo together.
+  batch      String
+  userName   String?
+  squareId   String
+  squareName String
+  /// { recipeId, recipeName, ignored, unitCost, costClass } before and after.
+  before     Json
+  after      Json
+  undoneAt   DateTime?
+
+  @@index([at])
+  @@index([batch])
 }

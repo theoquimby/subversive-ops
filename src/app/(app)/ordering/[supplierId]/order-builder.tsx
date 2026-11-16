@@ -2,7 +2,7 @@
 
 import { Badge, Button, Card, cx, Field, Select } from "@/components/ui";
 import { addDays } from "@/domain/dates";
-import type { OrderSuggestion } from "@/domain/ordering";
+import { packTradeoff, type OrderSuggestion } from "@/domain/ordering";
 import { dayDate, money, qty, shortDate } from "@/lib/format";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -22,18 +22,47 @@ function Stepper({ l, q, set }: { l: Line; q: number; set: (id: string, n: numbe
   return (
     <div className="inline-flex flex-col items-end">
       <div className="inline-flex items-center rounded-lg border border-border-strong" data-tour="ordering.qty">
-        <button type="button" className="h-9 w-9 text-ink-2 hover:bg-surface-2" onClick={() => set(l.supplierProductId, q - 1)} aria-label="Less">−</button>
+        <button type="button" className="h-9 w-9 text-ink-2 hover:bg-surface-2" onClick={() => set(l.ingredientId, q - 1)} aria-label="Less">−</button>
         <input
           inputMode="numeric"
           value={q}
-          onChange={(e) => set(l.supplierProductId, Number(e.target.value.replace(/\D/g, "")) || 0)}
+          onChange={(e) => set(l.ingredientId, Number(e.target.value.replace(/\D/g, "")) || 0)}
           onFocus={(e) => e.target.select()}
           className={cx("num h-9 w-12 border-x border-border bg-transparent text-center text-base focus:outline-none sm:text-sm", changed && "font-semibold")}
           aria-label={`${l.ingredientName} quantity`}
         />
-        <button type="button" className="h-9 w-9 text-ink-2 hover:bg-surface-2" onClick={() => set(l.supplierProductId, q + 1)} aria-label="More">+</button>
+        <button type="button" className="h-9 w-9 text-ink-2 hover:bg-surface-2" onClick={() => set(l.ingredientId, q + 1)} aria-label="More">+</button>
       </div>
       {changed && <div className="mt-1 text-xs font-normal text-muted">suggested {l.suggestedUnits}</div>}
+    </div>
+  );
+}
+
+/** The line as ordered in another of its packs. */
+function withPack(l: Line, id: string | undefined): Line {
+  const o = id && id !== l.supplierProductId ? l.options?.find((x) => x.supplierProductId === id) : undefined;
+  if (!o) return l;
+  return { ...l, supplierProductId: o.supplierProductId, description: o.description, purchaseUnit: o.purchaseUnit, packQtyBase: o.packQtyBase, unitPrice: o.unitPrice, suggestedUnits: o.suggestedUnits, lineCost: o.lineCost };
+}
+
+/** Per-unit price people compare packs by: oz, fl oz, each. */
+const COMPARE: Record<string, { unit: string; factor: number }> = { g: { unit: "oz", factor: 28.349523125 }, ml: { unit: "fl oz", factor: 29.5735295625 }, each: { unit: "ea", factor: 1 } };
+
+/** Switch between the packs a supplier sells an item in, with price per oz and the trade-off. */
+function PackPicker({ l, onPick }: { l: Line; onPick: (l: Line, id: string) => void }) {
+  if (!l.options || l.options.length < 2) return null;
+  const per = COMPARE[l.baseUnit ?? "each"];
+  const note = packTradeoff(l.options, l.supplierProductId, per);
+  return (
+    <div className="mt-1.5 whitespace-normal" data-tour="ordering.packs" onClick={(e) => e.stopPropagation()}>
+      <Select
+        value={l.supplierProductId}
+        onChange={(e) => onPick(l, e.target.value)}
+        options={l.options.map((o) => ({ value: o.supplierProductId, label: `${o.purchaseUnit}${o.packText ? ` · ${o.packText}` : ""}`, hint: `${o.costPerBase != null ? `${money(o.costPerBase * per.factor)}/${per.unit}` : "no price"}${o.suggestedUnits ? ` · need ${o.suggestedUnits}` : ""}` }))}
+        className="!h-9 !w-full max-w-60 text-xs"
+        aria-label={`Pack to order ${l.ingredientName} in`}
+      />
+      {note && <div className="mt-1 text-xs leading-snug text-ink-2 [overflow-wrap:anywhere]">{note}</div>}
     </div>
   );
 }
@@ -48,13 +77,22 @@ export function OrderBuilder(props: {
   lines: Line[];
 }) {
   const router = useRouter();
-  const [qtys, setQtys] = useState<Record<string, number>>(() => Object.fromEntries(props.lines.map((l) => [l.supplierProductId, l.suggestedUnits])));
+  const [qtys, setQtys] = useState<Record<string, number>>(() => Object.fromEntries(props.lines.map((l) => [l.ingredientId, l.suggestedUnits])));
+  // Which pack each line is ordered in (starts on the one ordered last time).
+  const [pack, setPack] = useState<Record<string, string>>(() => Object.fromEntries(props.lines.map((l) => [l.ingredientId, l.supplierProductId])));
+  const rows = useMemo(() => props.lines.map((l) => withPack(l, pack[l.ingredientId])), [props.lines, pack]);
+  const choosePack = (l: Line, id: string) => {
+    const o = l.options?.find((x) => x.supplierProductId === id);
+    if (!o) return;
+    setPack((p) => ({ ...p, [l.ingredientId]: id }));
+    setQtys((q) => ({ ...q, [l.ingredientId]: o.suggestedUnits }));
+  };
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  const total = props.lines.reduce((s, l) => s + (qtys[l.supplierProductId] ?? 0) * (l.unitPrice ?? 0), 0);
-  const ordering = props.lines.filter((l) => (qtys[l.supplierProductId] ?? 0) > 0).length;
-  const runsOut = props.lines.filter((l) => l.status === "runs-out");
+  const total = rows.reduce((s, l) => s + (qtys[l.ingredientId] ?? 0) * (l.unitPrice ?? 0), 0);
+  const ordering = rows.filter((l) => (qtys[l.ingredientId] ?? 0) > 0).length;
+  const runsOut = rows.filter((l) => l.status === "runs-out");
 
   const setQ = (id: string, n: number) => setQtys((s) => ({ ...s, [id]: Math.max(0, n) }));
   const columns = useMemo<Column<Line>[]>(() => [
@@ -65,9 +103,10 @@ export function OrderBuilder(props: {
       sort: (l) => l.ingredientName,
       csv: (l) => l.ingredientName,
       cell: (l) => (
-        <div className={cx(l.status === "covered" && (qtys[l.supplierProductId] ?? 0) === 0 && "opacity-60")}>
+        <div className={cx(l.status === "covered" && (qtys[l.ingredientId] ?? 0) === 0 && "opacity-60")}>
           <div className="font-medium text-ink">{l.ingredientName}</div>
           <div className="text-xs text-muted">{l.description} · {money(l.unitPrice)}/{l.purchaseUnit}</div>
+          <PackPicker l={l} onPick={choosePack} />
           {l.status === "needs-setup" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="warn">Set pack size</Badge><HelpTip id="ordering.builder.needsSetup" /></span>}
           {l.status === "needs-count" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="warn">Count to auto-order</Badge><HelpTip id="ordering.builder.needsCount" /></span>}
           {l.status === "runs-out" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="bad">Runs out before delivery</Badge><HelpTip id="ordering.builder.runsOut" /></span>}
@@ -101,14 +140,14 @@ export function OrderBuilder(props: {
       ),
     },
     { id: "needed", header: "Needed", help: "ordering.builder.needed", align: "right", firstDir: "desc", sort: (l) => packs(l.neededForCover, l), csv: (l) => packs(l.neededForCover, l), cell: (l) => (packs(l.neededForCover, l) == null ? "—" : `${qty(packs(l.neededForCover, l), 1)} ${l.purchaseUnit}`) },
-    { id: "order", header: "Order", align: "right", hideable: false, width: 150, firstDir: "desc", sort: (l) => qtys[l.supplierProductId] ?? 0, csv: (l) => qtys[l.supplierProductId] ?? 0, cell: (l) => <Stepper l={l} q={qtys[l.supplierProductId] ?? 0} set={setQ} /> },
-    { id: "cost", header: "Cost", align: "right", firstDir: "desc", sort: (l) => (qtys[l.supplierProductId] ?? 0) * (l.unitPrice ?? 0), csv: (l) => (qtys[l.supplierProductId] ?? 0) * (l.unitPrice ?? 0), cell: (l) => { const q = qtys[l.supplierProductId] ?? 0; return q > 0 ? money(q * (l.unitPrice ?? 0)) : <span className="text-muted">—</span>; } },
+    { id: "order", header: "Order", align: "right", hideable: false, width: 150, firstDir: "desc", sort: (l) => qtys[l.ingredientId] ?? 0, csv: (l) => qtys[l.ingredientId] ?? 0, cell: (l) => <Stepper l={l} q={qtys[l.ingredientId] ?? 0} set={setQ} /> },
+    { id: "cost", header: "Cost", align: "right", firstDir: "desc", sort: (l) => (qtys[l.ingredientId] ?? 0) * (l.unitPrice ?? 0), csv: (l) => (qtys[l.ingredientId] ?? 0) * (l.unitPrice ?? 0), cell: (l) => { const q = qtys[l.ingredientId] ?? 0; return q > 0 ? money(q * (l.unitPrice ?? 0)) : <span className="text-muted">—</span>; } },
   ], [qtys]);
 
   const filters = useMemo<Filter<Line>[]>(() => [
     { id: "status", label: "Status", kind: "facet", values: (l) => l.status, options: (Object.keys(STATUS_LABEL) as Line["status"][]).map((k) => ({ value: k, label: STATUS_LABEL[k] })) },
-    { id: "hideCovered", label: "Hide covered", kind: "toggle", test: (l) => l.status !== "covered" || (qtys[l.supplierProductId] ?? 0) > 0 },
-    { id: "ordering", label: "On this order", kind: "toggle", test: (l) => (qtys[l.supplierProductId] ?? 0) > 0 },
+    { id: "hideCovered", label: "Hide covered", kind: "toggle", test: (l) => l.status !== "covered" || (qtys[l.ingredientId] ?? 0) > 0 },
+    { id: "ordering", label: "On this order", kind: "toggle", test: (l) => (qtys[l.ingredientId] ?? 0) > 0 },
   ], [qtys]);
 
   const go = (delivery: string, until: string) => router.push(`?delivery=${delivery}&until=${until}`);
@@ -148,8 +187,8 @@ export function OrderBuilder(props: {
       <HelpZone id="ordering.builder.lines">
         <DataTable
           id="order-builder"
-          rows={props.lines}
-          rowKey={(l) => l.supplierProductId}
+          rows={rows}
+          rowKey={(l) => l.ingredientId}
           columns={columns}
           noun={["item", "items"]}
           searchText={(l) => `${l.ingredientName} ${l.description}`}
@@ -159,14 +198,14 @@ export function OrderBuilder(props: {
           maxHeight="calc(100dvh - 14rem)"
           summary={(vis) => [
             { value: vis.length, label: vis.length === 1 ? "item" : "items" },
-            { value: vis.filter((l) => (qtys[l.supplierProductId] ?? 0) > 0).length, label: "on this order", filter: { id: "ordering" } },
+            { value: vis.filter((l) => (qtys[l.ingredientId] ?? 0) > 0).length, label: "on this order", filter: { id: "ordering" } },
             { value: vis.filter((l) => l.status === "runs-out").length, label: "run out first", tone: "bad", filter: { id: "status", value: "runs-out" } },
             { value: vis.filter((l) => l.status === "needs-count" || l.status === "needs-setup").length, label: "need setup or a count", tone: "warn" },
           ]}
           card={(l) => ({
             title: l.ingredientName,
-            subtitle: <>{l.description} · {money(l.unitPrice)}/{l.purchaseUnit}{l.status !== "order" && l.status !== "covered" && <span className={l.status === "runs-out" ? "text-bad" : "text-warn"}> · {STATUS_LABEL[l.status]}</span>}</>,
-            value: <Stepper l={l} q={qtys[l.supplierProductId] ?? 0} set={setQ} />,
+            subtitle: <>{l.description} · {money(l.unitPrice)}/{l.purchaseUnit}{l.status !== "order" && l.status !== "covered" && <span className={l.status === "runs-out" ? "text-bad" : "text-warn"}> · {STATUS_LABEL[l.status]}</span>}<PackPicker l={l} onPick={choosePack} /></>,
+            value: <Stepper l={l} q={qtys[l.ingredientId] ?? 0} set={setQ} />,
           })}
         />
       </HelpZone>
@@ -188,7 +227,7 @@ export function OrderBuilder(props: {
                 supplierId: props.supplierId,
                 deliveryDate: props.deliveryDate,
                 coverUntil: props.coverUntil,
-                lines: props.lines.map((l) => ({ supplierProductId: l.supplierProductId, suggestedQty: l.suggestedUnits, qty: qtys[l.supplierProductId] ?? 0, unitPrice: l.unitPrice })),
+                lines: rows.map((l) => ({ supplierProductId: l.supplierProductId, suggestedQty: l.suggestedUnits, qty: qtys[l.ingredientId] ?? 0, unitPrice: l.unitPrice })),
               });
               if (res?.error) setError(res.error);
             })}

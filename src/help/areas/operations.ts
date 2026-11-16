@@ -222,7 +222,15 @@ A draft can be deleted; a sent order can be checked in.`,
     route: "/ordering",
     title: "Items to order",
     body: "Each item with stock on hand at delivery, what's needed, days of cover and the suggested whole packs to order. Badges flag items to count, set up, or that run out first. Items you're already covered on are tucked away at the bottom.",
-    related: ["ordering.builder.qty", "ordering.builder.onHand", "ordering.builder.needed"],
+    related: ["ordering.builder.qty", "ordering.builder.onHand", "ordering.builder.needed", "ordering.builder.packs"],
+  },
+  {
+    id: "ordering.builder.packs",
+    area: "ordering",
+    route: "/ordering",
+    title: "Pick the pack",
+    body: "When a supplier sells an item in more than one pack, pick which to order. Each shows its price per oz and how many you'd need; a note says when the cheaper one means a full case. It starts on the pack you ordered last time.",
+    keywords: ["case", "jug", "pack size", "cheaper", "split case"],
   },
   {
     id: "ordering.po.sent",
@@ -260,18 +268,22 @@ export const counts: HelpEntry[] = [
     tour: "counting",
     audience: "all",
     title: "Counting stock",
-    body: "Pick an area and count what's on the shelf. Every number saves as you type, so you can stop and pick it up later.",
+    body: "Pick an area and count what's on the shelf, in walking order. Every number saves as you go. Staff counts go to a manager to approve before they count.",
     article: `1. Tap the area you're counting — **Everything**, or one storage area like the walk-in.
-2. Type how much is there next to each item. Enter jumps to the next one.
-3. Change the unit if it's easier — cases, lb, each.
-4. Tap **Finish count** when you're done.
+2. Type how much is there next to each item, or tap **None**. Enter jumps to the next one.
+3. Change the unit if it's easier — cases, jugs, lb, each. Got some of each? Add another unit on the same line.
+4. Tap an item's name to see its photo, item numbers and how to count it.
+5. When every line has a number, tap **Finish count** (managers) or **Send to manager** (staff).
 
 If someone already started counting that area, you'll carry on their count instead of starting a new one.
 
+### Who can change what
+Staff only enter numbers, in the units the manager allowed. They can't add, rename or remove items. If something's missing or wrong, **Tell the manager** leaves a note on the count. A manager checks a staff count, sees anything that looks off next to the last count, and approves it — only then does it move stock, ordering and the margin gap.
+
 ### Why it matters
 Counts feed the suggested orders (so you don't over- or under-order) and the margin gap (so you can see what went missing).`,
-    related: ["count.sheet", "count.autosave", "ordering.builder.onHand", "variance.page"],
-    keywords: ["inventory", "stock take", "count"],
+    related: ["count.sheet", "count.autosave", "count.setup", "count.review", "count.summary", "ordering.builder.onHand", "variance.page"],
+    keywords: ["inventory", "stock take", "count", "approve"],
   },
   {
     id: "count.start",
@@ -318,8 +330,8 @@ Counts feed the suggested orders (so you don't over- or under-order) and the mar
     route: "/count",
     audience: "all",
     title: "The count sheet",
-    body: "Items grouped by storage area. Type the amount, pick the unit, and a green tick shows it's saved. Use \"Find an item\" to jump to something.",
-    related: ["count.autosave", "count.units", "count.finish"],
+    body: "Items in walking order, area by area. Type the amount (or tap None), pick the unit, and a green tick shows it's saved. Tap a name for its photo, item numbers and how to count it.",
+    related: ["count.autosave", "count.units", "count.mixed", "count.item", "count.finish"],
   },
   {
     id: "count.autosave",
@@ -349,16 +361,16 @@ Clearing a number removes that item from the count.`,
     route: "/count",
     audience: "all",
     title: "Count in any unit",
-    body: "Pick the unit that's easiest — cases, lb, each, or a custom one like \"tub\". It's converted for you; switching the unit re-saves the number in the new unit.",
-    related: ["ingredients.countIn", "ingredients.customUnits"],
+    body: "Pick the unit that's easiest: the case, the piece inside it, every pack it's bought in, lb, each, or a custom one like \"jug\". It's converted for you. Staff see the units the manager allowed.",
+    related: ["count.mixed", "ingredients.countIn", "ingredients.customUnits"],
   },
   {
     id: "count.finish",
     area: "counts",
     route: "/count",
     audience: "all",
-    title: "Finish count",
-    body: "Marks the count as done, timed now. Only finished counts are used for ordering and the margin gap.",
+    title: "Finish or send",
+    body: "Every line due needs a number first (0 is fine). The button jumps to the next one left. A manager's count is official at once; a staff count goes to the manager to approve.",
   },
   {
     id: "count.discard",
@@ -373,7 +385,7 @@ Clearing a number removes that item from the count.`,
     area: "counts",
     route: "/count",
     title: "Find an item",
-    body: "Type any part of a name (\"chkn\" finds chicken). Tap an area chip to jump there — the number is what's left to count in it. \"Not counted yet\" hides what you've done, and the bar shows how far along you are.",
+    body: "Type any part of a name or item number (\"chkn\" finds chicken). Tap an area chip to jump there — the number is what's left to count in it. \"Not counted yet\" hides what you've done.",
     audience: "all",
   },
   {
@@ -381,9 +393,247 @@ Clearing a number removes that item from the count.`,
     area: "counts",
     route: "/count",
     title: "Items in this area",
-    body: "Everything kept in this storage area. Type how much is on the shelf and pick the unit; a green tick means it's saved. Enter jumps to the next item.",
-    related: ["count.units", "count.enter"],
+    body: "Everything kept here, in shelf order. Type what you see; an opened one? Tap +¼, +½ or +¾. A green tick means it's saved. Counted somewhere else already? It says so, no zero needed.",
+    related: ["count.units", "count.enter", "count.foundHere"],
     audience: "all",
+  },
+  {
+    id: "count.mixed",
+    area: "counts",
+    route: "/count",
+    audience: "all",
+    title: "Some of each: mix units",
+    body: "Two jugs and three cans? Pick \"Add another unit\" in the unit list and type both on the same line. They're added up for you; the total shows underneath.",
+    keywords: ["jug", "can", "mixed", "two units", "plus"],
+  },
+  {
+    id: "count.item",
+    area: "counts",
+    route: "/count",
+    audience: "all",
+    title: "What is this item?",
+    body: "Tap an item's name for its photo, the supplier's item number and pack, where it lives, the last count and the manager's note on how to count it.",
+    related: ["count.setup"],
+    keywords: ["photo", "item number", "sku", "picture", "what is"],
+  },
+  {
+    id: "count.tellManager",
+    area: "counts",
+    route: "/count",
+    audience: "all",
+    title: "Tell the manager",
+    body: "Something on the shelf that isn't on the list, or a unit that doesn't fit? Leave a note. The manager sees it with your count. Only managers add or change items.",
+  },
+  {
+    id: "count.notDue",
+    area: "counts",
+    route: "/count",
+    audience: "all",
+    title: "Not due this time",
+    body: "Slow movers counted monthly or only when they change. Their last count carries into this count's value. Tap Count it anyway if you know it changed.",
+    related: ["count.setup.every"],
+  },
+  {
+    id: "count.left",
+    area: "counts",
+    route: "/count",
+    audience: "all",
+    title: "What's left",
+    body: "Every item due needs a total before the count can be finished, so nothing gets skipped. Counted in one place is enough; no zeros needed elsewhere. None anywhere? Tap None.",
+  },
+  {
+    id: "count.foundHere",
+    area: "counts",
+    route: "/count",
+    audience: "all",
+    title: "Found something here?",
+    body: "Something that usually lives elsewhere, like fryer oil on the overflow shelf? Add it to this area for this count. Its usual place doesn't change. Search by name or item number.",
+    keywords: ["overflow", "wrong area", "add item", "elsewhere"],
+  },
+  {
+    id: "count.check",
+    area: "counts",
+    route: "/count",
+    audience: "all",
+    title: "Before you send",
+    body: "Items still without a total (count them, or None anywhere), then anything counted in two or more places or far from what we expected, so nothing is counted twice.",
+    keywords: ["double count", "review"],
+  },
+  {
+    id: "count.homeAreas",
+    area: "counts",
+    route: "/count",
+    title: "Found somewhere new",
+    body: "Items this count found outside their usual areas. Tap Yes to always list one there too. Nothing changes unless you tap.",
+  },
+  {
+    id: "count.waiting",
+    area: "counts",
+    route: "/count",
+    audience: "all",
+    title: "Waiting for approval",
+    body: "Counts staff have sent. They don't change stock, ordering or the margin gap until a manager reviews and approves them.",
+    related: ["count.review"],
+  },
+  {
+    id: "count.value",
+    area: "counts",
+    route: "/count",
+    title: "Inventory value",
+    body: "What everything on the shelves was worth at the last count, the change since the count before, and the trend over the last eight counts. Tap for the breakdown.",
+    related: ["count.summary"],
+  },
+  {
+    id: "count.review",
+    area: "counts",
+    route: "/count",
+    title: "Review a count",
+    body: "A staff count before it becomes official. Lines that look off next to the last count come first. Fix numbers, send it back, or approve it.",
+    article: `Nothing a staff member counts changes stock until you approve it.
+
+- **Looks off**: more than four times, or under a quarter of, the last count. Usually cases typed as each, or the other way round.
+- **Notes**: anything they told you while counting (an item that isn't on the list, a wrong label).
+- **Carried forward**: monthly and "only when it changes" items that weren't due; their last count stays.
+
+**Fix numbers** opens the count sheet so you can change a line. **Send back** lets them fix it and send it again. **Approve** makes it the official count: ordering, the margin gap, inventory value and the prep list's on-hand all use it from then on.`,
+    related: ["count.review.lines", "count.summary"],
+  },
+  {
+    id: "count.review.notes",
+    area: "counts",
+    route: "/count",
+    title: "Notes from the count",
+    body: "What whoever counted told you: missing items, wrong labels, units that don't fit. Add or fix items in Set up the count.",
+    related: ["count.setup"],
+  },
+  {
+    id: "count.review.lines",
+    area: "counts",
+    route: "/count",
+    title: "Compared with the last count",
+    body: "Each line next to the last official count. Highlighted lines look like a typo: over four times or under a quarter of last time. Fix numbers to change one.",
+  },
+  {
+    id: "count.review.skipped",
+    area: "counts",
+    route: "/count",
+    title: "Missing lines",
+    body: "Due items with no number. New counts can't be sent with lines missing, so this only shows for older ones. They keep their last count.",
+  },
+  {
+    id: "count.review.carried",
+    area: "counts",
+    route: "/count",
+    title: "Carried forward",
+    body: "Items not due this time (monthly, or only when they change). Their last count stays in stock and in the value.",
+  },
+  {
+    id: "count.review.approve",
+    area: "counts",
+    route: "/count",
+    title: "Approve, send back or fix",
+    body: "Approve makes it the official count. Send back reopens it for whoever counted. Fix numbers lets you change lines yourself first.",
+  },
+  {
+    id: "count.setup",
+    area: "counts",
+    route: "/count/setup",
+    title: "Set up the count",
+    body: "Get every item ready so anyone can count it right: shelf order, photo, how-to note, the units staff may use and how often it's counted. Tap an item to change it.",
+    article: `Do this once, then hand the phone to anyone.
+
+- **Shelf order**: the arrows move an item up or down within its area, so the sheet follows the shelf. Change an item's area in its sheet. Areas themselves follow the walking order in **Add or edit areas**.
+- **More than one home**: full gallons on the dry shelf, open ones in the walk-in? "Also list it in" puts it on both areas' sheets. Count each place; the total adds up.
+- **Photo**: take one with the phone or upload one. It shows on the count row and in the item's sheet.
+- **How to count this**: a short note like "Full jugs only — the open one is on the line".
+- **Count units**: tap units to limit staff to those; the star is the default. Add a missing one, like "1 jug = 114 oz" or "1/3 pan = 30 each".
+- **How often**: every count, monthly, or only when it changes. Items not due stay off the sheet and their last count carries forward.
+- **Prep items**: put house-made sauces and portioned proteins on the count. They're valued at recipe cost and become the prep list's on-hand.
+- **Take off the count**: archives an ingredient (or just removes a prep item from the count).`,
+    related: ["count.setup.every", "count.setup.prep", "count.units"],
+    keywords: ["organize", "setup", "shelf order", "photo", "item number", "lock"],
+  },
+  {
+    id: "count.setup.gaps",
+    area: "counts",
+    route: "/count/setup",
+    title: "Missing a photo or note",
+    body: "Shows only items without a photo or a how-to note, so you can work through them. The count on the right is how many are fully set up.",
+  },
+  {
+    id: "count.setup.area",
+    area: "counts",
+    route: "/count/setup",
+    title: "Items in this area",
+    body: "In the order they're counted. Tap an item to set its photo, note, units and how often; the arrows move it along the shelf.",
+  },
+  {
+    id: "count.setup.order",
+    area: "counts",
+    route: "/count/setup",
+    title: "Shelf order",
+    body: "The count sheet lists each area's items in this order. Move them to match the shelf, top to bottom, left to right.",
+  },
+  {
+    id: "count.setup.every",
+    area: "counts",
+    route: "/count/setup",
+    title: "How often it's counted",
+    body: "Every count (default), monthly (due again 30 days after its last count) or only when it changes. Slow movers like canned beans stay off the weekly sheet; their last count carries forward.",
+    keywords: ["monthly", "slow movers", "frequency", "carried"],
+  },
+  {
+    id: "count.setup.prep",
+    area: "counts",
+    route: "/count/setup",
+    title: "Count prep items",
+    body: "House-made sauces, pickles and portioned proteins. Add containers like \"1/3 pan = 30 each\" or \"pan = 20 each\". An approved count becomes the prep list's on-hand.",
+    related: ["prep.onHand"],
+    keywords: ["prep", "pan", "1/3 pan", "sauce", "house made"],
+  },
+  {
+    id: "count.summary",
+    area: "counts",
+    route: "/count",
+    title: "Count result",
+    body: "What the shelves were worth at this count, by area and category, the change since the count before, items carried forward and stock no menu item uses.",
+    related: ["count.summary.value", "count.summary.offMenu"],
+  },
+  {
+    id: "count.summary.value",
+    area: "counts",
+    route: "/count",
+    title: "How value is worked out",
+    body: "Each item's latest count up to this one, times its cost per unit on that day. Items not counted this time carry their last count. Prep items are valued at recipe cost.",
+  },
+  {
+    id: "count.summary.byArea",
+    area: "counts",
+    route: "/count",
+    title: "Value by area",
+    body: "Where the money sits: each storage area's share of the total.",
+  },
+  {
+    id: "count.summary.byCategory",
+    area: "counts",
+    route: "/count",
+    title: "Value by category",
+    body: "The total split by ingredient category, biggest first. Prep items show as Prep.",
+  },
+  {
+    id: "count.summary.carried",
+    area: "counts",
+    route: "/count",
+    title: "Carried forward",
+    body: "Not counted this time, so their last count is used, with the date it's from.",
+  },
+  {
+    id: "count.summary.offMenu",
+    area: "counts",
+    route: "/count",
+    title: "On hand, not on the menu",
+    body: "Food and drink with stock that no active menu item uses, directly or in a prep recipe. Money sitting still: ideas for a special. Packaging and cleaning are left out.",
+    keywords: ["specials", "dead stock", "slow"],
   },
 ];
 
@@ -668,15 +918,16 @@ It's deliberately simple so you can always see why a number is what it is. Order
     area: "sales",
     route: "/sales",
     title: "Link Square items to recipes",
-    body: "Each Square item and modifier needs its recipe so its sales count toward costing and ordering. Pick \"Ignore\" for drinks, merch and gift cards that have no recipe.",
-    article: `When Square sells something, the app needs to know which recipe that was. Unlinked items are listed most-sold first.
+    body: "Each Square item and modifier needs its recipe so its sales count toward costing and ordering. Link your sales walks through them biggest first; \"Leave out of sales\" is only for gift cards, fees and deposits.",
+    article: `When Square sells something, the app needs to know which recipe that was. [Link your sales](/sales/link) is the quickest way: biggest sellers first, with a suggestion, its cost and an Undo for each.
 
-- Pick the recipe from the list. It saves straight away.
-- **Ignore** anything without a food recipe: beer, merch, gift cards.
-- **Show all** lists linked items too, if you need to change one.
+- Pick the recipe from the list. It saves straight away, and shows up under **Changes** on Link your sales with an Undo.
+- Draft beer: cost the keg once on [Link your sales](/sales/link) or [Draft beer](/menu/draft-beer) and every pour is linked.
+- Cans, bottles and merch: give them a cost each on Link your sales. They still count as sales.
+- **Leave out of sales** only for money that isn't a sale: gift cards, service fees, deposits. It comes off net sales entirely.
 
 An unlinked item still uses product but doesn't count as a sale, which shows up as **unexplained** on the margin gap.`,
-    related: ["variance.unexplained", "overview.foodCost"],
+    related: ["sales.link", "variance.unexplained", "overview.foodCost"],
     keywords: ["map", "mapping", "modifier", "link"],
   },
   {

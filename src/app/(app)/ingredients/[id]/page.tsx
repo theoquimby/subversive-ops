@@ -9,18 +9,20 @@ import { requireUser } from "@/server/auth";
 import { db, num } from "@/server/db";
 import { loadCostingSnapshot, priceAsOf } from "@/server/services/costing";
 import { businessToday } from "@/server/services/sales";
+import { countUnitsFor } from "@/server/services/inventory";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { addConversion, removeConversion, setPackSize, setPreferredProduct, unlinkProduct } from "../actions";
 import { IngredientForm } from "./ingredient-form";
 import { HelpTip, HelpZone } from "@/components/help";
 import { AllergenChips } from "./allergen-chips";
+import { AddPack } from "./add-pack";
 
 export default async function IngredientPage({ params }: { params: Promise<{ id: string }> }) {
   await requireUser("MANAGER");
   const { id } = await params;
   const isNew = id === "new";
-  const [ing, categories, areas] = await Promise.all([
+  const [ing, categories, areas, allProducts] = await Promise.all([
     isNew ? null : db.ingredient.findUnique({
       where: { id },
       include: {
@@ -31,11 +33,13 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
     }),
     db.ingredient.findMany({ distinct: ["category"], select: { category: true } }),
     db.ingredient.findMany({ distinct: ["storageArea"], select: { storageArea: true } }),
+    isNew ? [] : db.supplierProduct.findMany({ where: { active: true, OR: [{ ingredientId: null }, { ingredientId: { not: id } }] }, select: { id: true, sku: true, description: true, packText: true, supplier: { select: { name: true } }, ingredient: { select: { name: true } } }, orderBy: { description: "asc" } }),
   ]);
   if (!isNew && !ing) notFound();
 
   const base = (ing?.baseUnit ?? "g") as BaseUnit;
-  const units = [...STANDARD_UNITS_BY_BASE[base], ...(ing?.conversions.map((c) => c.unit) ?? [])];
+  const packUnits = [...STANDARD_UNITS_BY_BASE[base], ...(ing?.conversions.map((c) => c.unit) ?? [])];
+  const units = ing ? countUnitsFor({ ...ing, products: ing.products.filter((p) => p.active) }).units : [...STANDARD_UNITS_BY_BASE[base]];
   const form = {
     id: ing?.id ?? null,
     name: ing?.name ?? "",
@@ -94,7 +98,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
       <PageHeader help="ingredients.detail" title={ing.name} description={`${ing.category} · ${ing.storageArea}`} back={{ href: "/ingredients", label: "Ingredients" }} />
       <div className="grid gap-6 lg:grid-cols-5">
         <div className="min-w-0 space-y-6 lg:col-span-3">
-          <Section help="ingredients.boughtAs" title={<span className="inline-flex items-center gap-1.5">Bought as <HelpTip id="ingredients.boughtAs" /></span>} description="Supplier products linked to this ingredient. The starred one sets the cost." className="mb-0">
+          <Section help="ingredients.boughtAs" title={<span className="inline-flex items-center gap-1.5">Bought as <HelpTip id="ingredients.boughtAs" /></span>} description="Supplier products linked to this ingredient: every pack it comes in. The one marked “Sets cost” prices recipes." className="mb-0">
             {ing.products.length === 0 ? (
               <Card className="p-5 text-sm text-muted">Not linked to any supplier product yet. Link one from <Link href="/prices?filter=unlinked" className="text-ink underline">Prices</Link>.</Card>
             ) : (
@@ -125,7 +129,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
                           <span className="text-muted">=</span>
                           <Input name="amount" type="number" step="any" min={0} defaultValue={pack ? Number((pack / (base === "g" ? 453.59237 : base === "ml" ? 3785.411784 : 1)).toFixed(3)) : ""} placeholder="?" className="num h-10 min-w-0 flex-1 text-right sm:h-8 sm:w-24 sm:flex-none" aria-label="Pack amount" />
                           <Select name="unit" defaultValue={base === "g" ? "lb" : base === "ml" ? "gal" : "each"} className="h-10 w-24 shrink-0 sm:h-8" aria-label="Pack unit">
-                            {units.map((u) => <option key={u}>{u}</option>)}
+                            {packUnits.map((u) => <option key={u}>{u}</option>)}
                           </Select>
                         </div>
                         <Button size="sm" className="h-10 sm:h-8">Save pack</Button>
@@ -138,6 +142,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
                     </div>
                   );
                 })}
+                <AddPack ingredientId={ing.id} products={allProducts.map((p) => ({ id: p.id, label: `${p.description}${p.packText ? ` · ${p.packText}` : ""}`, hint: `${p.supplier.name} #${p.sku}${p.ingredient ? ` · now on ${p.ingredient.name}` : ""}` }))} />
               </Card>
             )}
           </Section>

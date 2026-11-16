@@ -4,6 +4,7 @@ import { dateRange, ISODate, parseISODate, toISODate } from "@/domain/dates";
 import { emptySplit, groupSplit, GroupSplit } from "@/domain/revenueClass";
 import { KpiDay, PeriodTotals, rollupKpis, summarize, theoreticalByDay } from "@/domain/pnl";
 import { blockCost, blockHours } from "@/domain/timecards";
+import { addFixedLines } from "@/domain/salesRollup";
 import { db } from "../db";
 import { buildContext, CostingSnapshot, firstPriceDate, loadCostingSnapshot, safeCost } from "./costing";
 import { classSettings, recipeClasses } from "./insights";
@@ -80,6 +81,8 @@ export async function theoreticalSplit(from: ISODate, toExclusive: ISODate, snap
   const classes = recipeClasses(s, settings);
   const names = new Map(s.recipes.map((r) => [r.id, r.name]));
   const { byDay, uncosted } = theoreticalByDay(items.sold, asOfCoster(s), (id) => classes.get(id) ?? "food");
+  // Bought-in items (cans, merch…) count at their cost each, in their own class.
+  addFixedLines(byDay, items.fixed);
   return { byDay, uncosted: [...uncosted].map((id) => names.get(id) ?? "Recipe").sort(), itemTotal: items.itemTotal };
 }
 

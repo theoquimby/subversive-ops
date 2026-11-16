@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge, Button, Card, cx, Field, Input, Select } from "@/components/ui";
-import { BaseUnit, CustomConversion, standardUnit, STANDARD_UNITS_BY_BASE, toBase } from "@/domain/units";
+import { BaseUnit, canConvert, CustomConversion, standardUnit, STANDARD_UNITS_BY_BASE, toBase } from "@/domain/units";
 import { money, pct, qty, shortDate } from "@/lib/format";
 import Link from "next/link";
 import { Plus, X } from "lucide-react";
@@ -11,6 +11,8 @@ import { useConfirm } from "@/components/dialog";
 import { parseQuickLine, type QuickItem } from "@/domain/quickAdd";
 import { archiveRecipe, saveRecipe } from "../actions";
 import { HelpTip, HelpZone } from "@/components/help";
+import { looksHouseMade, prepTwin } from "@/domain/linking";
+import type { SelectOption } from "@/components/select";
 
 export interface EditorCatalog {
   ingredients: {
@@ -176,6 +178,29 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
   };
   const currentUnit = (key: string) => r.lines.find((l) => l.key === key)?.unit ?? "";
 
+  // The line picker: every ingredient and prep recipe with a type badge, what this
+  // line would cost with it, and whether the line's unit works for it.
+  const itemOptions = (l: Line): SelectOption[] => {
+    const preview = (base: BaseUnit, perBase: number | null, conv: CustomConversion[] = []) => {
+      const fits = l.unit ? canConvert(l.unit, base, conv) : true;
+      if (!fits) return `by ${base === "each" ? "each" : base === "g" ? "weight" : "volume"} — unit changes`;
+      if (perBase == null) return "no price yet";
+      if (!(l.qty > 0) || !l.unit) return `${money(perBase * (base === "each" ? 1 : base === "g" ? 28.3495 : 29.5735))} per ${base === "each" ? "each" : base === "g" ? "oz" : "fl oz"}`;
+      try { return `${money(toBase(l.qty, l.unit, base, conv) * perBase)} for ${qty(l.qty)} ${l.unit}`; } catch { return "unit changes"; }
+    };
+    return [
+      ...catalog.ingredients.map((i) => ({ value: `i:${i.id}`, label: i.name, badge: "Ingredient", group: "Ingredients", hint: preview(i.baseUnit, i.costPerUsableBase, i.conversions) })),
+      ...catalog.recipes.map((x) => ({ value: `r:${x.id}`, label: x.name, badge: "Prep recipe", group: "Prep recipes (made here)", hint: preview(x.baseUnit, x.costPerBase) })),
+    ];
+  };
+  const preps = useMemo(() => catalog.recipes.map((x) => ({ id: x.id, name: x.name })), [catalog]);
+  /** Swap an ingredient line for the prep recipe of the same thing, keeping the amount when the unit converts. */
+  const swapToPrep = (key: string, recId: string) => {
+    const rec = recById.get(recId)!;
+    const l = r.lines.find((x) => x.key === key)!;
+    updateLine(key, { ingredientId: null, subRecipeId: recId, unit: rec.units.includes(l.unit) || canConvert(l.unit, rec.baseUnit) ? l.unit : rec.units[0] });
+  };
+
   const save = () =>
     start(async () => {
       setError(null);
@@ -217,6 +242,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
         <HelpZone id="menu.editor.lines" className="lg:col-span-2"><Card className="h-full" data-tour="menu.lines">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold">{isPrep ? "Ingredients per batch" : "Ingredients per serving"} <HelpTip id="menu.editor.lines" /></h2>
+            <span className="ml-auto mr-3 hidden items-center gap-1 text-xs text-muted sm:inline-flex">Ingredient or prep recipe? <HelpTip id="menu.editor.picker" /></span>
             <span className="text-xs text-muted">{r.lines.length} line{r.lines.length === 1 ? "" : "s"}</span>
           </div>
           <div className="divide-y divide-border">
@@ -225,17 +251,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
               const c = costs[idx];
               return (
                 <div key={l.key} className="grid grid-cols-[1fr_5rem_6rem_auto] items-center gap-2 px-4 py-2.5 sm:grid-cols-[1fr_6rem_7rem_5.5rem_auto]">
-                  <Select aria-label="Item" value={l.ingredientId ? `i:${l.ingredientId}` : l.subRecipeId ? `r:${l.subRecipeId}` : ""} onChange={(e) => pickItem(l.key, e.target.value)} className="col-span-4 sm:col-span-1">
-                    <option value="" disabled>Choose an ingredient…</option>
-                    <optgroup label="Ingredients">
-                      {catalog.ingredients.map((i) => <option key={i.id} value={`i:${i.id}`}>{i.name}</option>)}
-                    </optgroup>
-                    {catalog.recipes.length > 0 && (
-                      <optgroup label="Prep recipes">
-                        {catalog.recipes.map((x) => <option key={x.id} value={`r:${x.id}`}>{x.name}</option>)}
-                      </optgroup>
-                    )}
-                  </Select>
+                  <Select aria-label="Item" value={l.ingredientId ? `i:${l.ingredientId}` : l.subRecipeId ? `r:${l.subRecipeId}` : ""} onChange={(e) => pickItem(l.key, e.target.value)} options={itemOptions(l)} searchable placeholder="Choose an ingredient or prep recipe…" className="col-span-4 sm:col-span-1" />
                   <Input aria-label="Quantity" type="number" inputMode="decimal" step="any" min={0} value={Number.isFinite(l.qty) ? l.qty : ""} onChange={(e) => updateLine(l.key, { qty: e.target.valueAsNumber })} className="num text-right" />
                   <Select aria-label="Unit" value={l.unit} onChange={(e) => updateLine(l.key, { unit: e.target.value })}>
                     {(units ?? []).map((u) => <option key={u} value={u}>{u}</option>)}
@@ -246,6 +262,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
                     <X className="size-4" />
                   </button>
                   <CostSource line={l} cost={c.cost} ing={l.ingredientId ? ingById.get(l.ingredientId) : undefined} rec={l.subRecipeId ? recById.get(l.subRecipeId) : undefined} />
+                  {l.ingredientId && <HouseMadeHint name={ingById.get(l.ingredientId)?.name ?? ""} twin={prepTwin(ingById.get(l.ingredientId)?.name ?? "", preps)} onUse={(id) => swapToPrep(l.key, id)} />}
                 </div>
               );
             })}
@@ -329,6 +346,31 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
           </HelpZone>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Under an ingredient line that sounds made in the kitchen (aioli, pickles,
+ * pulled pork): use the prep recipe of the same name if there is one, or make one,
+ * so its cost comes from its own ingredients and it shows on the prep list.
+ */
+function HouseMadeHint({ name, twin, onUse }: { name: string; twin: { id: string; name: string } | null; onUse: (id: string) => void }) {
+  if (twin) {
+    return (
+      <div className="col-span-full -mt-1 flex flex-wrap items-baseline gap-x-1.5 text-xs text-ink-2">
+        <span>There&apos;s a prep recipe for this.</span>
+        <button type="button" onClick={() => onUse(twin.id)} className="font-medium text-ink underline underline-offset-2 hover:no-underline">Use {twin.name}</button>
+        <span className="text-muted">so it costs what you make it for.</span>
+      </div>
+    );
+  }
+  if (!looksHouseMade(name)) return null;
+  return (
+    <div className="col-span-full -mt-1 flex flex-wrap items-baseline gap-x-1.5 text-xs text-muted">
+      <span>Made here?</span>
+      <Link href={`/menu/new?kind=PREP&name=${encodeURIComponent(name)}`} className="font-medium text-ink-2 underline underline-offset-2 hover:text-ink">Make {name} a prep recipe</Link>
+      <span>to cost it from its ingredients and add it to the prep list.</span>
     </div>
   );
 }

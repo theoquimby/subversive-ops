@@ -69,7 +69,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
   // Food and drink cards
   const bevPct = split.beverage.sales > 0 && split.beverage.cogs > 0 ? split.beverage.pct : null;
   const caveats: { text: ReactNode; tone?: "warn" }[] = [];
-  if (b.estimated && b.coverage != null) caveats.push({ text: <>{pct(1 - b.coverage, 0)} of sales ({whole(unlinked)}) are items not linked to a recipe, so their cost is estimated at a typical {pct(TYPICAL_COST_SHARE, 0)}. <Link href="/sales#sales-items" className="underline underline-offset-2 hover:text-ink">Link them</Link> to make this exact.</> });
+  if (b.estimated && b.coverage != null) caveats.push({ text: <>{pct(1 - b.coverage, 0)} of sales ({whole(unlinked)}) are items not linked to a recipe, so their cost is estimated at a typical {pct(TYPICAL_COST_SHARE, 0)}. <Link href="/sales/link" className="underline underline-offset-2 hover:text-ink">Link them</Link> to make this exact.</> });
   if (report.uncosted.length > 0) caveats.push({ tone: "warn", text: <>Food & drink cost is a floor: {report.uncosted.slice(0, 4).join(", ")}{report.uncosted.length > 4 ? ` and ${report.uncosted.length - 4} more` : ""} {report.uncosted.length === 1 ? "is" : "are"} missing prices.</> });
   if (report.missingRates > 0) caveats.push({ tone: "warn", text: <>{report.missingRates} timecard{report.missingRates === 1 ? " has" : "s have"} no pay rate, so labor is understated. <Link href="/team" className="underline underline-offset-2">Set rates</Link></> });
   if (!budget) caveats.push({ text: <>No budget for {multiDay ? "these weeks" : "this week"}, so there are no targets yet. <Link href="/budgets" className="underline underline-offset-2 hover:text-ink">Budgets</Link></> });
@@ -253,7 +253,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
                   actual={counts?.beverage ?? null}
                   sub={split.beer.sales > 0 ? `beer ${whole(split.beer.sales)}${split.beer.cogs > 0 ? ` at ${pct(split.beer.pct, 0)}` : ""}` : undefined}
                   empty={split.beverage.sales > 0 ? "Drinks have no cost yet" : "No drinks linked to a recipe sold"}
-                  emptyHref={split.beverage.sales > 0 ? "/menu/draft-beer" : "/sales#sales-items"}
+                  emptyHref={split.beverage.sales > 0 ? "/menu/draft-beer" : "/sales/link"}
                 />
               </div>
               {counts ? (

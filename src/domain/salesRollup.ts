@@ -8,6 +8,7 @@
 
 import type { ISODate } from "./dates";
 import type { SoldLine } from "./pnl";
+import { emptySplit, isRevenueClass, type ClassSplit, type RevenueClass } from "./revenueClass";
 
 /** Item sales summed per date and linked recipe (null: not linked to a recipe, or ignored). */
 export interface RecipeDaySum {
@@ -38,15 +39,40 @@ export interface ItemDaySum {
   recipeId: string | null;
   qty: number;
   sales: number;
+  /** Bought-in items (no recipe, a cost each): their revenue class; null otherwise. */
+  fixedClass?: string | null;
+  /** qty × cost each for bought-in items. */
+  fixedCost?: number | null;
 }
 
-/** Sold lines for theoretical cost (linked recipes only) and each day's item-sales total. */
-export function foldItemSales(rows: readonly ItemDaySum[]): { sold: SoldLine[]; itemTotal: Map<ISODate, number> } {
+/** Bought-in sales and their cost for one day and revenue class. */
+export interface FixedLine {
+  date: ISODate;
+  cls: RevenueClass;
+  sales: number;
+  cogs: number;
+}
+
+/** Sold lines for theoretical cost (linked recipes only), bought-in lines with their cost, and each day's item-sales total. */
+export function foldItemSales(rows: readonly ItemDaySum[]): { sold: SoldLine[]; fixed: FixedLine[]; itemTotal: Map<ISODate, number> } {
   const sold: SoldLine[] = [];
+  const fixed: FixedLine[] = [];
   const itemTotal = new Map<ISODate, number>();
   for (const r of rows) {
     itemTotal.set(r.date, (itemTotal.get(r.date) ?? 0) + r.sales);
     if (r.recipeId) sold.push({ date: r.date, recipeId: r.recipeId, qty: r.qty, sales: r.sales });
+    else if (r.fixedClass) fixed.push({ date: r.date, cls: isRevenueClass(r.fixedClass) ? r.fixedClass : "retail", sales: r.sales, cogs: Math.max(0, r.fixedCost ?? 0) });
   }
-  return { sold, itemTotal };
+  return { sold, fixed, itemTotal };
+}
+
+/** Add bought-in lines into per-day class splits (days without one get a fresh split). */
+export function addFixedLines(byDay: Map<ISODate, ClassSplit>, fixed: readonly FixedLine[]): Map<ISODate, ClassSplit> {
+  for (const f of fixed) {
+    const split = byDay.get(f.date) ?? emptySplit();
+    split[f.cls].sales += f.sales;
+    split[f.cls].cogs += f.cogs;
+    byDay.set(f.date, split);
+  }
+  return byDay;
 }

@@ -9,6 +9,7 @@
  *   const [toast, show] = useToast();
  *   show("Picked up Fri 4p–10p");            // good
  *   show("Saved on this phone", "queued");   // waiting for signal
+ *   show("Linked Classic Burger", "good", { label: "Undo", onClick: undo }); // with an action (stays longer)
  *   return <>{toast}…</>;
  */
 
@@ -21,18 +22,24 @@ export type ToastTone = "good" | "queued" | "bad";
 
 const ICON = { good: Check, queued: CloudOff, bad: AlertCircle };
 
-export function useToast(ms = 3800): [React.ReactNode, (text: string, tone?: ToastTone) => void] {
-  const [msg, setMsg] = useState<{ id: number; text: string; tone: ToastTone } | null>(null);
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
+export function useToast(ms = 3800): [React.ReactNode, (text: string, tone?: ToastTone, action?: ToastAction) => void] {
+  const [msg, setMsg] = useState<{ id: number; text: string; tone: ToastTone; action?: ToastAction } | null>(null);
   const [mounted, setMounted] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     setMounted(true);
     return () => clearTimeout(timer.current);
   }, []);
-  const show = useCallback((text: string, tone: ToastTone = "good") => {
+  const show = useCallback((text: string, tone: ToastTone = "good", action?: ToastAction) => {
     clearTimeout(timer.current);
-    setMsg({ id: Date.now(), text, tone });
-    timer.current = setTimeout(() => setMsg(null), tone === "bad" ? ms * 1.6 : ms);
+    setMsg({ id: Date.now(), text, tone, action });
+    // An action (Undo) needs time to be noticed and reached.
+    timer.current = setTimeout(() => setMsg(null), action ? ms * 2.5 : tone === "bad" ? ms * 1.6 : ms);
   }, [ms]);
   if (!mounted) return [null, show];
   const Icon = msg ? ICON[msg.tone] : Check;
@@ -51,6 +58,15 @@ export function useToast(ms = 3800): [React.ReactNode, (text: string, tone?: Toa
         >
           <Icon className={cn("size-[1.1rem] shrink-0", msg.tone === "good" && "animate-pop motion-reduce:animate-none")} strokeWidth={2.4} aria-hidden />
           <span>{msg.text}</span>
+          {msg.action && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); const a = msg.action!; setMsg(null); a.onClick(); }}
+              className="-my-1.5 -mr-1.5 ml-1 min-h-9 shrink-0 rounded-xl px-3 text-[0.9rem] font-semibold underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-current"
+            >
+              {msg.action.label}
+            </button>
+          )}
         </div>
       )}
     </div>,

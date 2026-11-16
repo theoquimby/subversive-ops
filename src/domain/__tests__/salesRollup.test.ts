@@ -54,3 +54,28 @@ describe("foldItemSales", () => {
     expect(theoreticalByDay(grouped, cost, cls).byDay).toEqual(theoreticalByDay(perItem, cost, cls).byDay);
   });
 });
+
+describe("bought-in items (a cost each, no recipe)", () => {
+  it("come back as fixed lines in their class and add to that day's split", async () => {
+    const { addFixedLines } = await import("../salesRollup");
+    const { emptySplit } = await import("../revenueClass");
+    const { sold, fixed, itemTotal } = foldItemSales([
+      { date: "2026-11-01", recipeId: "burger", qty: 10, sales: 150 },
+      { date: "2026-11-01", recipeId: null, qty: 6, sales: 96, fixedClass: "beer", fixedCost: 30 },
+      { date: "2026-11-02", recipeId: null, qty: 2, sales: 50, fixedClass: "nonsense", fixedCost: 20 },
+      { date: "2026-11-02", recipeId: null, qty: 4, sales: 20, fixedClass: null, fixedCost: null },
+    ]);
+    expect(sold).toHaveLength(1);
+    expect(itemTotal.get("2026-11-02")).toBe(70);
+    expect(fixed).toEqual([
+      { date: "2026-11-01", cls: "beer", sales: 96, cogs: 30 },
+      { date: "2026-11-02", cls: "retail", sales: 50, cogs: 20 },
+    ]);
+    const day1 = emptySplit();
+    day1.food = { sales: 150, cogs: 45, uncostedSales: 0 };
+    const byDay = addFixedLines(new Map([["2026-11-01", day1]]), fixed);
+    expect(byDay.get("2026-11-01")!.beer).toMatchObject({ sales: 96, cogs: 30 });
+    expect(byDay.get("2026-11-01")!.food).toMatchObject({ sales: 150, cogs: 45 });
+    expect(byDay.get("2026-11-02")!.retail).toMatchObject({ sales: 50, cogs: 20 });
+  });
+});

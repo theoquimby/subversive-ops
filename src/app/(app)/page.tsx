@@ -267,7 +267,7 @@ export default async function OverviewPage() {
           </Link>
         </div>
         {weekB.estimated && weekB.coverage != null && (
-          <p className="mt-2 text-xs text-muted">Profit counts {pct(1 - weekB.coverage, 0)} of sales not linked to a recipe at a typical 30% cost. <Link href="/sales#sales-items" className="underline underline-offset-2 hover:text-ink">Link items</Link></p>
+          <p className="mt-2 text-xs text-muted">Profit counts {pct(1 - weekB.coverage, 0)} of sales not linked to a recipe at a typical 30% cost. <Link href="/sales/link" className="underline underline-offset-2 hover:text-ink">Link items</Link></p>
         )}
       </HelpZone>
 

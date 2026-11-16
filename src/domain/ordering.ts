@@ -61,6 +61,9 @@ export interface OrderSuggestion {
   /** Ordered up to a par level instead of from the forecast. */
   byPar: boolean;
   note?: string;
+  /** Every pack this supplier sells it in, when there's more than one (the builder lets you switch). */
+  options?: PackOption[];
+  baseUnit?: "g" | "ml" | "each";
 }
 
 /** `runs-out`: stock runs out before this delivery arrives (order anyway, and find a bridge). */
@@ -226,4 +229,76 @@ export function hoursUntil(nowDate: ISODate, nowTime: string, cutoffDate: ISODat
 export function shouldAutoDraft(args: { rule: CutoffRule; hoursToCutoff: number; hasOrderForDelivery: boolean; windowHours?: number }): boolean {
   const w = args.windowHours ?? 36;
   return args.rule.autoDraft && !args.hasOrderForDelivery && args.hoursToCutoff > 0 && args.hoursToCutoff <= w;
+}
+
+// ---- Pack options -------------------------------------------------------------------------
+
+/** One way to buy an ingredient from a supplier: a case of 6 #10 cans, or jugs one at a time. */
+export interface PackOption {
+  supplierProductId: string;
+  description: string;
+  sku: string;
+  packText: string | null;
+  purchaseUnit: string;
+  packQtyBase: number | null;
+  unitPrice: number | null;
+  /** Price per base unit (g, ml, each); null without a price or pack size. */
+  costPerBase: number | null;
+  /** Whole packs to cover the shortfall in this pack. */
+  suggestedUnits: number;
+  lineCost: number | null;
+  /** Base units bought beyond the shortfall (what a big pack leaves over). */
+  extraBase: number;
+}
+
+export function packOptions(shortfall: number, products: readonly Pick<PackOption, "supplierProductId" | "description" | "sku" | "packText" | "purchaseUnit" | "packQtyBase" | "unitPrice">[]): PackOption[] {
+  return products.map((p) => {
+    const pack = p.packQtyBase && p.packQtyBase > 0 ? p.packQtyBase : null;
+    const units = pack && shortfall > 0 ? Math.ceil(shortfall / pack - 1e-6) : 0;
+    return {
+      ...p,
+      costPerBase: pack && p.unitPrice != null ? p.unitPrice / pack : null,
+      suggestedUnits: units,
+      lineCost: p.unitPrice == null ? null : units * p.unitPrice,
+      extraBase: pack ? Math.max(0, units * pack - shortfall) : 0,
+    };
+  });
+}
+
+/**
+ * Which pack to start on: the one ordered last time (people stick with what
+ * they picked), else the preferred product, else the cheapest per unit.
+ */
+export function defaultPack(options: readonly PackOption[], lastOrderedId: string | null, preferredId: string | null): PackOption | null {
+  return (
+    options.find((o) => o.supplierProductId === lastOrderedId) ??
+    options.find((o) => o.supplierProductId === preferredId) ??
+    [...options].sort((a, b) => (a.costPerBase ?? Infinity) - (b.costPerBase ?? Infinity))[0] ??
+    null
+  );
+}
+
+/**
+ * "case (6/#10) is 8% cheaper per oz, but it's a full case" — the trade-off
+ * between the pack chosen and the cheapest one, in plain words. Null when the
+ * chosen pack is already the cheapest or prices are missing.
+ */
+export function packTradeoff(options: readonly PackOption[], chosenId: string, perUnit: { unit: string; factor: number }): string | null {
+  const chosen = options.find((o) => o.supplierProductId === chosenId);
+  const priced = options.filter((o) => o.costPerBase != null);
+  if (!chosen || chosen.costPerBase == null || priced.length < 2) return null;
+  const cheapest = priced.reduce((a, b) => (b.costPerBase! < a.costPerBase! ? b : a));
+  const label = (o: PackOption) => `${o.purchaseUnit}${o.packText ? ` (${o.packText})` : ""}`;
+  const pct = (a: number, b: number) => Math.round((1 - a / b) * 100);
+  if (cheapest.supplierProductId === chosen.supplierProductId) {
+    const next = priced.filter((o) => o !== chosen).reduce((a, b) => (b.costPerBase! < a.costPerBase! ? b : a));
+    const p = pct(chosen.costPerBase, next.costPerBase!);
+    if (p < 1) return null;
+    const bigger = (chosen.packQtyBase ?? 0) > (next.packQtyBase ?? 0);
+    return `${p}% cheaper per ${perUnit.unit} than ${label(next)}${bigger && chosen.extraBase > 0 ? `, but it's a bigger pack: about ${Number(((chosen.extraBase) / perUnit.factor).toFixed(1))} ${perUnit.unit} more than needed` : ""}.`;
+  }
+  const p = pct(cheapest.costPerBase!, chosen.costPerBase);
+  if (p < 1) return null;
+  const bigger = (cheapest.packQtyBase ?? 0) > (chosen.packQtyBase ?? 0);
+  return `${label(cheapest)} is ${p}% cheaper per ${perUnit.unit}${bigger ? `, but comes as a full ${cheapest.purchaseUnit}` : ""}.`;
 }

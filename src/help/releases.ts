@@ -24,6 +24,33 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.7",
+    date: "2026-11-16",
+    title: "Link your sales",
+    summary: "A step-by-step way to give every Square item a cost, biggest sellers first, with each link's effect shown before saving and Undo on every change.",
+    entries: ["2026-11-16.link-sales"],
+    fixed: [
+      "Draft beer pours can be costed from the keg right where they're linked, all sizes at once.",
+      "Cans, bottles and merch can carry a cost each and count as linked, instead of being left out of sales.",
+      "Inside a recipe, the ingredient list marks Ingredient or Prep recipe, shows each one's cost for the line, and offers the prep recipe for house-made things.",
+      "Overview and P&L “Link items” go straight to the new page.",
+    ],
+  },
+  {
+    version: "1.6",
+    date: "2026-11-16",
+    title: "Counts anyone can do right",
+    summary: "Set up the count once, let staff count with guardrails, approve what they send, and see what the shelves are worth.",
+    entries: ["2026-11-16.count-setup", "2026-11-16.count-clearer", "2026-11-16.count-approve", "2026-11-16.count-value", "2026-11-16.order-packs"],
+    fixed: [
+      "Count units now include every pack an item is bought in (the piece inside a case, other suppliers' packs), plus volume for weighed items once a cup weight is known.",
+      "Prep items (sauces, portioned proteins) can be counted in pans and containers; an approved count updates the prep list.",
+      "Slow movers can be counted monthly or only when they change; their last count carries into the value.",
+      "Count things where you find them: items can live in more than one area, anything can be added to an area for one count, and the total adds up across places.",
+      "An ingredient can have several packs: add one from its page with “Also bought as”.",
+    ],
+  },
+  {
     version: "1.5",
     date: "2026-11-16",
     title: "Honest numbers and safer saving",
