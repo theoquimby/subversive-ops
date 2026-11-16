@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.27",
+    date: "2026-11-16",
+    title: "Brew Manager recipes count toward stock and costs",
+    summary: "Recipe lines from Brew Manager are now linked to ingredients, so brewing stock, ordering and costs include them. One press links any that aren't.",
+    entries: ["2026-11-16.brew-link-ingredients"],
+    fixed: [
+      "Each malt, hop and yeast gets one ingredient named the same way everywhere, like Pils malt (NYS) · Hudson Valley Malt or Cascade hops (NYS) · NY Hop Guild. New York grown stays in the name.",
+      "Ingredients that name a brewery supplier are set up as bought from them, so ordering says who to order from. Subversive's own malt has no supplier.",
+      "Importing from Brew Manager links its recipes' lines on its own and says how many it linked and which it left, with why.",
+      "Recipes says how many lines aren't linked, with a Link them button; Brewing stock has Link ingredients while its list is empty.",
+    ],
+  },
+  {
     version: "1.26",
     date: "2026-11-16",
     title: "Notices you can write ahead",

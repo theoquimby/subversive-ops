@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.27 (Brewery: recipe lines linked to ingredients) ----
+  {
+    id: "2026-11-16.brew-link-ingredients",
+    date: "2026-11-16",
+    title: "Recipes linked to their ingredients",
+    line: "Brew Manager recipes now count toward brewing stock, ordering and costs. Fill in prices to finish.",
+    icon: "table",
+    area: "floor",
+    href: "/brewery/recipes",
+    help: "brewery.recipes.link",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.26 (schedule notices) ----
   {
     id: "2026-11-16.schedule-notices",

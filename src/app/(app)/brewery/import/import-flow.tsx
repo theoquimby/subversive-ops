@@ -4,11 +4,13 @@ import { DataTable, type Column } from "@/components/data-table";
 import { FileDrop, type FileDropHandle } from "@/components/file-drop";
 import { Badge, Button, Card, cx, LinkButton, Select } from "@/components/ui";
 import { LEAD_REF_LABEL } from "@/domain/brewDay";
+import type { LinkSummary } from "@/domain/brewIngredientLink";
 import { MAX_BACKUP_BYTES, type AppImportPreview, type ImportPreview, type ScheduleRow } from "@/domain/brewImport";
 import { shortDate } from "@/lib/format";
 import type { AnyImportPreview, AnyImportResult, AppImportResult, BrewImportResult } from "@/server/services/brewImport";
 import { Lock } from "lucide-react";
 import { useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { LinkSummaryView } from "../link-summary";
 import { previewBrewImportAction, runBrewImportAction } from "./actions";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -163,7 +165,7 @@ function BackupResult({ r, onAgain }: { r: BrewImportResult; onAgain: () => void
       </ul>
       {r.unmatchedRecipes.length > 0 && <p className="mt-3 text-sm text-muted">Not linked to a beer (no beer by that name): {r.unmatchedRecipes.join(", ")}. Link each from its recipe, or give the beer the same name in Kegs → Beers.</p>}
       {r.unmatchedBrews.length > 0 && <p className="mt-2 text-sm text-muted">Brews with no matching beer: {r.unmatchedBrews.join(", ")}.</p>}
-      <p className="mt-3 text-sm text-muted">Next: match each recipe line to an ingredient and price it, so costs come through.</p>
+      <Links links={r.links} />
       <div className="mt-5 flex flex-wrap gap-2">
         <LinkButton href="/brewery/recipes" variant="primary">See the recipes</LinkButton>
         <LinkButton href="/brewery/batches">See the brews</LinkButton>
@@ -330,6 +332,7 @@ function AppResult({ r, onAgain }: { r: AppImportResult; onAgain: () => void }) 
       </ul>
       {r.notPlaced.length > 0 && <p className="mt-3 text-sm text-warn">No tank free for: {r.notPlaced.join("; ")}. They&apos;re planned with no tank yet; move them on the schedule.</p>}
       {r.profilesSet.length > 0 && <p className="mt-2 text-sm text-muted">Timing profile set from the schedule on: {r.profilesSet.join(", ")}.</p>}
+      <Links links={r.links} />
       <div className="mt-5 flex flex-wrap gap-2">
         <LinkButton href="/brewery/schedule" variant="primary">See the schedule</LinkButton>
         <LinkButton href="/brewery/recipes">See the recipes</LinkButton>
@@ -341,6 +344,19 @@ function AppResult({ r, onAgain }: { r: AppImportResult; onAgain: () => void }) 
 }
 
 // ---- Bits -----------------------------------------------------------------------------------
+
+/** Recipe lines linked to ingredients after the import. */
+function Links({ links }: { links: LinkSummary | null }) {
+  return (
+    <Block title="Ingredients">
+      {links ? (
+        <LinkSummaryView s={links} />
+      ) : (
+        <p className="text-sm text-warn">The recipe lines weren&apos;t linked to ingredients this time. Press Link them on Recipes to do it.</p>
+      )}
+    </Block>
+  );
+}
 
 function Switch({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (

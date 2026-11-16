@@ -47,7 +47,7 @@ export async function runBrewImportAction(json: unknown, opts?: unknown): Promis
   if ("error" in o) return o;
   const res = await runBrewManagerImport(json, o);
   if ("result" in res) {
-    for (const p of ["/brewery", "/brewery/recipes", "/brewery/batches", "/brewery/schedule", "/brewery/setup", "/brewery/brew", "/kegs/demand"]) revalidatePath(p);
+    for (const p of ["/brewery", "/brewery/recipes", "/brewery/batches", "/brewery/schedule", "/brewery/setup", "/brewery/brew", "/brewery/stock", "/brewery/ordering", "/brewery/costs", "/ingredients", "/kegs/demand"]) revalidatePath(p);
   }
   return res;
 }

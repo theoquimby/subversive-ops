@@ -1,7 +1,9 @@
 "use server";
 
 import { BREW_LINE_KINDS, BREW_UNITS, HOP_USES } from "@/domain/brewMath";
+import type { LinkSummary } from "@/domain/brewIngredientLink";
 import { requireUser } from "@/server/auth";
+import { linkBrewIngredients } from "@/server/services/brewIngredientLink";
 import { createBrewIngredient, duplicateBrewRecipe, removeBrewRecipe, saveBrewRecipe, setBrewingPrice, type BrewCatalogIngredient } from "@/server/services/brewRecipes";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -83,6 +85,20 @@ export async function createBrewIngredientAction(name: string, kind: string, uni
     revalidatePath("/brewery/recipes");
   }
   return res;
+}
+
+/** Link every recipe line with no ingredient to one (existing or new): stock, ordering and costs then count it. */
+export async function linkBrewIngredientsAction(): Promise<{ summary: LinkSummary } | { error: string }> {
+  await requireUser("MANAGER");
+  try {
+    const summary = await linkBrewIngredients();
+    refresh();
+    for (const p of ["/brewery/stock", "/brewery/ordering", "/brewery/costs", "/ingredients"]) revalidatePath(p);
+    return { summary };
+  } catch (e) {
+    console.error("Linking recipe lines to ingredients failed", e);
+    return { error: "Linking didn't finish, and nothing was changed. Try again in a minute." };
+  }
 }
 
 /** A price typed in the Brewing ingredient prices table: "$1.10" per lb (or per package, per gallon). Empty does nothing. */
