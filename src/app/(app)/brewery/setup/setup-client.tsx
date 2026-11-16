@@ -14,11 +14,14 @@ import { addTankAction, deleteTankAction, setDefaultDaysAction, setTankFieldActi
 const KINDS = (["FERMENTER", "BRITE", "OTHER"] as TankKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }));
 const ACTIVE = [{ value: "yes", label: "In use" }, { value: "no", label: "Not in use" }];
 
-/** Every tank, editable in place, with a row to add one. */
+/** Every tank, editable in place, with a row to add one. Tanks not in use wait behind a link. */
 export function TankGrid({ tanks }: { tanks: TankView[] }) {
+  const [showOld, setShowOld] = useState(false);
+  const idle = tanks.filter((t) => !t.active).length;
+  const shown = showOld ? tanks : tanks.filter((t) => t.active);
   return (
     <>
-      {tanks.length > 0 && (
+      {shown.length > 0 && (
         <Table>
           <thead>
             <tr>
@@ -31,9 +34,14 @@ export function TankGrid({ tanks }: { tanks: TankView[] }) {
             </tr>
           </thead>
           <tbody>
-            {tanks.map((t) => <Row key={t.id} t={t} />)}
+            {shown.map((t) => <Row key={t.id} t={t} />)}
           </tbody>
         </Table>
+      )}
+      {idle > 0 && (
+        <button type="button" onClick={() => setShowOld((s) => !s)} className="mt-1.5 inline-flex min-h-10 items-center rounded-lg px-2 text-sm text-muted underline decoration-border-strong underline-offset-4 hover:text-ink sm:min-h-8">
+          {showOld ? "Hide tanks not in use" : `Show ${idle} tank${idle === 1 ? "" : "s"} not in use`}
+        </button>
       )}
       <AddTank first={!tanks.length} />
     </>

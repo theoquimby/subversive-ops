@@ -1,3 +1,4 @@
+import { ShowMore } from "@/components/show-more";
 import { Badge, Card, cx, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
 import { daysBetween } from "@/domain/dates";
 import { money, shortDate } from "@/lib/format";
@@ -93,7 +94,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                     {d.kegBatch.now.map((x) => <Badge key={x.label}>{x.n} {x.label.toLowerCase()}</Badge>)}
                   </div>
                 )}
-                <ul className="mt-3 grid gap-x-4 sm:grid-cols-2">
+                <ShowMore as="ul" limit={16} noun={["keg", "kegs"]} className="mt-3 grid gap-x-4 sm:grid-cols-2">
                   {d.kegBatch.kegs.map((k) => (
                     <li key={k.code + (k.filledOn ?? "")}>
                       <Link href={`/kegs/k/${k.code}`} className="flex min-h-10 items-center gap-2 border-b border-border py-1.5 text-sm hover:bg-surface-2/60">
@@ -103,7 +104,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                       </Link>
                     </li>
                   ))}
-                </ul>
+                </ShowMore>
               </>
             )}
           </Card>

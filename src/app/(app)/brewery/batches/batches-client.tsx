@@ -1,90 +1,110 @@
 "use client";
 
-import { Card, cx, Input, Table, Td, Th, Tr } from "@/components/ui";
-import { fuzzyFilter } from "@/domain/search";
+import { DataTable, type Column, type Filter, type GroupBy } from "@/components/data-table";
+import type { BrewStatus } from "@/domain/tankPlan";
 import { money, shortDate } from "@/lib/format";
 import type { BatchView } from "@/server/services/brewery";
-import { Search } from "lucide-react";
-import Link from "next/link";
-import { useMemo, useState } from "react";
-import { abvText, BeerDot, bblText, StatusBadge } from "../bits";
+import { useMemo } from "react";
+import { abvText, BeerDot, bblText, gravityText, STATUS, StatusBadge } from "../bits";
 
-const SHOW = [
-  { id: "planned", label: "Planned", test: (b: BatchView) => b.status === "PLANNED" },
-  { id: "tanks", label: "In tanks", test: (b: BatchView) => b.status === "FERMENTING" || b.status === "CONDITIONING" },
-  { id: "packaged", label: "Packaged", test: (b: BatchView) => b.status === "PACKAGED" },
-  { id: "all", label: "All", test: () => true },
-] as const;
-type Show = (typeof SHOW)[number]["id"];
+/** The tabs: where a brew is in its life. */
+const STAGE: Record<BrewStatus, string> = { PLANNED: "planned", FERMENTING: "tanks", CONDITIONING: "tanks", PACKAGED: "packaged", DUMPED: "dumped" };
+const STAGES = [{ value: "planned", label: "Planned" }, { value: "tanks", label: "In tanks" }, { value: "packaged", label: "Packaged" }, { value: "dumped", label: "Dumped" }];
+const STATUS_RANK: Record<BrewStatus, number> = { FERMENTING: 0, CONDITIONING: 1, PLANNED: 2, PACKAGED: 3, DUMPED: 4 };
+/** Brew day, or the planned day for a brew not brewed yet. */
+const day = (b: BatchView) => b.brewedOn ?? b.plannedOn;
+const NO_RECIPE = "No recipe";
 
-/** Every brew with a filter and a search; each row opens the brew. */
-export function BatchTable({ rows, initialShow, initialQuery }: { rows: BatchView[]; initialShow: Show; initialQuery: string }) {
-  const [show, setShow] = useState<Show>(initialShow);
-  const [q, setQ] = useState(initialQuery);
-  const list = useMemo(() => {
-    const f = rows.filter(SHOW.find((s) => s.id === show)!.test);
-    return q.trim() ? fuzzyFilter(f, q, (b) => `${b.code} ${b.name} ${b.recipeName ?? ""}`, 500) : f;
-  }, [rows, show, q]);
+/** Every brew: search, stage tabs, beer, recipe and year filters, totals, CSV; each row opens the brew. */
+export function BatchTable({ rows }: { rows: BatchView[] }) {
+  const columns = useMemo<Column<BatchView>[]>(() => [
+    {
+      id: "brew", header: "Brew", width: 220, hideable: false, sort: (b) => b.name, csv: (b) => b.name,
+      cell: (b) => (
+        <span className="flex min-h-10 items-center gap-2.5">
+          <BeerDot color={b.color} />
+          <span className="min-w-0">
+            <span className="block truncate font-medium">{b.name}</span>
+            <span className="num block text-xs text-muted">{b.code}</span>
+          </span>
+        </span>
+      ),
+    },
+    { id: "code", header: "Code", width: 90, defaultHidden: true, sort: (b) => b.code, csv: (b) => b.code, cell: (b) => <span className="num">{b.code}</span> },
+    { id: "recipe", header: "Recipe", width: 170, sort: (b) => b.recipeName, csv: (b) => b.recipeName ?? "", cell: (b) => <span className="text-ink-2">{b.recipeName ?? "—"}</span> },
+    { id: "status", header: "Status", width: 120, sort: (b) => STATUS_RANK[b.status], csv: (b) => STATUS[b.status].label, cell: (b) => <StatusBadge status={b.status} /> },
+    { id: "brewed", header: "Brewed", width: 100, firstDir: "desc", sort: (b) => day(b), csv: (b) => b.brewedOn ?? (b.plannedOn ? `planned ${b.plannedOn}` : ""), cell: (b) => <span className="num whitespace-nowrap">{b.brewedOn ? shortDate(b.brewedOn) : b.plannedOn ? <span className="text-muted">{shortDate(b.plannedOn)}</span> : "—"}</span> },
+    { id: "packaged", header: "Packaged", width: 100, firstDir: "desc", sort: (b) => b.packagedOn, csv: (b) => b.packagedOn ?? "", cell: (b) => <span className="num whitespace-nowrap">{b.packagedOn ? shortDate(b.packagedOn) : "—"}</span> },
+    { id: "bbl", header: "Volume", align: "right", width: 90, firstDir: "desc", sort: (b) => b.bbl, csv: (b) => b.bbl ?? "", cell: (b) => bblText(b.bbl), total: (l) => bblText(l.reduce((s, b) => s + (b.bbl ?? 0), 0)) },
+    { id: "og", header: "OG", align: "right", width: 70, defaultHidden: true, sort: (b) => b.og, csv: (b) => b.og ?? "", cell: (b) => gravityText(b.og) },
+    { id: "fg", header: "FG", align: "right", width: 70, defaultHidden: true, sort: (b) => b.fg, csv: (b) => b.fg ?? "", cell: (b) => gravityText(b.fg) },
+    { id: "abv", header: "ABV", align: "right", width: 70, firstDir: "desc", sort: (b) => b.abv, csv: (b) => b.abv ?? "", cell: (b) => abvText(b.abv) },
+    { id: "cost", header: "Cost", align: "right", width: 90, firstDir: "desc", sort: (b) => b.cost, csv: (b) => b.cost ?? "", cell: (b) => (b.cost != null ? money(b.cost, { whole: true }) : <span className="text-muted">—</span>), total: (l) => money(l.reduce((s, b) => s + (b.cost ?? 0), 0), { whole: true }) },
+    { id: "pint", header: "Per pint", align: "right", width: 90, firstDir: "desc", sort: (b) => b.costPerPint, csv: (b) => b.costPerPint ?? "", cell: (b) => (b.costPerPint != null ? money(b.costPerPint) : <span className="text-muted">—</span>) },
+    { id: "kegs", header: "Keg batch", width: 100, defaultHidden: true, sort: (b) => b.kegBatchCode, csv: (b) => b.kegBatchCode ?? "", cell: (b) => <span className="num text-muted">{b.kegBatchCode ?? "—"}</span> },
+  ], []);
+
+  const filters = useMemo<Filter<BatchView>[]>(() => [
+    { id: "show", label: "Show", kind: "facet", display: "segmented", single: true, allLabel: "All", param: "show", values: (b) => STAGE[b.status], options: STAGES.filter((s) => s.value !== "dumped" || rows.some((b) => b.status === "DUMPED")) },
+    { id: "beer", label: "Beer", kind: "facet", param: "beer", values: (b) => b.beerId ?? "none", options: beerOptions(rows) },
+    { id: "recipe", label: "Recipe", kind: "facet", param: "recipe", values: (b) => b.recipeId ?? "none", options: recipeOptions(rows) },
+    { id: "year", label: "Year", kind: "facet", param: "year", values: (b) => day(b)?.slice(0, 4) ?? "none", options: yearOptions(rows) },
+    { id: "nocost", label: "No cost yet", kind: "toggle", test: (b) => b.status !== "PLANNED" && b.cost == null },
+  ], [rows]);
+
+  const groups = useMemo<GroupBy<BatchView>[]>(() => [
+    { id: "status", label: "Status", key: (b) => b.status, title: (s) => STATUS[s as BrewStatus]?.label ?? s, order: (a, b) => STATUS_RANK[a as BrewStatus] - STATUS_RANK[b as BrewStatus] },
+    { id: "beer", label: "Beer", key: (b) => b.name },
+    { id: "recipe", label: "Recipe", key: (b) => b.recipeName ?? NO_RECIPE },
+    { id: "year", label: "Year", key: (b) => day(b)?.slice(0, 4) ?? "", title: (y) => y || "No date", order: (a, b) => (a === "" ? 1 : b === "" ? -1 : b.localeCompare(a)) },
+  ], []);
+
   return (
-    <>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0" role="tablist" aria-label="Show">
-          {SHOW.map((s) => {
-            const n = rows.filter(s.test).length;
-            return (
-              <button key={s.id} role="tab" aria-selected={show === s.id} onClick={() => setShow(s.id)} className={cx("inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors duration-120 sm:h-8", show === s.id ? "border-ink bg-ink text-surface" : "border-border-strong bg-surface text-ink-2 hover:bg-surface-2")}>
-                {s.label}<span className={cx("num text-xs", show === s.id ? "text-surface/70" : "text-muted")}>{n}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="relative sm:w-64">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search code, beer, recipe" aria-label="Search brews" className="pl-9" />
-        </div>
-      </div>
-      {list.length ? (
-        <Table sticky>
-          <thead>
-            <tr>
-              <Th>Brew</Th>
-              <Th className="hidden lg:table-cell">Recipe</Th>
-              <Th className="hidden sm:table-cell">Status</Th>
-              <Th>Brewed</Th>
-              <Th className="hidden md:table-cell">Packaged</Th>
-              <Th align="right" className="hidden sm:table-cell">Volume</Th>
-              <Th align="right" className="hidden md:table-cell">ABV</Th>
-              <Th align="right" className="hidden lg:table-cell">Cost</Th>
-              <Th align="right" className="hidden sm:table-cell">Per pint</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((b) => (
-              <Tr key={b.id}>
-                <Td className="min-w-[10rem]">
-                  <Link href={`/brewery/batches/${b.id}`} className="flex min-h-10 items-center gap-2.5">
-                    <BeerDot color={b.color} />
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">{b.name}</span>
-                      <span className="num block text-xs text-muted">{b.code}<span className="sm:hidden"> · {b.status === "PLANNED" ? "planned" : b.status.toLowerCase()}</span></span>
-                    </span>
-                  </Link>
-                </Td>
-                <Td className="hidden text-ink-2 lg:table-cell">{b.recipeName ?? "—"}</Td>
-                <Td className="hidden sm:table-cell"><StatusBadge status={b.status} /></Td>
-                <Td className="num whitespace-nowrap">{b.brewedOn ? shortDate(b.brewedOn) : b.plannedOn ? <span className="text-muted">{shortDate(b.plannedOn)}</span> : "—"}</Td>
-                <Td className="num hidden whitespace-nowrap md:table-cell">{b.packagedOn ? shortDate(b.packagedOn) : "—"}</Td>
-                <Td align="right" className="hidden sm:table-cell">{bblText(b.bbl)}</Td>
-                <Td align="right" className="hidden md:table-cell">{abvText(b.abv)}</Td>
-                <Td align="right" className="hidden lg:table-cell">{b.cost != null ? money(b.cost, { whole: true }) : <span className="text-muted">—</span>}</Td>
-                <Td align="right" className="hidden sm:table-cell">{b.costPerPint != null ? money(b.costPerPint) : <span className="text-muted">—</span>}</Td>
-              </Tr>
-            ))}
-          </tbody>
-        </Table>
-      ) : (
-        <Card className="px-4 py-6 text-center text-sm text-muted">No brews match.</Card>
-      )}
-    </>
+    <DataTable
+      id="brewery-batches"
+      rows={rows}
+      rowKey={(b) => b.id}
+      columns={columns}
+      noun={["brew", "brews"]}
+      searchText={(b) => `${b.code} ${b.name} ${b.recipeName ?? ""} ${b.kegBatchCode ?? ""}`}
+      searchPlaceholder="Search code, beer, recipe"
+      filters={filters}
+      groups={groups}
+      csvName="brews"
+      help="brewery.batches"
+      totals="Total"
+      rowHref={(b) => `/brewery/batches/${b.id}`}
+      rowClassName={(b) => (b.status === "DUMPED" ? "opacity-60" : undefined)}
+      summary={(vis) => [
+        { value: vis.length, label: vis.length === 1 ? "brew" : "brews" },
+        { value: bblText(vis.reduce((s, b) => s + (b.bbl ?? 0), 0)), label: "in all" },
+        ...(vis.some((b) => b.status !== "PLANNED" && b.cost == null) ? [{ value: vis.filter((b) => b.status !== "PLANNED" && b.cost == null).length, label: "with no cost yet", tone: "warn" as const, filter: { id: "nocost" } }] : []),
+      ]}
+      card={(b) => ({
+        title: <span className="inline-flex items-center gap-2"><BeerDot color={b.color} />{b.name}</span>,
+        subtitle: <span className="num">{b.code} · {STATUS[b.status].label.toLowerCase()}{b.brewedOn ? ` · brewed ${shortDate(b.brewedOn)}` : b.plannedOn ? ` · for ${shortDate(b.plannedOn)}` : ""}</span>,
+        value: bblText(b.bbl),
+        sub: b.costPerPint != null ? `${money(b.costPerPint)} a pint` : abvText(b.abv),
+      })}
+    />
   );
+}
+
+function beerOptions(rows: BatchView[]) {
+  const seen = new Map<string, string>();
+  for (const b of rows) if (b.beerId) seen.set(b.beerId, b.name);
+  const list = [...seen].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  return rows.some((b) => !b.beerId) ? [...list, { value: "none", label: "No beer" }] : list;
+}
+
+function recipeOptions(rows: BatchView[]) {
+  const seen = new Map<string, string>();
+  for (const b of rows) if (b.recipeId && b.recipeName) seen.set(b.recipeId, b.recipeName);
+  const list = [...seen].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  return rows.some((b) => !b.recipeId) ? [...list, { value: "none", label: NO_RECIPE }] : list;
+}
+
+function yearOptions(rows: BatchView[]) {
+  const years = [...new Set(rows.map((b) => day(b)?.slice(0, 4) ?? "none"))].sort((a, b) => (a === "none" ? 1 : b === "none" ? -1 : b.localeCompare(a)));
+  return years.map((y) => ({ value: y, label: y === "none" ? "No date" : y }));
 }

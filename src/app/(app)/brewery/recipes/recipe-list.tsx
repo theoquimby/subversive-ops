@@ -1,21 +1,61 @@
 "use client";
 
-import { Card, cx, EmptyState, Input, LinkButton } from "@/components/ui";
+import { DataTable, type Column, type Filter, type GroupBy } from "@/components/data-table";
+import { cx, EmptyState, LinkButton } from "@/components/ui";
 import { RECIPE_STATUSES, type BrewRecipeStatus } from "@/domain/brewRecipes";
-import { fuzzyFilter } from "@/domain/search";
 import { money, qty } from "@/lib/format";
 import type { BrewRecipeRow } from "@/server/services/brewRecipes";
-import { Search } from "lucide-react";
-import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 export const sg = (n: number) => n.toFixed(3);
 
-/** Recipes grouped Live / In development / Archived, with a search box. A table on a wide screen, a stacked list on a phone. */
+const STATUS_LABEL = Object.fromEntries(RECIPE_STATUSES.map((s) => [s.value, s.label])) as Record<BrewRecipeStatus, string>;
+const STATUS_RANK: Record<BrewRecipeStatus, number> = { live: 0, dev: 1, archived: 2 };
+const DEFAULT_VIEW = { filters: { status: ["current"] }, group: "status" };
+
+/**
+ * Every brewing recipe: search, Live / In development / Archived tabs (archived
+ * hidden at first), beer and "needs prices" filters, sort by any number, CSV.
+ * Grouped by status unless you pick otherwise; each row opens the recipe.
+ */
 export function RecipeList({ rows }: { rows: BrewRecipeRow[] }) {
-  const [q, setQ] = useState("");
-  const [showArchived, setShowArchived] = useState(false);
-  const shown = useMemo(() => (q.trim() ? fuzzyFilter(rows, q, (r) => `${r.name} ${r.style ?? ""} ${r.beer ?? ""}`, 1000) : rows), [rows, q]);
+  const columns = useMemo<Column<BrewRecipeRow>[]>(() => [
+    {
+      id: "name", header: "Recipe", width: 260, hideable: false, sort: (r) => r.name, csv: (r) => r.name,
+      cell: (r) => (
+        <span className="flex min-w-0 items-center gap-2.5">
+          <Swatch hex={r.colorHex} srm={r.srm} hasGrain={r.og > 1} />
+          <span className="min-w-0">
+            <span className="block truncate font-medium text-ink">{r.name}</span>
+            <span className="block truncate text-xs text-muted">{r.style ?? "No style yet"}</span>
+          </span>
+        </span>
+      ),
+    },
+    { id: "style", header: "Style", width: 150, defaultHidden: true, sort: (r) => r.style, csv: (r) => r.style ?? "", cell: (r) => <span className="text-ink-2">{r.style ?? "—"}</span> },
+    { id: "beer", header: "Beer", width: 170, sort: (r) => r.beer, csv: (r) => r.beer ?? "", cell: (r) => <span className={cx("truncate", r.beer ? "text-ink-2" : "text-muted")}>{r.beer ?? "Not linked"}</span> },
+    { id: "status", header: "Status", width: 130, defaultHidden: true, sort: (r) => STATUS_RANK[r.status], csv: (r) => STATUS_LABEL[r.status], cell: (r) => <span className="text-ink-2">{STATUS_LABEL[r.status]}</span> },
+    { id: "batch", header: "Batch", align: "right", width: 80, firstDir: "desc", sort: (r) => r.batchBbl, csv: (r) => r.batchBbl, cell: (r) => <span className="text-ink-2">{qty(r.batchBbl, 1)} bbl</span> },
+    { id: "gravity", header: "OG → FG", align: "right", width: 120, firstDir: "desc", sort: (r) => r.og, csv: (r) => `${sg(r.og)} → ${sg(r.fg)}`, cell: (r) => <span className="text-ink-2">{sg(r.og)} → {sg(r.fg)}</span> },
+    { id: "abv", header: "ABV", align: "right", width: 70, firstDir: "desc", sort: (r) => r.abv, csv: (r) => r.abv, cell: (r) => <span className="text-ink-2">{r.abv.toFixed(1)}%</span> },
+    { id: "ibu", header: "IBU", align: "right", width: 60, firstDir: "desc", sort: (r) => r.ibu, csv: (r) => Math.round(r.ibu), cell: (r) => <span className="text-ink-2">{Math.round(r.ibu)}</span> },
+    { id: "srm", header: "SRM", align: "right", width: 60, defaultHidden: true, firstDir: "desc", sort: (r) => r.srm, csv: (r) => Math.round(r.srm), cell: (r) => <span className="text-ink-2">{Math.round(r.srm)}</span> },
+    { id: "total", header: "Per batch", align: "right", width: 100, defaultHidden: true, firstDir: "desc", sort: (r) => (r.lineCount ? r.total : null), csv: (r) => (r.lineCount ? r.total : ""), cell: (r) => (r.lineCount ? <span className={r.unpricedLines ? "text-warn" : undefined}>{money(r.total, { whole: true })}{r.unpricedLines ? "+" : ""}</span> : <span className="text-muted">—</span>) },
+    { id: "pint", header: "Per pint", align: "right", width: 110, firstDir: "desc", sort: (r) => (r.unpricedLines ? null : r.perPint), csv: (r) => (r.unpricedLines ? "needs prices" : r.perPint ?? ""), cell: (r) => <PerPint r={r} /> },
+  ], []);
+
+  const filters = useMemo<Filter<BrewRecipeRow>[]>(() => [
+    { id: "status", label: "Status", kind: "facet", display: "segmented", single: true, allLabel: "All", values: (r) => (r.status === "archived" ? ["archived"] : ["current", r.status]), options: [{ value: "current", label: "In use" }, ...RECIPE_STATUSES] },
+    { id: "prices", label: "Needs prices", kind: "toggle", tone: "warn", test: (r) => r.lineCount > 0 && r.unpricedLines > 0 },
+    { id: "beer", label: "Beer", kind: "facet", values: (r) => r.beer ?? "Not linked" },
+    { id: "style", label: "Style", kind: "facet", values: (r) => r.style ?? "No style yet" },
+  ], []);
+
+  const groups = useMemo<GroupBy<BrewRecipeRow>[]>(() => [
+    { id: "status", label: "Status", key: (r) => r.status, title: (s) => STATUS_LABEL[s as BrewRecipeStatus] ?? s, order: (a, b) => STATUS_RANK[a as BrewRecipeStatus] - STATUS_RANK[b as BrewRecipeStatus] },
+    { id: "beer", label: "Beer", key: (r) => r.beer ?? "", title: (b) => b || "Not linked" },
+    { id: "style", label: "Style", key: (r) => r.style ?? "", title: (s) => s || "No style yet" },
+  ], []);
 
   if (!rows.length) {
     return (
@@ -33,82 +73,35 @@ export function RecipeList({ rows }: { rows: BrewRecipeRow[] }) {
     );
   }
 
-  const archivedCount = shown.filter((r) => r.status === "archived").length;
   return (
-    <div className="space-y-6">
-      <div className="relative max-w-sm">
-        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search recipes, styles, beers" aria-label="Search recipes" className="pl-9" />
-      </div>
-      {RECIPE_STATUSES.map(({ value, label }) => {
-        const group = shown.filter((r) => r.status === value);
-        if (value === "archived" && !showArchived && !q.trim()) {
-          return archivedCount > 0 ? (
-            <button key={value} type="button" onClick={() => setShowArchived(true)} className="text-sm text-muted underline underline-offset-2 hover:text-ink">
-              Show {archivedCount} archived recipe{archivedCount === 1 ? "" : "s"}
-            </button>
-          ) : null;
-        }
-        if (!group.length) return null;
-        return <Group key={value} status={value} label={label} rows={group} />;
+    <DataTable
+      id="brewery-recipes"
+      rows={rows}
+      rowKey={(r) => r.id}
+      columns={columns}
+      noun={["recipe", "recipes"]}
+      searchText={(r) => `${r.name} ${r.style ?? ""} ${r.beer ?? ""}`}
+      searchPlaceholder="Search recipes, styles, beers"
+      filters={filters}
+      groups={groups}
+      defaultView={DEFAULT_VIEW}
+      csvName="brewing-recipes"
+      urlSearch={false}
+      help="brewery.recipes"
+      maxHeight="calc(100dvh - 12rem)"
+      rowHref={(r) => `/brewery/recipes/${r.id}`}
+      rowClassName={(r) => (r.status === "archived" ? "opacity-80" : undefined)}
+      summary={(vis) => [
+        { value: vis.length, label: vis.length === 1 ? "recipe" : "recipes" },
+        ...(vis.some((r) => r.lineCount > 0 && r.unpricedLines > 0) ? [{ value: vis.filter((r) => r.lineCount > 0 && r.unpricedLines > 0).length, label: "need prices", tone: "warn" as const, filter: { id: "prices" } }] : []),
+      ]}
+      card={(r) => ({
+        title: <span className="inline-flex min-w-0 items-center gap-2"><Swatch hex={r.colorHex} srm={r.srm} hasGrain={r.og > 1} />{r.name}</span>,
+        subtitle: [r.style, r.beer && `pours as ${r.beer}`, `${qty(r.batchBbl, 1)} bbl · ${r.abv.toFixed(1)}% · ${Math.round(r.ibu)} IBU`].filter(Boolean).join(" · "),
+        value: <PerPint r={r} />,
+        sub: STATUS_LABEL[r.status],
       })}
-      {q.trim() && !shown.length && <p className="text-sm text-muted">No recipe matches “{q}”.</p>}
-    </div>
-  );
-}
-
-function Group({ label, rows, status }: { label: string; rows: BrewRecipeRow[]; status: BrewRecipeStatus }) {
-  return (
-    <section aria-label={label}>
-      <h2 className="mb-2 text-[0.95rem] font-semibold text-ink">
-        {label} <span className="num font-normal text-muted">{rows.length}</span>
-      </h2>
-      <Card className={cx("divide-y divide-border overflow-hidden", status === "archived" && "opacity-80")}>
-        <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_4.5rem_7.5rem_3.5rem_3rem_6rem] gap-3 px-4 py-2.5 text-[0.75rem] font-medium text-muted md:grid">
-          <span>Recipe</span>
-          <span>Beer</span>
-          <span className="text-right">Batch</span>
-          <span className="text-right">OG → FG</span>
-          <span className="text-right">ABV</span>
-          <span className="text-right">IBU</span>
-          <span className="text-right">Per pint</span>
-        </div>
-        {rows.map((r) => (
-          <Link key={r.id} href={`/brewery/recipes/${r.id}`} className="block px-4 py-3 transition-colors duration-120 hover:bg-surface-2/60">
-            {/* Phone: stacked */}
-            <div className="flex items-start gap-3 md:hidden">
-              <Swatch hex={r.colorHex} srm={r.srm} hasGrain={r.og > 1} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate font-medium text-ink">{r.name}</span>
-                  <PerPint r={r} />
-                </div>
-                <div className="truncate text-xs text-muted">{[r.style, r.beer && `pours as ${r.beer}`].filter(Boolean).join(" · ") || "No style yet"}</div>
-                <div className="num mt-1 text-xs text-ink-2">
-                  {qty(r.batchBbl, 1)} bbl · {sg(r.og)} → {sg(r.fg)} · {r.abv.toFixed(1)}% · {Math.round(r.ibu)} IBU
-                </div>
-              </div>
-            </div>
-            {/* Wide: one row */}
-            <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_4.5rem_7.5rem_3.5rem_3rem_6rem] items-center gap-3 text-sm md:grid">
-              <span className="flex min-w-0 items-center gap-2.5">
-                <Swatch hex={r.colorHex} srm={r.srm} hasGrain={r.og > 1} />
-                <span className="min-w-0">
-                  <span className="block truncate font-medium text-ink">{r.name}</span>
-                  <span className="block truncate text-xs text-muted">{r.style ?? "No style yet"}</span>
-                </span>
-              </span>
-              <span className={cx("truncate", r.beer ? "text-ink-2" : "text-muted")}>{r.beer ?? "Not linked"}</span>
-              <span className="num text-right text-ink-2">{qty(r.batchBbl, 1)} bbl</span>
-              <span className="num text-right text-ink-2">{sg(r.og)} → {sg(r.fg)}</span>
-              <span className="num text-right text-ink-2">{r.abv.toFixed(1)}%</span>
-              <span className="num text-right text-ink-2">{Math.round(r.ibu)}</span>
-              <span className="text-right"><PerPint r={r} /></span>
-            </div>
-          </Link>
-        ))}
-      </Card>
-    </section>
+    />
   );
 }
 
