@@ -3,6 +3,7 @@
 import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
 import { Button, Input, Select, Table, Td, Th, Tr } from "@/components/ui";
+import { STANDING_LABEL, STANDINGS, type Standing } from "@/domain/beerStanding";
 import { BEER_COLORS } from "@/domain/kegs";
 import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -42,7 +43,9 @@ function AddRow({ placeholder, label, onAdd }: { placeholder: string; label: str
   );
 }
 
-export interface BeerRow { id: string; name: string; style: string | null; color: string; squareNames: string[]; minFull: number; house: boolean; active: boolean; recipeId: string | null; kegs: number }
+export interface BeerRow { id: string; name: string; style: string | null; color: string; squareNames: string[]; minFull: number; house: boolean; standing: Standing; recipeId: string | null; kegs: number }
+
+const STANDING_OPTIONS = STANDINGS.map((s) => ({ value: s, label: STANDING_LABEL[s] }));
 
 export function BeersTable({ beers, recipes }: { beers: BeerRow[]; recipes: { id: string; name: string }[] }) {
   return (
@@ -53,20 +56,27 @@ export function BeersTable({ beers, recipes }: { beers: BeerRow[]; recipes: { id
             <Th>Beer</Th>
             <Th>Color</Th>
             <Th className="hidden md:table-cell">Square items that pour it</Th>
+            <Th className="hidden sm:table-cell">Standing</Th>
             <Th align="right" className="hidden sm:table-cell">Alert under</Th>
             <Th className="hidden lg:table-cell">Recipe (for cost)</Th>
-            <Th className="hidden sm:table-cell">On the list</Th>
           </tr>
         </thead>
         <tbody>
           {beers.map((b) => (
-            <Tr key={b.id} className={b.active ? "" : "opacity-60"}>
-              <Td className="min-w-40 py-1"><div className="flex items-center gap-2"><BeerDot color={b.color} /><GridCell grid="beers" col="name" ariaLabel="Beer name" value={b.name} onSave={(v) => setBeerField(b.id, "name", v)} /></div></Td>
+            <Tr key={b.id} className={b.standing === "retired" ? "opacity-60" : ""}>
+              <Td className="min-w-40 py-1">
+                <div className="flex items-center gap-2">
+                  <BeerDot color={b.color} />
+                  <GridCell className="min-w-0 flex-1" grid="beers" col="name" ariaLabel="Beer name" value={b.name} onSave={(v) => setBeerField(b.id, "name", v)} />
+                  <Link href={`/kegs/beers/${b.id}`} aria-label={`Open ${b.name}`} title="Open this beer's page" className="grid size-10 shrink-0 place-items-center rounded-lg text-muted transition-colors duration-120 hover:bg-surface-2 hover:text-ink sm:size-8"><ArrowUpRight className="size-4" /></Link>
+                </div>
+                <div className="px-2 pb-1 text-xs text-muted sm:hidden">{STANDING_LABEL[b.standing]}</div>
+              </Td>
               <Td className="w-40 py-1"><GridSelect ariaLabel="Board color" value={b.color} options={BEER_COLORS.map((c) => ({ value: c.id, label: c.label }))} onSave={(v) => setBeerField(b.id, "color", v)} /></Td>
               <Td className="hidden min-w-56 py-1 md:table-cell"><GridCell grid="beers" col="square" ariaLabel="Square item names, comma separated" value={b.squareNames.join(", ")} placeholder="Same as the beer's name" onSave={(v) => setBeerField(b.id, "squareNames", v)} /></Td>
-              <Td className="hidden w-28 py-1 sm:table-cell"><GridCell grid="beers" col="min" type="number" ariaLabel="Alert when full kegs drop under" value={b.minFull} suffix="full" onSave={(v) => setBeerField(b.id, "minFull", v)} /></Td>
+              <Td className="hidden w-36 py-1 sm:table-cell"><GridSelect ariaLabel={`Standing of ${b.name}`} value={b.standing} options={STANDING_OPTIONS} onSave={(v) => setBeerField(b.id, "standing", v)} /></Td>
+              <Td className="hidden w-28 py-1 sm:table-cell">{b.standing === "core" ? <GridCell grid="beers" col="min" type="number" ariaLabel="Alert when full kegs drop under" value={b.minFull} suffix="full" onSave={(v) => setBeerField(b.id, "minFull", v)} /> : <span className="px-2 text-xs text-muted" title="Only core beers are alerted about">—</span>}</Td>
               <Td className="hidden w-56 py-1 lg:table-cell"><GridSelect ariaLabel="Beer recipe" value={b.recipeId ?? ""} options={[{ value: "", label: "None" }, ...recipes.map((r) => ({ value: r.id, label: r.name }))]} onSave={(v) => setBeerField(b.id, "recipeId", v)} /></Td>
-              <Td className="hidden w-32 py-1 sm:table-cell"><GridSelect ariaLabel="On the list" value={b.active ? "true" : "false"} options={[{ value: "true", label: "Yes" }, { value: "false", label: "Retired" }]} onSave={(v) => setBeerField(b.id, "active", v)} /></Td>
             </Tr>
           ))}
         </tbody>

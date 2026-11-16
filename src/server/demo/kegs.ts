@@ -5,19 +5,27 @@ import { newKegCode } from "@/domain/kegs";
 /**
  * Keg demo: six house beers sold on Square since 2023 (with a summer bump),
  * ~40 kegs across the walk-in, keg cooler and taps, a few accounts, and a
- * history of taps and kicks so the yield is measured. Safe to run on a
- * database with real menu data: it only adds Square sales under "demo-keg-*"
- * ids and keg rows, and clears its own rows first.
+ * history of taps and kicks so the yield is measured. Three beers are core,
+ * three in rotation, and one retired beer (sold until autumn 2025) still has
+ * a keg out at an account. Safe to run on a database with real menu data: it
+ * only adds Square sales under "demo-keg-*" ids and keg rows, and clears its
+ * own rows first.
  */
 
-const BEERS = [
-  { name: "Golden Lager", color: "straw", pints: 26, sq: "Golden Lager" },
-  { name: "New York Nectar", color: "haze", pints: 34, sq: "New York Nectar*" },
-  { name: "Subversive IPA", color: "gold", pints: 30, sq: "Subversive IPA" },
-  { name: "Catskill Stout", color: "black", pints: 12, sq: "Catskill Stout", winter: true },
-  { name: "Raspberry Gose", color: "pink", pints: 9, sq: "Raspberry Gose", from: "2026-05-01" },
-  { name: "Märzen", color: "amber", pints: 14, sq: "Märzen", fall: true },
+type DemoBeer = { name: string; color: string; pints: number; sq: string; standing: "core" | "rotation" | "retired"; winter?: boolean; fall?: boolean; from?: string; until?: string };
+
+const BEERS: DemoBeer[] = [
+  { name: "Golden Lager", color: "straw", pints: 26, sq: "Golden Lager", standing: "core" },
+  { name: "New York Nectar", color: "haze", pints: 34, sq: "New York Nectar*", standing: "core" },
+  { name: "Subversive IPA", color: "gold", pints: 30, sq: "Subversive IPA", standing: "core" },
+  { name: "Catskill Stout", color: "black", pints: 12, sq: "Catskill Stout", winter: true, standing: "rotation" },
+  { name: "Raspberry Gose", color: "pink", pints: 9, sq: "Raspberry Gose", from: "2026-05-01", standing: "rotation" },
+  { name: "Märzen", color: "amber", pints: 14, sq: "Märzen", fall: true, standing: "rotation" },
+  // Retired: replaced by New York Nectar. Its last keg is still out at an account.
+  { name: "Session Pale", color: "gold", pints: 18, sq: "Session Pale", until: "2025-10-31", standing: "retired" },
 ];
+/** The beers poured now (lines 1–6); the retired one is last. */
+const POURING = 6;
 
 function rng(seed: number) {
   let s = seed >>> 0;
@@ -38,7 +46,7 @@ export async function seedKegs(db: PrismaClient, today: ISODate): Promise<void> 
   await db.setting.upsert({ where: { key: "kegs.config" }, create: { key: "kegs.config", value: JSON.stringify({ tapLines: 10, tapArea: "Bar", coldArea: "Walk-in", fillDays: 7, pours: {} }) }, update: { value: JSON.stringify({ tapLines: 10, tapArea: "Bar", coldArea: "Walk-in", fillDays: 7, pours: {} }) } });
 
   const beers = [];
-  for (const b of BEERS) beers.push(await db.beer.create({ data: { name: b.name, color: b.color, squareNames: [b.sq], minFull: b.pints > 20 ? 2 : 1 } }));
+  for (const b of BEERS) beers.push(await db.beer.create({ data: { name: b.name, color: b.color, squareNames: [b.sq], minFull: b.pints > 20 ? 2 : 1, active: b.standing !== "retired", core: b.standing === "core" } }));
 
   // Square sales: Full Pour / Half Pour / Taster, closed Mondays.
   const start = "2023-01-02";
@@ -52,6 +60,7 @@ export async function seedKegs(db: PrismaClient, today: ISODate): Promise<void> 
     const dow = wd === 5 || wd === 6 ? 1.6 : wd === 0 ? 1.2 : 0.75;
     BEERS.forEach((b, i) => {
       if (b.from && d < b.from) return;
+      if (b.until && d > b.until) return;
       let s = season;
       if (b.winter) s = m >= 11 || m <= 3 ? 1.6 : 0.5;
       if (b.fall) { if (m < 9 || m > 11) return; s = 1.4; }
@@ -108,7 +117,7 @@ export async function seedKegs(db: PrismaClient, today: ISODate): Promise<void> 
 
   // Kicked history: two past kegs per main beer, tapped and kicked before the current one went on.
   const LEFT = [0.12, 0.7, 0.45, 0.6, 0.3, 0.85];
-  const tapDay = BEERS.map((_, bi) => backFrom(bi, today, (1 - LEFT[bi]) * 0.86 * (bi === 4 ? 660.5 : 1984)));
+  const tapDay = BEERS.slice(0, POURING).map((_, bi) => backFrom(bi, today, (1 - LEFT[bi]) * 0.86 * (bi === 4 ? 660.5 : 1984)));
   for (const [bi, b] of beers.entries()) {
     if (bi > 2) continue;
     let end = addDays(tapDay[bi], -1);
@@ -172,4 +181,15 @@ export async function seedKegs(db: PrismaClient, today: ISODate): Promise<void> 
     const keg = await db.keg.create({ data: { code: mk(), sizeId: "half", status: "OUT", accountId: a.id, beerId: beers[i % 3].id, statusAt: hoursAgo(24 * (3 + i * 4)), owner: i === 3 ? "DEPOSIT" : "OURS", legacyCode: `SB-${1001 + i}` } });
     await db.kegEvent.create({ data: { kegId: keg.id, ...who, at: hoursAgo(24 * (3 + i * 4)), action: "OUT", toStatus: "OUT", accountId: a.id, beerId: beers[i % 3].id, toPlace: `Out at ${a.name}` } });
   }
+
+  // The retired beer: last filled in September 2025, and that keg (a sixtel) is still out at The Avalon Lounge.
+  const pale = beers[POURING];
+  const filledOn = "2025-09-20", sentOn = "2025-10-01";
+  const paleKeg = await db.keg.create({ data: { code: mk(), sizeId: "sixtel", status: "OUT", accountId: accounts[1].id, beerId: pale.id, statusAt: at5pm(sentOn) } });
+  const paleFill = await db.kegFill.create({ data: { kegId: paleKeg.id, beerId: pale.id, filledOn: new Date(`${filledOn}T00:00:00Z`) } });
+  await db.keg.update({ where: { id: paleKeg.id }, data: { fillId: paleFill.id } });
+  await db.kegEvent.createMany({ data: [
+    { kegId: paleKeg.id, ...who, at: at5pm(filledOn), action: "FILLED", toStatus: "FILLED", beerId: pale.id, toPlace: "Brewhouse" },
+    { kegId: paleKeg.id, ...who, at: at5pm(sentOn), action: "OUT", fromStatus: "FILLED", toStatus: "OUT", accountId: accounts[1].id, beerId: pale.id, fromPlace: "Brewhouse", toPlace: `Out at ${accounts[1].name}` },
+  ] });
 }

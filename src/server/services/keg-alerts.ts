@@ -1,4 +1,5 @@
 import "server-only";
+import { nagsAbout } from "@/domain/beerStanding";
 import { db } from "../db";
 import { kegAlertEmail, kegAlertSummary, type KegAlert } from "../email/templates/kegs";
 import { appUrl, inBackground, notify, type Recipient } from "./notify";
@@ -7,7 +8,8 @@ import { businessToday } from "./sales";
 /**
  * Keg alerts for managers (notification event "kegs"): a keg kicked with no
  * full keg of that beer behind it, and a beer whose full kegs dropped below
- * its minimum. Low-stock alerts go out once per beer per day.
+ * its minimum. Low-stock alerts go out once per beer per day. Core beers
+ * only: a beer in rotation or retired is never alerted about.
  */
 
 async function managers(): Promise<Recipient[]> {
@@ -29,8 +31,8 @@ async function send(alert: KegAlert, tag: string) {
 export function checkKegStock(beerId: string | null, ctx: { kicked?: { where: string | null; who: string | null } } = {}) {
   if (!beerId) return;
   inBackground(async () => {
-    const beer = await db.beer.findUnique({ where: { id: beerId }, select: { name: true, minFull: true, active: true } });
-    if (!beer?.active) return;
+    const beer = await db.beer.findUnique({ where: { id: beerId }, select: { name: true, minFull: true, active: true, core: true } });
+    if (!beer || !nagsAbout(beer)) return;
     const full = await db.keg.count({ where: { beerId, active: true, status: { in: ["COLD", "FILLED"] } } });
     if (ctx.kicked && full === 0) {
       await send({ kind: "kicked", beer: beer.name, where: ctx.kicked.where, fullLeft: 0, runsOut: null, who: ctx.kicked.who }, `keg-${beerId}`);

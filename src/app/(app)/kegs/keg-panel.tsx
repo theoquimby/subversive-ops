@@ -1,10 +1,10 @@
 "use client";
 
 import { Button, Card, cx, DatePicker, Input, Select } from "@/components/ui";
-import { ACTION_DONE, ACTION_LABEL, displayCode, kegSizeInfo, nextActions, OWNER_LABEL, sinceLabel, STATUS_META, UNDO_SECONDS, type KegActionId } from "@/domain/kegs";
+import { ACTION_DONE, ACTION_LABEL, canMarkDirty, displayCode, kegSizeInfo, nextActions, OWNER_LABEL, sinceLabel, STATUS_META, UNDO_SECONDS, type KegActionId, type KegStatus } from "@/domain/kegs";
 import { businessDateTime, shortDate } from "@/lib/format";
 import type { KegCard, PanelContext } from "@/server/services/kegs";
-import { ArrowRight, Check, CloudOff, MapPin, Undo2 } from "lucide-react";
+import { ArrowRight, Check, CloudOff, Droplets, MapPin, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { replacementsFor, undoKegAction } from "./actions";
@@ -23,8 +23,9 @@ interface UndoState {
 /**
  * The keg card after a scan: what it is, where it is, and 2–4 big buttons
  * for what usually happens next. One tap for a kick; the rest ask one
- * question (which line, which spot, which account, which beer). Every
- * action can be undone for 10 seconds.
+ * question (which line, which spot, which account, which beer). Under them,
+ * "Empty, needs cleaning" for a keg found empty whatever the app last heard.
+ * Every action can be undone for 10 seconds.
  */
 export function KegPanel({ card: initial, ctx, role, onDone, compact }: { card: KegCard; ctx: PanelContext; role: "MANAGER" | "STAFF"; onDone?: () => void; compact?: boolean }) {
   const [card, setCard] = useState(initial);
@@ -61,11 +62,13 @@ export function KegPanel({ card: initial, ctx, role, onDone, compact }: { card: 
       }),
     );
 
-  const kick = async () => {
+  /** Off a tap empty (Kicked, or Empty, needs cleaning on a keg on tap): then offer the next keg of the same beer. */
+  const kick = async (action: "KICK" | "DIRTY" = "KICK") => {
     const line = card.tapLine;
     const beer = card.beer;
     const groupId = newClientId();
-    const ok = await run("KICK", {}, { groupId, label: `Kicked · ${beer?.name ?? displayCode(card.code)}${line ? ` on tap ${line}` : ""}` });
+    const what = `${beer?.name ?? displayCode(card.code)}${line ? ` on tap ${line}` : ""}`;
+    const ok = await run(action, {}, { groupId, label: action === "KICK" ? `Kicked · ${what}` : `${ACTION_DONE.DIRTY} · ${what}` });
     if (ok && beer && line) {
       const options = await replacementsFor(beer.id, card.id).catch(() => []);
       setReplace({ line, beerId: beer.id, beer: beer.name, options, groupId });
@@ -74,6 +77,12 @@ export function KegPanel({ card: initial, ctx, role, onDone, compact }: { card: 
 
   const putOn = (r: Replacement) =>
     run("TAP", { tapLine: replace!.line }, { groupId: replace!.groupId, kegId: r.id, label: `Kicked and replaced · ${replace!.beer} on tap ${replace!.line}` }).then((ok) => ok && setReplace(null));
+
+  /** One tap, whatever the app last heard: on tap it's a kick, out it's a return, full it was poured or sent out unscanned. */
+  const markDirty = () => {
+    if (card.status === "ON_TAP") return void kick("DIRTY");
+    void run("DIRTY", { area: card.area }, { label: `${ACTION_DONE.DIRTY} · ${card.beer?.name ?? displayCode(card.code)}` });
+  };
 
   const press = (a: KegActionId) => {
     if (a === "KICK") return void kick();
@@ -133,13 +142,24 @@ export function KegPanel({ card: initial, ctx, role, onDone, compact }: { card: 
       ) : mode ? (
         <Step mode={mode} card={card} ctx={ctx} pending={pending} onCancel={() => { setMode(null); setError(null); }} onRun={(a, extra) => run(a, extra)} />
       ) : (
-        <div data-tour="kegs.actions" className={cx("grid gap-2.5", actions.length > 2 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2")}>
-          {actions.map((a, i) => (
-            <Button key={a} size="lg" variant={i === 0 ? "primary" : "secondary"} disabled={pending} onClick={() => press(a)} className={cx("h-16 w-full justify-between rounded-2xl px-5 text-lg", i === 0 && a === "KICK" && "h-20 text-xl")}>
-              {a === "TAP" && card.status !== "ON_TAP" ? "Tapped on line…" : ACTION_LABEL[a]}
-              <ArrowRight className="size-5 opacity-60" />
+        <div className="space-y-2.5">
+          <div data-tour="kegs.actions" className={cx("grid gap-2.5", actions.length > 2 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2")}>
+            {actions.map((a, i) => (
+              <Button key={a} size="lg" variant={i === 0 ? "primary" : "secondary"} disabled={pending} onClick={() => press(a)} className={cx("h-16 w-full justify-between rounded-2xl px-5 text-lg", i === 0 && a === "KICK" && "h-20 text-xl")}>
+                {a === "TAP" && card.status !== "ON_TAP" ? "Tapped on line…" : ACTION_LABEL[a]}
+                <ArrowRight className="size-5 opacity-60" />
+              </Button>
+            ))}
+          </div>
+          {canMarkDirty(card.status) && (
+            <Button variant="ghost" disabled={pending} onClick={markDirty} data-tour="kegs.dirty" className="h-auto min-h-14 w-full justify-between gap-3 rounded-2xl border border-dashed border-border-strong px-5 py-2.5 text-left whitespace-normal">
+              <span className="min-w-0">
+                <span className="block text-[0.95rem] font-medium text-ink">{ACTION_LABEL.DIRTY}</span>
+                <span className="block text-xs font-normal text-muted">{dirtyHint(card.status, card.account)}</span>
+              </span>
+              <Droplets className="size-5 shrink-0 opacity-60" />
             </Button>
-          ))}
+          )}
         </div>
       )}
 
@@ -171,6 +191,13 @@ export function KegPanel({ card: initial, ctx, role, onDone, compact }: { card: 
       )}
     </div>
   );
+}
+
+/** What "Empty, needs cleaning" will record, in a few words under the button. */
+function dirtyHint(status: KegStatus, account: string | null): string {
+  if (status === "ON_TAP") return "It kicked. It goes to the dirty kegs.";
+  if (status === "OUT") return `It came back${account ? ` from ${account}` : ""} empty.`;
+  return "Poured or sent out with no scan. Its fill ends here.";
 }
 
 function ReplaceStep({ replace, pending, onPick, onSkip }: { replace: { line: number; beer: string; options: Replacement[] }; pending: boolean; onPick: (r: Replacement) => void; onSkip: () => void }) {

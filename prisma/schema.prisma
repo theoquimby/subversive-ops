@@ -1056,7 +1056,10 @@ model Beer {
   squareNames  String[] @default([])
   /// Alert when full kegs on hand drop below this many
   minFull      Int      @default(1)
+  /// Retired when false ("Show retired" keeps its history). Standing: retired = !active; core = active && core; in rotation = active && !core
   active       Boolean  @default(true)
+  /// A core beer: we never want to run out, so fill suggestions, run-out warnings and alerts apply to it
+  core         Boolean  @default(false)
   notes        String?
   extra        Json?
   createdAt    DateTime @default(now())

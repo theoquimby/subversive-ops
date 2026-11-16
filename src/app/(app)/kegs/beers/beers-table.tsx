@@ -4,9 +4,11 @@ import { DataTable, type Column, type Filter } from "@/components/data-table";
 import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
 import { Button, cx, Input } from "@/components/ui";
+import { STANDING_LABEL, STANDINGS, type Standing } from "@/domain/beerStanding";
 import { BEER_COLORS } from "@/domain/kegs";
 import { abvText, DIET_TAGS, formatBoardPours, priceText, type BoardPour, type SquareCheck } from "@/domain/taps";
-import { ImageUp, Plus, Trash2 } from "lucide-react";
+import { ArrowUpRight, ImageUp, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { addBeer, setBeerField } from "../actions";
@@ -30,12 +32,19 @@ export interface BeerBoardRow {
   comingSoon: "auto" | "yes" | "no";
   labelUrl: string | null;
   active: boolean;
+  standing: Standing;
   house: boolean;
   taps: number[];
   fullKegs: number;
 }
 
 const COLORS = BEER_COLORS.map((c) => ({ value: c.id, label: c.label }));
+const STANDING_OPTIONS = STANDINGS.map((s) => ({ value: s, label: STANDING_LABEL[s] }));
+
+/** The arrow beside a beer's name that opens its own page. */
+function OpenBeer({ row }: { row: BeerBoardRow }) {
+  return <Link href={`/kegs/beers/${row.id}`} aria-label={`Open ${row.name}`} title="Open this beer's page" className="grid size-10 shrink-0 place-items-center rounded-lg text-muted transition-colors duration-120 hover:bg-surface-2 hover:text-ink sm:size-8"><ArrowUpRight className="size-4" /></Link>;
+}
 const DIET = [{ value: "", label: "—" }, ...DIET_TAGS.map((d) => ({ value: d, label: d }))];
 const SOON = [{ value: "auto", label: "When a keg is ready" }, { value: "yes", label: "Always" }, { value: "no", label: "Never" }];
 const SOURCE: Record<BeerBoardRow["priceSource"], string> = { typed: "typed here", square: "from Square", recipes: "from draft beer pours", none: "" };
@@ -119,7 +128,7 @@ function AddBeerRow() {
 
 export function BeersBoardTable({ rows }: { rows: BeerBoardRow[] }) {
   const columns = useMemo<Column<BeerBoardRow>[]>(() => [
-    { id: "name", header: "Beer", edit: true, width: 190, hideable: false, sort: (b) => b.name, csv: (b) => b.name, cell: (b) => <div className="flex items-center gap-2 pl-1"><BeerDot color={b.color} /><GridCell grid="bb" col="name" value={b.name} ariaLabel={`Name of ${b.name}`} onSave={(v) => setBeerField(b.id, "name", v)} className="min-w-28 flex-1 font-medium" /></div> },
+    { id: "name", header: "Beer", edit: true, width: 190, hideable: false, sort: (b) => b.name, csv: (b) => b.name, cell: (b) => <div className="flex items-center gap-2 pl-1"><BeerDot color={b.color} /><GridCell grid="bb" col="name" value={b.name} ariaLabel={`Name of ${b.name}`} onSave={(v) => setBeerField(b.id, "name", v)} className="min-w-28 flex-1 font-medium" /><OpenBeer row={b} /></div> },
     { id: "tap", header: "On", align: "right", width: 64, firstDir: "asc", sort: (b) => b.taps[0] ?? 999, csv: (b) => b.taps.join(" "), cell: (b) => <span className="num text-sm">{b.taps.length ? b.taps.map((t) => `#${t}`).join(" ") : <span className="text-muted">—</span>}</span> },
     { id: "style", header: "Style", edit: true, width: 150, sort: (b) => b.style, csv: (b) => b.style, cell: (b) => <GridCell grid="bb" col="style" value={b.style} placeholder="e.g. Hazy IPA" ariaLabel={`Style of ${b.name}`} onSave={(v) => setBeerField(b.id, "style", v)} /> },
     { id: "abv", header: "ABV", align: "right", edit: true, width: 84, firstDir: "desc", sort: (b) => b.abv, csv: (b) => b.abv, cell: (b) => <GridCell grid="bb" col="abv" type="number" suffix="%" value={b.abv} placeholder="—" ariaLabel={`ABV of ${b.name}`} onSave={(v) => setBeerBoardField(b.id, "abv", v)} /> },
@@ -140,7 +149,7 @@ export function BeersBoardTable({ rows }: { rows: BeerBoardRow[] }) {
     { id: "diet", header: "Tag", edit: true, width: 150, sort: (b) => b.diet, csv: (b) => b.diet, defaultHidden: true, cell: (b) => <GridSelect value={b.diet ?? ""} options={DIET} ariaLabel={`Dietary tag for ${b.name}`} onSave={(v) => setBeerBoardField(b.id, "diet", v)} /> },
     { id: "soon", header: "Coming soon", help: "taps.comingSoon", edit: true, width: 170, sort: (b) => b.comingSoon, csv: (b) => b.comingSoon, cell: (b) => <GridSelect value={b.comingSoon} options={SOON} ariaLabel={`Coming soon for ${b.name}`} onSave={(v) => setBeerBoardField(b.id, "comingSoon", v)} /> },
     { id: "full", header: "Full kegs", align: "right", width: 80, defaultHidden: true, firstDir: "desc", sort: (b) => b.fullKegs, csv: (b) => b.fullKegs, cell: (b) => <span className="num text-sm">{b.fullKegs}</span> },
-    { id: "active", header: "On the list", edit: true, width: 120, defaultHidden: true, sort: (b) => (b.active ? 1 : 0), csv: (b) => (b.active ? "yes" : "retired"), cell: (b) => <GridSelect value={b.active ? "true" : "false"} options={[{ value: "true", label: "Yes" }, { value: "false", label: "Retired" }]} ariaLabel={`${b.name} on the list`} onSave={(v) => setBeerField(b.id, "active", v)} /> },
+    { id: "active", header: "Standing", help: "kegs.standing", edit: true, width: 140, sort: (b) => ["core", "rotation", "retired"].indexOf(b.standing), csv: (b) => STANDING_LABEL[b.standing], cell: (b) => <GridSelect value={b.standing} options={STANDING_OPTIONS} ariaLabel={`Standing of ${b.name}`} onSave={(v) => setBeerField(b.id, "standing", v)} /> },
   ], []);
 
   const filters = useMemo<Filter<BeerBoardRow>[]>(() => [
@@ -185,7 +194,7 @@ export function BeersBoardTable({ rows }: { rows: BeerBoardRow[] }) {
 
 /** Phone and side-panel editor: every field, stacked. */
 function BeerDrawer({ b }: { b: BeerBoardRow }) {
-  const f = (label: string, el: React.ReactNode, hint?: string) => (
+  const f = (label: string, el: React.ReactNode, hint?: React.ReactNode) => (
     <div className="py-2">
       <div className="mb-0.5 text-[0.8rem] font-medium text-ink-2">{label}</div>
       {el}
@@ -194,6 +203,7 @@ function BeerDrawer({ b }: { b: BeerBoardRow }) {
   );
   return (
     <div className="divide-y divide-border">
+      {f("Standing", <GridSelect value={b.standing} options={STANDING_OPTIONS} ariaLabel="Standing" onSave={(v) => setBeerField(b.id, "standing", v)} />, <Link href={`/kegs/beers/${b.id}`} className="underline hover:text-ink">Open {b.name}&apos;s page: kegs by size, fills and demand</Link>)}
       {f("Style", <GridCell grid="bbd" col="style" value={b.style} placeholder="e.g. Hazy IPA" ariaLabel="Style" onSave={(v) => setBeerField(b.id, "style", v)} />)}
       <div className="grid grid-cols-2 gap-3">
         {f("ABV", <GridCell grid="bbd" col="abv" type="number" suffix="%" value={b.abv} placeholder="—" ariaLabel="ABV" onSave={(v) => setBeerBoardField(b.id, "abv", v)} />)}

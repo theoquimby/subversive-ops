@@ -17,9 +17,10 @@ interface Spot { id: string; area: string; name: string }
  * color (full = solid, empty = outline). Filter by beer, or "Find the next…"
  * to light up the oldest full keg of it. On a tablet or desktop, drag a tile
  * to another spot (or tap a tile, then tap a spot); on a phone it's a list
- * grouped by spot.
+ * grouped by spot. The beers offered are core beers always (a core beer with
+ * nothing in here shows 0), others while there's beer in stock.
  */
-export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer, manager }: { areas: string[]; boardAreas: string[]; spots: Spot[]; kegs: BoardKeg[]; beers: { id: string; name: string; color: string }[]; initialBeer: string | null; manager: boolean }) {
+export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer, manager }: { areas: string[]; boardAreas: string[]; spots: Spot[]; kegs: BoardKeg[]; beers: { id: string; name: string; color: string; retired?: boolean }[]; initialBeer: string | null; manager: boolean }) {
   const router = useRouter();
   const [beer, setBeer] = useState<string>(initialBeer ?? "");
   const [find, setFind] = useState<string>(initialBeer ?? "");
@@ -70,7 +71,7 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
       {/* Find + filter */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center" data-tour="kegs.find">
         <div className="flex-1 sm:max-w-xs">
-          <Select value={find} onChange={(e) => { setFind(e.target.value); setBeer(""); }} placeholder="Find the next keg of…" aria-label="Find the next keg of a beer" options={beers.map((b) => ({ value: b.id, label: b.name, hint: `${counts.get(b.id) ?? 0} full` }))} searchable />
+          <Select value={find} onChange={(e) => { setFind(e.target.value); setBeer(""); }} placeholder="Find the next keg of…" aria-label="Find the next keg of a beer" options={beers.map((b) => ({ value: b.id, label: b.name, hint: `${counts.get(b.id) ?? 0} full${b.retired ? " · retired" : ""}` }))} searchable />
         </div>
         {find && (
           <div className={cx("flex min-h-11 flex-1 items-center gap-2 rounded-xl px-3.5 py-2 text-sm", next ? "bg-good-bg text-good" : "bg-bad-bg text-bad")}>
@@ -84,8 +85,8 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
 
       <div className="flex flex-wrap gap-1.5" aria-label="Filter by beer">
         <FilterChip on={!beer} onClick={() => setBeer("")}>All beers</FilterChip>
-        {beers.filter((b) => kegs.some((k) => k.beerId === b.id)).map((b) => (
-          <FilterChip key={b.id} on={beer === b.id} onClick={() => setBeer(beer === b.id ? "" : b.id)} color={b.color}>{b.name} <span className="num opacity-70">{counts.get(b.id) ?? 0}</span></FilterChip>
+        {beers.map((b) => (
+          <FilterChip key={b.id} on={beer === b.id} onClick={() => setBeer(beer === b.id ? "" : b.id)} color={b.color}>{b.name} <span className="num opacity-70">{counts.get(b.id) ?? 0}</span>{b.retired && <span className="text-[11px] opacity-70">retired</span>}</FilterChip>
         ))}
         <span className="ml-auto self-center text-xs text-muted">{empties} empty · {dirty} to clean</span>
       </div>

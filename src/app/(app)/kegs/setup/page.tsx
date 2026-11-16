@@ -11,6 +11,8 @@ import { AccountsTable, BeersTable, PoursEditor, SpotsEditor, TapsConfig } from 
 import { publicOrigin } from "@/server/services/public-url";
 import { boardConfig, displayToken } from "@/server/services/taps";
 import { BoardLink } from "../taps/board-link";
+import { CoreHelperSection } from "../core-helper";
+import { standingOf } from "@/domain/beerStanding";
 
 export const metadata = { title: "Keg setup" };
 
@@ -19,7 +21,7 @@ export default async function KegSetupPage() {
   const since = addDays(businessToday(), -90);
   const [token, origin, board] = await Promise.all([displayToken(), publicOrigin(), boardConfig()]);
   const [beers, kegCounts, recipes, spots, spotCounts, areas, config, accounts, outCounts, matchers, sales] = await Promise.all([
-    db.beer.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }),
+    db.beer.findMany({ orderBy: [{ active: "desc" }, { core: "desc" }, { name: "asc" }] }),
     db.keg.groupBy({ by: ["beerId"], _count: { _all: true } }),
     db.recipe.findMany({ where: { kind: "PREP", active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     db.kegSpot.findMany({ orderBy: [{ area: "asc" }, { sort: "asc" }] }),
@@ -49,8 +51,10 @@ export default async function KegSetupPage() {
     <>
       <PageHeader help="kegs.setup" title="Keg setup" back={{ href: "/kegs", label: "Kegs" }} description="Beers and the Square items that pour them, spots in the walk-in, tap lines, pour sizes and accounts." />
 
-      <Section help="kegs.setup.beers" title={<span className="inline-flex items-center gap-1">Beers <HelpTip id="kegs.setup.beers" /></span>} description="Square item names are the part before the pour, e.g. “New York Nectar*” for “New York Nectar* · Full Pour”. Leave blank if it's the beer's own name.">
-        <BeersTable beers={beers.map((b) => ({ id: b.id, name: b.name, style: b.style, color: b.color, squareNames: b.squareNames, minFull: b.minFull, house: b.house, active: b.active, recipeId: b.recipeId, kegs: kc.get(b.id) ?? 0 }))} recipes={recipes} />
+      <CoreHelperSection />
+
+      <Section help="kegs.setup.beers" title={<span className="inline-flex items-center gap-1">Beers <HelpTip id="kegs.setup.beers" /></span>} description="Core beers are the ones you never want to run out of; only they get fill suggestions and alerts. Square item names are the part before the pour, e.g. “New York Nectar*” for “New York Nectar* · Full Pour”. Leave blank if it's the beer's own name.">
+        <BeersTable beers={beers.map((b) => ({ id: b.id, name: b.name, style: b.style, color: b.color, squareNames: b.squareNames, minFull: b.minFull, house: b.house, standing: standingOf(b), recipeId: b.recipeId, kegs: kc.get(b.id) ?? 0 }))} recipes={recipes} />
       </Section>
 
       <div id="spots" className="scroll-mt-20" />

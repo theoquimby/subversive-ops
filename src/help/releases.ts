@@ -24,6 +24,22 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.18",
+    date: "2026-11-16",
+    title: "Core beers, a page per beer, and dirty kegs",
+    summary: "Pick the beers you never want to run out of: only they get fill suggestions and alerts. Every beer gets its own page, and any keg can be marked empty, to clean, from its card.",
+    entries: ["2026-11-16.core-beers", "2026-11-16.beer-page", "2026-11-16.mark-dirty"],
+    fixed: [
+      "Every beer is now Core, In rotation or Retired, set on Kegs → Setup or the beer's own page. Pick your core beers on Demand or Setup suggests one for each beer from its fills and recent sales.",
+      "Fill suggestions, run-out warnings, the “nothing full behind it” warning, keg alerts, the Overview and briefs, and the Insights keg tile and findings are now for core beers only.",
+      "Full kegs per beer on the Kegs page lists core beers always, then beers in rotation with a full keg or one on tap, and retired beers only while kegs still hold them.",
+      "Demand per beer is in three groups: core with the plan, in rotation for information, and retired under Show retired.",
+      "The walk-in's beer chips and Find the next keg of… follow the same rule. Beer pickers for filling a keg or an order list core beers first and leave retired ones out.",
+      "A beer's page: kegs of it right now by size (1/2 bbl, 1/6 bbl and the rest), where the full ones are, which accounts have it, fills per month this year beside last, and pints a week.",
+      "A keg's card has Empty, needs cleaning under the big buttons, for a keg found empty whatever the app last heard. It works offline and can be undone.",
+    ],
+  },
+  {
     version: "1.17",
     date: "2026-11-16",
     title: "Instagram and your Facebook Page",

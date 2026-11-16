@@ -5,6 +5,8 @@ import { BEER_COLORS, displayCode, distribrewtionId, KEG_SIZE_LIST, normalizeCod
 import { cleanAreaName } from "@/domain/storageAreas";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
+import { isStanding, standingFlags, type Standing } from "@/domain/beerStanding";
+import { CORE_HELPER_KEY } from "@/server/services/beers";
 import { checkKegStock } from "@/server/services/keg-alerts";
 import { forgetUndoneOrderKegs } from "@/server/services/kegOrders";
 import { adoptSticker, doKegAction, findKegByScan, freshCodes, kegCard, KEG_ACTIONS, kegConfig, nextKegOf, saveKegConfig, undoKegEvents, type DoActionResult, type KegCard } from "@/server/services/kegs";
@@ -66,6 +68,12 @@ export async function kegAction(input: KegActionForm): Promise<DoActionResult & 
     const k = await db.keg.findUnique({ where: { id: d.kegId }, select: { beerId: true } });
     const ev = await db.kegEvent.findUnique({ where: { id: r.eventId }, select: { fromPlace: true } });
     checkKegStock(k?.beerId ?? null, { kicked: { where: ev?.fromPlace ?? null, who: me.name } });
+  } else if (d.action === "DIRTY") {
+    // Marked empty from the card: a kick when it was on tap, otherwise a full keg gone with no scan.
+    // The keg no longer says what was in it, so the beer comes from the event.
+    const ev = await db.kegEvent.findUnique({ where: { id: r.eventId }, select: { beerId: true, fromPlace: true, fromStatus: true } });
+    if (r.kicked) checkKegStock(r.kicked.beerId, { kicked: { where: ev?.fromPlace ?? null, who: me.name } });
+    else if (ev?.fromStatus === "FILLED" || ev?.fromStatus === "COLD") checkKegStock(ev.beerId);
   } else if (d.action === "TAP" || d.action === "OUT") {
     const k = await db.keg.findUnique({ where: { id: d.kegId }, select: { beerId: true } });
     checkKegStock(k?.beerId ?? null);
@@ -221,7 +229,7 @@ export async function addBeer(name: string, squareName?: string): Promise<{ ok: 
   }
 }
 
-export async function setBeerField(id: string, field: "name" | "style" | "color" | "squareNames" | "minFull" | "house" | "active" | "ingredientId" | "recipeId", raw: string): Promise<{ error?: string }> {
+export async function setBeerField(id: string, field: "name" | "style" | "color" | "squareNames" | "minFull" | "house" | "active" | "standing" | "ingredientId" | "recipeId", raw: string): Promise<{ error?: string }> {
   await requireUser("MANAGER");
   const value = String(raw ?? "").trim();
   let data: Prisma.BeerUpdateInput;
@@ -232,7 +240,9 @@ export async function setBeerField(id: string, field: "name" | "style" | "color"
     case "squareNames": data = { squareNames: value.split(/\s*[;,\n]\s*/).map((s) => s.trim()).filter(Boolean).slice(0, 12) }; break;
     case "minFull": { const n = Number(value); if (!Number.isInteger(n) || n < 0 || n > 50) return { error: "A whole number, 0–50" }; data = { minFull: n }; break; }
     case "house": data = { house: value === "true" }; break;
-    case "active": data = { active: value === "true" }; break;
+    // Retiring a beer also ends its core standing, so bringing it back starts it in rotation.
+    case "active": data = value === "true" ? { active: true } : { active: false, core: false }; break;
+    case "standing": if (!isStanding(value)) return { error: "Pick core, in rotation or retired" }; data = standingFlags(value); break;
     case "ingredientId": data = { ingredientId: value || null }; break;
     case "recipeId": {
       if (value && !(await db.recipe.findFirst({ where: { id: value, kind: "PREP" }, select: { id: true } }))) return { error: "Pick a prep recipe" };
@@ -249,6 +259,31 @@ export async function setBeerField(id: string, field: "name" | "style" | "color"
   refresh();
   pingWebsite("menu");
   return {};
+}
+
+const standingsSchema = z.array(z.object({ id: z.string().min(1), standing: z.enum(["core", "rotation", "retired"]) })).min(1).max(500);
+
+/** "Pick your core beers": save every beer's standing at once. */
+export async function saveStandings(rows: { id: string; standing: Standing }[]): Promise<{ ok: true; saved: number } | { error: string }> {
+  const me = await requireUser("MANAGER");
+  const v = standingsSchema.safeParse(rows);
+  if (!v.success) return { error: "Pick a standing for each beer." };
+  await db.$transaction(v.data.map((r) => db.beer.updateMany({ where: { id: r.id }, data: standingFlags(r.standing) })));
+  // Saved once is done, even with no core beer picked: from here standing is set on Setup or each beer's page.
+  const value = JSON.stringify({ by: me.name, at: new Date().toISOString(), saved: v.data.length });
+  await db.setting.upsert({ where: { key: CORE_HELPER_KEY }, create: { key: CORE_HELPER_KEY, value }, update: { value } });
+  refresh();
+  pingWebsite("menu");
+  return { ok: true, saved: v.data.length };
+}
+
+/** Put "Pick your core beers" away without picking (standing stays editable on Setup and each beer's page). */
+export async function dismissCoreHelper(): Promise<{ ok: true }> {
+  const me = await requireUser("MANAGER");
+  const value = JSON.stringify({ by: me.name, at: new Date().toISOString() });
+  await db.setting.upsert({ where: { key: CORE_HELPER_KEY }, create: { key: CORE_HELPER_KEY, value }, update: { value } });
+  refresh();
+  return { ok: true };
 }
 
 // ---- Managers: spots, accounts, settings ----------------------------------------------------------

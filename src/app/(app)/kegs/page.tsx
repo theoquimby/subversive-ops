@@ -1,5 +1,5 @@
 import { HelpTip, HelpZone } from "@/components/help";
-import { Card, EmptyState, LinkButton, PageHeader, Section } from "@/components/ui";
+import { Card, cx, EmptyState, LinkButton, PageHeader, Section } from "@/components/ui";
 import { progressLabel } from "@/domain/kegOrders";
 import { displayCode, sinceLabel } from "@/domain/kegs";
 import { requireUser } from "@/server/auth";
@@ -43,7 +43,8 @@ export default async function KegsPage() {
     soft("open orders", openOrders()),
   ]);
   const onTap = taps.filter((t) => t.keg);
-  const dry = onTap.filter((t) => t.keg?.beerId && t.backups === 0 && (t.estimate?.daysLeft ?? 99) < 7);
+  // Only core beers are warned about: one in rotation running dry is the plan.
+  const dry = onTap.filter((t) => t.keg?.beerId && t.keg.core && t.backups === 0 && (t.estimate?.daysLeft ?? 99) < 7);
 
   // What needs someone, most urgent first. Staff see the taps about to run dry; managers the rest too.
   const needs: NeedsItem[] = dry.map((t) => ({
@@ -55,7 +56,7 @@ export default async function KegsPage() {
   }));
   if (manager) {
     const dryBeers = new Set(dry.map((t) => t.keg!.beerId));
-    for (const r of (demand?.rows ?? []).filter((r) => r.plan.toFill > 0 && !dryBeers.has(r.beerId)).slice(0, 3)) {
+    for (const r of (demand?.rows ?? []).filter((r) => r.standing === "core" && r.plan.toFill > 0 && !dryBeers.has(r.beerId)).slice(0, 3)) {
       needs.push({ key: `fill-${r.beerId}`, tone: r.plan.tone === "bad" ? "bad" : "warn", title: `Fill ${plural(r.plan.toFill, "keg")} of ${r.name}`, detail: sayWithoutName(r.plan.sentence, r.name), href: "/kegs/demand" });
     }
     const outKegs = home?.out.reduce((s, g) => s + g.kegs.length, 0) ?? 0;
@@ -172,7 +173,7 @@ export default async function KegsPage() {
                     <span className={t.estimate?.overdue ? "font-medium text-warn" : ""}>{t.estimate?.overdue ? "Should have kicked — check it" : pctText(t.estimate?.pctLeft)}</span>
                     {daysText(t.estimate?.daysLeft) && <span>{daysText(t.estimate?.daysLeft)}</span>}
                     {t.keg.tappedAt && <span>on {sinceLabel(new Date(t.keg.tappedAt))}</span>}
-                    <span className={t.backups === 0 ? "text-bad" : ""}>{t.backups} full behind it</span>
+                    <span className={t.backups === 0 && t.keg.core ? "text-bad" : ""}>{t.backups} full behind it</span>
                   </div>
                 </div>
               </Link>
@@ -185,17 +186,40 @@ export default async function KegsPage() {
         )}
       </Section>
 
-      <Section help="kegs.stock" title="Full kegs per beer" description={`${stock.empties} empty and clean · ${stock.toClean + stock.kicked} waiting to be cleaned`} actions={<LinkButton href="/kegs/cooler" size="sm" className="h-10 sm:h-8"><Warehouse className="size-4" /> Walk-in</LinkButton>}>
+      <Section
+        help="kegs.stock"
+        title={<span className="inline-flex items-center gap-1">Full kegs per beer <HelpTip id="kegs.stock" /></span>}
+        description={`${stock.empties} empty and clean · ${stock.toClean + stock.kicked} waiting to be cleaned`}
+        actions={<LinkButton href="/kegs/cooler" size="sm" className="h-10 sm:h-8"><Warehouse className="size-4" /> Walk-in</LinkButton>}
+      >
         {stock.beers.length === 0 ? (
-          <p className="text-sm text-muted">No kegs with beer in them yet.</p>
+          <p className="text-sm text-muted">
+            No kegs with beer in them yet.
+            {manager && <> Mark the beers you never want to run out of as core on <Link href="/kegs/setup" className="underline hover:text-ink">Setup</Link>, and they always show here.</>}
+          </p>
         ) : (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-            {stock.beers.map((b) => (
-              <Link key={b.beerId} href={`/kegs/cooler?beer=${b.beerId}`} className="rounded-xl border border-border bg-surface px-3.5 py-3 transition-colors duration-120 hover:bg-surface-2/60">
-                <div className="flex items-center gap-2 text-sm font-medium"><BeerDot color={b.color} /><span className="truncate">{b.name}</span></div>
-                <div className="num mt-1 text-2xl font-semibold tracking-tight">{b.full}<span className="ml-1 text-xs font-normal text-muted">full</span></div>
-                <div className={`text-xs ${b.full < b.minFull ? "text-bad" : "text-muted"}`}>{b.onTap ? `${b.onTap} on tap` : "not on tap"}{b.out ? ` · ${b.out} out` : ""}</div>
-              </Link>
+          <div className="space-y-4">
+            {[
+              { key: "core", title: "Core beers", rows: stock.beers.filter((b) => b.standing === "core") },
+              { key: "other", title: "Also in stock", rows: stock.beers.filter((b) => b.standing !== "core") },
+            ].filter((g) => g.rows.length).map((g, _i, groups) => (
+              <div key={g.key}>
+                {groups.length > 1 && <h3 className="mb-1.5 text-xs font-medium text-muted">{g.title}</h3>}
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                  {g.rows.map((b) => {
+                    const short = b.standing === "core" && b.full < b.minFull;
+                    return (
+                      <Link key={b.beerId} href={manager ? `/kegs/beers/${b.beerId}` : `/kegs/cooler?beer=${b.beerId}`} className={cx("rounded-xl border bg-surface px-3.5 py-3 transition-colors duration-120 hover:bg-surface-2/60", b.standing === "core" && b.noneFull ? "border-bad/40" : "border-border")}>
+                        <div className="flex items-center gap-2 text-sm font-medium"><BeerDot color={b.color} /><span className="truncate">{b.name}</span>{b.retired && <span className="ml-auto shrink-0 text-[11px] font-normal text-muted">retired</span>}</div>
+                        <div className={cx("num mt-1 text-2xl font-semibold tracking-tight", b.standing === "core" && b.noneFull && "text-bad")}>{b.full}<span className="ml-1 text-xs font-normal text-muted">full</span></div>
+                        <div className={cx("text-xs", short ? "text-bad" : "text-muted")}>
+                          {b.standing === "core" && b.noneFull && !b.onTap ? "None full, none on tap" : b.onTap ? `${b.onTap} on tap` : "not on tap"}{b.out ? ` · ${b.out} out` : ""}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </div>
         )}

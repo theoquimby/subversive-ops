@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { forecastBeer, monthProfile, planBeer, runOutFinding, seasonalIndex, weekOf, weekOfYear, weeklyTotals } from "../beerDemand";
+import { forecastBeer, monthProfile, planBeer, rotationSentence, runOutFinding, seasonalIndex, weekOf, weekOfYear, weeklyTotals } from "../beerDemand";
 import { addDays, dateRange, type ISODate } from "../dates";
 import { kegOz } from "../kegs";
 
@@ -104,5 +104,20 @@ describe("month profile", () => {
     const prof = monthProfile(history("2025-01-01", "2027-01-01", 16, 2));
     expect(prof[6]! / prof[10]!).toBeCloseTo(2 * (31 / 30), 0);
     expect(monthProfile(new Map([[addDays("2026-03-01", 0), 32]]))[2]).toBe(2);
+  });
+});
+
+describe("a beer in rotation", () => {
+  const f = forecastBeer(history("2026-08-31", "2026-11-13", 160, 1), "2026-11-13", null, 4);
+  it("gives the pace and what's on hand without telling anyone to fill", () => {
+    const s = rotationSentence(f, { full: 2, onTap: 1 });
+    expect(s).toMatch(/^About \d+–\d+ pints a week lately\. 2 full kegs, 1 on tap\.$/);
+    expect(s).not.toMatch(/fill|runs out/i);
+  });
+  it("talks about its last run when nothing is pouring", () => {
+    expect(rotationSentence(f, { full: 0, onTap: 0 })).toMatch(/^Not pouring now\. When it last poured, about \d+–\d+ pints a week\.$/);
+  });
+  it("says so when it has never poured", () => {
+    expect(rotationSentence(forecastBeer(new Map(), "2026-11-13", null), { full: 1, onTap: 0 })).toBe("No pours on record yet. 1 full keg, none on tap.");
   });
 });

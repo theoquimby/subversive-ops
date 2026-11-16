@@ -206,6 +206,23 @@ export function planBeer(name: string, f: BeerForecast, onHand: OnHand, kegOz: n
   return { need2, need4, onHandKegs, runOutDays, toFill, tone, sentence };
 }
 
+/**
+ * One line for a beer in rotation: its pace and what's on hand, with no
+ * "fill" or "runs out" (only core beers are nagged about).
+ */
+export function rotationSentence(f: BeerForecast, held: { full: number; onTap: number }): string {
+  const w = f.weeks[0];
+  const lo = Math.round(w?.low ?? 0), hi = Math.round(w?.high ?? 0);
+  const pints = lo === hi ? `${lo}` : `${lo}–${hi}`;
+  const pace = f.basisWeeks === 0 || !w
+    ? "No pours on record yet."
+    : held.onTap > 0
+      ? `About ${pints} pints a week lately.`
+      : `Not pouring now. When it last poured, about ${pints} pints a week.`;
+  if (held.full + held.onTap === 0) return pace;
+  return `${pace} ${held.full} full keg${held.full === 1 ? "" : "s"}, ${held.onTap ? `${held.onTap} on tap` : "none on tap"}.`;
+}
+
 /** Average pints per calendar month (Jan..Dec) over every year it sold — the beer's own season. */
 export function monthProfile(daily: Map<ISODate, number>): (number | null)[] {
   const byYm = new Map<string, number>();

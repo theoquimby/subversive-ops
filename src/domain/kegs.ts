@@ -252,6 +252,7 @@ export const ACTION_DONE: Record<string, string> = {
   FILLED: "Filled",
   EMPTY: "Marked empty",
   EMPTIED: "Marked empty",
+  DIRTY: "Marked empty, to clean",
   CREATED: "Added",
   EDITED: "Edited",
   NOTE: "Note",
@@ -270,6 +271,13 @@ export function nextActions(status: KegStatus): KegActionId[] {
     case "EMPTY": return ["FILL", "MOVE"];
   }
 }
+
+/**
+ * "Empty, needs cleaning" from the card, whatever the app last heard: full
+ * (poured or sent out with no scan), on tap (a kick) or out (a return). Not
+ * offered once it is waiting to be cleaned or is clean and empty.
+ */
+export const canMarkDirty = (status: KegStatus) => status === "FILLED" || status === "COLD" || status === "ON_TAP" || status === "OUT";
 
 /** The keg fields an action reads and changes. */
 export interface KegState {

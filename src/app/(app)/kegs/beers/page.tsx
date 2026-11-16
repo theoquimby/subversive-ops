@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/ui";
+import { standingOf } from "@/domain/beerStanding";
 import { requireUser } from "@/server/auth";
 import { db, num } from "@/server/db";
 import { beerPricing, labelUrl } from "@/server/services/taps";
@@ -9,7 +10,7 @@ export const metadata = { title: "Beers" };
 export default async function BeersPage() {
   await requireUser("MANAGER");
   const [beers, onTap, full] = await Promise.all([
-    db.beer.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }),
+    db.beer.findMany({ orderBy: [{ active: "desc" }, { core: "desc" }, { name: "asc" }] }),
     db.keg.findMany({ where: { status: "ON_TAP", active: true, beerId: { not: null } }, select: { beerId: true, tapLine: true } }),
     db.keg.groupBy({ by: ["beerId"], where: { active: true, status: { in: ["FILLED", "COLD"] }, beerId: { not: null } }, _count: { _all: true } }),
   ]);
@@ -34,6 +35,7 @@ export default async function BeersPage() {
       comingSoon: b.comingSoon == null ? "auto" : b.comingSoon ? "yes" : "no",
       labelUrl: labelUrl(b.id, b.labelAt),
       active: b.active,
+      standing: standingOf(b),
       house: b.house,
       taps: onTap.filter((k) => k.beerId === b.id).map((k) => k.tapLine ?? 0).filter(Boolean).sort((x, y) => x - y),
       fullKegs: fullBy.get(b.id) ?? 0,

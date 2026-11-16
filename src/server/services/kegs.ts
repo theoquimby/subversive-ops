@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma, type KegStatus as DbStatus } from "@prisma/client";
-import { forecastBeer, monthProfile, planBeer, runOutFinding, seasonalIndex, weeklyTotals, type BeerForecast, type BeerPlan, type RunOutFinding } from "@/domain/beerDemand";
+import { forecastBeer, monthProfile, planBeer, rotationSentence, runOutFinding, seasonalIndex, weeklyTotals, type BeerForecast, type BeerPlan, type RunOutFinding } from "@/domain/beerDemand";
+import { nagsAbout, standingOf, stockRows, type Standing } from "@/domain/beerStanding";
 import { addDays, businessDate, type ISODate } from "@/domain/dates";
 import { applyKegAction, distribrewtionId, isFull, isOurCode, kegOz, legacyCandidates, legacyKeys, newKegCode, parseScan, placeLabel, UNDO_SERVER_SECONDS, type ActionInput, type KegActionId, type KegState, type KegStatus } from "@/domain/kegs";
 import { calibrateYield, dollarsPerOz, ozBetween, ozByBeerDay, shareFromHours, splitItemName, tapEstimate, unmatchedDraftNames, type BeerMatcher, type TapEstimate } from "@/domain/kegPours";
@@ -113,8 +114,8 @@ export async function findKegByScan(text: string): Promise<{ id: string; code: s
 
 // ---- Sales → ounces ------------------------------------------------------------------------------
 
-export async function beerMatchers(): Promise<(BeerMatcher & { color: string; minFull: number; house: boolean; active: boolean })[]> {
-  return db.beer.findMany({ select: { id: true, name: true, squareNames: true, color: true, minFull: true, house: true, active: true }, orderBy: { name: "asc" } });
+export async function beerMatchers(): Promise<(BeerMatcher & { color: string; minFull: number; house: boolean; active: boolean; core: boolean })[]> {
+  return db.beer.findMany({ select: { id: true, name: true, squareNames: true, color: true, minFull: true, house: true, active: true, core: true }, orderBy: { name: "asc" } });
 }
 
 /** Fl oz per Square id from linked pour recipes (draft beer costing), when the recipe says so. */
@@ -212,7 +213,11 @@ export async function yieldInfo(): Promise<YieldInfo> {
 
 export interface TapRow {
   line: number;
-  keg: { id: string; code: string; sizeId: string; beer: string | null; beerId: string | null; color: string; tappedAt: Date | null } | null;
+  keg: {
+    id: string; code: string; sizeId: string; beer: string | null; beerId: string | null; color: string; tappedAt: Date | null;
+    /** A core beer: the only kind a "nothing full behind it" warning is about. */
+    core: boolean;
+  } | null;
   estimate: (TapEstimate & { soldOz: number }) | null;
   /** Kegs of the same beer ready behind it. */
   backups: number;
@@ -222,7 +227,7 @@ export interface TapRow {
 export async function tapBoard(): Promise<{ taps: TapRow[]; yield: YieldInfo; config: KegConfig }> {
   const [cfg, onTap, yi] = await Promise.all([
     kegConfig(),
-    db.keg.findMany({ where: { status: "ON_TAP", active: true }, include: { beer: { select: { name: true, color: true } }, fill: true }, orderBy: { tapLine: "asc" } }),
+    db.keg.findMany({ where: { status: "ON_TAP", active: true }, include: { beer: { select: { name: true, color: true, active: true, core: true } }, fill: true }, orderBy: { tapLine: "asc" } }),
     yieldInfo(),
   ]);
   const today = businessToday();
@@ -261,13 +266,13 @@ export async function tapBoard(): Promise<{ taps: TapRow[]; yield: YieldInfo; co
     const p = k.beerId ? pace(k.beerId) : null;
     taps.push({
       line,
-      keg: { id: k.id, code: k.code, sizeId: k.sizeId, beer: k.beer?.name ?? null, beerId: k.beerId, color: k.beer?.color ?? "grey", tappedAt },
+      keg: { id: k.id, code: k.code, sizeId: k.sizeId, beer: k.beer?.name ?? null, beerId: k.beerId, color: k.beer?.color ?? "grey", tappedAt, core: !!k.beer && nagsAbout(k.beer) },
       estimate: { ...tapEstimate(kegOz(k.sizeId), yi.yield, sold, p ? p / share1 : null), soldOz: sold },
       backups: k.beerId ? fullBy.get(k.beerId) ?? 0 : 0,
     });
   }
   // Kegs on tap with no line number go at the end.
-  for (const k of onTap.filter((x) => !x.tapLine)) taps.push({ line: 0, keg: { id: k.id, code: k.code, sizeId: k.sizeId, beer: k.beer?.name ?? null, beerId: k.beerId, color: k.beer?.color ?? "grey", tappedAt: k.fill?.tappedAt ?? k.statusAt }, estimate: null, backups: 0 });
+  for (const k of onTap.filter((x) => !x.tapLine)) taps.push({ line: 0, keg: { id: k.id, code: k.code, sizeId: k.sizeId, beer: k.beer?.name ?? null, beerId: k.beerId, color: k.beer?.color ?? "grey", tappedAt: k.fill?.tappedAt ?? k.statusAt, core: !!k.beer && nagsAbout(k.beer) }, estimate: null, backups: 0 });
   return { taps, yield: yi, config: cfg };
 }
 
@@ -316,12 +321,18 @@ export interface BoardKeg {
   since: Date;
 }
 
+/**
+ * The walk-in: every keg that isn't on tap or out, the spots, and the beers
+ * for its chips and "Find the next keg of…": core beers always, beers in
+ * rotation with full kegs or one on tap, retired beers while kegs hold them.
+ */
 export async function coolerBoard() {
-  const [areas, spots, kegs, beers] = await Promise.all([
+  const [areas, spots, kegs, beers, stock] = await Promise.all([
     kegAreas(),
     db.kegSpot.findMany({ orderBy: [{ area: "asc" }, { sort: "asc" }, { name: "asc" }] }),
     db.keg.findMany({ where: { active: true, status: { notIn: ["OUT", "ON_TAP"] } }, include: { beer: { select: { name: true, color: true } }, fill: { select: { filledOn: true, bestBy: true } } }, orderBy: [{ statusAt: "asc" }] }),
     beerMatchers(),
+    stockSummary(),
   ]);
   const rows: BoardKeg[] = kegs.map((k) => ({
     id: k.id, code: k.code, sizeId: k.sizeId, status: k.status as KegStatus, beer: k.beer?.name ?? null, beerId: k.beerId, color: k.beer?.color ?? "grey",
@@ -329,30 +340,41 @@ export async function coolerBoard() {
   }));
   // Areas that hold kegs or spots, cold storage first; others stay pickable for moves.
   const used = new Set([...rows.map((r) => r.area).filter(Boolean), ...spots.map((s) => s.area)] as string[]);
-  return { areas, boardAreas: areas.filter((a) => used.has(a)), spots: spots.map((s) => ({ id: s.id, area: s.area, name: s.name, sort: s.sort })), kegs: rows, beers: beers.filter((b) => b.active) };
+  const listed = new Set(stock.beers.map((b) => b.beerId));
+  return {
+    areas,
+    boardAreas: areas.filter((a) => used.has(a)),
+    spots: spots.map((s) => ({ id: s.id, area: s.area, name: s.name, sort: s.sort })),
+    kegs: rows,
+    beers: stock.beers.map((b) => ({ id: b.beerId, name: b.name, color: b.color, standing: b.standing })),
+    /** The beers not listed, so a link to one (from its own page) still filters the board. */
+    others: beers.filter((b) => !listed.has(b.id)).map((b) => ({ id: b.id, name: b.name, color: b.color, standing: standingOf(b) })),
+  };
 }
 
-/** Full kegs, on tap, out and empties per beer, plus empties waiting overall. */
+/**
+ * Full kegs, on tap and out per beer — what's in stock against what should
+ * be: core beers always (none full is the case that matters), beers in
+ * rotation with full kegs or one on tap, retired beers while kegs still hold
+ * them; core first. Plus empties and kegs waiting to be cleaned overall.
+ */
 export async function stockSummary() {
   const rows = await db.keg.groupBy({ by: ["beerId", "status"], where: { active: true }, _count: { _all: true } });
   const beers = await beerMatchers();
-  const name = new Map(beers.map((b) => [b.id, b]));
-  const per = new Map<string, { beerId: string; name: string; color: string; minFull: number; full: number; onTap: number; out: number }>();
+  const per = new Map(beers.map((b) => [b.id, { beerId: b.id, name: b.name, color: b.color, minFull: b.minFull, active: b.active, core: b.core, full: 0, onTap: 0, out: 0 }]));
   let empties = 0, toClean = 0, kicked = 0, total = 0;
   for (const r of rows) {
     total += r._count._all;
     if (r.status === "EMPTY") empties += r._count._all;
     if (r.status === "CLEANING") toClean += r._count._all;
     if (r.status === "KICKED") kicked += r._count._all;
-    if (!r.beerId) continue;
-    const b = name.get(r.beerId);
-    const cur = per.get(r.beerId) ?? { beerId: r.beerId, name: b?.name ?? "Unknown beer", color: b?.color ?? "grey", minFull: b?.minFull ?? 1, full: 0, onTap: 0, out: 0 };
+    const cur = r.beerId ? per.get(r.beerId) : undefined;
+    if (!cur) continue;
     if (isFull(r.status as KegStatus)) cur.full += r._count._all;
     if (r.status === "ON_TAP") cur.onTap += r._count._all;
     if (r.status === "OUT") cur.out += r._count._all;
-    per.set(r.beerId, cur);
   }
-  return { beers: [...per.values()].sort((a, b) => a.name.localeCompare(b.name)), empties, toClean, kicked, total };
+  return { beers: stockRows([...per.values()]), empties, toClean, kicked, total };
 }
 
 /** The next keg of a beer to put on: cold before merely filled, oldest fill first. */
@@ -551,6 +573,10 @@ export interface BeerDemandRow {
   beerId: string;
   name: string;
   color: string;
+  /** Only core beers get the plan's "fill" and "runs out"; the others are shown for information. */
+  standing: Standing;
+  /** Pace and what's on hand with no "fill" in it, for beers in rotation or retired. */
+  info: string;
   forecast: BeerForecast;
   plan: BeerPlan;
   weekly: { week: ISODate; pints: number }[];
@@ -563,7 +589,11 @@ export interface BeerDemandRow {
   firstSale: ISODate | null;
 }
 
-/** Pints per beer, the next 4 weeks and kegs needed vs on hand. Uses all history (seasons). */
+/**
+ * Pints per beer, the next 4 weeks and kegs needed vs on hand, for every beer
+ * (retired ones too, for their own page). Uses all history (seasons). Only
+ * core beers are nagged about: callers filter on `standing`.
+ */
 export async function beerDemand(): Promise<{ rows: BeerDemandRow[]; seasonal: boolean; yield: YieldInfo; from: ISODate | null; unmatched: { base: string; qty: number }[] }> {
   const today = businessToday();
   const first = await db.dailySale.findFirst({ orderBy: { date: "asc" }, select: { date: true } });
@@ -579,7 +609,7 @@ export async function beerDemand(): Promise<{ rows: BeerDemandRow[]; seasonal: b
   for (const days of oz.values()) for (const [d, v] of days) total.set(d, (total.get(d) ?? 0) + v);
   const season = seasonalIndex(total);
   const rows: BeerDemandRow[] = [];
-  for (const b of beers.filter((x) => x.active)) {
+  for (const b of beers) {
     const daily = oz.get(b.id) ?? new Map<ISODate, number>();
     const f = forecastBeer(daily, today, season, 4);
     const full = stock.filter((s) => s.beerId === b.id);
@@ -589,7 +619,8 @@ export async function beerDemand(): Promise<{ rows: BeerDemandRow[]; seasonal: b
     const plan = planBeer(b.name, f, { fullKegOz: full.map((s) => kegOz(s.sizeId)), onTapOz }, kegOz(usual), yi.yield, today);
     const weekly = [...weeklyTotals(daily).entries()].sort(([a], [z]) => a.localeCompare(z)).slice(-53).map(([week, v]) => ({ week, pints: v / 16 }));
     const sold = [...daily.keys()].sort();
-    rows.push({ beerId: b.id, name: b.name, color: b.color, forecast: f, plan, weekly, months: monthProfile(daily), full: full.length, onTap: taps.filter((t) => t.keg?.beerId === b.id).length, kegOz: kegOz(usual), sizeId: usual, perOz: perOz.get(b.id) ?? null, firstSale: sold[0] ?? null });
+    const onTapCount = taps.filter((t) => t.keg?.beerId === b.id).length;
+    rows.push({ beerId: b.id, name: b.name, color: b.color, standing: standingOf(b), info: rotationSentence(f, { full: full.length, onTap: onTapCount }), forecast: f, plan, weekly, months: monthProfile(daily), full: full.length, onTap: onTapCount, kegOz: kegOz(usual), sizeId: usual, perOz: perOz.get(b.id) ?? null, firstSale: sold[0] ?? null });
   }
   const rank = { bad: 0, warn: 1, good: 2 };
   rows.sort((a, z) => rank[a.plan.tone] - rank[z.plan.tone] || (a.plan.runOutDays ?? 999) - (z.plan.runOutDays ?? 999) || z.forecast.ozPerDay - a.forecast.ozPerDay);
@@ -601,17 +632,22 @@ let findingsCache: { at: number; key: string; items: RunOutFinding[] } | null = 
 
 export async function kegFindings(): Promise<RunOutFinding[]> {
   try {
-    // Cheap fingerprint of keg state: recompute when a keg changes, else at most every 10 minutes.
-    const last = await db.kegEvent.findFirst({ orderBy: { createdAt: "desc" }, select: { id: true } });
-    if (!last) return [];
-    if (findingsCache && findingsCache.key === last.id && Date.now() - findingsCache.at < 600_000) return findingsCache.items;
+    // Cheap fingerprint of keg state and of which beers are core: recompute when either changes,
+    // else at most every 10 minutes. With no core beer there is nothing to warn about.
+    const [last, core] = await Promise.all([
+      db.kegEvent.findFirst({ orderBy: { createdAt: "desc" }, select: { id: true } }),
+      db.beer.findMany({ where: { active: true, core: true }, select: { id: true }, orderBy: { id: "asc" } }),
+    ]);
+    if (!last || !core.length) return [];
+    const key = `${last.id}:${core.map((b) => b.id).join(",")}`;
+    if (findingsCache && findingsCache.key === key && Date.now() - findingsCache.at < 600_000) return findingsCache.items;
     if ((await db.keg.count({ where: { status: "ON_TAP" } })) === 0) return [];
     const [{ rows }, cfg] = await Promise.all([beerDemand(), kegConfig()]);
     const items = rows
-      .filter((r) => r.onTap > 0)
+      .filter((r) => r.onTap > 0 && r.standing === "core")
       .map((r) => runOutFinding({ beerId: r.beerId, name: r.name, plan: r.plan, forecast: r.forecast, fullKegs: r.full, dollarsPerOz: r.perOz, fillDays: cfg.fillDays }))
       .filter((x): x is RunOutFinding => !!x);
-    findingsCache = { at: Date.now(), key: last.id, items };
+    findingsCache = { at: Date.now(), key, items };
     return items;
   } catch (e) {
     console.error("keg findings skipped", (e as Error).message);
@@ -663,7 +699,8 @@ export async function panelContext() {
     kegAreas(),
     db.kegSpot.findMany({ orderBy: [{ area: "asc" }, { sort: "asc" }, { name: "asc" }], select: { id: true, area: true, name: true } }),
     db.kegAccount.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    db.beer.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, color: true } }),
+    // Beers to fill with: active ones, core first. Retired beers aren't offered.
+    db.beer.findMany({ where: { active: true }, orderBy: [{ core: "desc" }, { name: "asc" }], select: { id: true, name: true, color: true } }),
     db.keg.findMany({ where: { status: "ON_TAP", tapLine: { not: null } }, select: { id: true, tapLine: true, beer: { select: { name: true } } } }),
   ]);
   return {

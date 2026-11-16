@@ -75,7 +75,8 @@ export async function attentionList(now = new Date()): Promise<AttentionItem[]> 
     timeOff,
     swaps,
     draftShifts,
-    dryTaps: kegs ? kegs.beers.filter((b) => b.onTap > 0 && b.full === 0).map((b) => b.name) : [],
+    // Core beers only: one in rotation running dry is expected.
+    dryTaps: kegs ? kegs.beers.filter((b) => b.standing === "core" && b.onTap > 0 && b.full === 0).map((b) => b.name) : [],
     certsExpired: certs?.expired ?? 0,
     certsExpiring: certs?.expiring ?? 0,
     badReviews,

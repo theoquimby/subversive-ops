@@ -243,7 +243,8 @@ export async function orderPage(id: string): Promise<OrderDetail | null> {
 export async function orderFormContext(keep: { accountId?: string | null; beerIds?: string[] } = {}) {
   const [accounts, beers] = await Promise.all([
     db.kegAccount.findMany({ where: { OR: [{ active: true }, ...(keep.accountId ? [{ id: keep.accountId }] : [])] }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    db.beer.findMany({ where: { OR: [{ active: true }, ...(keep.beerIds?.length ? [{ id: { in: keep.beerIds } }] : [])] }, orderBy: { name: "asc" }, select: { id: true, name: true, color: true } }),
+    // Active beers, core first; a retired beer only when it's already on the order.
+    db.beer.findMany({ where: { OR: [{ active: true }, ...(keep.beerIds?.length ? [{ id: { in: keep.beerIds } }] : [])] }, orderBy: [{ core: "desc" }, { name: "asc" }], select: { id: true, name: true, color: true } }),
   ]);
   return { accounts, beers };
 }

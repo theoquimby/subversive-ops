@@ -140,6 +140,65 @@ export async function kegHome(): Promise<KegHome> {
   };
 }
 
+export interface BeerFills {
+  /** Kegs and gallons filled each month, this calendar year and last. */
+  thisYear: MonthRow[];
+  lastYear: MonthRow[];
+  /** The last fill on record; null when it has never been filled. */
+  last: ISODate | null;
+  first: ISODate | null;
+  /** Every fill on record, and those in the last 365 days. */
+  total: number;
+  fills12: number;
+  /** How its fills ended, all time. */
+  went: Record<"tapped" | "out" | "none" | "stock", number>;
+}
+
+/** One beer's fills from the keg history: per month this year beside last, when it was last filled, and where its fills went. */
+export async function beerFills(beerId: string): Promise<BeerFills> {
+  const touched = await db.kegEvent.findMany({ where: { ...REAL_SCAN, beerId }, distinct: ["kegId"], select: { kegId: true } });
+  const ids = touched.map((t) => t.kegId);
+  const [rows, kegs] = ids.length
+    ? await Promise.all([
+        db.kegEvent.findMany({ where: { ...REAL_SCAN, kegId: { in: ids } }, orderBy: { at: "asc" }, select: { kegId: true, at: true, action: true, toStatus: true, beerId: true, accountId: true } }),
+        db.keg.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, sizeId: true } }),
+      ])
+    : [[], []];
+  const events: FleetEvent[] = rows.map((e) => ({ kegId: e.kegId, at: e.at.toISOString(), day: day(e.at), action: e.action, toStatus: e.toStatus as KegStatus | null, beerId: e.beerId, accountId: e.accountId }));
+  const cs = cycles(events, kegs.map((k) => ({ id: k.id, status: k.status as KegStatus }))).filter((c) => c.beerId === beerId);
+  const gallons = new Map(kegs.map((k) => [k.id, kegSizeInfo(k.sizeId).gallons]));
+  const today = businessToday();
+  const year = Number(today.slice(0, 4));
+  const yearMonths = (y: number) => Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, "0")}`);
+  const starts = cs.map((c) => c.start).sort();
+  const yearAgo = new Date(`${today}T00:00:00Z`);
+  yearAgo.setUTCDate(yearAgo.getUTCDate() - 365);
+  const went = { tapped: 0, out: 0, none: 0, stock: 0 };
+  for (const c of cs) went[c.went]++;
+  return {
+    thisYear: fillsByMonth(cs, yearMonths(year), (id) => gallons.get(id) ?? 0),
+    lastYear: fillsByMonth(cs, yearMonths(year - 1), (id) => gallons.get(id) ?? 0),
+    last: starts[starts.length - 1] ?? null,
+    first: starts[0] ?? null,
+    total: cs.length,
+    fills12: starts.filter((d) => d > yearAgo.toISOString().slice(0, 10) && d <= today).length,
+    went,
+  };
+}
+
+/** The day of every fill on record, per beer (for suggesting each beer's standing). */
+export async function fillDaysByBeer(): Promise<Map<string, ISODate[]>> {
+  const { events, kegs } = await fleetData();
+  const out = new Map<string, ISODate[]>();
+  for (const c of cycles(events, kegs)) {
+    if (!c.beerId) continue;
+    const list = out.get(c.beerId);
+    if (list) list.push(c.start);
+    else out.set(c.beerId, [c.start]);
+  }
+  return out;
+}
+
 export interface KegLife {
   /** Every fill the history knows about, newest first, with the beer's name. */
   cycles: { start: ISODate; beer: string | null; scannedFill: boolean; went: "tapped" | "out" | "none" | "stock"; end: ISODate | null; days: number | null }[];

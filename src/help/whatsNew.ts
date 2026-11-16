@@ -69,6 +69,40 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.18 (core beers, a page per beer, dirty kegs) ----
+  {
+    id: "2026-11-16.core-beers",
+    date: "2026-11-16",
+    title: "Core beers, and no more nagging",
+    line: "Mark the beers you never want to run out of. Only they get fill suggestions, run-out warnings and alerts.",
+    icon: "keg",
+    area: "floor",
+    href: "/kegs/demand",
+    help: "kegs.standing",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-16.beer-page",
+    date: "2026-11-16",
+    title: "A page for each beer",
+    line: "Kegs of it by size, where the full ones are, who has it out, and its fills this year beside last.",
+    icon: "keg",
+    area: "floor",
+    href: "/kegs/beers",
+    help: "kegs.beer",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-16.mark-dirty",
+    date: "2026-11-16",
+    title: "Mark a keg dirty from its card",
+    line: "Found a keg empty? Tap Empty, needs cleaning on its card, whatever the app last heard about it.",
+    icon: "keg",
+    area: "floor",
+    href: "/kegs/scan",
+    help: "kegs.scan",
+    audience: "all",
+  },
   // ---- 16 Nov · 1.17 (Instagram and the Facebook Page) ----
   {
     id: "2026-11-16.instagram",

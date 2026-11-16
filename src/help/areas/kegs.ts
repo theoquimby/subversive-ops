@@ -43,13 +43,15 @@ The line under the title is how hard the kegs work: how many times a year each i
 - **Filled → Into the walk-in.**
 - **Out at an account → Came back.**
 
+**Empty, needs cleaning** sits under the big buttons on any keg that could still hold beer. Use it for a keg you find empty, whatever the app last heard: on tap it counts as kicked, out at an account it counts as come back, and full it counts as poured or sent out with no scan. It says **Marked empty, to clean** and can be undone like the rest.
+
 **Undo** stays on screen for 10 seconds. No signal in the walk-in? The scan is kept on the phone and sent when you're back in range.
 
 Old stickers from the previous keg app scan too.`,
     audience: "all",
     tour: "kegs",
     related: ["kegs.taps", "kegs.cooler"],
-    keywords: ["scan", "qr", "camera", "kicked", "kick", "tap", "sticker", "barcode", "offline", "undo"],
+    keywords: ["scan", "qr", "camera", "kicked", "kick", "tap", "sticker", "barcode", "offline", "undo", "dirty", "empty", "needs cleaning", "mark dirty"],
   },
   {
     id: "kegs.taps",
@@ -73,9 +75,14 @@ If a keg has poured more than it should hold, it says **Should have kicked — c
     area: "kegs",
     route: "/kegs",
     title: "Full kegs per beer",
-    body: "How many full kegs of each beer are filled or in cold storage, how many are on tap or out, and the empties waiting to be cleaned. Red when it's under the beer's alert level.",
+    body: "What's in stock against what should be. Core beers are always listed, in red when none is full or it's under its alert level. Beers in rotation show while one is full or on tap, retired beers while kegs still hold them.",
+    article: `**Core beers** come first: the ones you never want to run out of. One with nothing full is the number that matters.
+
+**Also in stock** lists beers in rotation that have a full keg or one on tap, and retired beers until their last kegs are empty (marked *retired*).
+
+Managers tap a beer for its own page: kegs by size, where the full ones are, and its fills over time. Staff go to the walk-in, filtered to that beer.`,
     audience: "all",
-    related: ["kegs.cooler", "kegs.demand"],
+    related: ["kegs.standing", "kegs.cooler", "kegs.demand"],
   },
   {
     id: "kegs.yield",
@@ -116,8 +123,10 @@ This is the real yield for draft costing: if it's well under the yield on [Draft
 
 **The range** is how far the same method was off for this beer in past weeks. A wide range means its sales jump around.
 
-**On hand** is full kegs plus what's left on tap. **Need** is the forecast over the next 2 and 4 weeks, in kegs of the size you usually fill it in, at the pints per keg you actually get. **Fill** is what covers the next two weeks at the busy end of the range.`,
-    related: ["kegs.demand.beers", "kegs.yield", "insights.kegs"],
+**On hand** is full kegs plus what's left on tap. **Need** is the forecast over the next 2 and 4 weeks, in kegs of the size you usually fill it in, at the pints per keg you actually get. **Fill** is what covers the next two weeks at the busy end of the range.
+
+Beers are in three groups. **Core beers** get the plan and the Fill badge. **In rotation** shows the same pints a week and forecast for information, with no Fill. **Retired** beers are under **Show retired**.`,
+    related: ["kegs.demand.beers", "kegs.standing", "kegs.yield", "insights.kegs"],
     keywords: ["forecast", "demand", "brew", "what to brew", "fill next", "pints a week", "seasonal"],
   },
   {
@@ -125,8 +134,52 @@ This is the real yield for draft costing: if it's well under the yield on [Draft
     area: "kegs",
     route: "/kegs/demand",
     title: "Each beer",
-    body: "Most urgent first. The grey bars are the last 26 weeks, the colored ones the next four with their range. “Its year” is the beer's average pints by month.",
-    related: ["kegs.demand"],
+    body: "Most urgent first. The grey bars are the last 26 weeks it sold, the colored ones the next four with their range. “Its year” is the beer's average pints by month. Tap a beer's name for its own page.",
+    related: ["kegs.demand", "kegs.beer"],
+  },
+  {
+    id: "kegs.standing",
+    area: "kegs",
+    route: "/kegs/setup",
+    title: "Core, in rotation and retired",
+    body: "Every beer has a standing. Core: you never want to run out, so it gets fill suggestions, run-out warnings and alerts. In rotation: brewed sometimes, shown in stock and on Demand but never nagged about. Retired: not brewed any more, hidden with its history kept.",
+    article: `**Core** beers are the ones that should always be on. Only they get:
+- "Fill N kegs" on the Kegs page and Demand
+- the "nothing full behind it" warning on the Kegs page and the Overview
+- keg alerts by email and push
+- run-out findings in Insights
+
+**In rotation** beers are brewed now and then. They show under Full kegs per beer while one is full or on tap, and on Demand with their pints a week, for information only.
+
+**Retired** beers aren't brewed any more. They drop off stock lists, Demand, the walk-in's beer chips and the beer pickers. A retired beer with kegs still out or full stays listed, marked retired, until those kegs are empty. Its history stays on its own page, and Demand has **Show retired**.
+
+**Pick your core beers** appears on Demand and Setup until one beer is core. It suggests a standing for each beer from the keg history and the last 90 days of sales:
+- filled in the last 90 days and at least three times in the last year: core
+- filled in the last year, or still selling (10 pints or more in 90 days), or added lately: in rotation
+- not filled for over a year, or never, and not selling now: retired, with when it was last filled
+
+Change any of them and **Save**. After that, set a beer's standing on [Setup](/kegs/setup) or on its own page.`,
+    related: ["kegs.setup.beers", "kegs.demand", "kegs.stock", "kegs.beer"],
+    keywords: ["core", "core beers", "flagship", "rotation", "seasonal", "retired", "retire a beer", "never run out", "stop nagging", "brew"],
+  },
+  {
+    id: "kegs.beer",
+    area: "kegs",
+    route: "/kegs/beers/[id]",
+    title: "One beer",
+    body: "Where a beer stands: its standing, kegs of it right now by size (full, on tap, out), where the full ones are, which accounts have it, fills per month this year beside last, and pints a week from Square.",
+    article: `Open it by tapping a beer on the Kegs page, on Demand, or the arrow beside its name on Beers or Setup.
+
+- **Standing** saves as soon as you pick it.
+- **Kegs of it right now** counts 1/2 bbl, 1/6 bbl and every other size in use: full in storage, on tap here, and out at accounts.
+- **Where the full ones are** lists the oldest fill first, the one to use next. **In the walk-in** opens the walk-in board filtered to this beer.
+- **Out at accounts** shows who has kegs of it and the longest one has been there.
+- **Fills over time** is kegs filled each month, this year beside last, when it was last filled, and how its fills ended: tapped here, sent out, still full, or back with no scan.
+- **Pints a week** comes from Square. Core beers get the fill plan; for the others it's for information.
+
+Everything is counted from keg scans, so a keg that moved without a scan is counted where it was last seen.`,
+    related: ["kegs.standing", "kegs.stock", "kegs.demand", "kegs.fleet.went"],
+    keywords: ["beer page", "brand", "per beer", "sixtel", "1/6", "1/2", "half barrel", "kegs by size", "how many kegs of"],
   },
   {
     id: "kegs.accounts",
@@ -372,9 +425,9 @@ Kegs that already have stickers from your old app keep them: import them and the
     area: "kegs",
     route: "/kegs/setup",
     title: "Beers",
-    body: "Each beer you keg, its color on the walk-in board, and the Square item names that pour it. Alert under: managers hear when full kegs drop below this. Link the brewer's recipe to get a cost per pint.",
-    related: ["kegs.setup.pours", "kegs.demand"],
-    keywords: ["beer list", "square names", "color", "recipe", "batch cost"],
+    body: "Each beer you keg, its standing (core, in rotation or retired), its color on the walk-in board, and the Square item names that pour it. Alert under: for core beers, managers hear when full kegs drop below this. Link the brewer's recipe to get a cost per pint.",
+    related: ["kegs.standing", "kegs.setup.pours", "kegs.demand"],
+    keywords: ["beer list", "square names", "color", "recipe", "batch cost", "core", "retired"],
   },
   {
     id: "kegs.setup.spots",
@@ -435,7 +488,7 @@ Kegs that already have stickers from your old app keep them: import them and the
     area: "insights",
     route: "/insights",
     title: "Kegs",
-    body: "Which beer runs out first: what's left on tap and full in the walk-in, against the next weeks' pints. A beer that runs dry within ~10 days with nothing full behind it also shows up as one of your things to do.",
+    body: "Which core beer runs out first: what's left on tap and full in the walk-in, against the next weeks' pints. A core beer that runs dry within ~10 days with nothing full behind it also shows up as one of your things to do. Beers in rotation are left out.",
     related: ["kegs.demand"],
     keywords: ["kegs", "runs out", "beer demand"],
   },

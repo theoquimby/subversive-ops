@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyKegAction, checkChar, displayCode, distribrewtionId, guessBeerColor, isOurCode, kegOz, legacyCandidates, legacyKeys, newKegCode, nextActions, normalizeCode, parseKegSize, parseScan, placeLabel, sinceLabel, type KegState } from "../kegs";
+import { ACTION_DONE, applyKegAction, canMarkDirty, checkChar, displayCode, distribrewtionId, guessBeerColor, isOurCode, kegOz, legacyCandidates, legacyKeys, newKegCode, nextActions, normalizeCode, parseKegSize, parseScan, placeLabel, sinceLabel, type KegState } from "../kegs";
 
 const base: KegState = { status: "COLD", beerId: "b1", area: "Walk-in", spotId: "s1", spotNote: null, tapLine: null, accountId: null };
 
@@ -132,6 +132,18 @@ describe("an empty keg in front of you", () => {
     expect(dirty({ ...base, status: "CLEANING", beerId: null })).toEqual({ error: "Already waiting to be cleaned." });
     expect(dirty({ ...base, status: "KICKED" })).toEqual({ error: "Already waiting to be cleaned." });
     expect(dirty({ ...base, status: "EMPTY", beerId: null })).toHaveProperty("error");
+  });
+});
+
+describe("marking a keg dirty from its card", () => {
+  it("is offered wherever the keg could still hold beer", () => {
+    for (const s of ["FILLED", "COLD", "ON_TAP", "OUT"] as const) expect(canMarkDirty(s)).toBe(true);
+  });
+  it("isn't offered when it is already waiting to be cleaned or is clean and empty", () => {
+    for (const s of ["KICKED", "CLEANING", "EMPTY"] as const) expect(canMarkDirty(s)).toBe(false);
+  });
+  it("says what it did in plain words", () => {
+    expect(ACTION_DONE.DIRTY).toBe("Marked empty, to clean");
   });
 });
 

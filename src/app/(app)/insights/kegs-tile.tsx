@@ -11,12 +11,15 @@ import { ShowMeHow } from "./deck";
 /**
  * The Lab's keg tile: which beer runs out first, and under it the fleet in a
  * few numbers from the keg history. Worked out here from live kegs and
- * Square (not the Python service), so it's always current.
+ * Square (not the Python service), so it's always current. Core beers only:
+ * a beer in rotation running out is the plan, not news.
  */
 export async function KegsTile() {
   const [data, fleet] = await Promise.all([beerDemand().catch(() => null), kegSignals().catch(() => null)]);
-  const rows = (data?.rows ?? []).filter((r) => r.forecast.ozPerDay > 0 || r.full > 0 || r.onTap > 0);
+  const rows = (data?.rows ?? []).filter((r) => r.standing === "core" && (r.forecast.ozPerDay > 0 || r.full > 0 || r.onTap > 0));
   const first = rows[0];
+  // Beers set up but none picked as core yet: say where to pick them, not "add your beers".
+  const noCore = !first && (data?.rows ?? []).some((r) => r.standing !== "retired");
   // Days-left gauges share one scale: four weeks, with a tick at two (what an order should cover).
   const SCALE = 28;
   return (
@@ -32,7 +35,12 @@ export async function KegsTile() {
           </div>
           {data && <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[0.7rem] text-muted">~{Math.round(data.yield.pintsPerHalf)} pints a ½ bbl</span>}
         </div>
-        {!first ? (
+        {!first && noCore ? (
+          <>
+            <p className="mt-4 text-[1.02rem] leading-snug font-medium text-ink-2">Pick your core beers, the ones you never want to run out of, and this shows which runs out first and what to fill.</p>
+            <div className="mt-4"><LinkButton href="/kegs/demand" size="sm" className="h-10 sm:h-8">Pick core beers →</LinkButton></div>
+          </>
+        ) : !first ? (
           <>
             <p className="mt-4 text-[1.02rem] leading-snug font-medium text-ink-2">Add your beers and scan kegs onto taps, and this shows which runs out first and what to fill.</p>
             <div className="mt-4"><LinkButton href="/kegs/setup" size="sm" className="h-10 sm:h-8">Set up kegs →</LinkButton></div>
@@ -42,7 +50,7 @@ export async function KegsTile() {
             <p className="mt-4 text-[1.1rem] leading-snug font-semibold tracking-tight text-ink">
               {first.plan.runOutDays != null ? `${first.name} runs out in ~${Math.max(1, Math.round(first.plan.runOutDays))} days; ${first.full} full in the walk-in` : `${first.name}: ${first.full} full kegs`}
             </p>
-            <p className="mt-1.5 text-sm text-ink-2">{first.plan.toFill > 0 ? `Fill ${first.plan.toFill} keg${first.plan.toFill === 1 ? "" : "s"} of it to cover the next two weeks.` : "Every beer is covered for the next two weeks."}</p>
+            <p className="mt-1.5 text-sm text-ink-2">{first.plan.toFill > 0 ? `Fill ${first.plan.toFill} keg${first.plan.toFill === 1 ? "" : "s"} of it to cover the next two weeks.` : "Every core beer is covered for the next two weeks."}</p>
             <figure className="mt-5" aria-label={`Days until each beer runs out: ${rows.slice(0, 5).map((r) => `${r.name} ${r.plan.runOutDays == null ? "not known" : `${Math.round(r.plan.runOutDays)} days`}`).join(", ")}`}>
               <ul className="flex flex-col gap-3" aria-hidden>
                 {rows.slice(0, 5).map((r, i) => {
@@ -75,11 +83,12 @@ export async function KegsTile() {
             <ShowMeHow
               className="border-t border-border"
               how={[
+                "Core beers only, the ones marked on Kegs → Setup as never to run out.",
                 "Days left = what's on tap (Square pours since tapping, against the keg) plus full kegs, at the forecast pace.",
                 `The pace is each beer's last four weeks of Square pours${data?.seasonal ? ", adjusted for the time of year from every year of draft sales" : ""}.`,
                 `Pints per keg come from ${data?.yield.measured ? `${data.yield.samples} kicked kegs` : "a 90% assumption until kegs kick"}.`,
               ]}
-              inputs={[{ label: "Beers", value: String(rows.length) }, { label: "To fill", value: String(rows.reduce((s, r) => s + r.plan.toFill, 0)) }]}
+              inputs={[{ label: "Core beers", value: String(rows.length) }, { label: "To fill", value: String(rows.reduce((s, r) => s + r.plan.toFill, 0)) }]}
             />
           )}
         </div>
