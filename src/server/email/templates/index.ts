@@ -121,6 +121,11 @@ export const SAMPLES = {
               { label: "Prime cost", actual: "58.6%", target: "59.0%", tone: "good" },
             ],
           },
+          kegs: {
+            from: "2026-11-02",
+            to: "2026-11-08",
+            lines: ["12 kegs filled, up from 9 the week before.", "2 tapped here and 1 sent out.", "8 kegs came back empty, 6 of them with no tap or delivery scan.", "20 kegs have been at 10 accounts for more than 14 days.", "31 kegs haven't been scanned in 90 days."],
+          },
         },
       }),
   },

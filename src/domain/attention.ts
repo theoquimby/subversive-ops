@@ -43,6 +43,8 @@ export interface AttentionItem {
   tone: "bad" | "warn" | "neutral";
   /** Higher first. */
   urgency: number;
+  /** Long-standing, with nothing new today: the Overview keeps it, the morning brief leaves it out. */
+  standing?: boolean;
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

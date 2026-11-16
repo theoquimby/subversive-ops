@@ -1,7 +1,7 @@
 import type { ISODate } from "@/domain/dates";
 import { addDays } from "@/domain/dates";
 import { dayDate, money, pct, shortDate } from "@/lib/format";
-import { BRAND, button, esc, footerText, h1, h2, link, list, manageFooter, p, RenderedEmail, shell, textLines } from "../layout";
+import { BRAND, button, C, esc, footerText, h1, h2, link, list, manageFooter, p, RenderedEmail, shell, textLines } from "../layout";
 
 export interface BriefDigestItem {
   title: string;
@@ -23,6 +23,8 @@ export interface BriefDigest {
   clear: BriefDigestItem[];
   /** Last week's actuals vs budget, one line each ("Food cost", "31.2%", "target 30.0%"). */
   lastWeek?: { from: ISODate; to: ISODate; rows: { label: string; actual: string; target: string | null; tone: "good" | "warn" | "bad" | "neutral" }[] } | null;
+  /** The week in kegs, a sentence a line (see `kegWeekLines` in domain/kegSignals); left out with no keg history. */
+  kegs?: { from: ISODate; to: ISODate; lines: string[] } | null;
 }
 
 export interface WeeklyBriefEmail {
@@ -49,6 +51,10 @@ export function weeklyBriefEmail(e: WeeklyBriefEmail): RenderedEmail {
   if (d.laborPct != null) forecast.push(`Labor is scheduled at ${pct(d.laborPct, 0)} of forecast${d.laborTarget != null ? ` vs ${pct(d.laborTarget, 0)} target` : ""}.`);
   if (d.events.length) forecast.push(`On the calendar: ${joinList(d.events.map((x) => `${x.title} (${dayDate(x.date)})`))}.`);
 
+  const kegs = d.kegs && d.kegs.lines.length ? d.kegs : null;
+  const kegsRange = kegs ? `${shortDate(kegs.from)} – ${shortDate(kegs.to)}` : "";
+  const fleetUrl = link(e.baseUrl, "/kegs/fleet#look");
+
   const html = shell({
     preheader: `${n ? `${n} to do` : "Nothing urgent"}${d.forecastTotal > 0 ? ` · ${money(d.forecastTotal, { whole: true })} forecast` : ""}`,
     body: [
@@ -58,6 +64,7 @@ export function weeklyBriefEmail(e: WeeklyBriefEmail): RenderedEmail {
         ? h2(`Last week (${shortDate(d.lastWeek.from)} – ${shortDate(d.lastWeek.to)})`) +
           list(d.lastWeek.rows.map((r) => ({ title: r.label, detail: r.target ? `Target ${r.target}` : "No target", value: `<span style="color:${r.tone === "bad" ? "#b42318" : r.tone === "warn" ? "#b54708" : r.tone === "good" ? "#067647" : "inherit"};">${esc(r.actual)}</span>` })))
         : "",
+      kegs ? h2(`Kegs (${kegsRange})`) + p(`${esc(kegs.lines.join(" "))} <a href="${esc(fleetUrl)}" style="color:${C.ink};">Fleet &amp; trends</a>`) : "",
       n ? h2("Needs you") + list(d.todo.map((i) => ({ title: i.title, detail: i.status, href: i.path ? link(e.baseUrl, i.path) : undefined }))) : "",
       d.clear.length ? h2("In hand") + list(d.clear.map((i) => ({ title: i.title, detail: i.status }))) : "",
       button(briefUrl, "Open the brief"),
@@ -73,6 +80,10 @@ export function weeklyBriefEmail(e: WeeklyBriefEmail): RenderedEmail {
     d.lastWeek ? `LAST WEEK (${shortDate(d.lastWeek.from)} – ${shortDate(d.lastWeek.to)})` : null,
     ...(d.lastWeek?.rows ?? []).map((r) => `- ${r.label}: ${r.actual}${r.target ? ` (target ${r.target})` : ""}`),
     d.lastWeek ? "" : null,
+    kegs ? `KEGS (${kegsRange})` : null,
+    ...(kegs?.lines ?? []).map((l) => `- ${l}`),
+    kegs ? `Fleet & trends: ${fleetUrl}` : null,
+    kegs ? "" : null,
     n ? "NEEDS YOU" : null,
     ...d.todo.map((i) => `- ${i.title}: ${i.status}${i.path ? ` (${link(e.baseUrl, i.path)})` : ""}`),
     n ? "" : null,

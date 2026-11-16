@@ -1,4 +1,5 @@
 import type { BriefDigest, BriefDigestItem } from "./templates/weekly-brief";
+import { kegWeekLines } from "@/domain/kegSignals";
 import { dayDate, money, pct, shortDate, signedPct } from "@/lib/format";
 import type { WeeklyBrief } from "@/server/services/brief";
 
@@ -88,5 +89,6 @@ export function briefDigest(b: WeeklyBrief): BriefDigest {
           })),
         }
       : null,
+    kegs: b.kegs ? { from: b.kegs.week.from, to: b.kegs.week.to, lines: kegWeekLines(b.kegs.week, b.kegs.look) } : null,
   };
 }
