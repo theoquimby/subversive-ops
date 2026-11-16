@@ -8,6 +8,14 @@
  */
 
 import {
+  ChartColumn,
+  FileText,
+  Inbox,
+  ScanLine,
+  Settings2,
+  Store,
+  UtensilsCrossed,
+  Warehouse,
   Banknote,
   Beer,
   BookOpen,
@@ -53,48 +61,69 @@ import type { CSSProperties } from "react";
 
 export type Area = "today" | "food" | "people" | "numbers" | "floor" | "setup" | "assist";
 
-/** A page inside a nav item's area, listed under it when the item is popped open. */
-export type SubItem = { href: string; label: string };
+/**
+ * A section inside a nav item's area, listed under it when the item is popped
+ * open. A section with several pages lists them as `tabs` (shown as a tab strip
+ * on those pages); `also` names other paths that belong to it.
+ */
+export type SubItem = { href: string; label: string; icon: LucideIcon; tabs?: { href: string; label: string }[]; also?: string[] };
 export type NavItem = { href: string; label: string; icon: LucideIcon; area: Area; children?: SubItem[] };
 export type NavGroup = { title?: string; area: Area; items: NavItem[] };
 
 const item = (area: Area, href: string, label: string, icon: LucideIcon, children?: SubItem[]): NavItem => ({ href, label, icon, area, ...(children ? { children } : {}) });
 
-// Areas big enough to be an app of their own list their pages under the nav item.
-const KEG_PAGES: SubItem[] = [
-  { href: "/kegs", label: "On tap" },
-  { href: "/kegs/scan", label: "Scan" },
-  { href: "/kegs/cooler", label: "Walk-in" },
-  { href: "/kegs/fleet", label: "Fleet & trends" },
-  { href: "/kegs/accounts", label: "Accounts" },
-  { href: "/kegs/reports", label: "Reports" },
-  { href: "/kegs/demand", label: "Demand per beer" },
-  { href: "/kegs/taps", label: "Tap list & TV" },
-  { href: "/kegs/beers", label: "Beers" },
-  { href: "/kegs/all", label: "All kegs & labels" },
-  { href: "/kegs/history", label: "History" },
-  { href: "/kegs/setup", label: "Setup" },
-  { href: "/kegs/import", label: "Import" },
+// Areas big enough to be an app of their own list their sections under the nav item.
+// Kegs: three places staff work (taps, scanner, walk-in), then three manager sections,
+// each with its pages as tabs, so the menu stays short however much the area grows.
+export const KEG_SECTIONS: SubItem[] = [
+  { href: "/kegs", label: "Taps", icon: Beer },
+  { href: "/kegs/scan", label: "Scan", icon: ScanLine, also: ["/kegs/k"] },
+  { href: "/kegs/cooler", label: "Walk-in", icon: Warehouse },
+  { href: "/kegs/fleet", label: "Analytics", icon: TrendingUp, tabs: [
+    { href: "/kegs/fleet", label: "Fleet & trends" },
+    { href: "/kegs/demand", label: "Demand" },
+    { href: "/kegs/reports", label: "Reports" },
+  ] },
+  { href: "/kegs/accounts", label: "Wholesale", icon: Store, tabs: [
+    { href: "/kegs/accounts", label: "Accounts" },
+  ] },
+  { href: "/kegs/all", label: "Manage", icon: Settings2, tabs: [
+    { href: "/kegs/all", label: "All kegs & labels" },
+    { href: "/kegs/beers", label: "Beers" },
+    { href: "/kegs/taps", label: "Tap list & TV" },
+    { href: "/kegs/history", label: "History" },
+    { href: "/kegs/setup", label: "Setup" },
+    { href: "/kegs/import", label: "Import" },
+  ] },
 ];
-const STAFF_KEG_PAGES: SubItem[] = [
-  { href: "/kegs", label: "On tap" },
-  { href: "/kegs/scan", label: "Scan" },
-  { href: "/kegs/cooler", label: "Walk-in" },
-];
+const STAFF_KEG_SECTIONS: SubItem[] = KEG_SECTIONS.slice(0, 3);
 const WEBSITE_PAGES: SubItem[] = [
-  { href: "/website", label: "Overview" },
-  { href: "/website/hours", label: "Hours & notice" },
-  { href: "/website/menu", label: "Menu" },
-  { href: "/website/events", label: "Events" },
-  { href: "/website/inquiries", label: "Inquiries" },
-  { href: "/website/content", label: "Site content" },
-  { href: "/website/analytics", label: "Analytics" },
+  { href: "/website", label: "Overview", icon: LayoutGrid },
+  { href: "/website/hours", label: "Hours & notice", icon: Clock },
+  { href: "/website/menu", label: "Menu", icon: UtensilsCrossed },
+  { href: "/website/events", label: "Events", icon: CalendarDays },
+  { href: "/website/inquiries", label: "Inquiries", icon: Inbox },
+  { href: "/website/content", label: "Site content", icon: FileText },
+  { href: "/website/analytics", label: "Analytics", icon: ChartColumn },
 ];
 
-/** The sub-page a path is on: the longest match, so /kegs/fleet lights "Fleet & trends" and /kegs/k/… falls back to the first. */
+const under = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
+/** The section a path is in: the longest match across each section's own page, its tabs and its `also` paths. */
 export function activeChild(pathname: string, children: SubItem[]): string | null {
+  let best: { href: string; len: number } | null = null;
+  for (const c of children) {
+    for (const h of [c.href, ...(c.tabs?.map((t) => t.href) ?? []), ...(c.also ?? [])]) {
+      if (under(pathname, h) && (!best || h.length > best.len)) best = { href: c.href, len: h.length };
+    }
+  }
+  return best?.href ?? null;
+}
+
+/** The tab a path is on within a section's tabs (longest match), or null. */
+export function activeTab(pathname: string, tabs: { href: string }[]): string | null {
   let best: string | null = null;
-  for (const c of children) if ((pathname === c.href || pathname.startsWith(`${c.href}/`)) && (!best || c.href.length > best.length)) best = c.href;
+  for (const t of tabs) if (under(pathname, t.href) && (!best || t.href.length > best.length)) best = t.href;
   return best;
 }
 
@@ -140,7 +169,7 @@ export const MANAGER_NAV: NavGroup[] = [
   { title: "Floor", area: "floor", items: [
     item("floor", "/count", "Counts", ClipboardList),
     item("floor", "/waste", "Waste", Trash2),
-    item("floor", "/kegs", "Kegs", Beer, KEG_PAGES),
+    item("floor", "/kegs", "Kegs", Beer, KEG_SECTIONS),
     item("floor", "/prep", "Prep list", ChefHat),
     item("floor", "/checklists", "Checklists", ListChecks),
     item("floor", "/upkeep", "Upkeep", Wrench),
@@ -162,7 +191,7 @@ export const STAFF_NAV: NavGroup[] = [
   { title: "Floor", area: "floor", items: [
     item("floor", "/prep", "Prep list", ChefHat),
     item("floor", "/checklists", "Checklists", ListChecks),
-    item("floor", "/kegs", "Kegs & taps", Beer, STAFF_KEG_PAGES),
+    item("floor", "/kegs", "Kegs & taps", Beer, STAFF_KEG_SECTIONS),
     item("floor", "/count", "Count", ClipboardList),
     item("floor", "/waste", "Waste", Trash2),
     item("floor", "/notes", "Shift notes", NotebookPen),

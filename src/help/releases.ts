@@ -35,6 +35,7 @@ export const RELEASES: Release[] = [
       "Weekly brief: a Kegs section with fills, taps, kegs sent out and how many came back with no scan.",
       "Insights: the keg tile shows turns, days per cycle and the scan gap, and the feed can raise the scan gap or a fleet with kegs to spare.",
       "Insights no longer prints $0 a month on a finding that has no dollar figure.",
+      "The Kegs menu is six sections with icons (Taps, Scan, Walk-in, Analytics, Wholesale, Manage); the pages inside a section are tabs at the top of the page.",
     ],
   },
   {

@@ -65,7 +65,8 @@ function SideItem({ item, pathname, open, onToggle }: { item: AreaNavItem; pathn
           {children.map((c) => {
             const on = child === c.href;
             return (
-              <Link key={c.href} href={c.href} aria-current={on ? "page" : undefined} style={areaStyle(area)} className={clsx("flex h-7 items-center rounded-md px-2 text-[0.8125rem] transition-colors duration-120 ease-motion", on ? "font-medium text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink")}>
+              <Link key={c.href} href={c.href} aria-current={on ? "page" : undefined} style={areaStyle(area)} className={clsx("flex h-7 items-center gap-2 rounded-md px-2 text-[0.8125rem] transition-colors duration-120 ease-motion", on ? "font-medium text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink")}>
+                <c.icon className={clsx("size-3.5 shrink-0 text-area transition-opacity duration-120", on ? "opacity-100" : "opacity-60")} strokeWidth={on ? 2 : 1.75} />
                 <span className="truncate">{c.label}</span>
               </Link>
             );
@@ -183,7 +184,8 @@ function SubPages({ items, pathname }: { items: AreaNavItem[]; pathname: string 
             <div className="mb-1.5 text-[11px] font-semibold text-muted">{i.label}</div>
             <div className="flex flex-wrap gap-1.5">
               {i.children!.map((c) => (
-                <Link key={c.href} href={c.href} aria-current={on === c.href ? "page" : undefined} className={clsx("inline-flex h-10 items-center rounded-full border px-3 text-[0.8rem] font-medium active:scale-[0.97]", on === c.href ? "border-area/35 bg-area/10 text-ink" : "border-border text-ink-2 active:bg-surface-2")}>
+                <Link key={c.href} href={c.href} aria-current={on === c.href ? "page" : undefined} className={clsx("inline-flex h-10 items-center gap-1.5 rounded-full border px-3 text-[0.8rem] font-medium active:scale-[0.97]", on === c.href ? "border-area/35 bg-area/10 text-ink" : "border-border text-ink-2 active:bg-surface-2")}>
+                  <c.icon className="size-3.5 text-area" strokeWidth={1.9} />
                   {c.label}
                 </Link>
               ))}
