@@ -19,6 +19,7 @@ import {
   Banknote,
   Beer,
   BookOpen,
+  Boxes,
   Calculator,
   CalendarCheck,
   CalendarDays,
@@ -108,12 +109,17 @@ export const KEG_SECTIONS: SubItem[] = [
   ] },
 ];
 const STAFF_KEG_SECTIONS: SubItem[] = KEG_SECTIONS.slice(0, 3);
-// Brewery: what's in each tank now, the tank schedule, recipes with live costs, every brew, and setup.
+// Brewery: what's in each tank now, the tank schedule, recipes with live costs, every brew, brewing stock with what to order when and costs, and setup.
 export const BREWERY_SECTIONS: SubItem[] = [
   { href: "/brewery", label: "Tanks", icon: Cylinder },
   { href: "/brewery/schedule", label: "Schedule", icon: CalendarClock },
   { href: "/brewery/recipes", label: "Recipes", icon: FlaskConical },
   { href: "/brewery/batches", label: "Brews", icon: Layers },
+  { href: "/brewery/stock", label: "Stock & orders", icon: Boxes, tabs: [
+    { href: "/brewery/stock", label: "Stock" },
+    { href: "/brewery/ordering", label: "Ordering" },
+    { href: "/brewery/costs", label: "Costs" },
+  ] },
   { href: "/brewery/setup", label: "Setup", icon: Settings2, tabs: [
     { href: "/brewery/setup", label: "Tanks & defaults" },
     { href: "/brewery/import", label: "Import" },

@@ -16,12 +16,13 @@ import { beerTaxNeedsYou } from "./beerTax";
 import { kegNeedsYou } from "./kegSignals";
 import { kegOrdersNeedYou } from "./kegOrders";
 import { breweryNeedsYou } from "./brewery";
+import { brewOrderingNeedsYou } from "./brewOrdering";
 
 /**
  * What needs a manager right now, for the Overview: order cutoffs coming up,
  * invoices to approve, staff requests, an unpublished schedule, taps with no
  * keg behind them, keg orders due today or overdue, brewery transfers,
- * packaging, tank clashes and brews to plan, certificates and low
+ * packaging, tank clashes, brews to plan and brewery orders to place, certificates and low
  * reviews, and at the bottom the keg fleet's two lists (out too long, not
  * seen lately). Each source fails on its own (logged, left out) so one
  * broken area never blanks the list.
@@ -47,6 +48,8 @@ export async function attentionList(now = new Date()): Promise<AttentionItem[]> 
   const kegOrders = soft("keg orders", kegOrdersNeedYou(today), []);
   // Brewery: transfers and packaging due, tank clashes in the next two weeks, a brew to plan within a week.
   const brewery = soft("brewery", breweryNeedsYou(today), []);
+  // Brewery orders: "Order <supplier> by <day> for <brew>" when due within three days, or late.
+  const brewOrders = soft("brewery orders", brewOrderingNeedsYou(today), []);
   const [cutoffs, invoices, timeOff, swaps, draftShifts, kegs, certs, badReviews] = await Promise.all([
     soft("cutoffs", supplierCutoffs(now), []),
     soft("invoices", db.invoice.groupBy({ by: ["status"], where: { status: { not: "APPROVED" } }, _count: { _all: true } }), []),
@@ -85,5 +88,5 @@ export async function attentionList(now = new Date()): Promise<AttentionItem[]> 
     certsExpiring: certs?.expiring ?? 0,
     badReviews,
   });
-  return [...items, ...(await privateEvents), ...(await ops), ...(await kegOrders), ...(await brewery), ...(await kegFleet)].sort((a, b) => b.urgency - a.urgency);
+  return [...items, ...(await privateEvents), ...(await ops), ...(await kegOrders), ...(await brewery), ...(await brewOrders), ...(await kegFleet)].sort((a, b) => b.urgency - a.urgency);
 }
