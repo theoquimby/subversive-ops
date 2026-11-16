@@ -28,6 +28,24 @@ export function newClientId() {
 
 const errorOf = (r: SendResult): string | null => (r && typeof r === "object" && "error" in r && typeof r.error === "string" && r.error ? r.error : null);
 
+/**
+ * True when the request never reached the server (no signal, connection
+ * dropped): the only failure worth keeping on the phone for later. fetch()
+ * rejects with a TypeError then ("Failed to fetch", Safari's "Load failed",
+ * Firefox's "NetworkError when attempting to fetch resource").
+ */
+export function isNetworkError(e: unknown): boolean {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  return e instanceof TypeError && /fetch|network|load failed|connection|offline/i.test(e.message);
+}
+
+/** What to tell staff when the server (or the app itself) said no, rather than the signal. */
+export function failureMessage(e: unknown): string {
+  // A page opened before the latest update calls server actions the new version no longer has.
+  if (e && typeof e === "object" && (e as Error).name === "UnrecognizedActionError") return "This page is out of date — the app was just updated. Reload the page, then try again.";
+  return "Couldn't save that — something went wrong on our side. Try again, or reload the page.";
+}
+
 export function createOfflineQueue<T extends QueueItem>(opts: {
   key: string;
   send: (item: T) => Promise<SendResult>;
@@ -58,6 +76,8 @@ export function createOfflineQueue<T extends QueueItem>(opts: {
     write([...read().filter((x) => x.clientId !== item.clientId && !opts.replaces?.(x, item)), item]);
   }
 
+  /** Kept items whose (non-network) failure has already been shown on this page. */
+  const reported = new Set<string>();
   let flushing: Promise<{ sent: number; failed: string[] }> | null = null;
   /** Send everything waiting. Items the server refuses are dropped with their reason. */
   function flush(): Promise<{ sent: number; failed: string[] }> {
@@ -72,8 +92,13 @@ export function createOfflineQueue<T extends QueueItem>(opts: {
           const err = errorOf(await opts.send(item));
           if (err) failed.push(`${item.label}: ${err}`);
           else sent++;
-        } catch {
-          keep.push(item); // still no signal
+        } catch (e) {
+          keep.push(item); // still no signal, or the server can't take it right now: try again later
+          // Say so (once per item on this page) instead of retrying in silence forever.
+          if (!isNetworkError(e) && !reported.has(item.clientId)) {
+            reported.add(item.clientId);
+            failed.push(`${item.label}: ${failureMessage(e)}`);
+          }
         }
       }
       // Anything queued while we were sending stays too.
@@ -86,7 +111,11 @@ export function createOfflineQueue<T extends QueueItem>(opts: {
     return flushing;
   }
 
-  /** Send now; if there's no connection, keep it for later. */
+  /**
+   * Send now; if there's no connection, keep it for later. Any other failure
+   * (a server error, a page left open across an update) is reported, not
+   * queued: queuing it would say "saved" for something that may never send.
+   */
   async function send(item: T): Promise<{ ok: true; queued: boolean } | { error: string }> {
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       enqueue(item);
@@ -95,7 +124,11 @@ export function createOfflineQueue<T extends QueueItem>(opts: {
     try {
       const err = errorOf(await opts.send(item));
       return err ? { error: err } : { ok: true, queued: false };
-    } catch {
+    } catch (e) {
+      if (!isNetworkError(e)) {
+        console.error(e);
+        return { error: failureMessage(e) };
+      }
       enqueue(item);
       return { ok: true, queued: true };
     }
