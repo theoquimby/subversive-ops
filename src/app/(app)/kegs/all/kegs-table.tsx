@@ -1,7 +1,7 @@
 "use client";
 
 import { DataTable, type Column, type Filter, type GroupBy } from "@/components/data-table";
-import { LinkButton } from "@/components/ui";
+import { EmptyState, LinkButton } from "@/components/ui";
 import { KEG_STATUSES, OWNER_LABEL, STATUS_META, type KegOwner, type KegStatus } from "@/domain/kegs";
 import { Printer } from "lucide-react";
 import { useMemo } from "react";
@@ -98,7 +98,7 @@ export function KegsTable({ rows }: { rows: KegRow[] }) {
         value: STATUS_META[k.status].short,
         sub: `${k.size} · ${k.since}`,
       })}
-      empty={<span>No kegs yet. Add your kegs below, or import them from your old keg app.</span>}
+      empty={<EmptyState title="No kegs yet">Add your kegs below, or import them from your old keg app.</EmptyState>}
       bulkActions={(api) => {
         const codes = api.rows.slice(0, PRINT_MAX).map((k) => k.code);
         return (

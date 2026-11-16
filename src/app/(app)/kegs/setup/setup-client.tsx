@@ -1,14 +1,16 @@
 "use client";
 
+import { DataTable, type Column, type Filter, type GroupBy } from "@/components/data-table";
 import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
-import { Button, Input, Select, Table, Td, Th, Tr } from "@/components/ui";
+import { ShowMore } from "@/components/show-more";
+import { Button, EmptyState, Input, Select, Table, Td, Th, Tr } from "@/components/ui";
 import { STANDING_LABEL, STANDINGS, type Standing } from "@/domain/beerStanding";
 import { BEER_COLORS } from "@/domain/kegs";
 import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { addAccount, addBeer, addSpot, removeSpot, renameSpot, saveConfig, savePour, setAccountField, setBeerField } from "../actions";
 import { BeerDot } from "../bits";
 
@@ -46,75 +48,157 @@ function AddRow({ placeholder, label, onAdd }: { placeholder: string; label: str
 export interface BeerRow { id: string; name: string; style: string | null; color: string; squareNames: string[]; minFull: number; house: boolean; standing: Standing; recipeId: string | null; kegs: number }
 
 const STANDING_OPTIONS = STANDINGS.map((s) => ({ value: s, label: STANDING_LABEL[s] }));
+const COLOR_OPTIONS = BEER_COLORS.map((c) => ({ value: c.id, label: c.label }));
+const STANDING_RANK: Record<Standing, number> = { core: 0, rotation: 1, retired: 2 };
 
+/** The arrow beside a name that opens its own page. */
+function OpenLink({ href, name, what }: { href: string; name: string; what: string }) {
+  return <Link href={href} aria-label={`Open ${name}`} title={`Open this ${what}'s page`} className="grid size-10 shrink-0 place-items-center rounded-lg text-muted transition-colors duration-120 hover:bg-surface-2 hover:text-ink sm:size-8"><ArrowUpRight className="size-4" /></Link>;
+}
+
+/** A labelled field in a phone or side-panel editor. */
+const field = (label: string, el: React.ReactNode, hint?: React.ReactNode) => (
+  <div className="py-2">
+    <div className="mb-0.5 text-[0.8rem] font-medium text-ink-2">{label}</div>
+    {el}
+    {hint && <div className="mt-0.5 px-2 text-xs text-muted">{hint}</div>}
+  </div>
+);
+
+/** Every beer, edited in place. Retired beers sit under their own tab; search and the tabs never get in the way of typing. */
 export function BeersTable({ beers, recipes }: { beers: BeerRow[]; recipes: { id: string; name: string }[] }) {
+  const recipeOptions = useMemo(() => [{ value: "", label: "None" }, ...recipes.map((r) => ({ value: r.id, label: r.name }))], [recipes]);
+  const columns = useMemo<Column<BeerRow>[]>(() => [
+    {
+      id: "name", header: "Beer", edit: true, width: 220, hideable: false, sort: (b) => b.name, csv: (b) => b.name,
+      cell: (b) => (
+        <div className="flex items-center gap-2 pl-1">
+          <BeerDot color={b.color} />
+          <GridCell className="min-w-0 flex-1" grid="beers" col="name" ariaLabel={`Name of ${b.name}`} value={b.name} onSave={(v) => setBeerField(b.id, "name", v)} />
+          <OpenLink href={`/kegs/beers/${b.id}`} name={b.name} what="beer" />
+        </div>
+      ),
+    },
+    { id: "color", header: "Color", edit: true, width: 150, sort: (b) => b.color, csv: (b) => b.color, cell: (b) => <GridSelect ariaLabel={`Board color of ${b.name}`} value={b.color} options={COLOR_OPTIONS} onSave={(v) => setBeerField(b.id, "color", v)} /> },
+    { id: "square", header: "Square items that pour it", edit: true, width: 240, sort: (b) => b.squareNames.join(", "), csv: (b) => b.squareNames.join(", "), cell: (b) => <GridCell grid="beers" col="square" ariaLabel={`Square item names for ${b.name}, comma separated`} value={b.squareNames.join(", ")} placeholder="Same as the beer's name" onSave={(v) => setBeerField(b.id, "squareNames", v)} /> },
+    { id: "standing", header: "Standing", help: "kegs.standing", edit: true, width: 150, sort: (b) => STANDING_RANK[b.standing], csv: (b) => STANDING_LABEL[b.standing], cell: (b) => <GridSelect ariaLabel={`Standing of ${b.name}`} value={b.standing} options={STANDING_OPTIONS} onSave={(v) => setBeerField(b.id, "standing", v)} /> },
+    { id: "min", header: "Alert under", align: "right", edit: true, width: 120, sort: (b) => (b.standing === "core" ? b.minFull : null), csv: (b) => (b.standing === "core" ? b.minFull : ""), cell: (b) => (b.standing === "core" ? <GridCell grid="beers" col="min" type="number" ariaLabel={`Alert when full kegs of ${b.name} drop under`} value={b.minFull} suffix="full" onSave={(v) => setBeerField(b.id, "minFull", v)} /> : <span className="px-2 text-xs text-muted" title="Only core beers are alerted about">—</span>) },
+    { id: "recipe", header: "Recipe (for cost)", edit: true, width: 220, sort: (b) => recipes.find((r) => r.id === b.recipeId)?.name, csv: (b) => recipes.find((r) => r.id === b.recipeId)?.name ?? "", cell: (b) => <GridSelect ariaLabel={`Recipe for ${b.name}`} value={b.recipeId ?? ""} options={recipeOptions} onSave={(v) => setBeerField(b.id, "recipeId", v)} /> },
+    { id: "kegs", header: "Kegs", align: "right", width: 70, defaultHidden: true, firstDir: "desc", sort: (b) => b.kegs, csv: (b) => b.kegs, cell: (b) => <span className="num text-muted">{b.kegs}</span> },
+  ], [recipes, recipeOptions]);
+
+  const filters = useMemo<Filter<BeerRow>[]>(() => [
+    { id: "standing", label: "Standing", kind: "facet", display: "segmented", single: true, allLabel: "All", values: (b) => (b.standing === "retired" ? ["retired"] : ["active", b.standing]), options: [{ value: "active", label: "In use" }, { value: "core", label: "Core" }, { value: "rotation", label: "In rotation" }, { value: "retired", label: "Retired" }] },
+    { id: "nosquare", label: "No Square items", kind: "toggle", test: (b) => b.squareNames.length === 0 },
+    { id: "norecipe", label: "No recipe", kind: "toggle", test: (b) => !b.recipeId },
+  ], []);
+
   return (
-    <>
-      <Table>
-        <thead>
-          <tr>
-            <Th>Beer</Th>
-            <Th>Color</Th>
-            <Th className="hidden md:table-cell">Square items that pour it</Th>
-            <Th className="hidden sm:table-cell">Standing</Th>
-            <Th align="right" className="hidden sm:table-cell">Alert under</Th>
-            <Th className="hidden lg:table-cell">Recipe (for cost)</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {beers.map((b) => (
-            <Tr key={b.id} className={b.standing === "retired" ? "opacity-60" : ""}>
-              <Td className="min-w-40 py-1">
-                <div className="flex items-center gap-2">
-                  <BeerDot color={b.color} />
-                  <GridCell className="min-w-0 flex-1" grid="beers" col="name" ariaLabel="Beer name" value={b.name} onSave={(v) => setBeerField(b.id, "name", v)} />
-                  <Link href={`/kegs/beers/${b.id}`} aria-label={`Open ${b.name}`} title="Open this beer's page" className="grid size-10 shrink-0 place-items-center rounded-lg text-muted transition-colors duration-120 hover:bg-surface-2 hover:text-ink sm:size-8"><ArrowUpRight className="size-4" /></Link>
-                </div>
-                <div className="px-2 pb-1 text-xs text-muted sm:hidden">{STANDING_LABEL[b.standing]}</div>
-              </Td>
-              <Td className="w-40 py-1"><GridSelect ariaLabel="Board color" value={b.color} options={BEER_COLORS.map((c) => ({ value: c.id, label: c.label }))} onSave={(v) => setBeerField(b.id, "color", v)} /></Td>
-              <Td className="hidden min-w-56 py-1 md:table-cell"><GridCell grid="beers" col="square" ariaLabel="Square item names, comma separated" value={b.squareNames.join(", ")} placeholder="Same as the beer's name" onSave={(v) => setBeerField(b.id, "squareNames", v)} /></Td>
-              <Td className="hidden w-36 py-1 sm:table-cell"><GridSelect ariaLabel={`Standing of ${b.name}`} value={b.standing} options={STANDING_OPTIONS} onSave={(v) => setBeerField(b.id, "standing", v)} /></Td>
-              <Td className="hidden w-28 py-1 sm:table-cell">{b.standing === "core" ? <GridCell grid="beers" col="min" type="number" ariaLabel="Alert when full kegs drop under" value={b.minFull} suffix="full" onSave={(v) => setBeerField(b.id, "minFull", v)} /> : <span className="px-2 text-xs text-muted" title="Only core beers are alerted about">—</span>}</Td>
-              <Td className="hidden w-56 py-1 lg:table-cell"><GridSelect ariaLabel="Beer recipe" value={b.recipeId ?? ""} options={[{ value: "", label: "None" }, ...recipes.map((r) => ({ value: r.id, label: r.name }))]} onSave={(v) => setBeerField(b.id, "recipeId", v)} /></Td>
-            </Tr>
-          ))}
-        </tbody>
-      </Table>
-      <AddRow placeholder="e.g. Golden Lager" label="Add beer" onAdd={(v) => addBeer(v)} />
-    </>
+    <DataTable
+      id="kegs-setup-beers"
+      rows={beers}
+      rowKey={(b) => b.id}
+      columns={columns}
+      noun={["beer", "beers"]}
+      searchText={(b) => `${b.name} ${b.style ?? ""} ${b.squareNames.join(" ")}`}
+      searchPlaceholder="Search beers"
+      filters={filters}
+      defaultView={{ filters: { standing: ["active"] } }}
+      csvName="beers-setup"
+      urlSearch={false}
+      maxHeight="36rem"
+      rowClassName={(b) => (b.standing === "retired" ? "opacity-60" : undefined)}
+      footer={<div className="px-4 pb-3"><AddRow placeholder="e.g. Golden Lager" label="Add beer" onAdd={(v) => addBeer(v)} /></div>}
+      empty={<EmptyState title="No beers yet" action={<AddRow placeholder="e.g. Golden Lager" label="Add beer" onAdd={(v) => addBeer(v)} />}>Add each beer you keg. Say which Square items pour it, and pick the core ones you never want to run out of.</EmptyState>}
+      card={(b) => ({
+        title: <span className="inline-flex items-center gap-2"><BeerDot color={b.color} />{b.name}</span>,
+        subtitle: `${STANDING_LABEL[b.standing]}${b.squareNames.length ? ` · ${b.squareNames.join(", ")}` : ""}`,
+        value: b.standing === "core" ? `alert under ${b.minFull}` : undefined,
+      })}
+      drawerTitle={(b) => b.name}
+      rowHref={(b) => `/kegs/beers/${b.id}`}
+      drawer={(b) => (
+        <div className="divide-y divide-border">
+          {field("Name", <GridCell grid="beerd" col="name" ariaLabel="Name" value={b.name} onSave={(v) => setBeerField(b.id, "name", v)} />)}
+          {field("Standing", <GridSelect ariaLabel="Standing" value={b.standing} options={STANDING_OPTIONS} onSave={(v) => setBeerField(b.id, "standing", v)} />)}
+          {field("Board color", <GridSelect ariaLabel="Board color" value={b.color} options={COLOR_OPTIONS} onSave={(v) => setBeerField(b.id, "color", v)} />)}
+          {field("Square items that pour it", <GridCell grid="beerd" col="square" ariaLabel="Square item names, comma separated" value={b.squareNames.join(", ")} placeholder="Same as the beer's name" onSave={(v) => setBeerField(b.id, "squareNames", v)} />, "The part before the pour, comma separated.")}
+          {b.standing === "core" && field("Alert when full kegs drop under", <GridCell grid="beerd" col="min" type="number" ariaLabel="Alert when full kegs drop under" value={b.minFull} suffix="full" onSave={(v) => setBeerField(b.id, "minFull", v)} />)}
+          {field("Recipe (for cost)", <GridSelect ariaLabel="Recipe" value={b.recipeId ?? ""} options={recipeOptions} onSave={(v) => setBeerField(b.id, "recipeId", v)} />)}
+        </div>
+      )}
+    />
   );
 }
 
+interface SpotRow { id: string; area: string; name: string; kegs: number }
+
+/** Every spot in every area: rename in place, remove, filter by area, add one to an area. */
 export function SpotsEditor({ areas, spots, counts }: { areas: string[]; spots: { id: string; area: string; name: string }[]; counts: Record<string, number> }) {
   const router = useRouter();
   const confirm = useConfirm();
   const [area, setArea] = useState(areas[0] ?? "");
-  const mine = spots.filter((s) => s.area === area);
+  const rows = useMemo<SpotRow[]>(() => spots.map((s) => ({ ...s, kegs: counts[s.id] ?? 0 })), [spots, counts]);
+  const columns = useMemo<Column<SpotRow>[]>(() => [
+    { id: "name", header: "Spot", edit: true, width: 260, hideable: false, sort: (s) => s.name, csv: (s) => s.name, cell: (s) => <GridCell grid="spots" col="name" ariaLabel={`Name of spot ${s.name}`} value={s.name} onSave={(v) => renameSpot(s.id, v)} /> },
+    { id: "area", header: "Area", width: 160, sort: (s) => s.area, csv: (s) => s.area, cell: (s) => <span className="text-ink-2">{s.area}</span> },
+    { id: "kegs", header: "Kegs", align: "right", width: 80, firstDir: "desc", sort: (s) => s.kegs, csv: (s) => s.kegs, cell: (s) => <span className="num text-muted">{s.kegs}</span> },
+    {
+      id: "remove", header: <span className="sr-only">Remove</span>, label: "Remove", align: "right", width: 60, hideable: false, csv: () => undefined,
+      cell: (s) => (
+        <button aria-label={`Remove ${s.name}`} className="grid size-10 place-items-center rounded-lg text-muted hover:bg-bad-bg hover:text-bad sm:size-8" onClick={async () => {
+          if (!(await confirm({ title: `Remove ${s.name}?`, body: s.kegs ? `The ${s.kegs} keg${s.kegs === 1 ? "" : "s"} there stay in ${s.area}, with no spot.` : undefined, confirmLabel: "Remove", danger: true }))) return;
+          await removeSpot(s.id);
+          router.refresh();
+        }}><Trash2 className="size-4" /></button>
+      ),
+    },
+  ], [confirm, router]);
+  const filters = useMemo<Filter<SpotRow>[]>(() => [{ id: "area", label: "Area", kind: "facet", display: "segmented", single: true, allLabel: "All areas", values: (s) => s.area, options: areas.filter((a) => spots.some((s) => s.area === a)).map((a) => ({ value: a, label: a })) }], [areas, spots]);
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted">Area</span>
-        <Select value={area} onChange={(e) => setArea(e.target.value)} options={areas.map((a) => ({ value: a, label: a }))} className="w-56" aria-label="Area" />
+    <div className="space-y-3">
+      <DataTable
+        id="kegs-setup-spots"
+        rows={rows}
+        rowKey={(s) => s.id}
+        columns={columns}
+        noun={["spot", "spots"]}
+        searchText={(s) => `${s.name} ${s.area}`}
+        searchPlaceholder="Search spots"
+        filters={filters}
+        groups={SPOT_GROUPS}
+        defaultView={{ sort: [{ id: "area", dir: "asc" }] }}
+        csvName="keg-spots"
+        urlSearch={false}
+        maxHeight="28rem"
+        card={(s) => ({ title: s.name, subtitle: s.area, value: `${s.kegs} keg${s.kegs === 1 ? "" : "s"}` })}
+        drawerTitle={(s) => s.name}
+        drawer={(s) => (
+          <div className="divide-y divide-border">
+            {field("Name", <GridCell grid="spotd" col="name" ariaLabel="Spot name" value={s.name} onSave={(v) => renameSpot(s.id, v)} />, `In ${s.area} · ${s.kegs} keg${s.kegs === 1 ? "" : "s"} there now`)}
+            <div className="py-3">
+              <Button variant="ghost" className="text-bad" onClick={async () => {
+                if (!(await confirm({ title: `Remove ${s.name}?`, body: s.kegs ? `The ${s.kegs} keg${s.kegs === 1 ? "" : "s"} there stay in ${s.area}, with no spot.` : undefined, confirmLabel: "Remove", danger: true }))) return;
+                await removeSpot(s.id);
+                router.refresh();
+              }}><Trash2 className="size-4" /> Remove this spot</Button>
+            </div>
+          </div>
+        )}
+        empty={<EmptyState title="No spots yet">Kegs in an area are just “in” it until you add some below.</EmptyState>}
+      />
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted">Add a spot in</span>
+          <Select value={area} onChange={(e) => setArea(e.target.value)} options={areas.map((a) => ({ value: a, label: a }))} className="w-56" aria-label="Area for the new spot" />
+        </div>
+        <AddRow placeholder="e.g. Back left · stack 2" label="Add spot" onAdd={(v) => addSpot(area, v)} />
       </div>
-      <ul className="mt-3 divide-y divide-border rounded-lg border border-border">
-        {mine.length === 0 && <li className="px-3 py-3 text-sm text-muted">No spots in {area} yet. Kegs there are just “in {area}”.</li>}
-        {mine.map((s) => (
-          <li key={s.id} className="flex items-center gap-2 px-2 py-1">
-            <div className="min-w-0 flex-1"><GridCell grid="spots" col="name" ariaLabel="Spot name" value={s.name} onSave={(v) => renameSpot(s.id, v)} /></div>
-            <span className="num w-16 shrink-0 text-right text-xs text-muted">{counts[s.id] ?? 0} keg{(counts[s.id] ?? 0) === 1 ? "" : "s"}</span>
-            <button aria-label={`Remove ${s.name}`} className="grid size-10 place-items-center rounded-lg text-muted hover:bg-bad-bg hover:text-bad" onClick={async () => {
-              if (!(await confirm({ title: `Remove ${s.name}?`, body: counts[s.id] ? `The ${counts[s.id]} keg(s) there stay in ${area}, with no spot.` : undefined, confirmLabel: "Remove", danger: true }))) return;
-              await removeSpot(s.id);
-              router.refresh();
-            }}><Trash2 className="size-4" /></button>
-          </li>
-        ))}
-      </ul>
-      <AddRow placeholder="e.g. Back left · stack 2" label="Add spot" onAdd={(v) => addSpot(area, v)} />
     </div>
   );
 }
+
+const SPOT_GROUPS: GroupBy<SpotRow>[] = [{ id: "area", label: "Area", key: (s) => s.area }];
 
 export function TapsConfig({ config, areas }: { config: { tapLines: number; tapArea: string; coldArea: string; fillDays: number; overdueDays: number; idleDays: number }; areas: string[] }) {
   const opts = areas.map((a) => ({ value: a, label: a }));
@@ -141,7 +225,7 @@ export function PoursEditor({ pours }: { pours: { variation: string; oz: number;
   return (
     <Table>
       <thead><tr><Th>Pour in Square</Th><Th align="right" className="hidden sm:table-cell">Sold, 90 days</Th><Th align="right">Ounces</Th></tr></thead>
-      <tbody>
+      <ShowMore as="tbody" limit={15} noun={["pour", "pours"]}>
         {pours.map((p) => (
           <Tr key={p.variation}>
             <Td>{p.variation}{!p.saved && <span className="ml-2 text-xs text-muted">guessed</span>}</Td>
@@ -149,7 +233,7 @@ export function PoursEditor({ pours }: { pours: { variation: string; oz: number;
             <Td align="right" className="w-32 py-1"><GridCell grid="pours" col="oz" type="number" align="right" suffix="oz" ariaLabel={`Ounces in a ${p.variation}`} value={p.oz} onSave={(v) => savePour(p.variation, v)} /></Td>
           </Tr>
         ))}
-      </tbody>
+      </ShowMore>
     </Table>
   );
 }
@@ -158,32 +242,60 @@ export interface AccountRow { id: string; name: string; kind: string; contact: s
 
 const KINDS = [{ value: "bar", label: "Bar" }, { value: "restaurant", label: "Restaurant" }, { value: "distributor", label: "Distributor" }, { value: "consumer", label: "Person / event" }, { value: "other", label: "Other" }];
 
+const kindLabel = (k: string) => KINDS.find((x) => x.value === k)?.label ?? "Other";
+
+/** Every account, edited in place. Accounts no longer used sit under their own tab. */
 export function AccountsTable({ accounts }: { accounts: AccountRow[] }) {
+  const columns = useMemo<Column<AccountRow>[]>(() => [
+    {
+      id: "name", header: "Account", edit: true, width: 230, hideable: false, sort: (a) => a.name, csv: (a) => a.name,
+      cell: (a) => (
+        <div className="flex items-center gap-1">
+          <GridCell className="min-w-0 flex-1" grid="acc" col="name" ariaLabel={`Name of ${a.name}`} value={a.name} onSave={(v) => setAccountField(a.id, "name", v)} />
+          <OpenLink href={`/kegs/accounts/${a.id}`} name={a.name} what="account" />
+        </div>
+      ),
+    },
+    { id: "kind", header: "Type", edit: true, width: 160, sort: (a) => kindLabel(a.kind), csv: (a) => kindLabel(a.kind), cell: (a) => <GridSelect ariaLabel={`Type of ${a.name}`} value={a.kind} options={KINDS} onSave={(v) => setAccountField(a.id, "kind", v)} /> },
+    { id: "contact", header: "Contact", edit: true, width: 170, sort: (a) => a.contact, csv: (a) => a.contact ?? "", cell: (a) => <GridCell grid="acc" col="contact" ariaLabel={`Contact at ${a.name}`} value={a.contact} placeholder="—" onSave={(v) => setAccountField(a.id, "contact", v)} /> },
+    { id: "phone", header: "Phone", edit: true, width: 150, sort: (a) => a.phone, csv: (a) => a.phone ?? "", cell: (a) => <GridCell grid="acc" col="phone" ariaLabel={`Phone for ${a.name}`} value={a.phone} placeholder="—" onSave={(v) => setAccountField(a.id, "phone", v)} /> },
+    { id: "email", header: "Email", edit: true, width: 200, sort: (a) => a.email, csv: (a) => a.email ?? "", cell: (a) => <GridCell grid="acc" col="email" ariaLabel={`Email for ${a.name}`} value={a.email} placeholder="—" onSave={(v) => setAccountField(a.id, "email", v)} /> },
+    { id: "out", header: "Kegs out", align: "right", width: 90, firstDir: "desc", sort: (a) => a.out, csv: (a) => a.out, cell: (a) => <span className={a.out ? "font-medium" : "text-muted"}>{a.out}</span> },
+  ], []);
+  const filters = useMemo<Filter<AccountRow>[]>(() => [
+    { id: "use", label: "Accounts", kind: "facet", display: "segmented", single: true, allLabel: "All", values: (a) => (a.active ? "active" : "old"), options: [{ value: "active", label: "On the list" }, { value: "old", label: "No longer used" }] },
+    { id: "kind", label: "Type", kind: "facet", values: (a) => a.kind, options: KINDS },
+    { id: "nocontact", label: "No phone or email", kind: "toggle", test: (a) => !a.phone && !a.email },
+  ], []);
   return (
-    <>
-      {accounts.length > 0 && (
-        <Table>
-          <thead><tr><Th>Account</Th><Th className="hidden sm:table-cell">Type</Th><Th className="hidden md:table-cell">Contact</Th><Th className="hidden lg:table-cell">Phone</Th><Th className="hidden lg:table-cell">Email</Th><Th align="right">Kegs out</Th></tr></thead>
-          <tbody>
-            {accounts.map((a) => (
-              <Tr key={a.id}>
-                <Td className="min-w-40 py-1">
-                  <div className="flex items-center gap-1">
-                    <GridCell className="min-w-0 flex-1" grid="acc" col="name" ariaLabel="Account name" value={a.name} onSave={(v) => setAccountField(a.id, "name", v)} />
-                    <Link href={`/kegs/accounts/${a.id}`} aria-label={`Open ${a.name}`} title="Open this account's page" className="grid size-10 shrink-0 place-items-center rounded-lg text-muted transition-colors duration-120 hover:bg-surface-2 hover:text-ink sm:size-8"><ArrowUpRight className="size-4" /></Link>
-                  </div>
-                </Td>
-                <Td className="hidden w-40 py-1 sm:table-cell"><GridSelect ariaLabel="Type" value={a.kind} options={KINDS} onSave={(v) => setAccountField(a.id, "kind", v)} /></Td>
-                <Td className="hidden py-1 md:table-cell"><GridCell grid="acc" col="contact" ariaLabel="Contact" value={a.contact} placeholder="—" onSave={(v) => setAccountField(a.id, "contact", v)} /></Td>
-                <Td className="hidden py-1 lg:table-cell"><GridCell grid="acc" col="phone" ariaLabel="Phone" value={a.phone} placeholder="—" onSave={(v) => setAccountField(a.id, "phone", v)} /></Td>
-                <Td className="hidden py-1 lg:table-cell"><GridCell grid="acc" col="email" ariaLabel="Email" value={a.email} placeholder="—" onSave={(v) => setAccountField(a.id, "email", v)} /></Td>
-                <Td align="right" className={a.out ? "font-medium" : "text-muted"}>{a.out}</Td>
-              </Tr>
-            ))}
-          </tbody>
-        </Table>
+    <DataTable
+      id="kegs-setup-accounts"
+      rows={accounts}
+      rowKey={(a) => a.id}
+      columns={columns}
+      noun={["account", "accounts"]}
+      searchText={(a) => `${a.name} ${a.contact ?? ""} ${a.phone ?? ""} ${a.email ?? ""} ${kindLabel(a.kind)}`}
+      searchPlaceholder="Search accounts"
+      filters={filters}
+      defaultView={{ filters: { use: ["active"] } }}
+      csvName="keg-accounts-setup"
+      urlSearch={false}
+      maxHeight="32rem"
+      rowClassName={(a) => (a.active ? undefined : "opacity-60")}
+      footer={<div className="px-4 pb-3"><AddRow placeholder="e.g. Catskill Tap House" label="Add account" onAdd={(v) => addAccount(v)} /></div>}
+      empty={<EmptyState title="No accounts yet" action={<AddRow placeholder="e.g. Catskill Tap House" label="Add account" onAdd={(v) => addAccount(v)} />}>The bars, restaurants and people your kegs go out to.</EmptyState>}
+      card={(a) => ({ title: a.name, subtitle: [kindLabel(a.kind), a.contact, a.phone].filter(Boolean).join(" · "), value: `${a.out} out` })}
+      drawerTitle={(a) => a.name}
+      rowHref={(a) => `/kegs/accounts/${a.id}`}
+      drawer={(a) => (
+        <div className="divide-y divide-border">
+          {field("Name", <GridCell grid="accd" col="name" ariaLabel="Account name" value={a.name} onSave={(v) => setAccountField(a.id, "name", v)} />)}
+          {field("Type", <GridSelect ariaLabel="Type" value={a.kind} options={KINDS} onSave={(v) => setAccountField(a.id, "kind", v)} />)}
+          {field("Contact", <GridCell grid="accd" col="contact" ariaLabel="Contact" value={a.contact} placeholder="—" onSave={(v) => setAccountField(a.id, "contact", v)} />)}
+          {field("Phone", <GridCell grid="accd" col="phone" ariaLabel="Phone" value={a.phone} placeholder="—" onSave={(v) => setAccountField(a.id, "phone", v)} />)}
+          {field("Email", <GridCell grid="accd" col="email" ariaLabel="Email" value={a.email} placeholder="—" onSave={(v) => setAccountField(a.id, "email", v)} />)}
+        </div>
       )}
-      <AddRow placeholder="e.g. Catskill Tap House" label="Add account" onAdd={(v) => addAccount(v)} />
-    </>
+    />
   );
 }

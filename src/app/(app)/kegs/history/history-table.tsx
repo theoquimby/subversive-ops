@@ -1,7 +1,7 @@
 "use client";
 
 import { DataTable, downloadText, type Column, type Filter, type GroupBy } from "@/components/data-table";
-import { Button, cx, DatePicker } from "@/components/ui";
+import { Button, cx, DatePicker, EmptyState } from "@/components/ui";
 import { historyDatePresets, NO_BEER } from "@/domain/kegHistory";
 import { businessDateOf, dayDate } from "@/lib/format";
 import type { HistoryOptions, HistoryRow } from "@/server/services/kegHistory";
@@ -132,7 +132,7 @@ export function HistoryTable({ initial, today, from, to, narrowedOutside }: { in
           value: <span className="text-xs font-normal text-ink-2">{e.when}</span>,
           sub: e.who,
         })}
-        empty={narrowedOutside ? <span>Nothing in these dates for this keg or filter. Pick other dates, or choose Any time above.</span> : <span>Nothing yet. Scans show up here as staff use them.</span>}
+        empty={narrowedOutside ? <EmptyState title="Nothing in these dates">Pick other dates, or choose Any time above. A keg picked from a link shows only that keg; Every keg above shows them all.</EmptyState> : <EmptyState title="Nothing yet">Scans show up here as staff use them.</EmptyState>}
       />
     </>
   );
