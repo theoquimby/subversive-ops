@@ -60,7 +60,7 @@ export function managerExtra(hasRoute: (route: string) => boolean): Command[] {
           { id: "tour-webanalytics", label: "Start tour · Website analytics", group: "Help", href: "/help?tour=webanalytics" },
         ] satisfies Command[])
       : []),
-    ...(hasRoute("/website/analytics/google") ? [{ id: "go-google", label: "Connect Google (Search & Maps)", group: "Go to", href: "/website/analytics/google", hint: "search console business profile" } satisfies Command] : []),
+    { id: "go-google", label: "Google: sign-in, Search Console, listing and reviews", group: "Go to", href: "/settings/connections/google", hint: "connect search console business profile maps places reviews key analytics" },
     ...(hasRoute("/online")
       ? ([
           { id: "go-online", label: "Online: how guests find you", group: "Go to", href: "/online", hint: "google search maps website reviews found overview" },

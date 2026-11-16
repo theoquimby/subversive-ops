@@ -21,8 +21,9 @@ const routeOf = (f: string) => "/" + path.relative(APP, path.dirname(f)).split(p
 const sources = walk(SRC).filter((f) => f.endsWith(".tsx") && !f.includes("__tests__"));
 const allSource = sources.map((f) => readFileSync(f, "utf8")).join("\n");
 
-// Pages with nothing to explain on their own: the help center itself, setup, a scanned keg's landing page, an email preview.
-const NO_HELP = new Set(["/help", "/help/[id]", "/welcome", "/kegs/k/[code]", "/settings/notifications/preview/[template]"]);
+// Pages with nothing to explain on their own: the help center itself, setup, a scanned keg's landing page, an email preview,
+// and old addresses that only redirect (Connect Google moved to Settings → Connections → Google).
+const NO_HELP = new Set(["/help", "/help/[id]", "/welcome", "/kegs/k/[code]", "/settings/notifications/preview/[template]", "/website/analytics/google"]);
 const norm = (r: string) => (r === "/." ? "/" : r);
 
 describe("every page has help", () => {

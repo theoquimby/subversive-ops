@@ -11,7 +11,8 @@ import { z } from "zod";
 
 const refresh = () => {
   revalidatePath("/website/analytics");
-  revalidatePath("/website/analytics/google");
+  revalidatePath("/settings/connections/google");
+  revalidatePath("/settings/connections");
 };
 
 const GOOGLE_KEYS: SecretName[] = ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"];

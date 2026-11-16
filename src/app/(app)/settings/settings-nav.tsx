@@ -8,8 +8,11 @@ import { SECTIONS } from "./registry";
 /** Desktop only: every Settings page, grouped by section, with the current one marked. */
 export function SettingsNav() {
   const path = usePathname();
+  const under = (href: string) => path === href || path.startsWith(`${href}/`);
+  const hrefs = SECTIONS.flatMap((s) => s.pages.map((p) => p.href));
   const link = (href: string, label: string) => {
-    const on = href === "/settings" ? path === "/settings" : path === href || path.startsWith(`${href}/`);
+    // The most specific page wins: on Connections → Google only "Google" is marked.
+    const on = href === "/settings" ? path === "/settings" : under(href) && !hrefs.some((h) => h.length > href.length && h.startsWith(`${href}/`) && under(h));
     return (
       <Link
         key={href}

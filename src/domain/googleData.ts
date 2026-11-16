@@ -109,10 +109,10 @@ export function friendlyGoogleError(status: number, body: string): string {
   }
   if (reason === "invalid_grant") return "Google says the sign-in has expired or was removed. Press Connect Google again. (If the app's consent screen is still in Testing, Google ends sign-ins after 7 days: publish it.)";
   if (reason === "invalid_client") return "Google didn't accept the Client ID or secret. Paste them again from the Credentials page.";
-  if (reason === "redirect_uri_mismatch") return "The redirect address isn't on the Google client yet. Copy it from step 3 into Authorized redirect URIs, save, and try again.";
+  if (reason === "redirect_uri_mismatch") return "The redirect address isn't on the Google client yet. On Settings → Connections → Google, copy it from How to set this up (step 4) into Authorized redirect URIs, save, and try again.";
   if (status === 401) return "Google asked to sign in again. Press Connect Google.";
   if (status === 403 && /has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(message + reason)) return `An API isn't turned on in the Google Cloud project yet: ${message.slice(0, 160)}`;
-  if (status === 403 && /quota|0 QPM|RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(message + reason)) return "Google hasn't approved Business Profile API access for this project yet (its quota is 0). Search Console still works. See step 6 of the guide.";
+  if (status === 403 && /quota|0 QPM|RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(message + reason)) return "Google hasn't approved Business Profile API access for this project yet (its quota is 0). Search Console still works. See How to set this up under Google listing (Settings → Connections → Google).";
   if (status === 403) return `Google refused: ${message.slice(0, 160) || "the signed-in account can't see this property or listing."}`;
   // An unapproved project has a Business Profile quota of zero, which Google reports as "too many requests".
   if (status === 429 && /mybusiness|businessprofile|business profile/i.test(message + reason + body)) return "Google hasn't approved Business Profile API access for this project yet (its quota is 0). The sign-in is fine and Search Console still works. Google reviews each request by hand; nothing more is needed until it emails.";

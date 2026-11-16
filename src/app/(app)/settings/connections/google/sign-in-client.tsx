@@ -3,10 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Check, Copy } from "lucide-react";
-import { Button, Card, Input } from "@/components/ui";
+import { Button, Input } from "@/components/ui";
 import { Select } from "@/components/select";
 import { useConfirm } from "@/components/dialog";
-import { chooseTargets, disconnectGoogleAction, findGoogleTargets, removeGoogleKey, saveGoogleKey, syncGoogleNow } from "../actions";
+import { chooseTargets, disconnectGoogleAction, findGoogleTargets, removeGoogleKey, saveGoogleKey, syncGoogleNow } from "@/app/(app)/website/analytics/actions";
 
 export function CopyChip({ value }: { value: string }) {
   const [done, setDone] = useState(false);
@@ -92,7 +92,12 @@ export function GoogleKeyField({ name, label, placeholder, set, hint, sensitive 
   );
 }
 
-export function GoogleChoices({ siteUrl, location, locationTitle, business }: { siteUrl: string | null; location: string | null; locationTitle: string | null; business: boolean }) {
+/**
+ * Find again: asks Google which Search Console properties and listings the
+ * signed-in account can see. Both pickers share it (one call finds both); each
+ * shows only its own notes.
+ */
+function useGoogleTargets() {
   const [sites, setSites] = useState<{ siteUrl: string }[] | null>(null);
   const [locations, setLocations] = useState<{ name: string; title: string; address: string | null }[] | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
@@ -115,31 +120,52 @@ export function GoogleChoices({ siteUrl, location, locationTitle, business }: { 
       if (r.error) setError(r.error);
       router.refresh();
     });
+  return { sites, locations, notes, error, pending, find, choose };
+}
+
+const isListingNote = (n: string) => /business profile|listing|my ?business|businessprofile/i.test(n);
+
+/** Search Console: which property is the website. */
+export function SearchConsolePicker({ siteUrl }: { siteUrl: string | null }) {
+  const t = useGoogleTargets();
+  const notes = t.notes.filter((n) => !isListingNote(n));
   return (
-    <Card className="space-y-4 p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0 text-sm">
-          <div className="font-semibold">Which property and listing</div>
-          <p className="text-muted">Found automatically from the website&apos;s address. Change them if there&apos;s more than one.</p>
-        </div>
-        <Button onClick={find} disabled={pending}>{pending ? "Looking…" : "Find again"}</Button>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={t.find} disabled={t.pending}>{t.pending ? "Looking…" : "Find again"}</Button>
+        {!t.sites && siteUrl && <span className="min-w-0 text-sm break-all text-ink-2">Using {siteUrl}</span>}
       </div>
-      {sites && sites.length > 0 && (
+      {t.sites && t.sites.length > 0 && (
         <label className="block max-w-lg">
           <span className="mb-1.5 block text-[0.8rem] font-medium text-ink-2">Search Console property</span>
-          <Select value={siteUrl ?? ""} onChange={(e) => choose({ siteUrl: e.target.value || null })} options={[{ value: "", label: "None" }, ...sites.map((s) => ({ value: s.siteUrl, label: s.siteUrl }))]} />
+          <Select value={siteUrl ?? ""} onChange={(e) => t.choose({ siteUrl: e.target.value || null })} options={[{ value: "", label: "None" }, ...t.sites.map((s) => ({ value: s.siteUrl, label: s.siteUrl }))]} />
         </label>
       )}
-      {business && locations && locations.length > 0 && (
+      {notes.map((n) => <p key={n} className="text-sm text-warn">{n}</p>)}
+      {t.error && <p className="text-sm text-bad">{t.error}</p>}
+    </div>
+  );
+}
+
+/** Business Profile: which listing is Subversive. A note about Google's approval is said calmly, not as a warning. */
+export function ListingPicker({ location, locationTitle }: { location: string | null; locationTitle: string | null }) {
+  const t = useGoogleTargets();
+  const notes = t.notes.filter(isListingNote);
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={t.find} disabled={t.pending}>{t.pending ? "Looking…" : "Find again"}</Button>
+        {!t.locations && locationTitle && <span className="min-w-0 text-sm text-ink-2">Using {locationTitle}</span>}
+      </div>
+      {t.locations && t.locations.length > 0 && (
         <label className="block max-w-lg">
           <span className="mb-1.5 block text-[0.8rem] font-medium text-ink-2">Business Profile listing</span>
-          <Select value={location ?? ""} onChange={(e) => { const l = locations.find((x) => x.name === e.target.value); choose({ location: l?.name ?? null, locationTitle: l?.title ?? null }); }} options={[{ value: "", label: "None" }, ...locations.map((l) => ({ value: l.name, label: l.title, hint: l.address ?? undefined }))]} />
+          <Select value={location ?? ""} onChange={(e) => { const l = t.locations!.find((x) => x.name === e.target.value); t.choose({ location: l?.name ?? null, locationTitle: l?.title ?? null }); }} options={[{ value: "", label: "None" }, ...t.locations.map((l) => ({ value: l.name, label: l.title, hint: l.address ?? undefined }))]} />
         </label>
       )}
-      {!sites && (siteUrl || locationTitle) && <p className="text-sm text-ink-2">Using {[siteUrl, locationTitle].filter(Boolean).join(" and ")}.</p>}
-      {notes.map((n) => <p key={n} className="text-sm text-warn">{n}</p>)}
-      {error && <p className="text-sm text-bad">{error}</p>}
-    </Card>
+      {notes.map((n) => <p key={n} className={/hasn't approved|quota is 0/i.test(n) ? "text-sm text-muted" : "text-sm text-warn"}>{n}</p>)}
+      {t.error && <p className="text-sm text-bad">{t.error}</p>}
+    </div>
   );
 }
 

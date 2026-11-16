@@ -426,7 +426,7 @@ function Google() {
     { href: "/online/google", icon: <MapPin className="size-4" />, title: "Google listing", body: "How often the listing is shown on Maps and Search, and the calls, direction requests and website clicks from it." },
   ];
   return (
-    <Section title="Google" description="Google Search and the Google listing have their own pages under Online, beside the website's numbers." help="website.analytics.google" actions={<LinkButton href="/website/analytics/google" variant="ghost" size="sm">Manage the connection</LinkButton>}>
+    <Section title="Google" description="Google Search and the Google listing have their own pages under Online, beside the website's numbers." help="website.analytics.google" actions={<LinkButton href="/settings/connections/google" variant="ghost" size="sm">Manage the connection</LinkButton>}>
       <Card className="divide-y divide-border overflow-hidden" data-tour="webanalytics.google">
         {rows.map((r) => (
           <Link key={r.href} href={r.href} className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors duration-120 hover:bg-surface-2/60 active:bg-surface-2 sm:px-5">

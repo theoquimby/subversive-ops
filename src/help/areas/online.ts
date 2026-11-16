@@ -95,7 +95,7 @@ A source that is only waiting on Google's approval isn't listed, because there i
     article: `These come from Google Search Console and cover the website. Google leaves out searches only a handful of people made, so the list adds up to a little less than the totals above it.
 
 **Searches that showed the listing** are a different list: what people typed before the Google listing came up on Maps or Search. Google gives those a month at a time, as the number of people. The full list is on [Google listing](/online/google).`,
-    related: ["online.google.keywords", "website.analytics.googleSetup"],
+    related: ["online.google.keywords", "settings.google"],
     keywords: ["queries", "keywords", "search terms", "position", "rank", "click rate", "ctr"],
   },
   {
@@ -106,7 +106,7 @@ A source that is only waiting on Google's approval isn't listed, because there i
     body: "The listing guests see on Google Maps and Google Search: how often it was shown, what people did from it (directions, calls, website, menu) and what they searched for. Read from Google every night; nothing is ever changed on the listing.",
     article: `Open it from **Online → Google listing**.
 
-Google has to approve access to a listing's numbers before they can be read. Until then the page says **Waiting on Google's approval** and lists what will appear. The request and its status are on [Connect Google](/website/analytics/google).
+Google has to approve access to a listing's numbers before they can be read. Until then the page says **Waiting on Google's approval** and lists what will appear. The request and its status are on [Settings → Connections → Google](/settings/connections/google), under Google listing. Nothing is broken while it waits: the sign-in is fine and Search Console works.
 
 What is counted:
 
@@ -115,7 +115,7 @@ What is counted:
 - **Searches that showed the listing**, a month at a time.
 
 Messages and food orders sent from the listing aren't brought in.`,
-    related: ["online.google.views", "online.google.actions", "online.google.keywords", "online.google.connection", "website.analytics.googleSetup"],
+    related: ["online.google.views", "online.google.actions", "online.google.keywords", "online.google.connection", "settings.google"],
     keywords: ["google business profile", "google my business", "gbp", "maps", "listing", "directions", "calls"],
   },
   {
@@ -150,8 +150,8 @@ Messages and food orders sent from the listing aren't brought in.`,
     area: "online",
     route: "/online/google",
     title: "Connection",
-    body: "Which listing the app reads, when it last checked and the last day Google has reported. Manage the connection opens the Google sign-in page, where you can sync now, pick a different listing or disconnect.",
-    related: ["website.analytics.googleSetup"],
+    body: "Which listing the app reads, when it last checked and the last day Google has reported. Manage the connection opens Settings → Connections → Google, where you can sync now, pick a different listing or disconnect.",
+    related: ["settings.google", "website.analytics.googleSetup"],
   },
   {
     id: "online.instagram",

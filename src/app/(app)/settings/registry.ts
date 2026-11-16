@@ -37,7 +37,7 @@ export const SECTIONS: SettingsSection[] = [
   { id: "food", title: "Food & ordering", blurb: "Cost targets, price alerts, suppliers, order cutoffs and storage areas.", pages: [{ href: "/settings/food", label: "Food & drink" }, { href: "/settings/suppliers", label: "Suppliers" }, { href: "/settings/areas", label: "Storage areas" }] },
   { id: "money", title: "Money & accounting", blurb: "Sales tax, invoice checks, payment terms, fixed costs and budgets.", pages: [{ href: "/settings/money", label: "Money & accounting" }] },
   { id: "insights", title: "Insights & reviews", blurb: "How much history Insights learns from, and how review replies sound.", pages: [{ href: "/settings/insights", label: "Insights & reviews" }] },
-  { id: "connections", title: "Connections", blurb: "Square, QuickBooks, email, phone alerts, AI and Google reviews.", pages: [{ href: "/settings/connections", label: "Connections" }, { href: "/settings/square", label: "Square" }, { href: "/settings/quickbooks", label: "QuickBooks" }] },
+  { id: "connections", title: "Connections", blurb: "Square, QuickBooks, Google, Instagram & Facebook, email, phone alerts and AI.", pages: [{ href: "/settings/connections", label: "Connections" }, { href: "/settings/square", label: "Square" }, { href: "/settings/quickbooks", label: "QuickBooks" }, { href: "/settings/connections/google", label: "Google" }] },
   { id: "notifications", title: "Notifications", blurb: "Which alerts you get, by email and on your phone.", pages: [{ href: "/settings/notifications", label: "Notifications" }] },
   { id: "data", title: "Data & help", blurb: "Import, export, demo data, starting over, and where to get help.", pages: [{ href: "/settings/data", label: "Data" }, { href: "/settings/about", label: "Help & about" }] },
 ];
@@ -89,9 +89,10 @@ export const ITEMS: SettingsItem[] = [
   { id: "insights.tone", section: "insights", label: "Review reply voice", what: "Notes that shape every drafted reply to a review.", href: "/settings/insights#tone", help: "settings.insights.tone", keywords: "reviews reply tone voice google yelp" },
 
   // Connections
-  { id: "conn.all", section: "connections", label: "Connections", what: "Square, email, phone alerts, AI, Google reviews and QuickBooks.", href: "/settings/connections", help: "settings.connections", keywords: "integrations api key resend vapid anthropic google" },
+  { id: "conn.all", section: "connections", label: "Connections", what: "Square, QuickBooks, Google, Instagram & Facebook, email, phone alerts and AI.", href: "/settings/connections", help: "settings.connections", keywords: "integrations api key resend vapid anthropic" },
   { id: "conn.square", section: "connections", label: "Square", what: "Sales, menu and timecards — locations, sync and history import.", href: "/settings/square", help: "settings.square", keywords: "pos sync locations webhook" },
   { id: "conn.qbo", section: "connections", label: "QuickBooks", what: "Approved invoices go over as bills.", href: "/settings/quickbooks", help: "settings.quickbooks", keywords: "accounting bills qbo" },
+  { id: "conn.google", section: "connections", label: "Google", what: "One sign-in for Search Console and your Google listing, one key for Google reviews.", href: "/settings/connections/google", help: "settings.google", keywords: "google search console business profile listing maps reviews places analytics ga4 oauth" },
 
   // Notifications
   { id: "notify.all", section: "notifications", label: "Your alerts", what: "Turn each alert on or off for email and your phone.", href: "/settings/notifications", help: "settings.notifications", keywords: "email push phone alerts brief" },

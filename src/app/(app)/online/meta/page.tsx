@@ -7,7 +7,7 @@ import { requireUser } from "@/server/auth";
 import { META_REDIRECT_PATH, metaStatus } from "@/server/services/metaChannels";
 import { publicOrigin } from "@/server/services/public-url";
 import { secretStatus } from "@/server/services/secrets";
-import { CopyChip } from "../../website/analytics/google/client";
+import { CopyChip } from "../../settings/connections/google/sign-in-client";
 import { MetaKeyField, MetaManage, MetaPages } from "./client";
 
 export const metadata = { title: "Connect Instagram and Facebook" };

@@ -52,8 +52,10 @@ describe("the Online menu group", () => {
     expect(numbers).not.toContain("/reviews");
   });
   it("gives every page under it the Online hue", () => {
-    for (const p of ["/online", "/online/google", "/online/instagram", "/online/facebook", "/online/meta", "/website", "/website/analytics", "/website/analytics/google", "/reviews"]) expect(areaFor(p), p).toBe("online");
+    for (const p of ["/online", "/online/google", "/online/instagram", "/online/facebook", "/online/meta", "/website", "/website/analytics", "/reviews"]) expect(areaFor(p), p).toBe("online");
     expect(areaFor("/insights")).toBe("numbers");
+    // Setting Google up lives in Settings now; the old Connect Google address only redirects there.
+    expect(areaFor("/settings/connections/google")).toBe("setup");
   });
   it("lights the most specific page, and names the overview for the phone top bar", () => {
     expect(isActive("/online", "/online")).toBe(true);

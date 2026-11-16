@@ -4,7 +4,8 @@ For whoever looks after the public website (`subversive-website`, a separate
 Next.js app). Ops never changes the website; this is the contract the website
 implements. Ops side: `POST /api/public/collect`
 (`src/app/api/public/collect/route.ts`), the dashboards at **Website →
-Analytics** (`/website/analytics`), and Google at `/website/analytics/google`.
+Analytics** (`/website/analytics`), and Google at `/settings/connections/google`
+(the old `/website/analytics/google` redirects there).
 
 ## Privacy in one paragraph
 
@@ -173,7 +174,7 @@ dashboard then follows each inquiry to quoted → booked → revenue by source.
 
 ## Google Search Console and Business Profile
 
-Set up on `/website/analytics/google` (step by step, with the redirect URL to
+Set up on `/settings/connections/google` (step by step, with the redirect URL to
 copy). Verified against Google's docs (developers.google.com, Nov 2026):
 
 - **OAuth 2.0 for web server apps.** Authorize at

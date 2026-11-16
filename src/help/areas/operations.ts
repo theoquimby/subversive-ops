@@ -1151,15 +1151,22 @@ export const settings: HelpEntry[] = [
     area: "settings",
     route: "/settings/connections",
     title: "Connections",
-    body: "Link Square, email, phone notifications, AI features, Google reviews and QuickBooks. Each card says what it turns on and opens a step-by-step guide with pictures. Keys you paste are stored locked (encrypted) and never shown again.",
-    article: `Every connection is optional — the app works without them, each one just turns more on.
+    body: "Link Square, QuickBooks, Google, Instagram and Facebook, the website, email, phone notifications and AI features, grouped by what they're for. Each card says what it turns on and opens a step-by-step guide. Keys you paste are stored locked (encrypted) and never shown again.",
+    article: `Every connection is optional — the app works without them, each one just turns more on. The cards are grouped by what they're for.
 
+**Sales and money**
 - **Square** — sales, the menu and timecards, brought in by themselves. About 6 minutes.
+- **QuickBooks** — approved supplier invoices go to QuickBooks Online as bills. About 20 minutes, plus a review by Intuit.
+
+**Online**
+- **Google** — everything Google on [one page](/settings/connections/google): one sign-in for Search Console and your Google listing, and one key for Google reviews.
+- **Instagram & Facebook Page** — followers and how far posts travel, from one Facebook sign-in.
+- **Website** — the public website refreshes the moment you save. About 5 minutes.
+
+**Messages and helpers**
 - **Email** — orders to suppliers, schedules and the weekly brief by email. About 10 minutes plus a short wait.
 - **Phone notifications** — alerts on phones. One tap, then a minute per phone.
 - **AI features** — invoice reading, review replies and Ask. About 3 minutes.
-- **Google reviews** — new Google reviews every morning. About 5 minutes.
-- **QuickBooks** — approved supplier invoices go to QuickBooks Online as bills. About 20 minutes, plus a review by Intuit.
 
 Press **Set up** on a card. The guide shows exactly where to click on the other site (numbered circles), gives you copy buttons for anything you need to paste there, and a box to paste what you bring back. Each box checks the value as you paste it and says plainly if it looks wrong — for example a code pasted into the wrong box.
 
@@ -1170,7 +1177,7 @@ Press **Set up** on a card. The guide shows exactly where to click on the other 
 **Is it safe?** Keys are encrypted before they're saved, only the last four characters are ever shown, and only managers can open this page. **Replace** swaps a key; **Remove** turns that feature off.
 
 Whoever hosts the app can still set the same keys as hosting settings instead; a key pasted here takes priority.`,
-    related: ["settings.connections.square", "settings.connections.email", "settings.connections.push", "settings.connections.ai", "settings.connections.google", "settings.connections.quickbooks"],
+    related: ["settings.connections.square", "settings.connections.email", "settings.connections.push", "settings.connections.ai", "settings.google", "settings.connections.quickbooks"],
     keywords: ["api key", "keys", "integrations", "connect", "setup", "resend", "anthropic", "claude", "google", "vapid", "environment variables", "env"],
   },
   {
@@ -1218,11 +1225,29 @@ Connecting takes you to the [Square page](/settings/square), where your sales hi
   {
     id: "settings.connections.google",
     area: "settings",
-    route: "/settings/connections",
-    title: "Google reviews",
-    body: "Brings in new Google reviews every morning. Create a free Google Cloud project, turn on Places API (New), paste the key, then use Find my business — no Place ID needed. The search doubles as the test.",
-    related: ["reviews.import"],
+    route: "/settings/connections/google",
+    title: "Google reviews key",
+    body: "Brings in new Google reviews every morning. Create a free Google Cloud project, turn on Places API (New), paste the key, then use Find your business — no Place ID needed. The search doubles as the test.",
+    related: ["reviews.import", "settings.google"],
     keywords: ["google", "places", "place id", "reviews", "maps"],
+  },
+  {
+    id: "settings.google",
+    area: "settings",
+    route: "/settings/connections/google",
+    title: "Google",
+    body: "Everything Google on one page. Google needs two things from you: one Google sign-in, which covers Search Console, your Google listing and Google Analytics, and one key, which brings in Google reviews. Nothing is ever posted or changed on Google.",
+    article: `Open it from **Settings → Connections → Google**. The line at the top counts where things stand, like *3 working · 1 waiting on Google · 1 coming next*.
+
+Each part says its state, which page it feeds, when it last read from Google (or what went wrong, in plain words) and the one thing to do next. The full steps sit under **How to set this up**, open while a part isn't set up and folded away once it works.
+
+- **Your Google sign-in** — made once in Google Cloud (Client ID and secret), then the owner presses **Connect Google**. Search Console, the Google listing and Google Analytics all use it. If it ever needs connecting again, the rows under it wait for it instead of each showing an error.
+- **Search Console** — the searches that show the website. Feeds Online → Overview.
+- **Google listing** — how the listing is seen and used on Search and Maps. Feeds Online → Google listing. Google approves access by hand, usually within two weeks; until then it says **Waiting on Google**, which is not an error. When Google emails, press **Find again**.
+- **Google Analytics** — coming next. To get ready, whoever runs the Google Analytics property adds the sign-in's Google account as a **Viewer** (Admin → Property access management → Add users) and notes the property ID (Admin → Property details).
+- **Google reviews key** — a Places API key, then **Find your business**. Feeds Reviews. Google only shares the five most relevant reviews at a time.`,
+    related: ["website.analytics.googleSetup", "settings.connections.google", "online.google", "settings.connections"],
+    keywords: ["google", "search console", "business profile", "listing", "maps", "reviews", "places", "analytics", "ga4", "sign-in", "oauth", "waiting on google"],
   },
   {
     id: "settings.connections.more",

@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { GOOGLE_HUB_HREF } from "@/domain/googleHub";
 import { getSession } from "@/server/auth";
 import { connectGoogle, GOOGLE_REDIRECT_PATH, syncGoogle } from "@/server/services/googleSearch";
 import { publicOrigin } from "@/server/services/public-url";
@@ -19,7 +20,7 @@ const sameState = (a: string, b: string) => a.length === b.length && timingSafeE
  * redirect at once so the code never sits in the address bar.
  */
 export async function GET(req: NextRequest) {
-  const back = new URL("/website/analytics/google", req.url);
+  const back = new URL(GOOGLE_HUB_HREF, req.url);
   const done = (params: Record<string, string>) => {
     for (const [k, v] of Object.entries(params)) back.searchParams.set(k, v);
     const res = NextResponse.redirect(back);

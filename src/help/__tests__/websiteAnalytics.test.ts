@@ -14,6 +14,8 @@ describe("website analytics help", () => {
     expect(getHelp("website.analytics")!.body).toMatch(/No cookies/);
     expect(getHelp("website.analytics.salesLink")!.body).toMatch(/never that one causes/);
     expect(getHelp("website.analytics.googleSetup")!.article).toMatch(/Basic API Access/);
+    expect(getHelp("website.analytics.googleSetup")!.route).toBe("/settings/connections/google");
+    expect(getHelp("settings.google")!.article).toMatch(/Waiting on Google/);
   });
   it("is findable and manager-only", () => {
     expect(searchHelp("search console").map((e) => e.id)).toContain("website.analytics.googleSetup");

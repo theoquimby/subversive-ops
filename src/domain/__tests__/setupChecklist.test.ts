@@ -25,7 +25,9 @@ describe("setup checklist", () => {
 
   it("leaves out items whose page hasn't landed", () => {
     const c = buildChecklist({}, (r) => !r.startsWith("/website"));
-    expect(c.items.some((i) => i.id === "website" || i.id === "google")).toBe(false);
+    expect(c.items.some((i) => i.id === "website")).toBe(false);
+    // Google lives in Settings now, so it is always there.
+    expect(c.items.some((i) => i.id === "google")).toBe(true);
     expect(c.items.some((i) => i.id === "square")).toBe(true);
   });
 

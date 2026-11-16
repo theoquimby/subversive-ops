@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.19 (Google in one place) ----
+  {
+    id: "2026-11-16.google-hub",
+    date: "2026-11-16",
+    title: "Everything Google in one place",
+    line: "One page for your Google sign-in, Search Console, listing and reviews key, each with its next step.",
+    icon: "settings",
+    area: "setup",
+    href: "/settings/connections/google",
+    help: "settings.google",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.18 (core beers, a page per beer, dirty kegs) ----
   {
     id: "2026-11-16.core-beers",

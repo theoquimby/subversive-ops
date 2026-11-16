@@ -47,6 +47,7 @@ const testKey = (id: ServiceId) => `connections.test.${id}`;
 
 const refresh = () => {
   revalidatePath("/settings/connections");
+  revalidatePath("/settings/connections/google");
   revalidatePath("/settings");
   revalidatePath("/", "layout");
 };
