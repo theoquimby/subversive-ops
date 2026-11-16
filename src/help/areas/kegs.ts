@@ -193,8 +193,8 @@ Kegs that already have stickers from your old app keep them: import them and the
     area: "kegs",
     route: "/kegs/import",
     title: "Importing from your old keg app",
-    body: "Drop every export at once: kegs, products, batches, customers, deliveries, returns and the activity log. Say what each file is and check the columns; the review shows what's new before anything is saved.",
-    article: `1. Export every report the old app offers (CSV or Excel). JSON from its web app works too.
+    body: "Drop every export at once — from Distribrewtion or any other keg app: kegs, products, batches, customers, deliveries, returns and the activity log. Say what each file is and check the columns; the review shows what's new before anything is saved.",
+    article: `1. Export every report the old app offers (CSV or Excel) — in Distribrewtion, export each list (kegs, products, customers, deliveries and returns, history) one by one. JSON from its web app works too. There's no live link to Distribrewtion: import once when you switch over, and again later if you need to — re-importing only adds what's new.
 2. Drop them all in. Each file's kind and columns are guessed; fix any guess. Next time, files with the same columns are set up the same way.
 3. **Review import** shows how many kegs, beers, accounts and history entries are new, and anything worth a look.
 4. **Import everything.**
@@ -202,9 +202,10 @@ Kegs that already have stickers from your old app keep them: import them and the
 - Kegs match on their **old code**, which is kept so old stickers still scan. Each keg also gets a new short code for when you reprint.
 - Running the same files again updates instead of adding copies; history entries are added once.
 - Columns that aren't mapped are kept with each record, so nothing is lost.
+- **Distribrewtion's Consumed Volume reports** (by Beverage, by Buyer, Totals — CSV) are read as they are: by Beverage adds every beer with its lifetime barrels, by Buyer adds each customer as an account with their barrels and top beers in the notes, and Totals is shown as a summary only. These reports have no keg codes or dates, so they can't rebuild keg-by-keg history; for that, export the keg list or activity from Distribrewtion, or save the JSON its web pages load.
 - Taps and kicks in the history calibrate pints per keg straight away.`,
     related: ["kegs.labels", "kegs.history"],
-    keywords: ["import", "csv", "excel", "migrate", "old keg app", "export", "json", "history"],
+    keywords: ["import", "csv", "excel", "migrate", "old keg app", "distribrewtion", "export", "json", "history"],
   },
   {
     id: "insights.kegs",

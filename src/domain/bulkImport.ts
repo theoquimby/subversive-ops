@@ -394,7 +394,7 @@ export function parsePastedTable(text: string, name = "Pasted table"): RawTable 
   return { name, headers, rows };
 }
 
-function splitCsv(line: string): string[] {
+export function splitCsv(line: string): string[] {
   const out: string[] = [];
   let cur = "";
   let q = false;

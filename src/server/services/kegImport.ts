@@ -4,6 +4,7 @@ import { detectEntity, fillsFromHistory, headersOf, legacyKey, planKegImport, st
 import { guessBeerColor, placeLabel } from "@/domain/kegs";
 import { db } from "../db";
 import { readTables } from "./priceImport";
+import { parseConsumedVolume } from "@/domain/distribrewtionReports";
 import { freshCodes } from "./kegs";
 
 /**
@@ -47,6 +48,10 @@ export async function readSourcesFromFile(file: File): Promise<RawSource[]> {
       throw new Error(`${name} isn't valid JSON.`);
     }
     return jsonSources(name.replace(/\.json$/i, ""), v);
+  }
+  if (/\.csv$/i.test(name)) {
+    const report = parseConsumedVolume(await file.text(), name);
+    if (report) return report.sources;
   }
   const tables = await readTables(file);
   const multi = tables.length > 1;
