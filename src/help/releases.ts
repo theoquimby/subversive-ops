@@ -24,6 +24,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.11",
+    date: "2026-11-16",
+    title: "Keg fleet and trends",
+    summary: "Graphs of how the keg fleet is used, worked out from every scan, and two lists of kegs that need a look: out at an account too long, and not scanned in a long time.",
+    entries: ["2026-11-16.keg-fleet"],
+    fixed: [
+      "Kegs brought in from your old keg app show how long they've really been in their state, not the day they were imported. Press Fix dates on the keg import page once for kegs already brought in.",
+      "Keg setup has two new numbers: how many days out at an account is too long, and how many days without a scan is too quiet.",
+    ],
+  },
+  {
     version: "1.10",
     date: "2026-11-16",
     title: "Your team, end to end",
