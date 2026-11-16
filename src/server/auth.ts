@@ -6,6 +6,7 @@ import { cache } from "react";
 import { db } from "./db";
 import { env } from "./env";
 import { Session, SESSION_COOKIE, SESSION_TTL_SECONDS, signSession, verifySession } from "./session";
+import { loginAllowed } from "@/domain/loginAccess";
 
 const MAX_ATTEMPTS = 5;
 const LOCK_MINUTES = 10;
@@ -25,7 +26,7 @@ export const getSessionState = cache(async (): Promise<{ session: Session | null
   const s = await verifySession(jar.get(SESSION_COOKIE)?.value, env.SESSION_SECRET);
   if (!s) return { session: null, stale: false };
   const user = await db.user.findUnique({ where: { id: s.userId }, select: { name: true, role: true, active: true } });
-  if (!user || !user.active) return { session: null, stale: true };
+  if (!user || !user.active || !loginAllowed(user.role, await employeeActive(s.userId))) return { session: null, stale: true };
   return { session: { ...s, name: user.name, role: user.role }, stale: user.role !== s.role || user.name !== s.name };
 });
 
@@ -54,6 +55,12 @@ export async function requireUser(role?: "MANAGER"): Promise<Session> {
 
 export type LoginResult = { ok: true; role: Session["role"] } | { ok: false; error: string };
 
+/** The linked employee's active flag; null when no employee record belongs to this login. */
+async function employeeActive(userId: string): Promise<boolean | null> {
+  const e = await db.employee.findFirst({ where: { userId }, select: { active: true } });
+  return e ? e.active : null;
+}
+
 export async function loginWithPin(name: string, pin: string): Promise<LoginResult> {
   const user = await db.user.findFirst({ where: { name: { equals: name.trim(), mode: "insensitive" }, active: true } });
   // Same message for unknown user and wrong PIN.
@@ -66,6 +73,8 @@ export async function loginWithPin(name: string, pin: string): Promise<LoginResu
     return { ok: false, error: `Too many tries. Try again in a few minutes.` };
   }
   const ok = await bcrypt.compare(pin, user.pinHash);
+  // A staff login whose employee was switched off (on Team or by the Square sync) is closed too; same message as a wrong PIN.
+  if (ok && !loginAllowed(user.role, await employeeActive(user.id))) return fail;
   if (!ok) {
     const attempts = user.failedPinAttempts + 1;
     await db.user.update({

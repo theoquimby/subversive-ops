@@ -30,6 +30,7 @@ export const RELEASES: Release[] = [
     summary: "Driscoll, Kilcoyne and See & Be keep their every-delivery reminders; every other supplier only alerts when counts and sales say something will run short. Alerts can be set per supplier, and orders can go out by text, call or a supplier's website.",
     entries: ["2026-11-16.order-cadence", "2026-11-16.order-send"],
     fixed: [
+      "Staff whose employee record is switched off (on Team, or by the Square team sync when they leave) can no longer sign in with their PIN. Manager logins are unaffected.",
       "Each supplier is Every delivery or When stock runs low. When stock runs low works out, item by item, whether anything would fall below its safety level before the delivery after next; items not counted in three weeks say a count is needed instead of nagging.",
       "Alerts per supplier: a first reminder (the day before, four hours before or the morning of), a last call before the cutoff, and who gets them (managers, chosen people or whoever is on shift). A cutoff missed with no order shows as Missed, with the next chance.",
       "Send orders by text (opens Messages with the order written out), phone (a call script) or the supplier's website (the order with item numbers to copy, as a file, or ticked off line by line). Nothing is ever sent by itself.",
