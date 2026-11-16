@@ -25,8 +25,8 @@ export function ShowMore({
   limit: number;
   /** [one, many], e.g. ["keg", "kegs"]: "Show 12 more kegs". */
   noun?: [string, string];
-  /** The list's own element; the button goes after it (or inside it with `inline`). */
-  as?: "div" | "ul" | "ol";
+  /** The list's own element; the button goes after it (or inside it with `inline`; always inside a tbody, as a last row). */
+  as?: "div" | "ul" | "ol" | "tbody";
   className?: string;
   buttonClassName?: string;
   /** Put the button inside the list as its last item (chip rows). */
@@ -52,6 +52,14 @@ export function ShowMore({
       {open ? "Show fewer" : moreLabel(hidden, noun)}
     </button>
   );
+  if (Tag === "tbody") {
+    return (
+      <tbody className={className}>
+        {shown}
+        {button && <tr><td colSpan={99} className="px-2 py-1">{button}</td></tr>}
+      </tbody>
+    );
+  }
   if (inline) {
     return (
       <Tag className={className}>

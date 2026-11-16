@@ -1,3 +1,4 @@
+import { ShowMore } from "@/components/show-more";
 import { Card, LinkButton, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { progressLabel, transitLabel } from "@/domain/kegOrders";
 import { displayCode } from "@/domain/kegs";
@@ -87,7 +88,7 @@ export default async function KegOrderPage({ params }: { params: Promise<{ id: s
         ) : (
           <Table>
             <thead><tr><Th>Keg</Th><Th className="hidden sm:table-cell">Beer</Th><Th className="hidden sm:table-cell">Size</Th><Th className="hidden md:table-cell">Scanned by</Th><Th align="right">When</Th></tr></thead>
-            <tbody>
+            <ShowMore as="tbody" limit={12} noun={["keg", "kegs"]}>
               {o.kegs.map((k) => (
                 <Tr key={k.id}>
                   <Td className="py-0">
@@ -102,7 +103,7 @@ export default async function KegOrderPage({ params }: { params: Promise<{ id: s
                   <Td align="right" className="whitespace-nowrap text-muted">{businessDateTime(k.at)}</Td>
                 </Tr>
               ))}
-            </tbody>
+            </ShowMore>
           </Table>
         )}
         {o.lines.some((l) => l.unscanned > 0) && <p className="mt-2 text-xs text-muted">{o.lines.reduce((s, l) => s + l.unscanned, 0)} more marked as delivered without scanning; those kegs aren&apos;t listed here.</p>}

@@ -13,7 +13,6 @@ import {
   MAX_QUANTITY,
   mergeLines,
   orderAttentionItems,
-  orderMatches,
   orderProgress,
   orderShortfalls,
   progressLabel,
@@ -130,30 +129,29 @@ export interface OrdersList {
   today: ISODate;
   /** Open orders, the soonest first. */
   open: OrderRow[];
-  /** Fulfilled and cancelled orders, the latest first (capped). */
+  /** Fulfilled and cancelled orders, the latest first (the newest CLOSED_MAX). */
   closed: OrderRow[];
-  /** Open orders before the search was applied. */
-  openTotal: number;
+  /** Every finished order on record, when that's more than `closed` holds. */
+  closedTotal: number;
   availability: AvailabilityView[];
 }
 
-const RECENT = 20;
+/** Finished orders the orders page lists; its table searches and filters them on the phone. */
+export const CLOSED_MAX = 1000;
 
-/** The orders page. `q` narrows both lists by account, order number or beer. */
-export async function ordersList(q?: string): Promise<OrdersList> {
-  const search = (q ?? "").trim();
-  const [open, closed, stock] = await Promise.all([
+/** The orders page: every open order and the latest finished ones. */
+export async function ordersList(): Promise<OrdersList> {
+  const [open, closed, closedTotal, stock] = await Promise.all([
     db.kegOrder.findMany({ where: { status: "OPEN" }, include: WITH_LINES }),
-    // A search looks further back than the page shows by default.
-    db.kegOrder.findMany({ where: { status: { not: "OPEN" } }, include: WITH_LINES, orderBy: { number: "desc" }, take: search ? 500 : 80 }),
+    db.kegOrder.findMany({ where: { status: { not: "OPEN" } }, include: WITH_LINES, orderBy: { number: "desc" }, take: CLOSED_MAX }),
+    db.kegOrder.count({ where: { status: { not: "OPEN" } } }),
     kegAvailability(),
   ]);
-  const hit = (r: OrderRow) => orderMatches(search, { number: r.number, account: r.account, beers: r.lines.map((l) => l.beer) });
   return {
     today: businessToday(),
-    open: open.map((o) => orderRow(o, stock)).filter(hit).sort(byDue),
-    closed: closed.map((o) => orderRow(o, null)).filter(hit).sort(byClosed).slice(0, search ? 40 : RECENT),
-    openTotal: open.length,
+    open: open.map((o) => orderRow(o, stock)).sort(byDue),
+    closed: closed.map((o) => orderRow(o, null)).sort(byClosed),
+    closedTotal,
     availability: stock,
   };
 }

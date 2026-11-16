@@ -1,21 +1,17 @@
-import { Badge, cx, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
+import { EmptyState, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
 import { requireUser } from "@/server/auth";
 import { accountsList } from "@/server/services/kegAccounts";
 import { ChartColumn } from "lucide-react";
 import Link from "next/link";
 import { AddAccount } from "./accounts-client";
-import { Chip, dated, daysWord, kegsWord, kindLabel } from "./bits";
+import { AccountsTable } from "./accounts-table";
+import { daysWord, kegsWord } from "./bits";
 
 export const metadata = { title: "Keg accounts" };
 
-export default async function KegAccountsPage({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
+export default async function KegAccountsPage() {
   await requireUser("MANAGER");
-  const sp = await searchParams;
   const r = await accountsList();
-  const showAll = sp.show === "all";
-  // An account that's no longer used stays in view while it still has kegs.
-  const quiet = r.rows.filter((a) => !a.active && a.kegsOut === 0).length;
-  const rows = showAll ? r.rows : r.rows.filter((a) => a.active || a.kegsOut > 0);
   const withKegs = r.rows.filter((a) => a.kegsOut > 0).length;
 
   return (
@@ -40,44 +36,8 @@ export default async function KegAccountsPage({ searchParams }: { searchParams: 
             </div>
           </div>
 
-          <Section
-            title="Every account"
-            description={`The most kegs out first. A wait is flagged once a keg has been there more than ${daysWord(r.overdueDays)}; change that number on Setup.`}
-            actions={quiet > 0 ? <Chip href={showAll ? "/kegs/accounts" : "/kegs/accounts?show=all"} active={showAll}>{showAll ? "Hide accounts no longer used" : `Show ${quiet} no longer used`}</Chip> : undefined}
-          >
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Account</Th>
-                  <Th className="hidden sm:table-cell">Type</Th>
-                  <Th align="right">Kegs there</Th>
-                  <Th align="right">Longest wait</Th>
-                  <Th align="right" className="hidden md:table-cell">Deliveries, 12 months</Th>
-                  <Th className="hidden md:table-cell">Last delivery</Th>
-                  <Th align="right" className="hidden lg:table-cell">All deliveries</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((a) => (
-                  <Tr key={a.id} className={a.active ? "" : "opacity-60"}>
-                    <Td className="py-0">
-                      <Link href={`/kegs/accounts/${a.id}`} className="block py-3 hover:underline">
-                        <span className="block font-medium">{a.name}</span>
-                        <span className="block text-xs text-muted sm:hidden">{kindLabel(a.kind)}{a.active ? "" : " · no longer used"}</span>
-                      </Link>
-                    </Td>
-                    <Td className="hidden text-ink-2 sm:table-cell">{kindLabel(a.kind)}{!a.active && <Badge className="ml-2">No longer used</Badge>}</Td>
-                    <Td align="right" className={cx(a.kegsOut ? "font-medium" : "text-muted")}>{a.kegsOut}</Td>
-                    <Td align="right" className="whitespace-nowrap">
-                      {a.longestDays == null ? <span className="text-muted">—</span> : a.overdue ? <Badge tone="warn">{daysWord(a.longestDays)}</Badge> : <span className="text-ink-2">{daysWord(a.longestDays)}</span>}
-                    </Td>
-                    <Td align="right" className={cx("hidden md:table-cell", !a.deliveries12 && "text-muted")}>{a.deliveries12}</Td>
-                    <Td className="hidden whitespace-nowrap text-ink-2 md:table-cell">{a.lastDelivery ? dated(a.lastDelivery) : <span className="text-muted">None scanned</span>}</Td>
-                    <Td align="right" className={cx("hidden lg:table-cell", !a.deliveries && "text-muted")}>{a.deliveries}</Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
+          <Section title="Every account" description={`The most kegs out first. A wait is flagged once a keg has been there more than ${daysWord(r.overdueDays)}; change that number on Setup. Accounts no longer used are under their own tab.`}>
+            <AccountsTable rows={r.rows} overdueDays={r.overdueDays} />
             {r.noAccount > 0 && <p className="mt-2 text-xs text-muted">{kegsWord(r.noAccount)} marked out with no account recorded; {r.noAccount === 1 ? "it is" : "they are"} on no row here. See <Link href="/kegs/reports#at-accounts" className="underline hover:text-ink">Kegs at accounts</Link>.</p>}
             <div className="mt-4"><AddAccount /></div>
           </Section>

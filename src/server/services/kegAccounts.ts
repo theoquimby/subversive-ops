@@ -100,6 +100,9 @@ export async function accountsList(): Promise<AccountsList> {
 
 export type AccountRange = "12m" | "all";
 
+/** Deliveries one account's page lists (the latest; `total` counts them all). */
+export const ACCOUNT_HISTORY_MAX = 1000;
+
 export interface AccountDetail {
   id: string;
   name: string;
@@ -139,7 +142,8 @@ export async function accountPage(id: string, range: AccountRange): Promise<Acco
   const here = kegsOut(d.kegs, d.events, d.today).filter((k) => k.accountId === id);
   const yearFrom = twelveMonthsFrom(d.today);
   const from = range === "all" && mine.length && mine[0].out < yearFrom ? mine[0].out : yearFrom;
-  const history = deliveryHistory(mine, new Set(here.map((k) => k.id)), d.today);
+  // The page's table filters and sorts on the phone, so it gets far more than a screenful.
+  const history = deliveryHistory(mine, new Set(here.map((k) => k.id)), d.today, ACCOUNT_HISTORY_MAX);
   return {
     account: { id: a.id, name: a.name, kind: a.kind, contact: a.contact, email: a.email, phone: a.phone, address: a.address, notes: a.notes, active: a.active },
     range,

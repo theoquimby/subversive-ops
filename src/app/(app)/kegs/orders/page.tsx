@@ -1,21 +1,39 @@
 import { HelpTip } from "@/components/help";
+import { ShowMore } from "@/components/show-more";
 import { cx, EmptyState, LinkButton, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
+import { businessDateOf } from "@/lib/format";
 import { requireUser } from "@/server/auth";
-import { ordersList } from "@/server/services/kegOrders";
+import { ordersList, type OrderRow } from "@/server/services/kegOrders";
 import { Plus } from "lucide-react";
 import { BeerDot, sizeShort } from "../bits";
-import { OrderTable } from "./bits";
-import { OrderSearch } from "./order-search";
+import { linesSummary } from "./bits";
+import { KegOrdersTable, type OrderListRow } from "./orders-table";
 
 export const metadata = { title: "Keg orders" };
 
-export default async function KegOrdersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+const listRow = (o: OrderRow): OrderListRow => ({
+  id: o.id,
+  number: o.number,
+  accountId: o.accountId,
+  account: o.account,
+  transit: o.transit,
+  dueOn: o.dueOn,
+  status: o.status,
+  createdOn: businessDateOf(o.createdAt),
+  closedOn: o.closedAt ? businessDateOf(o.closedAt) : null,
+  summary: linesSummary(o.lines),
+  beers: [...new Set(o.lines.map((l) => l.beer))],
+  kegs: o.lines.reduce((s, l) => s + l.quantity, 0),
+  progress: o.progress,
+  short: o.short,
+});
+
+export default async function KegOrdersPage() {
   await requireUser("MANAGER");
-  const sp = await searchParams;
-  const q = String(sp.q ?? "").trim().slice(0, 80);
-  const r = await ordersList(q);
+  const r = await ordersList();
   const newOrder = <LinkButton href="/kegs/orders/new" variant="primary" className="h-10 sm:h-9"><Plus className="size-4" /> New order</LinkButton>;
   const toFill = r.availability.reduce((s, a) => s + a.preordered, 0);
+  const rows = [...r.open, ...r.closed].map(listRow);
 
   return (
     <>
@@ -27,17 +45,14 @@ export default async function KegOrdersPage({ searchParams }: { searchParams: Pr
         actions={newOrder}
       />
 
-      {(r.openTotal > 0 || r.closed.length > 0 || q) && <div className="mb-6 max-w-md"><OrderSearch initial={q} /></div>}
-
-      <Section title="Open orders" description={r.open.length ? "The soonest first. Tap one to see it, change it or scan its kegs." : undefined}>
-        {r.open.length === 0 ? (
-          q ? (
-            <p className="text-sm text-muted">No open order matches “{q}”.</p>
-          ) : (
-            <EmptyState title="No open orders" action={newOrder}>When an account asks for kegs, make an order: who it&apos;s for, when, and how many of each beer and size. Then scan the kegs out against it.</EmptyState>
-          )
+      <Section
+        title="Every order"
+        description={rows.length ? `${r.open.length} open, the soonest first; finished ones under their own tabs, the latest first.${r.closedTotal > r.closed.length ? ` The latest ${r.closed.length} of ${r.closedTotal} finished orders.` : ""} Tap one to see it, change it or scan its kegs.` : undefined}
+      >
+        {rows.length === 0 ? (
+          <EmptyState title="No orders yet" action={newOrder}>When an account asks for kegs, make an order: who it&apos;s for, when, and how many of each beer and size. Then scan the kegs out against it.</EmptyState>
         ) : (
-          <OrderTable rows={r.open} today={r.today} />
+          <KegOrdersTable rows={rows} today={r.today} hasOpen={r.open.length > 0} />
         )}
       </Section>
 
@@ -59,7 +74,7 @@ export default async function KegOrdersPage({ searchParams }: { searchParams: Pr
                 <Th align="right">Preordered</Th>
               </tr>
             </thead>
-            <tbody>
+            <ShowMore as="tbody" limit={20} noun={["row", "rows"]}>
               {r.availability.map((a) => (
                 <Tr key={`${a.beerId}-${a.sizeId}`}>
                   <Td>
@@ -72,16 +87,10 @@ export default async function KegOrdersPage({ searchParams }: { searchParams: Pr
                   <Td align="right" className={cx(a.preordered ? "font-medium text-warn" : "text-muted")}>{a.preordered}</Td>
                 </Tr>
               ))}
-            </tbody>
+            </ShowMore>
           </Table>
         )}
       </Section>
-
-      {(r.closed.length > 0 || q) && (
-        <Section title="Recently fulfilled or cancelled" description={r.closed.length ? (q ? "The latest that match." : "The latest first.") : undefined}>
-          {r.closed.length === 0 ? <p className="text-sm text-muted">No finished order matches “{q}”.</p> : <OrderTable rows={r.closed} today={r.today} closed />}
-        </Section>
-      )}
     </>
   );
 }

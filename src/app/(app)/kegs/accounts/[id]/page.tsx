@@ -11,6 +11,8 @@ import { AccountDetails } from "../accounts-client";
 import { bbl, Chip, dated, daysWord, gal, kindLabel } from "../bits";
 import { DeliveryBars } from "../charts";
 import { OrderTable } from "../../orders/bits";
+import { ShowMore } from "@/components/show-more";
+import { DeliveriesTable } from "./deliveries-table";
 
 export const metadata = { title: "Keg account" };
 
@@ -65,7 +67,7 @@ export default async function KegAccountPage({ params, searchParams }: { params:
           ) : (
             <Table>
               <thead><tr><Th>Keg</Th><Th className="hidden sm:table-cell">Beer</Th><Th className="hidden sm:table-cell lg:hidden xl:table-cell">Since</Th><Th align="right">Here for</Th></tr></thead>
-              <tbody>
+              <ShowMore as="tbody" limit={10} noun={["keg", "kegs"]}>
                 {r.here.map((k) => (
                   <Tr key={k.id}>
                     <Td className="py-0">
@@ -79,7 +81,7 @@ export default async function KegAccountPage({ params, searchParams }: { params:
                     <Td align="right" className="whitespace-nowrap">{k.days > r.overdueDays ? <Badge tone="warn">{daysWord(k.days)}</Badge> : <span className="text-ink-2">{daysWord(k.days)}</span>}</Td>
                   </Tr>
                 ))}
-              </tbody>
+              </ShowMore>
             </Table>
           )}
         </Section>
@@ -119,7 +121,7 @@ export default async function KegAccountPage({ params, searchParams }: { params:
         ) : (
           <Table>
             <thead><tr><Th>Beer</Th><Th align="right">Deliveries</Th><Th align="right">Barrels</Th><Th className="hidden sm:table-cell">Last delivery</Th></tr></thead>
-            <tbody>
+            <ShowMore as="tbody" limit={10} noun={["beer", "beers"]}>
               {r.beers.map((b) => (
                 <Tr key={b.beerId ?? "none"}>
                   <Td><span className="flex items-center gap-2">{b.color && <BeerDot color={b.color} />}<span className={cx(!b.name && "text-muted")}>{b.name ?? NO_BEER}</span></span></Td>
@@ -128,45 +130,19 @@ export default async function KegAccountPage({ params, searchParams }: { params:
                   <Td className="hidden whitespace-nowrap text-muted sm:table-cell">{dated(b.last)}</Td>
                 </Tr>
               ))}
-            </tbody>
+            </ShowMore>
           </Table>
         )}
       </Section>
 
-      <Section title="Delivery history" description={r.history.total > r.history.rows.length ? `The latest ${r.history.rows.length} of ${r.history.total} deliveries.` : r.history.total ? `${r.history.total === 1 ? "The one delivery" : `All ${r.history.total} deliveries`} on record, the latest first.` : undefined}>
+      <Section title="Delivery history" description={r.history.total > r.history.rows.length ? `The latest ${r.history.rows.length} of ${r.history.total} deliveries. Search a keg or beer, or filter by whether it came back.` : r.history.total ? `${r.history.total === 1 ? "The one delivery" : `All ${r.history.total} deliveries`} on record, the latest first.` : undefined}>
         {r.history.rows.length === 0 ? (
           <p className="text-sm text-muted">No keg has been scanned out to this account yet.</p>
         ) : (
-          <Table>
-            <thead><tr><Th>Delivered</Th><Th>Keg</Th><Th className="hidden sm:table-cell">Beer</Th><Th className="hidden md:table-cell">Size</Th><Th className="hidden sm:table-cell">Came back</Th><Th align="right">Days kept</Th></tr></thead>
-            <tbody>
-              {r.history.rows.map((h) => {
-                const open = h.state === "there" ? "Still there" : h.state === "back" ? null : "No return scan";
-                return (
-                  <Tr key={`${h.kegId}-${h.at}`}>
-                    <Td className="whitespace-nowrap">{dated(h.out)}</Td>
-                    <Td className="py-0">
-                      {h.code ? (
-                        <Link href={`/kegs/k/${h.code}`} className="block py-3 hover:underline">
-                          <span className="num font-medium whitespace-nowrap">{displayCode(h.code)}</span>
-                          <span className="block text-xs text-muted sm:hidden">{h.beer ?? NO_BEER}</span>
-                        </Link>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </Td>
-                    <Td className="hidden text-ink-2 sm:table-cell">{h.beer ?? <span className="text-muted">{NO_BEER}</span>}</Td>
-                    <Td className="hidden whitespace-nowrap text-muted md:table-cell">{h.sizeId ? sizeShort(h.sizeId) : "—"}</Td>
-                    <Td className="hidden whitespace-nowrap sm:table-cell">{h.state === "back" && h.back ? <span className="text-ink-2">{dated(h.back)}</span> : h.state === "there" ? "Still there" : <span className="text-muted" title={h.state === "resent" && h.back ? `Next seen going out again on ${dated(h.back)}` : undefined}>No return scan</span>}</Td>
-                    <Td align="right" className="whitespace-nowrap">
-                      {h.daysKept == null ? <span className="hidden text-muted sm:inline">—</span> : <>{h.daysKept}{h.state === "there" && <span className="hidden text-muted sm:inline"> so far</span>}</>}
-                      {open && <span className="block text-xs font-normal text-muted sm:hidden">{open}</span>}
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </tbody>
-          </Table>
+          <DeliveriesTable
+            account={a.name}
+            rows={r.history.rows.map((h) => ({ key: `${h.kegId}-${h.at}`, out: h.out, at: h.at, code: h.code, display: h.code ? displayCode(h.code) : null, beer: h.beer, size: h.sizeId ? sizeShort(h.sizeId) : null, state: h.state, back: h.back, daysKept: h.daysKept }))}
+          />
         )}
       </Section>
     </>
