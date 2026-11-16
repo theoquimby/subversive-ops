@@ -139,3 +139,34 @@ export async function kegHome(): Promise<KegHome> {
     idleDays: cfg.idleDays,
   };
 }
+
+export interface KegLife {
+  /** Every fill the history knows about, newest first, with the beer's name. */
+  cycles: { start: ISODate; beer: string | null; scannedFill: boolean; went: "tapped" | "out" | "none" | "stock"; end: ISODate | null; days: number | null }[];
+  fills: number;
+  /** Middle number of days from a fill to coming back, over fills that did; null until one has. */
+  medianDays: number | null;
+  firstScan: ISODate | null;
+  scans: number;
+}
+
+/** One keg's working life from its own scans: how often it's been filled, how long a fill lasts, and where each went. */
+export async function kegLife(kegId: string): Promise<KegLife> {
+  const [rows, keg, beers] = await Promise.all([
+    db.kegEvent.findMany({ where: { ...REAL_SCAN, kegId }, orderBy: { at: "asc" }, select: { kegId: true, at: true, action: true, toStatus: true, beerId: true, accountId: true } }),
+    db.keg.findUnique({ where: { id: kegId }, select: { id: true, status: true } }),
+    db.beer.findMany({ select: { id: true, name: true } }),
+  ]);
+  const events: FleetEvent[] = rows.map((e) => ({ kegId: e.kegId, at: e.at.toISOString(), day: day(e.at), action: e.action, toStatus: e.toStatus as KegStatus | null, beerId: e.beerId, accountId: e.accountId }));
+  const name = new Map(beers.map((b) => [b.id, b.name]));
+  const cs = cycles(events, keg ? [{ id: keg.id, status: keg.status as KegStatus }] : []);
+  const done = cs.map((c) => c.days).filter((d): d is number => d != null).sort((a, b) => a - b);
+  const mid = done.length >> 1;
+  return {
+    cycles: cs.map((c) => ({ start: c.start, beer: c.beerId ? name.get(c.beerId) ?? null : null, scannedFill: c.scannedFill, went: c.went, end: c.end, days: c.days })).reverse(),
+    fills: cs.length,
+    medianDays: done.length ? (done.length % 2 ? done[mid] : Math.round((done[mid - 1] + done[mid]) / 2)) : null,
+    firstScan: events[0]?.day ?? null,
+    scans: events.length,
+  };
+}

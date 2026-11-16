@@ -30,6 +30,9 @@ export const RELEASES: Release[] = [
     summary: "A new Online section in the menu puts Google Search, the Google listing, the website and reviews side by side, with a page of its own for the listing.",
     entries: ["2026-11-16.online", "2026-11-16.google-listing"],
     fixed: [
+      "A keg's own page shows its working life: how many times it's been filled, how long a fill usually lasts, and where each fill went.",
+      "Keg history: look up one keg by its code or old sticker, and shorter, cleaner rows.",
+      "All kegs: search by code, beer or account, with the table first.",
       "The menu has a new Online group: Overview, Website, Google listing and Reviews. Website and Reviews moved there from Numbers; every link still works.",
       "Online → Overview: how often you showed up in Google Search and on the Google listing, and how many visited the website, then what people did next on the listing and on the website, side by side.",
       "Online → Google listing: times shown on Maps and in Search, on phones and computers; calls, direction requests, website clicks and menu views over time; and what people searched for. It says Waiting on Google's approval until Google grants access.",
