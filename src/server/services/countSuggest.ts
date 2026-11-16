@@ -21,7 +21,7 @@ export async function countEverySuggestions(): Promise<CountEveryRow[]> {
     const today = businessToday();
     const since = parseISODate(addDays(today, -COUNT_EVERY_RULES.lookbackDays));
     const [ingredients, lines, snap] = await Promise.all([
-      db.ingredient.findMany({ where: { active: true, countEvery: "every" }, select: { id: true, name: true } }),
+      db.ingredient.findMany({ where: { active: true, countEvery: "every", department: { not: "brewery" } }, select: { id: true, name: true } }),
       db.stockCountLine.findMany({ where: { count: { completed: true, takenAt: { gte: since } } }, select: { ingredientId: true, qtyBase: true, count: { select: { takenAt: true } } } }),
       loadCostingSnapshot(),
     ]);

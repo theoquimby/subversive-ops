@@ -193,7 +193,8 @@ export async function morningBrief(now = new Date()) {
   for (const a of attention) {
     if (a.key.startsWith("order")) continue; // covered above, per supplier
     if (a.standing) continue; // long-standing with nothing new today (the keg fleet's lists): Mondays only
-    tonight.push({ key: a.key, kind: (KINDS.has(a.key) ? a.key : a.key.startsWith("kegs.") ? "kegs" : a.key.startsWith("brewery.") ? "brewery" : "other") as TonightItem["kind"], title: a.title, detail: a.detail, href: a.href, tone: a.tone });
+    // A missed order cutoff ("Missed: … next chance …") sits with today's deadlines.
+    tonight.push({ key: a.key, kind: (KINDS.has(a.key) ? a.key : a.key.startsWith("missed.") ? "deadline" : a.key.startsWith("kegs.") ? "kegs" : a.key.startsWith("brewery.") ? "brewery" : "other") as TonightItem["kind"], title: a.title, detail: a.detail, href: a.href, tone: a.tone });
   }
   // Kegs nearly out on tap: change them before service, and say when nothing full is behind.
   const kegAlerts = attention.filter((a) => a.key === "kegs").map((a) => a.title);

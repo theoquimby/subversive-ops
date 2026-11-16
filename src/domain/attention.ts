@@ -18,9 +18,18 @@ export interface AttentionCutoff {
   drafted: boolean;
 }
 
+/** An order cutoff that passed with nothing ordered (see domain/orderReminders missedOrder). */
+export interface AttentionMissed {
+  supplierId: string;
+  title: string;
+  detail: string;
+}
+
 export interface AttentionInput {
   today: ISODate;
+  /** Only suppliers that should nag: cadence, stock and alert settings decide (domain/orderNeed). */
   cutoffs: AttentionCutoff[];
+  missed?: AttentionMissed[];
   invoicesToReview: number;
   invoiceIssues: number;
   timeOff: number;
@@ -67,6 +76,8 @@ export const CUTOFF_WINDOW_HOURS = 36;
 
 export function attentionItems(i: AttentionInput): AttentionItem[] {
   const out: AttentionItem[] = [];
+
+  for (const m of i.missed ?? []) out.push({ key: `missed.${m.supplierId}`, title: m.title, detail: m.detail, href: `/ordering/${m.supplierId}`, tone: "bad", urgency: 110 });
 
   const due = i.cutoffs.filter((c) => !c.sent && c.hoursToCutoff > 0 && c.hoursToCutoff <= CUTOFF_WINDOW_HOURS).sort((a, b) => a.hoursToCutoff - b.hoursToCutoff);
   if (due.length === 1) {

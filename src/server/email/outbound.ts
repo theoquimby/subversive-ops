@@ -91,8 +91,9 @@ export async function sendPurchaseOrder(args: { orderId: string; to: string; cop
 }
 
 /** Record a manual "Mark as sent" so the page can say who did it. */
-export async function recordManualSend(orderId: string, by: { userId: string; name: string }) {
-  const record: SentRecord = { at: new Date().toISOString(), byUserId: by.userId, byName: by.name, to: "", cc: [], emailId: null };
+/** `via`: how it was placed when not by email from here ("text message", "their website", "phone call"). */
+export async function recordManualSend(orderId: string, by: { userId: string; name: string }, via = "") {
+  const record: SentRecord = { at: new Date().toISOString(), byUserId: by.userId, byName: by.name, to: via, cc: [], emailId: null };
   await db.setting.upsert({ where: { key: sentKey(orderId) }, create: { key: sentKey(orderId), value: JSON.stringify(record) }, update: { value: JSON.stringify(record) } });
 }
 

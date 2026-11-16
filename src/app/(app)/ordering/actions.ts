@@ -7,6 +7,7 @@ import { deliveryWindow, draftSuggestedOrder, loadCutoffRules, localNow, saveCut
 import { cutoffRule, nextCutoff } from "@/domain/ordering";
 import { recordManualSend, sendPurchaseOrder } from "@/server/email/outbound";
 import { businessToday } from "@/server/services/sales";
+import { dismissCadenceNotice, saveStaffOrderers, saveSupplierPrefs } from "@/server/services/supplierPrefs";
 import { currentPrices } from "./estimate";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -176,6 +177,68 @@ export async function setAutoDraft(supplierIds: string[], on: boolean): Promise<
   revalidatePath("/ordering");
   revalidatePath("/settings", "layout");
   return { message: `Auto-draft ${on ? "on" : "off"} for ${plural(v.data.length, "supplier")}.` };
+}
+
+// ---- Cadence, reminders and how each supplier takes orders --------------------------------
+
+/** Every delivery ("regular") or when stock runs low ("as_needed"), for one or several suppliers. */
+export async function setCadence(supplierIds: string[], cadence: string): Promise<Result> {
+  await requireUser("MANAGER");
+  const v = ids.safeParse(supplierIds);
+  const c = z.enum(["regular", "as_needed"]).safeParse(cadence);
+  if (!v.success || !c.success) return { error: "Pick at least one supplier." };
+  await db.supplier.updateMany({ where: { id: { in: v.data } }, data: { orderCadence: c.data } });
+  done();
+  revalidatePath("/settings", "layout");
+  return { message: `${plural(v.data.length, "supplier")} now ${c.data === "regular" ? "ordered every delivery" : "ordered when stock runs low"}.` };
+}
+
+const prefField = z.discriminatedUnion("field", [
+  z.object({ field: z.literal("alert"), value: z.enum(["auto", "on", "low", "off"]) }),
+  z.object({ field: z.literal("first"), value: z.enum(["24h", "4h", "morning", "none"]) }),
+  z.object({ field: z.literal("lastCallMins"), value: z.enum(["30", "60", "120", "off"]) }),
+  z.object({ field: z.literal("recipients"), value: z.enum(["managers", "people", "shift"]) }),
+  z.object({ field: z.literal("people"), value: z.string().max(2000) }),
+  z.object({ field: z.literal("sendBy"), value: z.enum(["email", "text", "portal", "phone"]) }),
+  z.object({ field: z.literal("phone"), value: z.string().trim().max(40).refine((v) => v === "" || v.replace(/\D/g, "").length >= 7, "Enter a phone number with the area code") }),
+  z.object({ field: z.literal("portal"), value: z.string().trim().max(60) }),
+  z.object({ field: z.literal("portalUrl"), value: z.string().trim().max(300).refine((v) => v === "" || /^https?:\/\/\S+$/i.test(v), "Paste the full web address, starting with https://") }),
+]);
+
+/** One reminder or "send orders by" setting for a supplier (stored as JSON in Settings; no schema change). */
+export async function saveSupplierPref(supplierId: string, field: string, value: string): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const p = prefField.safeParse({ field, value });
+  if (!p.success || !z.string().min(1).max(40).safeParse(supplierId).success) return { error: p.success ? "That supplier doesn't exist." : p.error.issues[0].message };
+  const d = p.data;
+  const patch =
+    d.field === "alert" ? { alert: d.value === "auto" ? null : d.value }
+    : d.field === "lastCallMins" ? { lastCallMins: d.value === "off" ? null : Number(d.value) }
+    : d.field === "people" ? { people: d.value.split(",").map((x) => x.trim()).filter(Boolean) }
+    : d.field === "phone" || d.field === "portal" || d.field === "portalUrl" ? { [d.field]: d.value || null }
+    : { [d.field]: d.value };
+  await saveSupplierPrefs(supplierId, patch);
+  done();
+  revalidatePath("/settings", "layout");
+  return {};
+}
+
+/** Hide the "these suppliers are now when stock runs low" note on Ordering. */
+export async function hideCadenceNotice(): Promise<void> {
+  await requireUser("MANAGER");
+  await dismissCadenceNotice();
+  revalidatePath("/ordering");
+}
+
+/** Which staff logins may place orders (managers always can). */
+export async function setStaffOrderers(userIds: string[]): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const v = z.array(z.string().min(1).max(40)).max(50).safeParse(userIds);
+  if (!v.success) return { error: "Pick people from the list." };
+  await saveStaffOrderers(v.data);
+  revalidatePath("/settings", "layout");
+  revalidatePath("/my");
+  return {};
 }
 
 /** "Mark as sent" for drafts sent another way. Records who did it, like the order page. */

@@ -61,8 +61,11 @@ export function supplierState(nextDelivery: ISODate | null, orders: readonly Boa
   return { kind: "none", order: null, forNext: false };
 }
 
-/** Nothing ordered yet and a deadline is coming up. */
-export const needsOrder = (s: SupplierState, next: NextDeadline | null) => s.kind === "none" && next != null;
+/**
+ * Nothing ordered yet and a deadline is coming up. `nag` is false for suppliers that
+ * shouldn't raise an alert (ordered when stock runs low with nothing short, or alerts off).
+ */
+export const needsOrder = (s: SupplierState, next: NextDeadline | null, nag = true) => nag && s.kind === "none" && next != null;
 
 // ---- Deadlines ------------------------------------------------------------------------
 
@@ -172,6 +175,8 @@ export interface TodaySupplier {
   next: NextDeadline | null;
   hoursToCutoff: number | null;
   state: SupplierState;
+  /** False: no deadline alert for this supplier (see needsOrder). */
+  nag?: boolean;
 }
 
 /**
@@ -190,7 +195,7 @@ export function todayItems(args: { today: ISODate; suppliers: readonly TodaySupp
   const out: TodayItem[] = [];
 
   const deadlines = suppliers
-    .filter((s) => s.next && s.hoursToCutoff != null && s.hoursToCutoff > 0 && s.hoursToCutoff <= windowHours && s.state.kind === "none")
+    .filter((s) => s.next && s.hoursToCutoff != null && s.hoursToCutoff > 0 && s.hoursToCutoff <= windowHours && s.state.kind === "none" && s.nag !== false)
     .sort((a, b) => (a.hoursToCutoff ?? 0) - (b.hoursToCutoff ?? 0) || a.name.localeCompare(b.name));
   for (const s of deadlines) out.push({ key: `deadline:${s.id}`, kind: "deadline", supplierId: s.id, supplierName: s.name, deliveryDate: s.next!.deliveryDate, deadline: s.next!, hoursToCutoff: s.hoursToCutoff });
 

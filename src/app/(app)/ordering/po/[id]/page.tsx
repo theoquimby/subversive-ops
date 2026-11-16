@@ -18,6 +18,9 @@ import { relativeTime } from "@/lib/format";
 import { db } from "@/server/db";
 import { businessToday } from "@/server/services/sales";
 import { currentPrices, linePrice, orderTotal } from "../../estimate";
+import { orderToSend } from "@/server/services/orderPlacing";
+import { markOrderPlaced } from "../../../my/ordering/actions";
+import { PlaceOrder } from "../../place-order";
 
 const DELIVERY: Partial<Record<DeliveryEvent, { label: string; tone: "good" | "warn" | "bad" | "neutral" }>> = {
   queued: { label: "Sending", tone: "neutral" },
@@ -39,12 +42,15 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const o = await loadOrder(id);
   if (!o) notFound();
-  const [delivery, myEmail, invoices, prices] = await Promise.all([
+  const [delivery, myEmail, invoices, prices, toSend, canEmail] = await Promise.all([
     poDelivery(o.id),
     emailForUser(session.userId),
     db.invoice.findMany({ where: { orderId: o.id }, select: { id: true, total: true, invoiceNumber: true } }),
     currentPrices(o.lines.filter((l) => l.unitPrice == null).map((l) => l.supplierProductId), businessToday()),
+    orderToSend(o.id),
+    emailReady(),
   ]);
+  const sendBy = toSend?.prefs.sendBy ?? "email";
   const sent = delivery.record;
   const status = delivery.status ? DELIVERY[delivery.status] : null;
   const priced = o.lines.map((l) => ({ supplierProductId: l.supplierProductId, qty: l.qty.toNumber(), unitPrice: l.unitPrice?.toNumber() ?? null }));
@@ -73,17 +79,39 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                 supplierName={o.supplier.name}
                 supplierEmail={o.supplier.email}
                 myEmail={myEmail}
-                emailReady={(await emailReady())}
+                emailReady={canEmail}
                 subject={purchaseOrderSubject(toISODate(o.deliveryDate))}
                 text={text}
                 mailto={mailto}
                 isDraft={o.status === "DRAFT"}
                 items={o.lines.length}
+                secondary={sendBy !== "email"}
+              />
+            )}
+            {/* The main button follows how this supplier takes orders (Settings → Suppliers, or the Ordering side panel). */}
+            {o.status === "DRAFT" && toSend && sendBy !== "email" && (
+              <PlaceOrder
+                orderId={o.id}
+                supplierName={o.supplier.name}
+                deliveryDate={toSend.deliveryDate}
+                lines={toSend.lines}
+                sendBy={sendBy}
+                phone={toSend.prefs.phone}
+                portal={toSend.prefs.portal}
+                portalUrl={toSend.prefs.portalUrl}
+                supplierEmail={o.supplier.email}
+                from={toSend.from}
+                minsToCutoff={toSend.cutoff?.mins ?? null}
+                onPlaced={markOrderPlaced}
               />
             )}
           </>
         }
       />
+
+      {o.status === "DRAFT" && toSend?.cutoff && toSend.cutoff.mins <= 0 && (
+        <Card role="alert" className="mb-4 border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn">The order cutoff for this delivery has passed. Call or text {o.supplier.name} to check they can still take it before sending.</Card>
+      )}
 
       {o.status !== "DRAFT" && (sent || o.sentAt) && (
         <HelpZone id="ordering.po.sent" className="mb-4"><Card className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
@@ -95,7 +123,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
               {delivery.status === "bounced" && <span className="w-full text-xs text-bad">The supplier&apos;s email system refused it. Check the address, or call the order in.</span>}
             </>
           ) : (
-            <span className="text-muted">Marked as sent{sent ? ` by ${sent.byName}` : ""} · {relativeTime(sent ? new Date(sent.at) : o.sentAt)}</span>
+            <span className="text-muted">{sent?.to ? `Placed by ${sent.to}` : "Marked as sent"}{sent ? ` · ${sent.byName}` : ""} · {relativeTime(sent ? new Date(sent.at) : o.sentAt)}</span>
           )}
         </Card></HelpZone>
       )}

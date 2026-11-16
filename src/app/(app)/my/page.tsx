@@ -9,6 +9,7 @@ import { requireUser } from "@/server/auth";
 import { pushReady, vapidPublicKey } from "@/server/services/push";
 import { employeeForUser } from "@/server/services/scheduling";
 import { staffHome, type HomeShift } from "@/server/services/staffHome";
+import { canOrder } from "@/server/services/supplierPrefs";
 import { myPayThisPeriod, type MyPayView } from "@/server/services/myPay";
 import { getRecognitionConfig, recentShoutouts } from "@/server/services/recognition";
 import { AlertTriangle, ArrowLeftRight, Beer, CalendarCheck, ChefHat, ChevronRight, CircleCheck, ClipboardList, FileSignature, GraduationCap, Hand, ListChecks, Megaphone, MessageCircle, NotebookPen, PartyPopper, Pin, ScanLine, Sparkles, Trash2, Wallet, type LucideIcon } from "lucide-react";
@@ -48,13 +49,15 @@ export default async function TodayPage() {
     );
   }
   const now = Date.now();
-  const [home, canPush, vapid, pay, shoutouts, recog] = await Promise.all([
+  const [home, canPush, vapid, pay, shoutouts, recog, orders] = await Promise.all([
     staffHome(me, new Date(now)),
     pushReady(),
     vapidPublicKey(),
     myPayThisPeriod(me.id, new Date(now)).catch(() => null),
     recentShoutouts({ days: 14, limit: 3 }).catch(() => []),
     getRecognitionConfig(),
+    // Staff a manager allowed to place supplier orders get a way in from here.
+    session.role === "STAFF" ? canOrder(session) : Promise.resolve(false),
   ]);
   const todayLabel = new Date(`${home.today}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
 
@@ -76,6 +79,13 @@ export default async function TodayPage() {
       <HelpZone id="my.quick" tour="my.quick">
         <QuickActions order={home.actions} />
       </HelpZone>
+
+      {orders && (
+        <Link href="/my/ordering" className="flex min-h-14 items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 hover:bg-surface-2/60">
+          <span><span className="block font-medium text-ink">Supplier orders</span><span className="block text-sm text-muted">Check and send the orders that are due</span></span>
+          <ChevronRight className="size-5 text-muted" aria-hidden />
+        </Link>
+      )}
 
       <HelpZone id="my.todo" tour="my.todo">
         <section aria-labelledby="todo-h">

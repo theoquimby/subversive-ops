@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   if (!s || s.role !== "MANAGER") return NextResponse.json({ error: "Sign in as a manager." }, { status: 401 });
   const raw = new URL(req.url).searchParams.get("ids") ?? "";
   const ids = raw.split(",").map((x) => x.trim()).filter((x) => /^[a-z0-9]{1,40}$/i.test(x)).slice(0, 200);
-  const list = ids.length ? ids : (await db.supplier.findMany({ where: { active: true }, select: { id: true } })).map((x) => x.id);
+  const list = ids.length ? ids : (await db.supplier.findMany({ where: { active: true, department: { not: "brewery" } }, select: { id: true } })).map((x) => x.id);
   try {
     return NextResponse.json({ suggestions: await suggestedOrders(list) }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {

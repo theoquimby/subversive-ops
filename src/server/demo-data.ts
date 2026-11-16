@@ -262,6 +262,11 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
     const { seedBrewRecipes } = await import("./demo/brewRecipes");
     await seedBrewRecipes(db);
   }
+  // Ordering cadence: every delivery vs when stock runs low, how each supplier takes orders, brewing suppliers on the Brewery side.
+  {
+    const { seedOrderingCadence } = await import("./demo/orderingCadence");
+    await seedOrderingCadence(db);
+  }
   // Google Search and the Google listing, for the Online pages (it only ever adds rows).
   if ((await db.googleSearchDaily.count()) === 0 && (await db.googleProfileDaily.count()) === 0) {
     const { seedOnline } = await import("./demo/online");

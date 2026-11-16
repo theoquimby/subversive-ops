@@ -11,6 +11,9 @@ import { DeadlineEditor } from "../../ordering/deadline-editor";
 import type { CutoffRule } from "@/domain/ordering";
 import { deadlineSummary as summarizeDeadlines } from "@/domain/orderingBoard";
 import { addSupplier, saveDeliveryDays, saveSupplierCutoff, saveSupplierField, setSupplierActive } from "../setting-actions";
+import type { OrderCadence } from "@/domain/orderNeed";
+import { SEND_BY_OPTIONS, type SupplierPrefs } from "@/domain/supplierPrefs";
+import { CadenceToggle, SupplierOrderSettings } from "../../ordering/supplier-order-settings";
 
 export interface SupplierRow {
   id: string;
@@ -24,6 +27,8 @@ export interface SupplierRow {
   notes: string | null;
   products: number;
   cutoff: CutoffRule;
+  cadence: OrderCadence;
+  prefs: SupplierPrefs;
 }
 
 const KINDS = [{ value: "DISTRIBUTOR", label: "Distributor" }, { value: "LOCAL", label: "Local" }];
@@ -75,7 +80,7 @@ function AddSupplierRow() {
   );
 }
 
-function SupplierDrawer({ s }: { s: SupplierRow }) {
+function SupplierDrawer({ s, people }: { s: SupplierRow; people: { id: string; name: string }[] }) {
   const [pending, start] = useTransition();
   const f = (label: string, hint: string, el: React.ReactNode) => (
     <div className="grid grid-cols-[1fr_9rem] items-center gap-3 py-2">
@@ -101,6 +106,10 @@ function SupplierDrawer({ s }: { s: SupplierRow }) {
         <AutoSwitch on={s.cutoff.autoDraft} label="Draft orders before the cutoff" onSave={(on) => saveSupplierCutoff(s.id, "autoDraft", on ? "on" : "off")} />
       </div>
       <div>
+        <div className="mb-1 text-[0.8rem] font-medium text-ink-2">Ordering and reminders</div>
+        <SupplierOrderSettings id={s.id} name={s.name} cadence={s.cadence} prefs={s.prefs} people={people} />
+      </div>
+      <div>
         <div className="mb-1 text-[0.8rem] font-medium text-ink-2">Notes</div>
         <GridCell grid="sup-d" col="notes" value={s.notes} placeholder="Rep's name, account number, delivery door…" ariaLabel="Notes" onSave={(v) => saveSupplierField(s.id, "notes", v)} className="rounded-md border border-border" />
       </div>
@@ -112,12 +121,14 @@ function SupplierDrawer({ s }: { s: SupplierRow }) {
   );
 }
 
-export function SuppliersTable({ rows }: { rows: SupplierRow[] }) {
+export function SuppliersTable({ rows, people }: { rows: SupplierRow[]; people: { id: string; name: string }[] }) {
   const columns = useMemo<Column<SupplierRow>[]>(() => [
     { id: "name", header: "Supplier", edit: true, width: 200, sort: (s) => s.name, csv: (s) => s.name, cell: (s) => <GridCell grid="sup" col="name" value={s.name} ariaLabel={`Name of ${s.name}`} onSave={(v) => saveSupplierField(s.id, "name", v)} className="min-w-32 font-medium" /> },
     { id: "kind", header: "Type", edit: true, width: 130, sort: (s) => s.kind, csv: (s) => s.kind, cell: (s) => <GridSelect value={s.kind} options={KINDS} ariaLabel={`${s.name} type`} onSave={(v) => saveSupplierField(s.id, "kind", v)} /> },
     { id: "days", header: "Delivers on", edit: true, width: 270, sort: (s) => s.deliveryDays.length, csv: (s) => days(s.deliveryDays), cell: (s) => <DayChips id={s.id} value={s.deliveryDays} name={s.name} /> },
     { id: "lead", header: "Lead", help: "settings.suppliers", align: "right", edit: true, width: 80, sort: (s) => s.leadTimeDays, csv: (s) => s.leadTimeDays, cell: (s) => <GridCell grid="sup" col="lead" type="number" suffix="d" value={s.leadTimeDays} ariaLabel={`${s.name} lead time in days`} onSave={(v) => saveSupplierField(s.id, "leadTimeDays", v)} /> },
+    { id: "cadence", header: "Orders", help: "ordering.cadence", edit: true, width: 200, sort: (s) => s.cadence, csv: (s) => (s.cadence === "regular" ? "Every delivery" : "When stock runs low"), cell: (s) => <CadenceToggle key={s.cadence} id={s.id} name={s.name} value={s.cadence} compact /> },
+    { id: "sendBy", header: "Send by", width: 130, defaultHidden: true, sort: (s) => s.prefs.sendBy, csv: (s) => SEND_BY_OPTIONS.find((o) => o.value === s.prefs.sendBy)?.label ?? "", cell: (s) => <span className="text-sm text-ink-2">{SEND_BY_OPTIONS.find((o) => o.value === s.prefs.sendBy)?.label}</span> },
     { id: "cutoff", header: "Order deadlines", width: 220, sort: (s) => deadlineSummary(s), csv: (s) => deadlineSummary(s), cell: (s) => <span className="text-sm">{deadlineSummary(s) || <span className="text-muted">—</span>}</span> },
     { id: "min", header: "Minimum", align: "right", edit: true, width: 104, firstDir: "desc", sort: (s) => s.minOrder, csv: (s) => s.minOrder, cell: (s) => <GridCell grid="sup" col="min" type="number" prefix="$" value={s.minOrder} placeholder="—" ariaLabel={`${s.name} minimum order`} onSave={(v) => saveSupplierField(s.id, "minOrder", v)} /> },
     { id: "email", header: "Order email", edit: true, width: 220, sort: (s) => s.email, csv: (s) => s.email, cell: (s) => <GridCell grid="sup" col="email" value={s.email} placeholder="—" ariaLabel={`${s.name} order email`} onSave={(v) => saveSupplierField(s.id, "email", v)} /> },
@@ -127,7 +138,8 @@ export function SuppliersTable({ rows }: { rows: SupplierRow[] }) {
   const filters = useMemo<Filter<SupplierRow>[]>(() => [
     { id: "status", label: "Status", kind: "facet", single: true, display: "segmented", allLabel: "All", values: (s) => (s.active ? "active" : "archived"), options: [{ value: "active", label: "Active" }, { value: "archived", label: "Archived" }] },
     { id: "kind", label: "Type", kind: "facet", values: (s) => s.kind, options: KINDS },
-    { id: "noemail", label: "No order email", kind: "toggle", test: (s) => s.active && !s.email, tone: "warn" },
+    { id: "noemail", label: "No order email", kind: "toggle", test: (s) => s.active && !s.email && s.prefs.sendBy === "email", tone: "warn" },
+    { id: "cadence", label: "Orders", kind: "facet", values: (s) => s.cadence, options: [{ value: "regular", label: "Every delivery" }, { value: "as_needed", label: "When stock runs low" }] },
   ], []);
 
   return (
@@ -148,16 +160,16 @@ export function SuppliersTable({ rows }: { rows: SupplierRow[] }) {
       footer={<AddSupplierRow />}
       summary={(vis) => [
         { value: vis.length, label: vis.length === 1 ? "supplier" : "suppliers" },
-        { value: vis.filter((s) => s.active && !s.email).length, label: "without an order email", tone: "warn", filter: { id: "noemail" } },
+        { value: vis.filter((s) => s.active && !s.email && s.prefs.sendBy === "email").length, label: "without an order email", tone: "warn", filter: { id: "noemail" } },
       ]}
       card={(s) => ({
         title: <>{s.name}{!s.active && <span className="font-normal text-muted"> · archived</span>}</>,
         subtitle: `${s.kind === "LOCAL" ? "Local" : "Distributor"} · ${days(s.deliveryDays)}`,
         value: `${s.leadTimeDays}d lead`,
-        sub: s.email ? deadlineSummary(s) || "no delivery days" : <Badge tone="warn">no email</Badge>,
+        sub: s.email || s.prefs.sendBy !== "email" ? `${s.cadence === "as_needed" ? "When low · " : ""}${deadlineSummary(s) || "no delivery days"}` : <Badge tone="warn">no email</Badge>,
       })}
       drawerTitle={(s) => s.name}
-      drawer={(s) => <SupplierDrawer s={s} />}
+      drawer={(s) => <SupplierDrawer s={s} people={people} />}
       bulkActions={(api) => (
         <>
           <Button size="sm" disabled={api.pending} onClick={() => api.run(async () => { for (const k of api.keys) await setSupplierActive(k, false); return { message: `Archived ${api.keys.length}` }; })}>Archive</Button>

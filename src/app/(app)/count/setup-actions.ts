@@ -151,7 +151,7 @@ export async function addCountUnit(key: string, rawUnit: string, amount: number,
 /** Every item in an area (ingredients and prep), in shelf order. */
 async function shelf(area: string) {
   const [ings, preps] = await Promise.all([
-    db.ingredient.findMany({ where: { active: true, storageArea: area }, select: { id: true, countOrder: true, category: true, name: true } }),
+    db.ingredient.findMany({ where: { active: true, storageArea: area, department: { not: "brewery" } }, select: { id: true, countOrder: true, category: true, name: true } }),
     db.recipe.findMany({ where: { kind: "PREP", active: true, countArea: area }, select: { id: true, countOrder: true, name: true } }),
   ]);
   return [...ings.map((i) => ({ key: i.id, order: i.countOrder, kind: 0, category: i.category, name: i.name })), ...preps.map((p) => ({ key: `p_${p.id}`, order: p.countOrder, kind: 1, category: "Prep", name: p.name }))]

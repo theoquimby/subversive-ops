@@ -36,7 +36,8 @@ export function countUnitsFor(ing: {
 export async function loadCountableIngredients(area?: string) {
   const [rows, order] = await Promise.all([
     db.ingredient.findMany({
-      where: { active: true, ...(area && area !== "All" ? { OR: [{ storageArea: area }, { countAreas: { has: area } }] } : {}) },
+      // Kitchen counts only: brewing stock (malt, hops, yeast) is counted on the Brewery side.
+      where: { active: true, department: { not: "brewery" }, ...(area && area !== "All" ? { OR: [{ storageArea: area }, { countAreas: { has: area } }] } : {}) },
       include: COUNT_UNITS_INCLUDE,
       orderBy: [{ storageArea: "asc" }, { countOrder: { sort: "asc", nulls: "last" } }, { category: "asc" }, { name: "asc" }],
     }),
@@ -89,7 +90,7 @@ export async function storageAreas() {
 export async function storageAreasWithCounts() {
   const [areas, counts] = await Promise.all([
     storageAreas(),
-    db.ingredient.groupBy({ by: ["storageArea"], where: { active: true }, _count: { _all: true } }),
+    db.ingredient.groupBy({ by: ["storageArea"], where: { active: true, department: { not: "brewery" } }, _count: { _all: true } }),
   ]);
   const by = new Map(counts.map((c) => [c.storageArea.toLowerCase(), c._count._all]));
   return areas.map((name) => ({ name, items: by.get(name.toLowerCase()) ?? 0 }));
