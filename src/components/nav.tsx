@@ -2,10 +2,11 @@
 
 import clsx from "clsx";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CalendarCheck, CalendarRange, ChefHat, ChevronRight, CircleHelp, ClipboardList, Home, LayoutGrid, LogOut, MoreHorizontal, ScanLine, Search, ShoppingCart, Sun, X } from "lucide-react";
+import { CalendarCheck, CalendarRange, ChefHat, ChevronRight, CircleHelp, ClipboardList, Home, LayoutGrid, LogOut, MessageSquarePlus, MoreHorizontal, ScanLine, Search, ShoppingCart, Sun, X } from "lucide-react";
 import { activeChild, areaFor, areaStyle, isActive, MANAGER_NAV, STAFF_NAV, type Area, type NavGroup, type NavItem as AreaNavItem } from "@/lib/areas";
 import { openCommandPalette } from "./command-palette";
 import { HelpButton } from "./help";
+import { FeedbackButton, FeedbackSheet, openFeedback } from "./feedback";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { SessionRole } from "@/server/session";
@@ -100,6 +101,7 @@ export function Nav({ role, name, logout }: { role: SessionRole; name: string; l
             </div>
           ))}
         </SidebarScroll>
+        <FeedbackButton />
         <HelpButton className="mb-2" />
         <div className="flex items-center justify-between border-t border-border px-2.5 pt-4">
           <div className="min-w-0">
@@ -116,6 +118,9 @@ export function Nav({ role, name, logout }: { role: SessionRole; name: string; l
 
       {/* Mobile: slim top bar + bottom tab bar + "More" sheet */}
       <MobileNav role={role} name={name} groups={groups} logout={logout} pathname={pathname} />
+
+      {/* Feedback from any page (the button sits beside Help on desktop and phone). */}
+      <FeedbackSheet />
     </>
   );
 }
@@ -271,6 +276,7 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
             <span className="truncate text-[0.95rem] font-semibold tracking-tight">{current?.label ?? "Subversive Ops"}</span>
           </Link>
           <div className="flex shrink-0 items-center">
+            <FeedbackButton compact />
             <HelpButton compact />
             <button onClick={openCommandPalette} className="grid size-11 place-items-center rounded-full text-ink-2 active:bg-surface-2" aria-label="Search">
               <Search className="size-5" strokeWidth={1.75} />
@@ -376,6 +382,9 @@ function MobileNav({ role, name, groups, logout, pathname }: { role: SessionRole
               <Link href="/help" style={areaStyle("assist")} className="flex h-12 items-center gap-3 px-3 text-sm transition-colors duration-120 active:bg-surface-2">
                 <span className="grid size-7 place-items-center rounded-lg bg-area/10 text-area"><CircleHelp className="size-4" strokeWidth={1.9} /></span> Help & guided tours <ChevronRight className="ml-auto size-4 text-muted" />
               </Link>
+              <button type="button" onClick={() => { setOpen(false); openFeedback(); }} style={areaStyle("assist")} className="flex h-12 w-full items-center gap-3 border-t border-border px-3 text-left text-sm transition-colors duration-120 active:bg-surface-2">
+                <span className="grid size-7 place-items-center rounded-lg bg-area/10 text-area"><MessageSquarePlus className="size-4" strokeWidth={1.9} /></span> Send feedback <ChevronRight className="ml-auto size-4 text-muted" />
+              </button>
               <div className="flex h-14 items-center justify-between border-t border-border px-4">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium">{name}</div>
