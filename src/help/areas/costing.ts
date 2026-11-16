@@ -202,12 +202,18 @@ A **Missing prices** badge means at least one ingredient has no price yet, so th
     area: "menu",
     route: "/menu/draft-beer",
     title: "Draft beer",
-    body: "Enter a beer, its keg size and what a keg costs you. It creates the keg as an ingredient and a costed recipe for each pour (16 oz, 10 oz, flight), linked to your Square items.",
+    body: "Enter a beer, its keg size and what a keg costs you. It creates the keg as an ingredient (linked to the beer on Kegs) and a costed recipe for each pour (16 oz, 10 oz, flight), linked to your Square items. A house beer's keg cost comes from brewing.",
     article: `### What it creates
-- **The keg** as an ingredient measured in ml and counted in kegs, with "1 keg" as a unit so a half-full keg counts as 0.5.
+- **The keg** as an ingredient measured in ml and counted in kegs, with "1 keg" as a unit so a half-full keg counts as 0.5. It's linked to the beer of the same name on Kegs, and running Draft beer again for that beer reuses it: there is only ever one keg ingredient per beer.
 - **The keg price** on a "House brewery" supplier (or the supplier you pick), dated today.
 - **One menu recipe per pour**, in the Beer category, using that many fl oz of the keg.
-- **Square links** for the pours you pick, so beer sales start costing straight away.
+- **Square links** for the pours you pick, so beer sales start costing straight away. Those Square items are linked to the beer too.
+
+### Where a keg's cost comes from
+One keg cost is used everywhere: menu costs, the P&L and Kegs → Demand all read the keg ingredient's price.
+- **From a brew**: when a brew of the beer is packaged with a cost, its cost per keg is recorded on the keg ingredient that day ("From brew 26-031, packaged Nov 12").
+- **From the brewing recipe**: with no packaged brew to go on, the live brewing recipe's cost per keg, when every line has a price. The form fills it in for a beer that has one.
+- **Typed**: what you entered here. Kegs on file says which one each keg uses, and offers brewing's cost when it's newer.
 
 ### Usable %
 Foam, line flushes and the last pint mean you sell less than the keg holds. 95% is a fair start; lower it if your counts keep showing beer short.

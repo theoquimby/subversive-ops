@@ -113,6 +113,9 @@ export async function costBeerPours(input: z.input<typeof beerSchema>): Promise<
     return id ? x.squareIds.map((squareId) => ({ squareId, to: { recipeId: id, ignored: false, unitCost: null, costClass: null } })) : [];
   });
   const r = await writeLinks(writes, user.name);
+  // These Square items pour this beer: link them to it (when the beer is on the Kegs list and they aren't linked yet).
+  const beer = await db.beer.findFirst({ where: { name: { equals: f.beer.trim(), mode: "insensitive" } }, select: { id: true } });
+  if (beer) await db.squareMapping.updateMany({ where: { squareId: { in: f.pours.flatMap((x) => x.squareIds) }, beerId: null }, data: { beerId: beer.id } });
   refresh();
   revalidatePath("/menu/draft-beer");
   return { message: `${f.beer}: ${f.pours.length} pour${f.pours.length === 1 ? "" : "s"} costed, ${items(r.changed)} linked.`, batch: r.batch };

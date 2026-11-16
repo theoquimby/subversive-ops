@@ -24,6 +24,24 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.28",
+    date: "2026-11-16",
+    title: "Beers linked up, nothing kept twice",
+    summary: "A beer now has one keg cost, set by the brewery when a brew is packaged, and used by menu costs, the P&L and demand alike. Square pours link to their beer, keg batches follow their brew, and anything that doesn't link up cleanly waits under Kegs → Setup → Needs a look.",
+    entries: ["2026-11-16.beer-links"],
+    fixed: [
+      "Packaging a brew with a cost records its cost per keg on the beer's keg ingredient. With no packaged brew, Draft beer offers the brewing recipe's cost. Kegs on file says where each keg cost comes from.",
+      "Running Draft beer again for a beer reuses its keg ingredient instead of making a second one.",
+      "Square items link to the beer they pour (open a beer on Kegs → Setup). Linked items count for that beer whatever they're called; the rest are matched by name as before.",
+      "Filling a keg puts it on a batch of the same beer: a tapped batch chip is used as is, a typed code finds that beer's batch or starts a new one, and another beer's batch is refused.",
+      "A keg batch made at packaging takes its beer and dates from the brew, and follows when they're changed.",
+      "A brew with a recipe pours as the recipe's beer; change it on the recipe and its planned brews follow.",
+      "OG and FG come from a brew's gravity readings: deleting a reading moves them, and typing OG or FG keeps it as a reading.",
+      "With no ABV typed, the tap list, TV board and website show the ABV of the beer's latest packaged brew. A typed ABV more than 0.3% from it gets a note on the beer.",
+      "Existing beers, Square items, keg batches and brews were linked where exactly one thing matched; nothing was changed or removed.",
+    ],
+  },
+  {
     version: "1.25",
     date: "2026-11-16",
     title: "Ordering speaks up only when it should",

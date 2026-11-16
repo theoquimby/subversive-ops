@@ -3,6 +3,7 @@ import { standingOf } from "@/domain/beerStanding";
 import { requireUser } from "@/server/auth";
 import { db, num } from "@/server/db";
 import { beerPricing, labelUrl } from "@/server/services/taps";
+import { measuredAbvByBeer } from "@/server/services/beerLinks";
 import { BeersBoardTable, type BeerBoardRow } from "./beers-table";
 
 export const metadata = { title: "Beers" };
@@ -14,7 +15,7 @@ export default async function BeersPage() {
     db.keg.findMany({ where: { status: "ON_TAP", active: true, beerId: { not: null } }, select: { beerId: true, tapLine: true } }),
     db.keg.groupBy({ by: ["beerId"], where: { active: true, status: { in: ["FILLED", "COLD"] }, beerId: { not: null } }, _count: { _all: true } }),
   ]);
-  const pricing = await beerPricing(beers);
+  const [pricing, measured] = await Promise.all([beerPricing(beers), measuredAbvByBeer()]);
   const fullBy = new Map(full.map((f) => [f.beerId!, f._count._all]));
   const rows: BeerBoardRow[] = beers.map((b) => {
     const p = pricing.get(b.id);
@@ -24,6 +25,7 @@ export default async function BeersPage() {
       style: b.style,
       color: b.color,
       abv: num(b.abv),
+      measuredAbv: measured.get(b.id)?.abv ?? null,
       ibu: b.ibu,
       description: b.description,
       diet: b.diet,

@@ -4,6 +4,8 @@ import { kegSize, planDraftBeer } from "@/domain/draftBeer";
 import { isRevenueClass } from "@/domain/revenueClass";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
+import { sameMoney } from "@/domain/beerLinks";
+import { brewingKegPriceFor, recordBrewingKegPrice } from "@/server/services/beerLinks";
 import { saveClassSettings } from "@/server/services/insights";
 import { businessToday } from "@/server/services/sales";
 import { Prisma } from "@prisma/client";
@@ -63,8 +65,11 @@ const HOUSE_SUPPLIER = "House brewery";
 /**
  * Create (or update) a draft beer in one step: the keg as an ingredient
  * (base unit ml, counted in kegs) with its keg price, one menu recipe per pour,
- * and Square links for the pours. Re-running it with a new keg cost records a
- * new price; existing pour recipes are updated in place.
+ * and Square links for the pours. A beer on the Kegs list keeps one keg
+ * ingredient (Beer.ingredientId): running this again reuses it, never makes a
+ * second "(keg)". Re-running it with a new keg cost records a new price; when
+ * the cost is brewing's (a packaged brew or the brewing recipe), the price says
+ * so. Existing pour recipes are updated in place.
  */
 export async function createDraftBeer(input: DraftBeerForm): Promise<{ error: string } | { ok: true; recipes: number; ingredientId: string }> {
   await requireUser("MANAGER");
@@ -79,13 +84,19 @@ export async function createDraftBeer(input: DraftBeerForm): Promise<{ error: st
   const clash = await db.recipe.findMany({ where: { name: { in: plan.pours.map((p) => p.recipeName) }, NOT: { category: "Beer" } }, select: { name: true } });
   if (clash.length) return { error: `"${clash[0].name}" already exists as a non-beer recipe. Rename the pour.` };
 
+  // The beer on the Kegs list with this name, and what brewing says a keg of this size costs.
+  const beer = await db.beer.findFirst({ where: { name: { equals: f.beer.trim(), mode: "insensitive" } }, select: { id: true, ingredientId: true } });
+  const brewing = beer ? await brewingKegPriceFor(beer.id, plan.kegMl).catch(() => null) : null;
+  const fromBrewing = brewing && sameMoney(brewing.price, f.kegCost) ? brewing : null;
+
   try {
     const ingredientId = await db.$transaction(async (tx) => {
       const supplier = f.supplierId
         ? await tx.supplier.findUniqueOrThrow({ where: { id: f.supplierId } })
         : ((await tx.supplier.findUnique({ where: { name: HOUSE_SUPPLIER } })) ?? (await tx.supplier.create({ data: { name: HOUSE_SUPPLIER, kind: "LOCAL", notes: "Our own beer, costed per keg." } })));
 
-      const existing = await tx.ingredient.findUnique({ where: { name: plan.ingredientName } });
+      // The beer's linked keg ingredient first; else the one with the "(keg)" name; else a new one.
+      const existing = (beer?.ingredientId ? await tx.ingredient.findUnique({ where: { id: beer.ingredientId } }) : null) ?? (await tx.ingredient.findUnique({ where: { name: plan.ingredientName } }));
       const ing = existing
         ? await tx.ingredient.update({ where: { id: existing.id }, data: { yieldPct: new Prisma.Decimal(f.yieldPct.toFixed(4)), active: true } })
         : await tx.ingredient.create({
@@ -105,10 +116,16 @@ export async function createDraftBeer(input: DraftBeerForm): Promise<{ error: st
         update: { ingredientId: ing.id, active: true, packQtyBase: new Prisma.Decimal(plan.kegMl.toFixed(4)) },
       });
       const last = await tx.priceRecord.findFirst({ where: { supplierProductId: product.id }, orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }] });
-      if (!last || Math.abs(last.price.toNumber() - f.kegCost) >= 0.005) {
-        await tx.priceRecord.create({ data: { supplierProductId: product.id, price: new Prisma.Decimal(f.kegCost.toFixed(2)), effectiveDate: new Date(`${today}T00:00:00Z`), source: "MANUAL" } });
+      const link = fromBrewing ? (fromBrewing.kind === "brew" ? { brewBatchId: fromBrewing.brewBatchId } : { brewRecipeId: fromBrewing.brewRecipeId }) : {};
+      const sameSource = (last?.brewBatchId ?? null) === ("brewBatchId" in link ? link.brewBatchId : null) && (last?.brewRecipeId ?? null) === ("brewRecipeId" in link ? link.brewRecipeId : null);
+      if (!last || Math.abs(last.price.toNumber() - f.kegCost) >= 0.005 || !sameSource) {
+        await tx.priceRecord.create({ data: { supplierProductId: product.id, price: new Prisma.Decimal(f.kegCost.toFixed(2)), effectiveDate: new Date(`${today}T00:00:00Z`), source: "MANUAL", ...link } });
       }
       await tx.ingredient.update({ where: { id: ing.id }, data: { preferredProductId: product.id } });
+      // Link the beer to its keg ingredient (one beer per keg ingredient).
+      if (beer && !beer.ingredientId && !(await tx.beer.findFirst({ where: { ingredientId: ing.id, id: { not: beer.id } }, select: { id: true } }))) {
+        await tx.beer.update({ where: { id: beer.id }, data: { ingredientId: ing.id } });
+      }
 
       for (const p of plan.pours) {
         const data = { kind: "MENU" as const, category: "Beer", menuPrice: p.price == null ? null : new Prisma.Decimal(p.price.toFixed(2)), yieldQty: new Prisma.Decimal(1), yieldUnit: "each", yieldBase: "each" as const, active: true };
@@ -117,17 +134,37 @@ export async function createDraftBeer(input: DraftBeerForm): Promise<{ error: st
         const recipe = r
           ? await tx.recipe.update({ where: { id: r.id }, data: { ...data, lines: { deleteMany: {}, create: [line] } } })
           : await tx.recipe.create({ data: { name: p.recipeName, ...data, notes: p.label.toLowerCase().includes("flight") ? "Costed as this beer only. Edit the lines to mix beers." : null, lines: { create: [line] } } });
-        if (p.squareId) await tx.squareMapping.update({ where: { squareId: p.squareId }, data: { recipeId: recipe.id, ignored: false } });
+        if (p.squareId) {
+          await tx.squareMapping.update({ where: { squareId: p.squareId }, data: { recipeId: recipe.id, ignored: false } });
+          // The pour is this beer: link the Square item to it when it isn't linked to a beer yet.
+          if (beer) await tx.squareMapping.updateMany({ where: { squareId: p.squareId, beerId: null }, data: { beerId: beer.id } });
+        }
       }
       return ing.id;
     });
     refresh();
     revalidatePath("/ingredients");
     revalidatePath("/sales");
+    revalidatePath("/kegs", "layout");
     return { ok: true, recipes: plan.pours.length, ingredientId };
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { error: "Something with that name already exists. Try a different beer name." };
     if (e instanceof Error && e.message.includes("isn't measured")) return { error: e.message };
     throw e;
   }
+}
+
+/** "Use brewing's cost": record what brewing says a keg of this beer costs (a packaged brew, else the brewing recipe). */
+export async function applyBrewingKegCost(beerId: string): Promise<{ error?: string; ok?: string }> {
+  await requireUser("MANAGER");
+  if (!z.string().min(1).max(64).safeParse(beerId).success) return { error: "Can't save that." };
+  const beer = await db.beer.findUnique({ where: { id: beerId }, select: { name: true, ingredient: { select: { preferredProduct: { select: { packQtyBase: true } } } } } });
+  const kegMl = beer?.ingredient?.preferredProduct?.packQtyBase?.toNumber() ?? 0;
+  if (!beer || !(kegMl > 0)) return { error: "Set this beer's keg up above first." };
+  const price = await brewingKegPriceFor(beerId, kegMl);
+  if (!price) return { error: "Brewing has no cost for this beer yet." };
+  await recordBrewingKegPrice(beerId, price);
+  refresh();
+  revalidatePath("/kegs", "layout");
+  return { ok: `${beer.name}: $${price.price.toFixed(2)} a keg, from ${price.kind === "brew" ? `brew ${price.code}` : "the brewing recipe"}.` };
 }

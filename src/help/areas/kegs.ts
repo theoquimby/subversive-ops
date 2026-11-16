@@ -317,7 +317,7 @@ A keg is refused, and nothing changes, when it:
 2. Pick what's happening:
 - **Empty, to clean** for any empty keg, whatever the app last heard. A keg that was on tap is kicked, one that was out comes back, and a full one nobody scanned out is taken as poured.
 - **Cleaned** after washing.
-- **Filled** with one beer (and a batch, if you use them).
+- **Filled** with one beer (and a batch, if you use them). Tap a batch the brewery packaged, or type a code: a typed code finds that beer's batch or starts a new one, and a batch of a different beer is refused.
 - **Into cold storage** or **Out to an account** for full kegs.
 3. Tap **Start scanning** and scan each sticker. Each keg shows in the list with a tick, or a reason it couldn't be done.
 
@@ -434,15 +434,39 @@ Kegs that already have stickers from your old app keep them: import them and the
     route: "/kegs/setup",
     title: "Keg setup",
     body: "Beers and the Square items that pour them, spots in the walk-in, how many tap lines, pour sizes, and the accounts kegs go out to.",
-    related: ["kegs.setup.beers", "kegs.setup.spots", "kegs.setup.pours", "kegs.setup.accounts"],
+    related: ["kegs.setup.beers", "kegs.setup.needs", "kegs.setup.spots", "kegs.setup.pours", "kegs.setup.accounts"],
+  },
+  {
+    id: "kegs.setup.needs",
+    area: "kegs",
+    route: "/kegs/setup",
+    title: "Needs a look",
+    body: "Things around your beers that didn't link up on their own: beers with no keg ingredient, Square pours not linked to a beer, keg batches with a brew code but no brew, brews saved as a different beer from their recipe, and a typed ABV that differs from the brewery's. Nothing here was changed for you.",
+    article: `The app links a beer to its keg ingredient, a Square pour to its beer and a keg batch to its brew only when exactly one thing matches. Anything else waits here, with the obvious fix one tap away.
+
+- **Beers with no keg ingredient**: pick it (the one named “<beer> (keg)” is offered first), or set the beer up on Draft beer.
+- **Square pours not linked to a beer**: items that sold in the last 90 days and look like draft beer. Link each to its beer.
+- **Keg batches with a brew code but no brew**: **Join brew** when a brew has that code and the same beer.
+- **Brews saved as a different beer from their recipe**: a brew pours as its recipe's beer; **Make it …** puts it right (its keg batch follows).
+- **ABV typed differs from the brewery's**: more than 0.3% apart from the latest packaged brew's OG and FG. **Use …%** puts the measured one on the board.
+
+The list is gone when there's nothing to look at.`,
+    related: ["kegs.setup.beers", "menu.draftBeer", "brewery.batches.one"],
+    keywords: ["needs a look", "not linked", "unlinked", "duplicate", "keg ingredient", "square item", "abv", "batch"],
   },
   {
     id: "kegs.setup.beers",
     area: "kegs",
     route: "/kegs/setup",
     title: "Beers",
-    body: "Each beer you keg, its standing (core, in rotation or retired), its color on the walk-in board, and the Square item names that pour it. Alert under: for core beers, managers hear when full kegs drop below this. Link the brewer's recipe to get a cost per pint.",
+    body: "Each beer you keg, its standing (core, in rotation or retired), its color on the walk-in board, and the Square items that pour it. Alert under: for core beers, managers hear when full kegs drop below this. A beer's cost per pint comes from its keg cost (Menu → Draft beer).",
     article: `Type in any cell to change it; it saves when you leave the cell. On a phone, tap a beer to edit it.
+
+### Square items
+Open a beer to see the Square items linked to it, link another or unlink one. Sales of a linked item count for that beer whatever the item is called, so renaming an item in Square changes nothing. Typed Square names (the part before the pour, like “New York Nectar*”) link every item they name that isn't linked yet, when they name only this beer; items not linked are still matched by name.
+
+### Cost
+A beer's cost per pint comes from its keg ingredient's price, which a packaged brew or the brewing recipe sets (see Draft beer). **Recipe (for cost)** is the old way, a kitchen prep recipe; it's only used for a beer with no keg cost and no live brewing recipe.
 
 Search by name or Square item. **In use** shows core and in-rotation beers; **Core**, **In rotation** and **Retired** each have a tab, so retired beers stay out of the way until you want them. **No Square items** and **No recipe** find the ones still to set up.`,
     related: ["kegs.standing", "kegs.setup.pours", "kegs.demand"],

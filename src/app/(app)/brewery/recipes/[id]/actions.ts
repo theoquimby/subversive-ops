@@ -3,6 +3,7 @@
 import { BREW_LINE_KINDS, BREW_UNITS, HOP_USES } from "@/domain/brewMath";
 import { requireUser } from "@/server/auth";
 import { saveBrewRecipe } from "@/server/services/brewRecipes";
+import { followRecipeBeer } from "@/server/services/breweryWrite";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -65,6 +66,8 @@ export async function saveRecipeEditorAction(id: string | null, input: RecipeEdi
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const res = await saveBrewRecipe(id, { id, ...parsed.data, lines: parsed.data.lines as Parameters<typeof saveBrewRecipe>[1]["lines"] });
   if ("error" in res) return res;
+  // Planned brews of this recipe pour as its beer.
+  await followRecipeBeer(res.id);
   revalidatePath("/brewery/recipes");
   revalidatePath(`/brewery/recipes/${res.id}`);
   revalidatePath("/brewery/brew");

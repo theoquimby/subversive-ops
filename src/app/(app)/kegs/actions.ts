@@ -7,6 +7,7 @@ import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { isStanding, standingFlags, type Standing } from "@/domain/beerStanding";
 import { CORE_HELPER_KEY } from "@/server/services/beers";
+import { linkKegIngredientByName, linkSquareItemsByName, setSquareItemBeer } from "@/server/services/beerLinks";
 import { checkKegStock } from "@/server/services/keg-alerts";
 import { forgetUndoneOrderKegs } from "@/server/services/kegOrders";
 import { adoptSticker, doKegAction, findKegByScan, freshCodes, kegCard, KEG_ACTIONS, kegConfig, nextKegOf, saveKegConfig, undoKegEvents, type DoActionResult, type KegCard } from "@/server/services/kegs";
@@ -47,6 +48,7 @@ const actionSchema = z.object({
   spotNote: z.string().trim().max(80).nullish(),
   accountId: z.string().nullish(),
   beerId: z.string().nullish(),
+  batchId: z.string().max(64).nullish(),
   batchCode: z.string().trim().max(40).nullish(),
   filledOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
   bestBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
@@ -99,6 +101,7 @@ const manySchema = z.object({
   mode: z.enum(["DIRTY", "CLEANED", "FILL", "STORE", "OUT", "ADD"]),
   sizeId: z.string().nullish(),
   beerId: z.string().nullish(),
+  batchId: z.string().max(64).nullish(),
   batchCode: z.string().trim().max(40).nullish(),
   filledOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
   area: z.string().trim().max(60).nullish(),
@@ -134,7 +137,7 @@ export async function scanMany(input: ScanManyForm): Promise<ScanManyResult> {
   }
   const hit = await findKegByScan(d.text);
   if (!hit) return { error: "This sticker isn't in the app yet.", unknown: true };
-  const r = await doKegAction({ userId: me.userId, name: me.name }, { kegId: hit.id, action: d.mode, beerId: d.beerId, batchCode: d.batchCode, filledOn: d.filledOn, area: d.area ? cleanAreaName(d.area) : d.area, spotId: d.spotId, accountId: d.accountId, clientId: d.clientId });
+  const r = await doKegAction({ userId: me.userId, name: me.name }, { kegId: hit.id, action: d.mode, beerId: d.beerId, batchId: d.batchId, batchCode: d.batchCode, filledOn: d.filledOn, area: d.area ? cleanAreaName(d.area) : d.area, spotId: d.spotId, accountId: d.accountId, clientId: d.clientId });
   if ("error" in r) return { error: r.error, code: hit.code };
   const k = await describe(hit.id);
   if (r.kicked) checkKegStock(r.kicked.beerId, { kicked: { where: null, who: me.name } });
@@ -220,6 +223,9 @@ export async function addBeer(name: string, squareName?: string): Promise<{ ok: 
   const { guessBeerColor } = await import("@/domain/kegs");
   try {
     const b = await db.beer.create({ data: { name: n, color: guessBeerColor(n), squareNames: squareName?.trim() ? [squareName.trim()] : [] } });
+    // Link what already exists for it: its "(keg)" ingredient and the Square items that name only this beer.
+    await linkKegIngredientByName(b.id);
+    await linkSquareItemsByName(b.id);
     refresh();
     pingWebsite("menu");
     return { ok: true, id: b.id };
@@ -232,7 +238,7 @@ export async function addBeer(name: string, squareName?: string): Promise<{ ok: 
 export async function setBeerField(id: string, field: "name" | "style" | "color" | "squareNames" | "minFull" | "house" | "active" | "standing" | "ingredientId" | "recipeId", raw: string): Promise<{ error?: string }> {
   await requireUser("MANAGER");
   const value = String(raw ?? "").trim();
-  let data: Prisma.BeerUpdateInput;
+  let data: Prisma.BeerUncheckedUpdateInput;
   switch (field) {
     case "name": if (!value) return { error: "Can't be empty" }; data = { name: value.slice(0, 80) }; break;
     case "style": data = { style: value.slice(0, 60) || null }; break;
@@ -243,7 +249,17 @@ export async function setBeerField(id: string, field: "name" | "style" | "color"
     // Retiring a beer also ends its core standing, so bringing it back starts it in rotation.
     case "active": data = value === "true" ? { active: true } : { active: false, core: false }; break;
     case "standing": if (!isStanding(value)) return { error: "Pick core, in rotation or retired" }; data = standingFlags(value); break;
-    case "ingredientId": data = { ingredientId: value || null }; break;
+    case "ingredientId": {
+      // The keg ingredient this beer pours from (its price is the keg cost everywhere). One beer per keg ingredient.
+      if (value) {
+        if (!(await db.ingredient.findUnique({ where: { id: value }, select: { id: true } }))) return { error: "That ingredient is gone. Reload." };
+        const other = await db.beer.findFirst({ where: { ingredientId: value, id: { not: id } }, select: { name: true } });
+        if (other) return { error: `${other.name} already pours from that keg.` };
+      }
+      data = { ingredientId: value || null };
+      break;
+    }
+    // Deprecated costing path (a kitchen PREP recipe), kept for beers with no keg ingredient or brewing recipe.
     case "recipeId": {
       if (value && !(await db.recipe.findFirst({ where: { id: value, kind: "PREP" }, select: { id: true } }))) return { error: "Pick a prep recipe" };
       data = { recipeId: value || null };
@@ -256,6 +272,20 @@ export async function setBeerField(id: string, field: "name" | "style" | "color"
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { error: "Another beer has that name" };
     throw e;
   }
+  // Typed Square names link the Square items they name (when they name only this beer).
+  if (field === "squareNames" || field === "name") await linkSquareItemsByName(id);
+  refresh();
+  revalidatePath("/menu/draft-beer");
+  pingWebsite("menu");
+  return {};
+}
+
+/** Link one Square item to a beer ("" unlinks it): its sales count for that beer whatever it's called. */
+export async function setSquareItemBeerAction(squareId: string, beerId: string): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  if (!z.string().min(1).max(128).safeParse(squareId).success || beerId.length > 64) return { error: "Can't save that." };
+  const r = await setSquareItemBeer(squareId, beerId || null);
+  if (r.error) return r;
   refresh();
   pingWebsite("menu");
   return {};
