@@ -1,12 +1,15 @@
 import { HelpTip, HelpZone } from "@/components/help";
 import { Card, EmptyState, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
+import { progressLabel } from "@/domain/kegOrders";
 import { displayCode, sinceLabel } from "@/domain/kegs";
 import { requireUser } from "@/server/auth";
 import { fleetNeedsLook } from "@/server/services/kegFleet";
+import { openOrders } from "@/server/services/kegOrders";
 import { stockSummary, tapBoard } from "@/server/services/kegs";
-import { Beer, ChartColumn, FileText, FileUp, History, ListChecks, ListOrdered, Printer, ScanLine, Settings2, Store, TrendingUp, Warehouse } from "lucide-react";
+import { Beer, ChartColumn, FileText, FileUp, History, ListChecks, ListOrdered, Printer, ScanLine, Settings2, Store, TrendingUp, Truck, Warehouse } from "lucide-react";
 import Link from "next/link";
 import { BeerDot, daysText, LeftBar, pctText, sizeShort } from "./bits";
+import { DueBadge, linesSummary } from "./orders/bits";
 import { QueueWatcher } from "./scanner";
 
 export const metadata = { title: "Kegs" };
@@ -14,7 +17,16 @@ export const metadata = { title: "Kegs" };
 export default async function KegsPage() {
   const me = await requireUser();
   const manager = me.role === "MANAGER";
-  const [{ taps, yield: yi }, stock, look] = await Promise.all([tapBoard(), stockSummary(), manager ? fleetNeedsLook() : null]);
+  const [{ taps, yield: yi }, stock, look, orders] = await Promise.all([
+    tapBoard(),
+    stockSummary(),
+    manager ? fleetNeedsLook() : null,
+    // Open keg orders, so staff can start scanning one. A problem with orders never takes this page down.
+    openOrders().catch((e) => {
+      console.error("kegs: open orders skipped", (e as Error).message);
+      return null;
+    }),
+  ]);
   const outKegs = look?.out.reduce((s, g) => s + g.kegs.length, 0) ?? 0;
   const idleKegs = look?.idle.length ?? 0;
   const onTap = taps.filter((t) => t.keg);
@@ -36,6 +48,30 @@ export default async function KegsPage() {
           <ScanLine className="size-6" /> Scan a keg
         </LinkButton>
       </HelpZone>
+
+      {orders && orders.rows.length > 0 && (
+        <Section
+          help="kegs.orders.scan"
+          title="Orders to send out"
+          description="Tap an order, then scan each keg as it leaves."
+          actions={manager ? <LinkButton href="/kegs/orders" size="sm" className="h-10 sm:h-8"><Truck className="size-4" /> All orders</LinkButton> : undefined}
+        >
+          <Card className="divide-y divide-border">
+            {orders.rows.map((o) => (
+              <Link key={o.id} href={`/kegs/orders/${o.id}/scan`} className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors duration-120 first:rounded-t-xl last:rounded-b-xl hover:bg-surface-2/60 active:bg-surface-2">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{o.account}</span>
+                  <span className="block truncate text-xs text-muted">{linesSummary(o.lines)}</span>
+                </span>
+                <span className="shrink-0 text-right text-sm">
+                  <DueBadge dueOn={o.dueOn} today={orders.today} />
+                  <span className="num block text-xs text-muted">{o.progress.complete ? "All sent" : progressLabel(o.progress)}</span>
+                </span>
+              </Link>
+            ))}
+          </Card>
+        </Section>
+      )}
 
       {dry.length > 0 && (
         <Card className="mb-8 border-bad/25 bg-bad-bg p-4">
@@ -118,6 +154,7 @@ export default async function KegsPage() {
               { href: "/kegs/demand", label: "Demand per beer", icon: ChartColumn, hint: "What to fill next" },
               { href: "/kegs/fleet", label: "Fleet & trends", icon: TrendingUp, hint: "Turns, fills, kegs out too long" },
               { href: "/kegs/accounts", label: "Accounts", icon: Store, hint: "Kegs at each account, deliveries" },
+              { href: "/kegs/orders", label: "Orders", icon: Truck, hint: "What accounts asked for, filled by scanning" },
               { href: "/kegs/reports", label: "Reports", icon: FileText, hint: "Volume, kegs at accounts, export" },
               { href: "/kegs/all", label: "All kegs & labels", icon: Printer, hint: "Add kegs, print stickers" },
               { href: "/kegs/setup", label: "Setup", icon: Settings2, hint: "Beers, spots, taps, pour sizes" },

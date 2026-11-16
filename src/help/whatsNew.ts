@@ -69,6 +69,29 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.15 (keg orders) ----
+  {
+    id: "2026-11-16.keg-orders",
+    date: "2026-11-16",
+    title: "Wholesale keg orders",
+    line: "Take an account's order, see which full kegs are free or spoken for, and track it until it's fulfilled.",
+    icon: "keg",
+    area: "floor",
+    href: "/kegs/orders",
+    help: "kegs.orders",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-16.keg-order-scan",
+    date: "2026-11-16",
+    title: "Fill an order by scanning",
+    line: "Scan each keg as it leaves. The app checks the beer and size and sends it out to the account.",
+    icon: "keg",
+    area: "floor",
+    href: "/kegs",
+    help: "kegs.orders.scan",
+    audience: "all",
+  },
   // ---- 16 Nov · 1.14 (kegs everywhere) ----
   {
     id: "2026-11-16.keg-signals",

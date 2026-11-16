@@ -67,6 +67,7 @@ const KEG_PAGES: SubItem[] = [
   { href: "/kegs/cooler", label: "Walk-in" },
   { href: "/kegs/fleet", label: "Fleet & trends" },
   { href: "/kegs/accounts", label: "Accounts" },
+  { href: "/kegs/orders", label: "Orders" },
   { href: "/kegs/reports", label: "Reports" },
   { href: "/kegs/demand", label: "Demand per beer" },
   { href: "/kegs/taps", label: "Tap list & TV" },

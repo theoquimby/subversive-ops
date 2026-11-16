@@ -1077,6 +1077,7 @@ model Beer {
   kegs         Keg[]
   fills        KegFill[]
   batches      KegBatch[]
+  orderLines   KegOrderLine[]
 }
 
 /// A small label/logo image for a beer on the tap list (≤ 300 KB, resized in the browser).
@@ -1126,6 +1127,7 @@ model KegAccount {
   createdAt DateTime @default(now())
   kegs      Keg[]
   events    KegEvent[]
+  orders    KegOrder[]
 }
 
 model Keg {
@@ -1157,6 +1159,7 @@ model Keg {
   createdAt  DateTime   @default(now())
   fills      KegFill[]  @relation("KegFills")
   events     KegEvent[]
+  orderKegs  KegOrderKeg[]
 
   @@index([status])
   @@index([beerId])
@@ -1218,6 +1221,84 @@ model KegEvent {
 
   @@index([kegId, at])
   @@index([at])
+}
+
+// ---------------------------------------------------------------------------
+// Keg orders: what a wholesale account asked for, filled by scanning kegs out.
+// ---------------------------------------------------------------------------
+
+enum KegOrderStatus {
+  OPEN
+  FULFILLED
+  CANCELLED
+}
+
+/// A wholesale order: full kegs for one account, delivered or picked up.
+model KegOrder {
+  id              String         @id @default(cuid())
+  /// A short order number people can say out loud ("order 42")
+  number          Int            @unique @default(autoincrement())
+  accountId       String
+  account         KegAccount     @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  transit         String         @default("DELIVERY") // DELIVERY | PICKUP
+  dueOn           DateTime?      @db.Date
+  status          KegOrderStatus @default(OPEN)
+  createdAt       DateTime       @default(now())
+  createdById     String?
+  createdByName   String?
+  fulfilledAt     DateTime?
+  fulfilledByName String?
+  cancelledAt     DateTime?
+  cancelledByName String?
+  lines           KegOrderLine[]
+  kegs            KegOrderKeg[]
+  notes           KegOrderNote[]
+
+  @@index([status, dueOn])
+  @@index([accountId])
+}
+
+/// One line of an order: this many kegs of one beer in one size.
+model KegOrderLine {
+  id        String        @id @default(cuid())
+  orderId   String
+  order     KegOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  beerId    String
+  beer      Beer          @relation(fields: [beerId], references: [id], onDelete: Restrict)
+  sizeId    String
+  quantity  Int
+  /// Kegs marked delivered without scanning (stickers that can't be read)
+  unscanned Int           @default(0)
+  sort      Int           @default(0)
+  kegs      KegOrderKeg[]
+}
+
+/// A keg scanned out against an order line.
+model KegOrderKeg {
+  id       String       @id @default(cuid())
+  orderId  String
+  order    KegOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lineId   String
+  line     KegOrderLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  kegId    String
+  keg      Keg          @relation(fields: [kegId], references: [id], onDelete: Cascade)
+  /// The KegEvent that sent it out (for undo)
+  eventId  String?
+  at       DateTime     @default(now())
+  userName String?
+
+  @@unique([orderId, kegId])
+}
+
+/// A note on an order. Anyone can add one; they are never edited.
+model KegOrderNote {
+  id       String   @id @default(cuid())
+  orderId  String
+  order    KegOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  at       DateTime @default(now())
+  userId   String?
+  userName String?
+  text     String
 }
 
 /// End-of-shift handoff: what the next person (and tomorrow's morning brief) needs to know.
