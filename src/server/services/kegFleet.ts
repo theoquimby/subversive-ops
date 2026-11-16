@@ -1,6 +1,6 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
-import { addDays, businessDate, type ISODate } from "@/domain/dates";
+import { businessDate, type ISODate } from "@/domain/dates";
 import { cycles, fillsByMonth, fleetStats, monthsBetween, notSeenLately, outTooLong, statusSizeGrid, weeklyFleet, weekStarts, type FleetEvent, type FleetKeg, type FleetStats, type IdleKeg, type MonthRow, type OutGroup, type WeekPoint } from "@/domain/kegFleet";
 import { kegSizeInfo, type KegStatus } from "@/domain/kegs";
 import { db } from "../db";
@@ -59,7 +59,9 @@ export interface FleetReport {
 
 export async function fleetReport(range: FleetRange, beerId: string | null): Promise<FleetReport> {
   const [{ events, kegs, today, first }, cfg, beerRows] = await Promise.all([fleetData(), kegConfig(), db.beer.findMany({ select: { id: true, name: true, color: true }, orderBy: { name: "asc" } })]);
-  const yearAgo = addDays(today, -364);
+  // "12 months" is the current month and the eleven before it, so the monthly charts and the totals cover the same days.
+  const m = Number(today.slice(0, 4)) * 12 + Number(today.slice(5, 7)) - 1 - 11;
+  const yearAgo = `${Math.floor(m / 12)}-${String((m % 12) + 1).padStart(2, "0")}-01`;
   const from = range === "all" && first ? first : first && first > yearAgo ? first : yearAgo;
   const cs = cycles(events, kegs);
   const gallons = new Map(kegs.map((k) => [k.id, kegSizeInfo(k.sizeId).gallons]));

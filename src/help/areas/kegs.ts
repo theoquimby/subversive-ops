@@ -115,6 +115,58 @@ This is the real yield for draft costing: if it's well under the yield on [Draft
     related: ["kegs.demand"],
   },
   {
+    id: "kegs.fleet",
+    area: "kegs",
+    route: "/kegs/fleet",
+    title: "Fleet & trends",
+    body: "How the keg fleet is used over time, worked out from every scan: where the kegs were each week, how many were filled each month, where that beer went, and which kegs need a look.",
+    article: `Everything here comes from the keg history, including history imported from your old keg app. Nothing is typed in.
+
+**Where the fleet was** stacks the kegs by state at the end of each week. If most of the fleet is usually dirty or clean, you own more kegs than you need. If it's nearly all full or out, you're one busy weekend from having nothing to fill.
+
+**Kegs filled per month** puts this year beside last year. Pick a beer to see just that one.
+
+**Fleet by status and size** is every keg right now. Export gives the same grid as a file.`,
+    related: ["kegs.fleet.turns", "kegs.fleet.went", "kegs.fleet.look", "kegs.history"],
+    keywords: ["trends", "graphs", "charts", "fleet", "cooperage", "turns", "cycle", "report"],
+  },
+  {
+    id: "kegs.fleet.turns",
+    area: "kegs",
+    route: "/kegs/fleet",
+    title: "Turns and cycles",
+    body: "Turns is how many times the average keg was filled in the last 12 months. Days per cycle is the middle number of days from a fill to that keg coming back dirty.",
+    related: ["kegs.fleet"],
+  },
+  {
+    id: "kegs.fleet.went",
+    area: "kegs",
+    route: "/kegs/fleet",
+    title: "Where the beer went",
+    body: "Each month's fills by what happened next: tapped here, sent out to an account, still full, or back dirty with no tap or delivery scan in between.",
+    article: `A fill counts as **Tapped here** or **Sent out** by its first tap or delivery scan. **Still full** is beer you have in stock now.
+
+**No scan** means the keg was filled and later came back dirty, and nobody scanned it going on tap or out the door. The beer went somewhere, but the history can't say where. Those kegs are also missing from the [beer tax](/beer-tax) worksheet, which counts taps and deliveries.
+
+The fix is the habit, not the app: scan a keg when it goes on and when it goes out.`,
+    related: ["kegs.fleet", "kegs.scan"],
+    keywords: ["no scan", "missing", "unknown", "where did it go", "beer tax"],
+  },
+  {
+    id: "kegs.fleet.look",
+    area: "kegs",
+    route: "/kegs/fleet",
+    title: "Kegs that need a look",
+    body: "Two lists: kegs that have been out at an account too long, and kegs in service that nobody has scanned in a long time. Managers also see a summary on the Kegs page.",
+    article: `**Out too long** is every keg at an account for more than 14 days, grouped by account with the longest wait first. Call the account or pick the kegs up.
+
+**Not seen lately** is every keg that isn't out and hasn't been scanned for 90 days. Find it and scan it. If it's gone, **Retire** takes it off the boards and keeps its history; it's still under [All kegs](/kegs/all) → Retired if it turns up.
+
+Both numbers of days can be changed on [Setup](/kegs/setup) under Taps and storage.`,
+    related: ["kegs.fleet", "kegs.all", "kegs.setup"],
+    keywords: ["overdue", "lost keg", "limbo", "missing keg", "out too long", "retire"],
+  },
+  {
     id: "kegs.all",
     area: "kegs",
     route: "/kegs/all",

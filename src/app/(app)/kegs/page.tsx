@@ -2,8 +2,9 @@ import { HelpTip, HelpZone } from "@/components/help";
 import { Card, EmptyState, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
 import { displayCode, sinceLabel } from "@/domain/kegs";
 import { requireUser } from "@/server/auth";
+import { fleetNeedsLook } from "@/server/services/kegFleet";
 import { stockSummary, tapBoard } from "@/server/services/kegs";
-import { Beer, ChartColumn, FileUp, History, ListChecks, ListOrdered, Printer, ScanLine, Settings2, Warehouse } from "lucide-react";
+import { Beer, ChartColumn, FileUp, History, ListChecks, ListOrdered, Printer, ScanLine, Settings2, TrendingUp, Warehouse } from "lucide-react";
 import Link from "next/link";
 import { BeerDot, daysText, LeftBar, pctText, sizeShort } from "./bits";
 import { QueueWatcher } from "./scanner";
@@ -13,7 +14,9 @@ export const metadata = { title: "Kegs" };
 export default async function KegsPage() {
   const me = await requireUser();
   const manager = me.role === "MANAGER";
-  const [{ taps, yield: yi }, stock] = await Promise.all([tapBoard(), stockSummary()]);
+  const [{ taps, yield: yi }, stock, look] = await Promise.all([tapBoard(), stockSummary(), manager ? fleetNeedsLook() : null]);
+  const outKegs = look?.out.reduce((s, g) => s + g.kegs.length, 0) ?? 0;
+  const idleKegs = look?.idle.length ?? 0;
   const onTap = taps.filter((t) => t.keg);
   const dry = onTap.filter((t) => t.keg?.beerId && t.backups === 0 && (t.estimate?.daysLeft ?? 99) < 7);
 
@@ -90,6 +93,16 @@ export default async function KegsPage() {
         )}
       </Section>
 
+      {manager && look && outKegs + idleKegs > 0 && (
+        <Link href="/kegs/fleet#look" className="mb-8 block rounded-xl border border-warn/25 bg-warn-bg p-4 transition-colors duration-120 hover:border-warn/45">
+          <div className="text-sm font-semibold text-warn">Needs a look</div>
+          <ul className="num mt-1 space-y-0.5 text-sm text-ink-2">
+            {outKegs > 0 && <li>{outKegs} keg{outKegs === 1 ? "" : "s"} out at {look.out.length} account{look.out.length === 1 ? "" : "s"} for more than {look.overdueDays} days</li>}
+            {idleKegs > 0 && <li>{idleKegs} keg{idleKegs === 1 ? "" : "s"} not scanned in {look.idleDays} days</li>}
+          </ul>
+        </Link>
+      )}
+
       {manager && (
         <Section title="Manage">
           <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -102,6 +115,7 @@ export default async function KegsPage() {
               { href: "/kegs/beers", label: "Beers", icon: Beer, hint: "Style, ABV, prices, labels" },
               { href: "/kegs/cooler", label: "Walk-in board", icon: Warehouse, hint: "Where every keg is" },
               { href: "/kegs/demand", label: "Demand per beer", icon: ChartColumn, hint: "What to fill next" },
+              { href: "/kegs/fleet", label: "Fleet & trends", icon: TrendingUp, hint: "Turns, fills, kegs out too long" },
               { href: "/kegs/all", label: "All kegs & labels", icon: Printer, hint: "Add kegs, print stickers" },
               { href: "/kegs/setup", label: "Setup", icon: Settings2, hint: "Beers, spots, taps, accounts" },
               { href: "/kegs/history", label: "History", icon: History, hint: "Every scan, who and when" },

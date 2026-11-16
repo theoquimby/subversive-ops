@@ -167,7 +167,7 @@ export function cycles(events: FleetEvent[], kegs: Pick<FleetKeg, "id" | "status
     const last = mine[mine.length - 1];
     const now = statusNow.get(kegId);
     if (last && !last.seen && last.end === null && (now === "FILLED" || now === "COLD")) last.went = "stock";
-    for (const { seen: _seen, ...c } of mine) out.push(c);
+    for (const c of mine) out.push({ kegId: c.kegId, beerId: c.beerId, start: c.start, scannedFill: c.scannedFill, went: c.went, end: c.end, days: c.days });
   }
   return out;
 }
