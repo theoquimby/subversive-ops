@@ -1,5 +1,6 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
+import { readBrewLog } from "@/domain/brewDay";
 import { recipeStats, type BrewLineInput, type BrewLineKind, type HopUse } from "@/domain/brewMath";
 import { baseUnitForBrewUnit, brewToBase, BREWING_CATEGORIES, categoryForKind, costBrewRecipe, type BrewRecipeStatus } from "@/domain/brewRecipes";
 import { STANDARD_UNITS_BY_BASE, type BaseUnit } from "@/domain/units";
@@ -158,11 +159,38 @@ export interface BrewRecipeData {
   targetFg: number | null;
   notes: string | null;
   lines: BrewLineData[];
+  /** Brew-day targets and timing. Left out when saving from somewhere that doesn't edit them: they stay as they are. */
+  process?: RecipeProcess;
 }
 
-export async function brewRecipeData(id: string): Promise<(BrewRecipeData & { brews: number; sourceKey: string | null; extra: unknown }) | null> {
-  const r = await db.brewRecipe.findUnique({ where: { id }, include: { lines: { orderBy: { sort: "asc" } }, _count: { select: { batches: true } } } });
+/** Brew-day targets (gravities as SG; strike and mash °F) and the timing profile with its days. */
+export interface RecipeProcess {
+  targetMt: number | null;
+  targetBk: number | null;
+  targetKo: number | null;
+  strikeF: number | null;
+  mashF: number | null;
+  mashMinutes: number | null;
+  /** "hazy" | "sour" | "lager" | "pale" | "custom" | null */
+  profile: string | null;
+  dryHopDay: number | null;
+  tapDay: number | null;
+  artworkDone: boolean;
+}
+
+export const BLANK_PROCESS: RecipeProcess = { targetMt: null, targetBk: null, targetKo: null, strikeF: null, mashF: null, mashMinutes: null, profile: null, dryHopDay: null, tapDay: null, artworkDone: false };
+
+export async function brewRecipeData(id: string): Promise<(BrewRecipeData & { process: RecipeProcess; brews: number; sourceKey: string | null; extra: unknown; batches: { id: string; code: string; status: string; plannedOn: string | null; brewedOn: string | null; inProgress: boolean }[] }) | null> {
+  const r = await db.brewRecipe.findUnique({
+    where: { id },
+    include: {
+      lines: { orderBy: { sort: "asc" } },
+      _count: { select: { batches: true } },
+      batches: { where: { status: { in: ["PLANNED", "FERMENTING", "CONDITIONING"] } }, orderBy: [{ plannedOn: "asc" }, { brewedOn: "desc" }], take: 8, select: { id: true, code: true, status: true, plannedOn: true, brewedOn: true, brewLog: true } },
+    },
+  });
   if (!r) return null;
+  const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
   return {
     id: r.id,
     name: r.name,
@@ -178,11 +206,40 @@ export async function brewRecipeData(id: string): Promise<(BrewRecipeData & { br
     targetFg: num(r.targetFg),
     notes: r.notes,
     lines: r.lines.map((l) => ({ ...statsLine(l), id: l.id, ingredientId: l.ingredientId, use: (l.use as HopUse | null) ?? null, minutes: l.minutes ?? null, potentialPpg: num(l.potentialPpg), colorL: num(l.colorL), alphaPct: num(l.alphaPct), attenuationPct: num(l.attenuationPct) })),
+    process: {
+      targetMt: num(r.targetMt),
+      targetBk: num(r.targetBk),
+      targetKo: num(r.targetKo),
+      strikeF: num(r.strikeF),
+      mashF: num(r.mashF),
+      mashMinutes: r.mashMinutes,
+      profile: r.profile,
+      dryHopDay: r.dryHopDay,
+      tapDay: r.tapDay,
+      artworkDone: r.artworkDone,
+    },
     brews: r._count.batches,
     sourceKey: r.sourceKey,
     extra: r.extra,
+    batches: r.batches.map((b) => {
+      const log = readBrewLog(b.brewLog);
+      return { id: b.id, code: b.code, status: b.status, plannedOn: day(b.plannedOn), brewedOn: day(b.brewedOn), inProgress: b.status === "PLANNED" && !!log && !log.finishedAt };
+    }),
   };
 }
+
+const processData = (p: RecipeProcess) => ({
+  targetMt: p.targetMt == null ? null : D(p.targetMt, 4),
+  targetBk: p.targetBk == null ? null : D(p.targetBk, 4),
+  targetKo: p.targetKo == null ? null : D(p.targetKo, 4),
+  strikeF: p.strikeF == null ? null : D(p.strikeF, 1),
+  mashF: p.mashF == null ? null : D(p.mashF, 1),
+  mashMinutes: p.mashMinutes == null ? null : Math.round(p.mashMinutes),
+  profile: p.profile?.trim() || null,
+  dryHopDay: p.dryHopDay == null ? null : Math.round(p.dryHopDay),
+  tapDay: p.tapDay == null ? null : Math.round(p.tapDay),
+  artworkDone: p.artworkDone,
+});
 
 const lineData = (l: BrewLineData, i: number) => ({
   kind: l.kind,
@@ -210,9 +267,10 @@ export async function saveBrewRecipe(id: string | null, r: BrewRecipeData): Prom
     boilMinutes: Math.round(r.boilMinutes),
     fermentDays: Math.round(r.fermentDays),
     conditionDays: Math.round(r.conditionDays),
-    targetOg: r.targetOg == null ? null : D(r.targetOg, 3),
-    targetFg: r.targetFg == null ? null : D(r.targetFg, 3),
+    targetOg: r.targetOg == null ? null : D(r.targetOg, 4),
+    targetFg: r.targetFg == null ? null : D(r.targetFg, 4),
     notes: r.notes?.trim() || null,
+    ...(r.process ? processData(r.process) : {}),
   };
   const lines = r.lines.map(lineData);
   try {
@@ -248,6 +306,15 @@ export async function duplicateBrewRecipe(id: string): Promise<{ id: string } | 
       boilMinutes: r.boilMinutes,
       targetOg: r.targetOg,
       targetFg: r.targetFg,
+      targetMt: r.targetMt,
+      targetBk: r.targetBk,
+      targetKo: r.targetKo,
+      strikeF: r.strikeF,
+      mashF: r.mashF,
+      mashMinutes: r.mashMinutes,
+      profile: r.profile,
+      dryHopDay: r.dryHopDay,
+      tapDay: r.tapDay,
       fermentDays: r.fermentDays,
       conditionDays: r.conditionDays,
       notes: r.notes,

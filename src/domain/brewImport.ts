@@ -1,5 +1,7 @@
 /**
- * Brew Manager backup → Ops brewing recipes, brews and tank stays.
+ * Brew Manager → Ops: brewing recipes, brews and tank stays from its backup;
+ * recipes, development beers, the brew schedule, tanks and suppliers' lead times
+ * from its app data (see "Brew Manager's app data" below).
  *
  * Brew Manager (the head brewer's own app) writes a backup from
  * Settings → Backup → Export backup JSON: `{ recipes, batches, exportedAt }`.
@@ -19,7 +21,24 @@
  * Everything is optional here: a missing field is left empty, never guessed silently.
  */
 
+import {
+  BREW_PROFILES,
+  forecastDates,
+  isLeadRef,
+  isProfileKey,
+  newBrewLog,
+  readBrewLog,
+  readProfiles,
+  STAGE_FIELDS,
+  type BrewLog,
+  type BrewProfile,
+  type Forecast,
+  type LeadRef,
+  type ProfileKey,
+  type StageId,
+} from "./brewDay";
 import { brewUnit, type BrewLineKind, type BrewUnit, type HopUse } from "./brewMath";
+import { platoToSg as platoToSgExact } from "./gravity";
 import { standardUnit } from "./units";
 
 export const SOURCE_PREFIX = "brewmanager:";
@@ -45,11 +64,20 @@ export interface MappedRecipe {
   sourceKey: string;
   name: string;
   style: string | null;
-  status: "live" | "archived";
+  status: "live" | "dev" | "archived";
   batchBbl: number | null;
   boilMinutes: number | null;
   targetOg: number | null;
   targetFg: number | null;
+  /** Brew-day targets: mash tun, boil kettle and knock-out gravity (SG), strike and mash °F, mash minutes */
+  targetMt: number | null;
+  targetBk: number | null;
+  targetKo: number | null;
+  strikeF: number | null;
+  mashF: number | null;
+  mashMinutes: number | null;
+  /** Development beers only: label artwork finished */
+  artworkDone: boolean | null;
   notes: string | null;
   extra: { brewManager: Record<string, unknown> };
   lines: MappedLine[];
@@ -75,6 +103,12 @@ export interface MappedBatch {
   og: number | null;
   fg: number | null;
   notes: string | null;
+  /** Brew Manager's brew-day log, in Ops' shape */
+  brewLog: BrewLog | null;
+  halfKegs: number | null;
+  sixthKegs: number | null;
+  cases: number | null;
+  co2Vols: number | null;
   extra: { brewManager: Record<string, unknown> };
   stays: MappedStay[];
 }
@@ -122,12 +156,21 @@ export function parseAmount(text: string): { qty: number; unit: BrewUnit; range:
   return null;
 }
 
-/** °Plato → specific gravity: SG = 1 + P ÷ (258.6 − (P ÷ 258.2 × 227.1)). Null when empty or not positive. */
+/** °Plato as Brew Manager writes it ("15.5", 15.5) → specific gravity (SG = 1 + P ÷ (258.6 − 0.879 × P)). Null when empty or not positive. */
 export function platoToSg(p: unknown): number | null {
   const n = numOf(p);
   if (n == null || !(n > 0) || n > 60) return null;
-  return 1 + n / (258.6 - (n / 258.2) * 227.1);
+  return platoToSgExact(n);
 }
+
+const sg4 = (p: unknown) => {
+  const g = platoToSg(p);
+  return g == null ? null : round(g, 4);
+};
+const posNum = (v: unknown, max: number) => {
+  const n = numOf(v);
+  return n != null && n > 0 && n <= max ? n : null;
+};
 
 /** "8", "7-8" (midpoint), 9 → barrels. */
 export function parseBbl(v: unknown): number | null {
@@ -216,14 +259,8 @@ function isoDate(v: unknown): ISODate | null {
 
 // ---- Recipes ------------------------------------------------------------------------
 
-function mapRecipe(r: Obj, warnings: string[], unknown: Set<string>): Omit<MappedRecipe, "name"> & { name: string } | null {
-  const name = str(r.name);
-  const id = str(r.id);
-  if (!name || !id) {
-    warnings.push(name ? `Recipe "${name}" has no id, so it was skipped.` : "A recipe with no name was skipped.");
-    return null;
-  }
-  const boil = parseBoilMinutes(r.boilTime);
+/** Grain, hop and yeast lines from Brew Manager's grains / hops / yeast fields (recipes and development beers alike). */
+function mapLines(r: Obj, name: string, boil: number | null, warnings: string[], unknown: Set<string>): MappedLine[] {
   const lines: MappedLine[] = [];
   const amount = (text: unknown, what: string, fallback: BrewUnit): { qty: number; unit: BrewUnit; raw: string | null } => {
     const raw = str(text);
@@ -266,25 +303,45 @@ function mapRecipe(r: Obj, warnings: string[], unknown: Set<string>): Omit<Mappe
     if (t.guessed) warnings.push(`${name}: no time for ${lineName}; counted as a full-boil addition.`);
     lines.push({ kind: "hop", name: lineName, ...a, use: t.use, minutes: t.minutes });
   }
-  const strain = str(r.yeastStrain);
+  // Recipes have a strain (and supplier, amount); development beers one line of yeast text.
+  const strain = str(r.yeastStrain) || str(r.yeast);
   if (strain) {
     const sup = str(r.yeastSup);
-    const lineName = sup ? `${strain}, ${sup}` : strain;
+    const lineName = (sup ? `${strain}, ${sup}` : strain).slice(0, 160);
     const rawAmt = str(r.yeastAmt);
     const a = rawAmt ? amount(rawAmt, lineName, "pkg") : { qty: 0, unit: "pkg" as BrewUnit, raw: null };
     lines.push({ kind: "yeast", name: lineName, ...a, use: null, minutes: null });
   }
+  return lines;
+}
 
-  const og = platoToSg(r.ogP) ?? platoToSg(r.koP);
+function mapRecipe(r: Obj, warnings: string[], unknown: Set<string>, prefix = SOURCE_PREFIX): MappedRecipe | null {
+  const name = str(r.name);
+  const id = str(r.id);
+  if (!name || !id) {
+    warnings.push(name ? `Recipe "${name}" has no id, so it was skipped.` : "A recipe with no name was skipped.");
+    return null;
+  }
+  const boil = parseBoilMinutes(r.boilTime);
+  const lines = mapLines(r, name, boil, warnings, unknown);
+  const mashMinutes = posNum(r.mashDur, 1440);
   return {
-    sourceKey: `${SOURCE_PREFIX}${id}`,
+    sourceKey: `${prefix}${id}`,
     name: name.slice(0, 120),
     style: strOrNull(r.style),
     status: r.archived === true ? "archived" : "live",
     batchBbl: parseBbl(r.batch),
     boilMinutes: boil,
-    targetOg: og == null ? null : round(og, 3),
-    targetFg: platoToSg(r.fgP) == null ? null : round(platoToSg(r.fgP)!, 3),
+    // No OG target: the knock-out gravity stands in.
+    targetOg: sg4(r.ogP) ?? sg4(r.koP),
+    targetFg: sg4(r.fgP),
+    targetMt: sg4(r.mtP),
+    targetBk: sg4(r.bkP),
+    targetKo: sg4(r.koP),
+    strikeF: posNum(r.strike, 215),
+    mashF: posNum(r.mashTemp, 215),
+    mashMinutes: mashMinutes == null ? null : Math.round(mashMinutes),
+    artworkDone: null,
     notes: strOrNull(r.notes),
     extra: {
       brewManager: {
@@ -361,6 +418,46 @@ const initials = (name: string) =>
     .toUpperCase()
     .slice(0, 4) || "X";
 
+/** Brew Manager's stage names and fields → Ops' brew-day log fields (gravities in °P there, SG here). */
+const BM_STAGES: { bm: string; id: StageId; fields: Record<string, string> }[] = [
+  { bm: "Mash", id: "mash", fields: { strike: "strikeF", mashTemp: "mashF", mtPlato: "mtSg", ph: "ph", startTime: "startTime", strikeVol: "strikeBbl" } },
+  { bm: "Lauter/Sparge", id: "lauter", fields: { bkPlato: "bkSg", spargeTemp: "spargeF", preboilVol: "preboilBbl", runoffTime: "runoffMin" } },
+  { bm: "Boil", id: "boil", fields: { boilStart: "boilStart", koPlato: "koSg", ogPlato: "ogSg", postboilVol: "postboilBbl" } },
+  { bm: "Fermentation", id: "ferment", fields: { pitchTemp: "pitchF", fermTemp: "fermF" } },
+  { bm: "Packaging", id: "package", fields: { finalFg: "fgSg", halfKegs: "halfKegs", sixthKegs: "sixthKegs", cans: "cases", co2: "co2Vols" } },
+];
+
+/** Brew Manager's brew-day log ({ stages: { Mash: {...}, ... } }) as an Ops brew-day log, finished on the brew day. Null when nothing was written down. */
+export function brewLogFromBrewManager(raw: unknown, brewedOn: ISODate | null): BrewLog | null {
+  const stages = isObj(raw) && isObj(raw.stages) ? raw.stages : null;
+  if (!stages) return null;
+  const at = `${brewedOn ?? "1970-01-01"}T12:00:00.000Z`;
+  const values: Record<string, Record<string, unknown>> = {};
+  const notes: Record<string, string> = {};
+  let any = false;
+  for (const s of BM_STAGES) {
+    const sd = isObj(stages[s.bm]) ? (stages[s.bm] as Obj) : null;
+    if (!sd) continue;
+    const kinds = new Map(STAGE_FIELDS[s.id].map((f) => [f.key, f.kind]));
+    values[s.id] = {};
+    for (const [from, to] of Object.entries(s.fields)) {
+      const v = sd[from];
+      if (v == null || v === "") continue;
+      values[s.id][to] = kinds.get(to) === "gravity" ? sg4(v) : kinds.get(to) === "time" ? str(v) : numOf(v);
+    }
+    if (str(sd.notes)) notes[s.id] = str(sd.notes);
+  }
+  const log = readBrewLog({ ...newBrewLog(new Date(at)), stage: "ferment", finishedAt: at, values, notes });
+  if (!log) return null;
+  for (const s of BM_STAGES) if (Object.keys(log.values[s.id]).length || log.notes[s.id]) any = true;
+  return any ? log : null;
+}
+
+const intOrNull = (v: unknown) => {
+  const n = numOf(v);
+  return n != null && n >= 0 && n < 100000 ? Math.round(n) : null;
+};
+
 function mapBatch(b: Obj, recipeKeyByName: Map<string, string>, warnings: string[]): MappedBatch | null {
   const id = str(b.id);
   const beer = str(b.beer);
@@ -378,9 +475,8 @@ function mapBatch(b: Obj, recipeKeyByName: Map<string, string>, warnings: string
   }
   const copy = isObj(b.recipe) ? b.recipe : null;
   const recipeSourceKey = copy && str(copy.id) ? `${SOURCE_PREFIX}${str(copy.id)}` : (recipeKeyByName.get(norm(beer)) ?? null);
-  const fg = platoToSg(b.fg);
-  const og = platoToSg(b.og);
   const forecast = isObj(b.forecast) ? b.forecast : null;
+  const co2 = numOf(b.pkgCo2);
   return {
     sourceKey: `${SOURCE_PREFIX}${id}`,
     code: brewed ? `BM-${brewed.slice(2, 4)}${brewed.slice(5, 7)}${brewed.slice(8, 10)}-${initials(beer)}` : `BM-${id.slice(-8)}`,
@@ -392,9 +488,14 @@ function mapBatch(b: Obj, recipeKeyByName: Map<string, string>, warnings: string
     packagedOn: status === "PACKAGED" ? isoDate(b.pkgDate) : null,
     plannedOn: forecast ? isoDate(forecast.brewDay) : null,
     bbl: parseBbl(b.vol),
-    og: og == null ? null : round(og, 3),
-    fg: fg == null ? null : round(fg, 3),
+    og: sg4(b.og),
+    fg: sg4(b.fg),
     notes: strOrNull(b.notes),
+    brewLog: brewLogFromBrewManager(b.brewLog, brewed),
+    halfKegs: intOrNull(b.pkgHalf),
+    sixthKegs: intOrNull(b.pkgSixth),
+    cases: intOrNull(b.pkgCans),
+    co2Vols: co2 != null && co2 > 0 && co2 < 10 ? co2 : null,
     extra: {
       brewManager: {
         id: b.id,
@@ -530,5 +631,408 @@ export function previewBackup(
     unknownUnits: data.unknownUnits,
     warnings: data.warnings,
     exportedAt: data.exportedAt,
+  };
+}
+
+// ---- Brew Manager's app data ------------------------------------------------------------
+//
+// brewmanager-app-data.json is made from Brew Manager's own page (its built-in data plus
+// what it keeps): { source: "brewmanager-app-file", tanks: [{ id, size, kind }], recipes,
+// devbeers: [{ id, name, style, abv, status, grains, hops, yeast, notes, artworkDone }],
+// schedule: [{ id, beer, brewDate, style, abv, profile, locked, lockedReason? }],
+// profiles: { hazy: { label, dryHop?, fvTransfer?, brite, pkg, tap, briteDay, pkgDay }, … },
+// supplierLeadTimes: { "<supplier>": { leadDays, ref: "brew" | "dryHop" | "pkg" } } }.
+
+export const APP_DATA_SOURCE = "brewmanager-app-file";
+export const RECIPE_PREFIX = `${SOURCE_PREFIX}recipe:`;
+export const DEV_PREFIX = `${SOURCE_PREFIX}dev:`;
+export const SCHED_PREFIX = `${SOURCE_PREFIX}sched:`;
+
+export type BrewManagerFileKind = "app" | "backup";
+
+/** Which of Brew Manager's two files this is: the app data (schedule, development beers, tanks) or the backup (recipes and brews). */
+export function detectBrewManagerFile(json: unknown): BrewManagerFileKind | null {
+  if (!isObj(json)) return null;
+  if (json.source === APP_DATA_SOURCE) return "app";
+  if (!Array.isArray(json.batches) && ["schedule", "devbeers", "tanks", "supplierLeadTimes", "profiles"].some((k) => k in json)) return "app";
+  if (Array.isArray(json.recipes) || Array.isArray(json.batches)) return "backup";
+  return null;
+}
+
+/** One recipe's keys in either file: the backup's "brewmanager:<id>" and the app data's "brewmanager:recipe:<id>". */
+export function recipeKeyAliases(key: string): string[] {
+  if (key.startsWith(RECIPE_PREFIX)) return [key, `${SOURCE_PREFIX}${key.slice(RECIPE_PREFIX.length)}`];
+  const rest = key.startsWith(SOURCE_PREFIX) ? key.slice(SOURCE_PREFIX.length) : "";
+  if (rest && !rest.includes(":")) return [key, `${RECIPE_PREFIX}${rest}`];
+  return [key];
+}
+
+/** Brew Manager's floor plan (renderFloorPlan): where each tank stands. Column 0 of the front row is the brewhouse. */
+export const FLOOR_PLAN: Record<string, { zone: string; row: number; col: number }> = {
+  BBT1: { zone: "Back wall", row: 0, col: 0 },
+  BBT2: { zone: "Back wall", row: 0, col: 1 },
+  FV1: { zone: "Back wall", row: 0, col: 2 },
+  FV2: { zone: "Back wall", row: 0, col: 3 },
+  FV3: { zone: "Back wall", row: 0, col: 4 },
+  FV4: { zone: "Back wall", row: 1, col: 4 },
+  FV5: { zone: "Back wall", row: 2, col: 4 },
+  FV6: { zone: "Front", row: 0, col: 1 },
+  BBT3: { zone: "Front", row: 0, col: 2 },
+  FV7: { zone: "Separate room", row: 0, col: 0 },
+  FV8: { zone: "Separate room", row: 0, col: 1 },
+};
+
+export interface MappedAppTank {
+  name: string;
+  kind: ImportTankKind;
+  capacityBbl: number | null;
+  zone: string | null;
+  layoutRow: number | null;
+  layoutCol: number | null;
+}
+
+export interface MappedPlanned {
+  sourceKey: string;
+  beerName: string;
+  style: string | null;
+  abv: string | null;
+  brewDate: ISODate;
+  profile: ProfileKey | null;
+  forecast: Forecast | null;
+  locked: boolean;
+  lockedReason: string | null;
+}
+
+export interface MappedSupplierLead {
+  name: string;
+  leadDays: number;
+  ref: LeadRef;
+}
+
+export interface MappedAppData {
+  /** Recipes, then development beers (status "dev") */
+  recipes: MappedRecipe[];
+  tanks: MappedAppTank[];
+  schedule: MappedPlanned[];
+  profiles: Record<ProfileKey, BrewProfile>;
+  suppliers: MappedSupplierLead[];
+  warnings: string[];
+  unknownUnits: string[];
+}
+
+function mapDevBeer(d: Obj, warnings: string[], unknown: Set<string>): MappedRecipe | null {
+  const name = str(d.name);
+  const id = str(d.id);
+  if (!name || !id) {
+    warnings.push(name ? `Development beer "${name}" has no id, so it was skipped.` : "A development beer with no name was skipped.");
+    return null;
+  }
+  return {
+    sourceKey: `${DEV_PREFIX}${id}`,
+    name: name.slice(0, 120),
+    style: strOrNull(d.style),
+    status: "dev",
+    batchBbl: null,
+    boilMinutes: null,
+    targetOg: null,
+    targetFg: null,
+    targetMt: null,
+    targetBk: null,
+    targetKo: null,
+    strikeF: null,
+    mashF: null,
+    mashMinutes: null,
+    artworkDone: d.artworkDone === true,
+    notes: strOrNull(d.notes),
+    extra: { brewManager: { id: d.id, devBeer: true, abv: str(d.abv) || null, devStatus: str(d.status) || null } },
+    lines: mapLines(d, name, null, warnings, unknown),
+  };
+}
+
+export function mapAppData(json: unknown): { ok: true; data: MappedAppData } | { ok: false; error: string } {
+  if (detectBrewManagerFile(json) !== "app" || !isObj(json)) return { ok: false, error: "This isn't Brew Manager's app data file. Upload brewmanager-app-data.json." };
+  const arr = (v: unknown) => (Array.isArray(v) ? v : []);
+  if (arr(json.recipes).length > 2000 || arr(json.schedule).length > 5000 || arr(json.devbeers).length > 2000 || arr(json.tanks).length > 200) return { ok: false, error: "That's more than one brewery's app data holds. Check the file." };
+  const warnings: string[] = [];
+  const unknown = new Set<string>();
+
+  const tanks: MappedAppTank[] = [];
+  const tankNames = new Set<string>();
+  for (const t of arr(json.tanks)) {
+    if (!isObj(t)) continue;
+    const name = str(t.id) || str(t.name);
+    if (!name || tankNames.has(name.toLowerCase())) continue;
+    tankNames.add(name.toLowerCase());
+    const given = str(t.kind).toUpperCase();
+    const spot = FLOOR_PLAN[name.toUpperCase()];
+    tanks.push({
+      name: name.slice(0, 40),
+      kind: given === "FERMENTER" || given === "BRITE" || given === "OTHER" ? given : tankKind(name),
+      capacityBbl: posNum(t.size, 1000),
+      zone: spot?.zone ?? null,
+      layoutRow: spot?.row ?? null,
+      layoutCol: spot?.col ?? null,
+    });
+  }
+
+  const recipes: MappedRecipe[] = [];
+  const seenNames = new Map<string, number>();
+  const seenKeys = new Set<string>();
+  const add = (m: MappedRecipe | null) => {
+    if (!m || seenKeys.has(m.sourceKey)) return;
+    seenKeys.add(m.sourceKey);
+    const n = (seenNames.get(norm(m.name)) ?? 0) + 1;
+    seenNames.set(norm(m.name), n);
+    if (n > 1) m.name = `${m.name} (${n})`;
+    recipes.push(m);
+  };
+  for (const r of arr(json.recipes)) if (isObj(r)) add(mapRecipe(r, warnings, unknown, RECIPE_PREFIX));
+  for (const d of arr(json.devbeers)) if (isObj(d)) add(mapDevBeer(d, warnings, unknown));
+
+  const profiles: Record<ProfileKey, BrewProfile> = { ...BREW_PROFILES, ...readProfiles(json.profiles) };
+  const schedule: MappedPlanned[] = [];
+  const schedKeys = new Set<string>();
+  for (const s of arr(json.schedule)) {
+    if (!isObj(s)) continue;
+    const id = str(s.id);
+    const beer = str(s.beer);
+    const brewDate = isoDate(s.brewDate);
+    if (!id || !beer || !brewDate) {
+      warnings.push(beer ? `Planned brew of ${beer} has no ${id ? "brew date" : "id"}, so it was skipped.` : "A planned brew with no beer name was skipped.");
+      continue;
+    }
+    if (schedKeys.has(id)) continue;
+    schedKeys.add(id);
+    const rawProfile = str(s.profile).toLowerCase();
+    const profile = isProfileKey(rawProfile) ? rawProfile : null;
+    if (rawProfile && !profile) warnings.push(`${beer} on ${brewDate}: unknown timing profile "${rawProfile}", so no dry-hop or release date.`);
+    schedule.push({
+      sourceKey: `${SCHED_PREFIX}${id}`,
+      beerName: beer.slice(0, 120),
+      style: strOrNull(s.style),
+      abv: strOrNull(s.abv),
+      brewDate,
+      profile,
+      forecast: profile ? forecastDates(brewDate, profiles[profile]) : null,
+      locked: s.locked === true,
+      lockedReason: s.locked === true ? (strOrNull(s.lockedReason)?.slice(0, 200) ?? null) : null,
+    });
+  }
+  schedule.sort((a, b) => a.brewDate.localeCompare(b.brewDate));
+
+  const suppliers: MappedSupplierLead[] = [];
+  const leads = isObj(json.supplierLeadTimes) ? json.supplierLeadTimes : {};
+  for (const [name, v] of Object.entries(leads)) {
+    const n = name.trim().slice(0, 120);
+    if (!n || !isObj(v)) continue;
+    const days = numOf(v.leadDays);
+    suppliers.push({ name: n, leadDays: days != null && days >= 0 && days <= 365 ? Math.round(days) : 7, ref: isLeadRef(v.ref) ? v.ref : "brew" });
+  }
+
+  if (!tanks.length && !recipes.length && !schedule.length && !suppliers.length) return { ok: false, error: "There's nothing in this file to import." };
+  return { ok: true, data: { recipes, tanks, schedule, profiles, suppliers, warnings, unknownUnits: [...unknown] } };
+}
+
+// ---- Matching names --------------------------------------------------------------------
+
+/** Lower case, no accents or punctuation: "Märzen" and "marzen" are the same. */
+export const foldName = (s: string) =>
+  (s ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+/** Short names on Brew Manager's schedule for its recipes. */
+export const NAME_ALIASES: [string, string][] = [
+  ["Marzen", "Mountain Marzen"],
+  ["Golden Lime", "Golden Lime Lager"],
+  ["Saison", "Saison / Farmhouse"],
+  ["Verdant", "Verdant Voyage"],
+];
+
+/** Words that say what kind of beer, not which one: a match on these alone isn't a match. */
+const GENERIC_WORDS = new Set(["ipa", "ale", "lager", "beer", "stout", "pale", "pils", "pilsner", "sour", "the", "special", "dry", "double", "hazy", "new", "york", "ny", "american", "irish", "imperial", "and", "of", "de"]);
+
+/**
+ * The item with this name: the same name (any case, accents, punctuation), then
+ * a known alias, then the one item whose name holds all the name's words (or
+ * the other way round), when exactly one does and the words say which beer.
+ */
+export function matchName<T extends { name: string }>(name: string, items: T[]): { item: T; how: "exact" | "alias" | "close" } | null {
+  const f = foldName(name);
+  if (!f) return null;
+  const exact = items.find((i) => foldName(i.name) === f);
+  if (exact) return { item: exact, how: "exact" };
+  for (const [a, b] of NAME_ALIASES) {
+    const [fa, fb] = [foldName(a), foldName(b)];
+    const other = f === fa ? fb : f === fb ? fa : null;
+    const hit = other ? items.find((i) => foldName(i.name) === other) : undefined;
+    if (hit) return { item: hit, how: "alias" };
+  }
+  const words = new Set(f.split(" "));
+  const close = items.filter((i) => {
+    const iw = new Set(foldName(i.name).split(" ").filter(Boolean));
+    const [small, big] = words.size <= iw.size ? [words, iw] : [iw, words];
+    return small.size > 0 && [...small].every((w) => big.has(w)) && [...small].some((w) => !GENERIC_WORDS.has(w) && w.length > 2);
+  });
+  return close.length === 1 ? { item: close[0], how: "close" } : null;
+}
+
+// ---- Preview of the app data -----------------------------------------------------------
+
+/** A recipe the schedule can point at: one from this file ("file:<sourceKey>") or one already in Ops ("ops:<id>"). */
+export interface RecipeChoice {
+  ref: string;
+  name: string;
+}
+
+export interface AppImportContext {
+  today: ISODate;
+  includePast: boolean;
+  /** For a schedule name with no recipe: the recipe picked (a RecipeChoice ref), or "" for none */
+  picks: Record<string, string>;
+  beers: { id?: string; name: string }[];
+  opsRecipes: { id: string; name: string; sourceKey: string | null }[];
+  /** Brews already in Ops from an earlier import of this file */
+  batches: { sourceKey: string; status: string }[];
+  tanks: { name: string; capacityBbl: number; guessed: boolean }[];
+  suppliers: { name: string }[];
+}
+
+export interface ScheduleRow {
+  sourceKey: string;
+  beer: string;
+  brewDate: ISODate;
+  profile: ProfileKey | null;
+  profileLabel: string | null;
+  dryHopOn: ISODate | null;
+  tapOn: ISODate | null;
+  locked: boolean;
+  lockedReason: string | null;
+  past: boolean;
+  /** Imported this time (future brews, or past ones when asked for, and not brewed in Ops since) */
+  included: boolean;
+  recipeRef: string | null;
+  recipeName: string | null;
+  how: "exact" | "alias" | "close" | "picked" | null;
+  beerMatch: string | null;
+  /** "new" here, "update" a planned brew from the last import, "brewed" in Ops since (left alone) */
+  state: "new" | "update" | "brewed";
+}
+
+export interface AppImportPreview {
+  kind: "app";
+  tanks: (MappedAppTank & { exists: boolean; sizeFrom: number | null })[];
+  recipes: number;
+  newRecipes: number;
+  updatedRecipes: number;
+  devBeers: number;
+  newDevBeers: number;
+  lines: number;
+  schedule: ScheduleRow[];
+  scheduleCounts: { total: number; future: number; past: number; included: number; brewed: number };
+  /** Schedule names (of brews being imported) with no recipe found */
+  unmatched: string[];
+  recipeChoices: RecipeChoice[];
+  suppliers: (MappedSupplierLead & { exists: boolean })[];
+  beerMatches: { recipe: string; beer: string }[];
+  unmatchedRecipes: string[];
+  warnings: string[];
+  unknownUnits: string[];
+}
+
+/** Recipes the schedule can use: this file's (development beers too), then Ops recipes that didn't come from it. */
+export function recipeChoices(data: MappedAppData, opsRecipes: AppImportContext["opsRecipes"]): RecipeChoice[] {
+  const fileKeys = new Set(data.recipes.flatMap((r) => recipeKeyAliases(r.sourceKey)));
+  const fileNames = new Set(data.recipes.map((r) => foldName(r.name)));
+  return [
+    ...data.recipes.map((r) => ({ ref: `file:${r.sourceKey}`, name: r.name })),
+    ...opsRecipes.filter((r) => !(r.sourceKey && fileKeys.has(r.sourceKey)) && !fileNames.has(foldName(r.name))).map((r) => ({ ref: `ops:${r.id}`, name: r.name })),
+  ];
+}
+
+/** Each planned brew with the recipe it brews (found by name, or picked), its beer, its dates and what importing does to it. */
+export function resolveSchedule(data: MappedAppData, ctx: AppImportContext): ScheduleRow[] {
+  const choices = recipeChoices(data, ctx.opsRecipes);
+  const byRef = new Map(choices.map((c) => [c.ref, c]));
+  const status = new Map(ctx.batches.map((b) => [b.sourceKey, b.status]));
+  return data.schedule.map((s) => {
+    const past = s.brewDate < ctx.today;
+    const st = status.get(s.sourceKey);
+    const state: ScheduleRow["state"] = st == null ? "new" : st === "PLANNED" ? "update" : "brewed";
+    const found = matchName(s.beerName, choices);
+    const pick = ctx.picks[s.beerName];
+    let recipe: RecipeChoice | null = found?.item ?? null;
+    let how: ScheduleRow["how"] = found?.how ?? null;
+    if (!found && pick && byRef.has(pick)) {
+      recipe = byRef.get(pick)!;
+      how = "picked";
+    }
+    const beer = matchName(s.beerName, ctx.beers) ?? (recipe ? matchName(recipe.name, ctx.beers) : null);
+    return {
+      sourceKey: s.sourceKey,
+      beer: s.beerName,
+      brewDate: s.brewDate,
+      profile: s.profile,
+      profileLabel: s.profile ? data.profiles[s.profile].label : null,
+      dryHopOn: s.forecast?.dryHop ?? null,
+      tapOn: s.forecast?.tap ?? null,
+      locked: s.locked,
+      lockedReason: s.lockedReason,
+      past,
+      included: state !== "brewed" && (!past || ctx.includePast),
+      recipeRef: recipe?.ref ?? null,
+      recipeName: recipe?.name ?? null,
+      how,
+      beerMatch: beer?.item.name ?? null,
+      state,
+    };
+  });
+}
+
+export function previewAppData(data: MappedAppData, ctx: AppImportContext): AppImportPreview {
+  const opsKeys = new Set(ctx.opsRecipes.flatMap((r) => (r.sourceKey ? [r.sourceKey] : [])));
+  const exists = (r: MappedRecipe) => recipeKeyAliases(r.sourceKey).some((k) => opsKeys.has(k));
+  const recipes = data.recipes.filter((r) => r.status !== "dev");
+  const devs = data.recipes.filter((r) => r.status === "dev");
+  const tankBy = new Map(ctx.tanks.map((t) => [t.name.trim().toLowerCase(), t]));
+  const supplierNames = new Set(ctx.suppliers.map((s) => s.name.trim().toLowerCase()));
+  const schedule = resolveSchedule(data, ctx);
+  const beerMatches: { recipe: string; beer: string }[] = [];
+  const unmatchedRecipes: string[] = [];
+  for (const r of recipes) {
+    const b = matchName(r.name, ctx.beers);
+    if (b) beerMatches.push({ recipe: r.name, beer: b.item.name });
+    else if (r.status === "live") unmatchedRecipes.push(r.name);
+  }
+  return {
+    kind: "app",
+    tanks: data.tanks.map((t) => {
+      const cur = tankBy.get(t.name.toLowerCase());
+      return { ...t, exists: !!cur, sizeFrom: cur && cur.guessed && t.capacityBbl != null && Math.abs(cur.capacityBbl - t.capacityBbl) > 1e-9 ? cur.capacityBbl : null };
+    }),
+    recipes: recipes.length,
+    newRecipes: recipes.filter((r) => !exists(r)).length,
+    updatedRecipes: recipes.filter(exists).length,
+    devBeers: devs.length,
+    newDevBeers: devs.filter((r) => !exists(r)).length,
+    lines: data.recipes.reduce((s, r) => s + r.lines.length, 0),
+    schedule,
+    scheduleCounts: {
+      total: schedule.length,
+      future: schedule.filter((s) => !s.past).length,
+      past: schedule.filter((s) => s.past).length,
+      included: schedule.filter((s) => s.included).length,
+      brewed: schedule.filter((s) => s.state === "brewed").length,
+    },
+    unmatched: [...new Set(schedule.filter((s) => s.included && (!s.recipeRef || s.how === "picked")).map((s) => s.beer))],
+    recipeChoices: recipeChoices(data, ctx.opsRecipes),
+    suppliers: data.suppliers.map((s) => ({ ...s, exists: supplierNames.has(s.name.toLowerCase()) })),
+    beerMatches,
+    unmatchedRecipes,
+    warnings: data.warnings,
+    unknownUnits: data.unknownUnits,
   };
 }

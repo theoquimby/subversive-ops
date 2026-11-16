@@ -89,7 +89,7 @@ describe("small parsers", () => {
   });
 
   it("converts Plato to specific gravity", () => {
-    // SG = 1 + P / (258.6 − (P / 258.2 × 227.1)); 12 °P → 1 + 12 / 248.045 = 1.04838
+    // SG = 1 + P / (258.6 − 0.879 P); 12 °P → 1 + 12 / 248.052 = 1.04838
     expect(platoToSg(12)).toBeCloseTo(1.04838, 5);
     expect(platoToSg("15.5")).toBeCloseTo(1.06327, 5);
     expect(platoToSg("")).toBeNull();
@@ -161,8 +161,9 @@ describe("mapping a backup", () => {
     expect(r.status).toBe("live");
     expect(r.batchBbl).toBe(7.5);
     expect(r.boilMinutes).toBe(60);
-    expect(r.targetOg).toBe(1.061); // no OG target: the knockout gravity (15 °P = 1.0611) stands in, to 3 places
-    expect(r.targetFg).toBe(1.01); // 2.5 °P = 1.00975
+    expect(r.targetOg).toBe(1.0611); // no OG target: the knockout gravity (15 °P = 1.06112) stands in, to 4 places
+    expect(r.targetFg).toBe(1.0098); // 2.5 °P = 1.00975
+    expect(r).toMatchObject({ targetMt: 1.083, targetBk: 1.0568, targetKo: 1.0611, strikeF: 180, mashF: 152, mashMinutes: 60, artworkDone: null });
     expect(r.notes).toBe("Zinc at KO.");
     expect(r.lines.map((l) => [l.kind, l.name, l.qty, l.unit])).toEqual([
       ["grain", "Pils, Example Maltings (NYS)", 700, "lb"],
@@ -217,8 +218,9 @@ describe("mapping a backup", () => {
     expect(b.brewedOn).toBe("2026-09-01");
     expect(b.packagedOn).toBe("2026-09-22");
     expect(b.bbl).toBe(8);
-    expect(b.og).toBe(1.063); // 15.5 °P = 1.06327, stored to 3 places
-    expect(b.fg).toBe(1.01);
+    expect(b.og).toBe(1.0633); // 15.5 °P = 1.06327, stored to 4 places
+    expect(b.fg).toBe(1.0098);
+    expect(b).toMatchObject({ halfKegs: 10, sixthKegs: 6, cases: null, brewLog: null });
     expect(b.stays).toEqual([
       { tank: "FV2", start: "2026-09-01", end: "2026-09-05" },
       { tank: "FV4", start: "2026-09-05", end: "2026-09-18" },

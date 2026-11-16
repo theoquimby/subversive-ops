@@ -3,20 +3,25 @@
 import { useConfirm } from "@/components/dialog";
 import { HelpTip, HelpZone } from "@/components/help";
 import type { SelectOption } from "@/components/select";
-import { Badge, Button, Card, cx, Field, Input, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Card, cx, Field, Input, LinkButton, Select, Textarea } from "@/components/ui";
+import { BREW_PROFILES, isProfileKey, PROFILE_OPTIONS, profileDays, whatsMissing } from "@/domain/brewDay";
 import { BREW_UNITS, grainDefaults, MASS_UNITS, recipeStats, scaleQty, type BrewLineKind, type BrewUnit, type HopUse } from "@/domain/brewMath";
 import { brewToBase, categoryForKind, costBrewRecipe, HOP_USE_LABEL, KIND_LABEL, PACKAGING_LOSS, RECIPE_STATUSES, type BrewRecipeStatus, type PricedIngredient } from "@/domain/brewRecipes";
+import { formatGravity, sgToPlato, type GravityUnit } from "@/domain/gravity";
 import { money, pct, qty, shortDate } from "@/lib/format";
-import type { BrewCatalogIngredient, BrewLineData, BrewRecipeData } from "@/server/services/brewRecipes";
-import { Copy, Plus, Trash2, X } from "lucide-react";
+import { BLANK_PROCESS, type BrewCatalogIngredient, type BrewLineData, type BrewRecipeData, type RecipeProcess } from "@/server/services/brewRecipes";
+import { Check, Circle, Copy, Play, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { Swatch } from "../recipe-list";
-import { createBrewIngredientAction, duplicateBrewRecipeAction, removeBrewRecipeAction, saveBrewRecipeAction } from "../actions";
+import { GravityInput } from "../../brew/gravity-bits";
+import { createBrewIngredientAction, duplicateBrewRecipeAction, removeBrewRecipeAction } from "../actions";
+import { saveRecipeEditorAction } from "./actions";
 
 type Line = BrewLineData & { key: string };
-type Recipe = Omit<BrewRecipeData, "lines"> & { lines: Line[] };
+type Recipe = Omit<BrewRecipeData, "lines" | "process"> & { lines: Line[]; process: RecipeProcess };
+type BatchLink = { id: string; code: string; status: string; plannedOn: string | null; brewedOn: string | null; inProgress: boolean };
 type SectionId = "grain" | "hop" | "yeast" | "other";
 
 const newKey = () => Math.random().toString(36).slice(2);
@@ -25,9 +30,8 @@ const plain = (l: Line): BrewLineData => {
   void key;
   return rest;
 };
-const withKeys = (r: BrewRecipeData): Recipe => ({ ...r, lines: r.lines.map((l) => ({ ...l, key: l.id ?? newKey() })) });
+const withKeys = (r: BrewRecipeData): Recipe => ({ ...r, process: r.process ?? BLANK_PROCESS, lines: r.lines.map((l) => ({ ...l, key: l.id ?? newKey() })) });
 const sectionOf = (k: BrewLineKind): SectionId => (k === "grain" ? "grain" : k === "hop" ? "hop" : k === "yeast" ? "yeast" : "other");
-const sg = (n: number) => n.toFixed(3);
 
 const SECTIONS: { id: SectionId; title: string; add: BrewLineKind; addLabel: string; units: BrewUnit[]; defaultUnit: BrewUnit; help: string }[] = [
   { id: "grain", title: "Grain bill", add: "grain", addLabel: "Add grain", units: MASS_UNITS, defaultUnit: "lb", help: "brewery.recipes.grain" },
@@ -63,7 +67,8 @@ function perUnitText(i: BrewCatalogIngredient): string {
   }
 }
 
-export function BrewRecipeEditor({ initial, catalog, brews }: { initial: BrewRecipeData; catalog: { ingredients: BrewCatalogIngredient[]; beers: { id: string; name: string }[] }; brews: number }) {
+export function BrewRecipeEditor({ initial, catalog, brews, unit, batches }: { initial: BrewRecipeData; catalog: { ingredients: BrewCatalogIngredient[]; beers: { id: string; name: string }[] }; brews: number; unit: GravityUnit; batches: BatchLink[] }) {
+  const sg = (n: number) => formatGravity(n, unit);
   const router = useRouter();
   const confirm = useConfirm();
   const start0 = useMemo(() => withKeys(initial), [initial]);
@@ -119,6 +124,41 @@ export function BrewRecipeEditor({ initial, catalog, brews }: { initial: BrewRec
   const batchTotal = scaling ? scaleQty(cost.total, r.batchBbl, scaleTo!) : cost.total;
 
   const update = (patch: Partial<Recipe>) => setR((cur) => ({ ...cur, ...patch }));
+  const setProcess = (patch: Partial<RecipeProcess>) => setR((cur) => ({ ...cur, process: { ...cur.process, ...patch } }));
+  /** A timing profile fills in its days; changing a day afterwards makes it a custom one. */
+  const pickProfile = (v: string) => {
+    if (isProfileKey(v)) {
+      const d = profileDays(BREW_PROFILES[v]);
+      setR((cur) => ({ ...cur, fermentDays: d.fermentDays, conditionDays: d.conditionDays, process: { ...cur.process, profile: v, dryHopDay: d.dryHopDay, tapDay: d.tapDay } }));
+    } else setProcess({ profile: v || null });
+  };
+  const setDays = (patch: { fermentDays?: number; conditionDays?: number; dryHopDay?: number | null; tapDay?: number | null }) =>
+    setR((cur) => {
+      const next = { ...cur, ...(patch.fermentDays != null ? { fermentDays: patch.fermentDays } : {}), ...(patch.conditionDays != null ? { conditionDays: patch.conditionDays } : {}), process: { ...cur.process, ...("dryHopDay" in patch ? { dryHopDay: patch.dryHopDay ?? null } : {}), ...("tapDay" in patch ? { tapDay: patch.tapDay ?? null } : {}) } };
+      const p = next.process.profile;
+      if (isProfileKey(p)) {
+        const d = profileDays(BREW_PROFILES[p]);
+        if (d.fermentDays !== next.fermentDays || d.conditionDays !== next.conditionDays || d.dryHopDay !== next.process.dryHopDay || d.tapDay !== next.process.tapDay) next.process = { ...next.process, profile: "custom" };
+      }
+      return next;
+    });
+  const missing = whatsMissing({
+    lines: r.lines.map((l) => ({ name: l.name, kind: l.kind, hasSupplier: !!(l.ingredientId && ingById.get(l.ingredientId)?.source) })),
+    targetOg: r.targetOg,
+    targetFg: r.targetFg,
+    batchBbl: r.batchBbl,
+    artworkDone: r.process.artworkDone,
+  });
+  const going = batches.find((b) => b.inProgress);
+  const gravityDiff = (actual: number, target: number | null) => {
+    if (target == null) return "";
+    if (unit === "plato") {
+      const d = sgToPlato(actual) - sgToPlato(target);
+      return ` (${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(1)})`;
+    }
+    const d = (actual - target) * 1000;
+    return ` (${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(0)} pts)`;
+  };
   const updateLine = (key: string, patch: Partial<Line>) => setR((cur) => ({ ...cur, lines: cur.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)) }));
   const removeLine = (key: string) => setR((cur) => ({ ...cur, lines: cur.lines.filter((l) => l.key !== key) }));
   const addLine = (kind: BrewLineKind, unit: BrewUnit) => setR((cur) => ({ ...cur, lines: [...cur.lines, blankLine(kind, unit)] }));
@@ -144,7 +184,7 @@ export function BrewRecipeEditor({ initial, catalog, brews }: { initial: BrewRec
       setError(null);
       const lines = r.lines.filter((l) => l.name.trim() || l.ingredientId || l.qty > 0);
       if (lines.some((l) => !l.name.trim())) return setError("Every line needs a name.");
-      const res = await saveBrewRecipeAction(r.id, {
+      const res = await saveRecipeEditorAction(r.id, {
         name: r.name,
         style: r.style,
         status: r.status,
@@ -158,6 +198,7 @@ export function BrewRecipeEditor({ initial, catalog, brews }: { initial: BrewRec
         targetFg: r.targetFg,
         notes: r.notes,
         lines: lines.map((l) => ({ ...plain(l), qty: Number.isFinite(l.qty) ? l.qty : 0 })),
+        process: r.process,
       });
       if (res.error) return setError(res.error);
       if (!r.id && res.id) {
@@ -207,8 +248,8 @@ export function BrewRecipeEditor({ initial, catalog, brews }: { initial: BrewRec
       {/* What the recipe makes and costs, live */}
       <HelpZone id="brewery.recipes.numbers" className="mb-6 block">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Fact label="OG" value={sg(stats.og)} hint={r.targetOg ? `target ${sg(r.targetOg)}` : `${qty(r.efficiencyPct, 0)}% efficiency`} />
-          <Fact label="FG" value={sg(stats.fg)} hint={r.targetFg ? `target ${sg(r.targetFg)}` : `${qty(stats.attenuationPct, 0)}% attenuation${stats.attenuationAssumed ? ", assumed" : ""}`} />
+          <Fact label="OG" value={sg(stats.og)} hint={r.targetOg ? `target ${sg(r.targetOg)}${gravityDiff(stats.og, r.targetOg)}` : `${qty(r.efficiencyPct, 0)}% efficiency`} />
+          <Fact label="FG" value={sg(stats.fg)} hint={r.targetFg ? `target ${sg(r.targetFg)}${gravityDiff(stats.fg, r.targetFg)}` : `${qty(stats.attenuationPct, 0)}% attenuation${stats.attenuationAssumed ? ", assumed" : ""}`} />
           <Fact label="ABV" value={`${stats.abv.toFixed(1)}%`} />
           <Fact label="IBU" value={Math.round(stats.ibu)} hint="Tinseth" />
           <Fact label="Colour" value={<span className="inline-flex items-center gap-2"><Swatch hex={stats.colorHex} srm={stats.srm} hasGrain={stats.og > 1} />{stats.srm.toFixed(1)}</span>} hint="SRM, Morey" />
@@ -282,10 +323,50 @@ export function BrewRecipeEditor({ initial, catalog, brews }: { initial: BrewRec
               <Field label="Beer it pours as" hint={r.status === "live" && r.beerId ? "Keg pour costs for this beer come from this recipe once every line has a price." : undefined}>
                 <Select value={r.beerId ?? ""} onChange={(e) => update({ beerId: e.target.value || null })} searchable options={[{ value: "", label: "Not linked to a beer" }, ...catalog.beers.map((b) => ({ value: b.id, label: b.name }))]} />
               </Field>
+              {r.status === "dev" && (
+                <HelpZone id="brewery.recipes.dev" className="block">
+                  <div className="rounded-lg bg-surface-2 p-3">
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <span className="text-[0.8rem] font-medium text-ink-2">Before it&apos;s brewed for real</span>
+                      <span className="num text-xs text-muted">{missing.filter((m) => m.done).length} of {missing.length}</span>
+                    </div>
+                    <ul className="space-y-1.5 text-sm">
+                      {missing.map((m) =>
+                        m.id === "artwork" ? (
+                          <li key={m.id}>
+                            <button type="button" role="checkbox" aria-checked={r.process.artworkDone} onClick={() => setProcess({ artworkDone: !r.process.artworkDone })} className="-mx-1 flex min-h-10 w-full items-center gap-2 rounded-md px-1 text-left hover:bg-surface">
+                              <span className={cx("inline-flex size-5 shrink-0 items-center justify-center rounded border", r.process.artworkDone ? "border-good bg-good text-white" : "border-border-strong bg-surface")}>{r.process.artworkDone && <Check className="size-3.5" strokeWidth={3} />}</span>
+                              Label artwork done
+                            </button>
+                          </li>
+                        ) : (
+                          <li key={m.id} className="flex items-start gap-2">
+                            {m.done ? <Check className="mt-0.5 size-4 shrink-0 text-good" strokeWidth={2.5} /> : <Circle className="mt-0.5 size-4 shrink-0 text-warn" />}
+                            <span className="min-w-0">
+                              <span className={cx(m.done && "text-muted")}>{m.label}</span>
+                              {m.detail && <span className="block text-xs text-muted">{m.detail}</span>}
+                            </span>
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                    <p className="mt-2 text-xs text-muted">A supplier counts once the line is matched to an ingredient that has a price from a supplier.</p>
+                  </div>
+                </HelpZone>
+              )}
               {r.id && (
-                <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                  <Button size="sm" className="h-10 sm:h-8" onClick={duplicate} disabled={pending}><Copy className="size-3.5" />Duplicate</Button>
-                  <Button size="sm" variant="danger" className="h-10 sm:h-8" onClick={remove} disabled={pending}><Trash2 className="size-3.5" />{brews > 0 ? "Archive" : "Delete"}</Button>
+                <div className="space-y-2 border-t border-border pt-3">
+                  {dirty ? (
+                    <p className="text-xs text-muted">Save your changes to brew this.</p>
+                  ) : going ? (
+                    <LinkButton href={`/brewery/brew/${going.id}`} variant="primary" size="lg" className="h-12 w-full"><Play className="size-4" />Carry on brew day ({going.code})</LinkButton>
+                  ) : (
+                    <LinkButton href={`/brewery/brew?recipe=${r.id}`} variant="primary" size="lg" className="h-12 w-full"><Play className="size-4" />Brew this</LinkButton>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" className="h-10 sm:h-8" onClick={duplicate} disabled={pending}><Copy className="size-3.5" />Duplicate</Button>
+                    <Button size="sm" variant="danger" className="h-10 sm:h-8" onClick={remove} disabled={pending}><Trash2 className="size-3.5" />{brews > 0 ? "Archive" : "Delete"}</Button>
+                  </div>
                 </div>
               )}
             </Card>
@@ -301,12 +382,41 @@ export function BrewRecipeEditor({ initial, catalog, brews }: { initial: BrewRec
                 <Field label="Scale to, bbl" hint="Shows amounts only">
                   <NumInput value={scaleTo} onChange={setScaleTo} step="0.5" placeholder={qty(r.batchBbl, 2)} />
                 </Field>
-                <Field label="Days fermenting"><NumInput value={r.fermentDays} onChange={(v) => update({ fermentDays: v ?? 0 })} step="1" /></Field>
-                <Field label="Days conditioning"><NumInput value={r.conditionDays} onChange={(v) => update({ conditionDays: v ?? 0 })} step="1" /></Field>
-                <Field label="Target OG"><NumInput value={r.targetOg} onChange={(v) => update({ targetOg: v })} step="0.001" placeholder={sg(stats.og)} /></Field>
-                <Field label="Target FG"><NumInput value={r.targetFg} onChange={(v) => update({ targetFg: v })} step="0.001" placeholder={sg(stats.fg)} /></Field>
+                <Field label="Target OG" hint={`Works out to ${sg(stats.og)}`}><GravityInput unit={unit} label="Target OG" value={r.targetOg} onChange={(v) => update({ targetOg: v })} placeholder={formatGravity(stats.og, unit, { label: false })} /></Field>
+                <Field label="Target FG" hint={`Works out to ${sg(stats.fg)}`}><GravityInput unit={unit} label="Target FG" value={r.targetFg} onChange={(v) => update({ targetFg: v })} placeholder={formatGravity(stats.fg, unit, { label: false })} /></Field>
               </div>
               <Field label="Notes"><Textarea value={r.notes ?? ""} onChange={(e) => update({ notes: e.target.value || null })} placeholder="Mash schedule, water, finings, dry hop timing…" rows={4} /></Field>
+            </Card>
+          </HelpZone>
+
+          <HelpZone id="brewery.recipes.targets" className="block">
+            <Card className="space-y-4 p-4">
+              <h2 className="text-sm font-semibold">Brew-day targets</h2>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Strike, °F"><NumInput value={r.process.strikeF} onChange={(v) => setProcess({ strikeF: v })} step="1" placeholder="e.g. 165" /></Field>
+                <Field label="Mash, °F"><NumInput value={r.process.mashF} onChange={(v) => setProcess({ mashF: v })} step="1" placeholder="e.g. 152" /></Field>
+                <Field label="Mash rest, minutes"><NumInput value={r.process.mashMinutes} onChange={(v) => setProcess({ mashMinutes: v })} step="5" placeholder="60" /></Field>
+                <Field label="MT gravity"><GravityInput unit={unit} label="Mash tun gravity target" value={r.process.targetMt} onChange={(v) => setProcess({ targetMt: v })} /></Field>
+                <Field label="BK gravity"><GravityInput unit={unit} label="Boil kettle gravity target" value={r.process.targetBk} onChange={(v) => setProcess({ targetBk: v })} /></Field>
+                <Field label="KO gravity"><GravityInput unit={unit} label="Knock-out gravity target" value={r.process.targetKo} onChange={(v) => setProcess({ targetKo: v })} /></Field>
+              </div>
+              <p className="text-xs text-muted">Shown beside each reading on the brew day. Gravity in {unit === "plato" ? "°Plato" : "SG"}; either can be typed (15.5P or 1.063).</p>
+            </Card>
+          </HelpZone>
+
+          <HelpZone id="brewery.recipes.timing" className="block">
+            <Card className="space-y-4 p-4">
+              <h2 className="text-sm font-semibold">Timing</h2>
+              <Field label="Profile" hint="Fills in the days below; change any of them to make it your own.">
+                <Select value={r.process.profile ?? ""} onChange={(e) => pickProfile(e.target.value)} options={[{ value: "", label: "None" }, ...PROFILE_OPTIONS]} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Dry hop, day"><NumInput value={r.process.dryHopDay} onChange={(v) => setDays({ dryHopDay: v })} step="1" placeholder="none" /></Field>
+                <Field label="Days fermenting"><NumInput value={r.fermentDays} onChange={(v) => setDays({ fermentDays: v ?? 0 })} step="1" /></Field>
+                <Field label="Days conditioning"><NumInput value={r.conditionDays} onChange={(v) => setDays({ conditionDays: v ?? 0 })} step="1" /></Field>
+                <Field label="On tap, day"><NumInput value={r.process.tapDay} onChange={(v) => setDays({ tapDay: v })} step="1" placeholder="—" /></Field>
+              </div>
+              <p className="text-xs text-muted">Days count from brew day. Fermenting runs to the move into a brite tank, conditioning to packaging; the tank schedule uses both.</p>
             </Card>
           </HelpZone>
         </div>

@@ -41,7 +41,10 @@ export const INGREDIENTS: IngSpec[] = [
 
 type LineSpec = [kind: string, name: string, qty: number, unit: string, extra?: { ing?: string; ppg?: number; colorL?: number; alpha?: number; use?: string; minutes?: number; att?: number }];
 
-export const RECIPES: { key: string; name: string; beer?: string; style: string; status: "live" | "dev"; bbl: number; ferment: number; condition: number; notes?: string; lines: LineSpec[] }[] = [
+/** Brew-day targets (gravities as SG) and timing, as Brew Manager keeps them. */
+interface ProcessSpec { strike: number; mash: number; mashMin: number; mt: number; bk: number; ko: number; og: number; fg: number; profile: string; dryHop?: number; tap: number; artwork?: boolean }
+
+export const RECIPES: { key: string; name: string; beer?: string; style: string; status: "live" | "dev"; bbl: number; ferment: number; condition: number; notes?: string; process: ProcessSpec; lines: LineSpec[] }[] = [
   {
     key: "demo:ipa",
     name: "Subversive IPA",
@@ -52,6 +55,7 @@ export const RECIPES: { key: string; name: string; beer?: string; style: string;
     ferment: 12,
     condition: 7,
     notes: "Mash 152°F for 60 min. Dry hop on day 5 at 64°F.",
+    process: { strike: 166, mash: 152, mashMin: 60, mt: 1.082, bk: 1.059, ko: 1.064, og: 1.064, fg: 1.013, profile: "custom", dryHop: 5, tap: 21 },
     lines: [
       ["grain", "Pale ale malt", 480, "lb", { ing: "Pale ale malt", ppg: 37, colorL: 3 }],
       ["grain", "Crystal 40", 30, "lb", { ing: "Crystal 40", ppg: 34, colorL: 40 }],
@@ -73,6 +77,7 @@ export const RECIPES: { key: string; name: string; beer?: string; style: string;
     ferment: 21,
     condition: 21,
     notes: "Ferment 50°F, free rise to 58°F for a diacetyl rest, then lager cold.",
+    process: { strike: 161, mash: 148, mashMin: 75, mt: 1.07, bk: 1.045, ko: 1.048, og: 1.048, fg: 1.009, profile: "custom", tap: 45 },
     lines: [
       ["grain", "Pilsner malt", 420, "lb", { ing: "Pilsner malt", ppg: 37, colorL: 1.8 }],
       ["grain", "Munich malt", 20, "lb", { ing: "Munich malt", ppg: 37, colorL: 9 }],
@@ -90,6 +95,7 @@ export const RECIPES: { key: string; name: string; beer?: string; style: string;
     bbl: 7,
     ferment: 10,
     condition: 7,
+    process: { strike: 164, mash: 154, mashMin: 45, mt: 1.075, bk: 1.05, ko: 1.054, og: 1.054, fg: 1.015, profile: "custom", tap: 18 },
     lines: [
       ["grain", "Pale ale malt", 360, "lb", { ing: "Pale ale malt", ppg: 37, colorL: 3 }],
       ["grain", "Flaked oats", 40, "lb", { ing: "Flaked oats", ppg: 33, colorL: 1 }],
@@ -105,9 +111,10 @@ export const RECIPES: { key: string; name: string; beer?: string; style: string;
     style: "Hazy pale ale",
     status: "dev",
     bbl: 3.5,
-    ferment: 10,
-    condition: 5,
+    ferment: 20,
+    condition: 3,
     notes: "Pilot batch. Trying lactose for body.",
+    process: { strike: 165, mash: 154, mashMin: 60, mt: 1.078, bk: 1.054, ko: 1.058, og: 1.058, fg: 1.016, profile: "hazy", dryHop: 7, tap: 30, artwork: true },
     lines: [
       ["grain", "Pilsner malt", 200, "lb", { ing: "Pilsner malt", ppg: 37, colorL: 1.8 }],
       ["grain", "Flaked oats", 30, "lb", { ing: "Flaked oats", ppg: 33, colorL: 1 }],
@@ -164,6 +171,18 @@ export async function seedBrewRecipes(db: PrismaClient): Promise<void> {
         boilMinutes: 60,
         fermentDays: r.ferment,
         conditionDays: r.condition,
+        targetOg: D(r.process.og),
+        targetFg: D(r.process.fg),
+        targetMt: D(r.process.mt),
+        targetBk: D(r.process.bk),
+        targetKo: D(r.process.ko),
+        strikeF: D(r.process.strike, 1),
+        mashF: D(r.process.mash, 1),
+        mashMinutes: r.process.mashMin,
+        profile: r.process.profile,
+        dryHopDay: r.process.dryHop ?? null,
+        tapDay: r.process.tap,
+        artworkDone: r.process.artwork ?? false,
         notes: r.notes ?? null,
         sourceKey: r.key,
         lines: {
@@ -185,4 +204,42 @@ export async function seedBrewRecipes(db: PrismaClient): Promise<void> {
       },
     });
   }
+
+  await seedBrewDay(db, today);
+}
+
+/** A brew day under way: the IPA, mashed and lautered, 20 minutes into the boil with the bittering hops in. */
+export function demoBrewLog(now: Date) {
+  const at = (minAgo: number) => new Date(now.getTime() - minAgo * 60_000).toISOString();
+  return {
+    v: 1,
+    stage: "boil",
+    startedAt: at(200),
+    savedAt: at(2),
+    finishedAt: null,
+    values: {
+      mash: { strikeF: 166, mashF: 152.5, mtSg: 1.0815, ph: 5.35, startTime: "07:10", strikeBbl: 4.2 },
+      lauter: { bkSg: 1.0585, spargeF: 168, preboilBbl: 8.1, runoffMin: 75 },
+      boil: { boilStart: "09:55" },
+      ferment: {},
+      package: {},
+    },
+    notes: { mash: "Hit strike a touch high; stirred down to 152.", lauter: "", boil: "", ferment: "", package: "" },
+    timers: {
+      mash: { startedAt: null, elapsedMs: 60 * 60_000, targetMin: 60 },
+      boil: { startedAt: null, elapsedMs: 20 * 60_000, targetMin: 60 },
+    },
+    hops: { "0|magnum|boil|60": at(20) },
+  };
+}
+
+async function seedBrewDay(db: PrismaClient, today: string): Promise<void> {
+  await db.brewBatch.deleteMany({ where: { sourceKey: "demobrew:brewday" } });
+  const ipa = await db.brewRecipe.findUnique({ where: { sourceKey: "demo:ipa" }, select: { id: true, beerId: true } });
+  if (!ipa) return;
+  const code = `BD-${today.slice(2).replace(/-/g, "")}`;
+  if (await db.brewBatch.findUnique({ where: { code }, select: { id: true } })) return;
+  await db.brewBatch.create({
+    data: { code, recipeId: ipa.id, beerId: ipa.beerId, status: "PLANNED", plannedOn: parseISODate(today), bbl: D(7, 2), sourceKey: "demobrew:brewday", brewLog: demoBrewLog(new Date()) },
+  });
 }
