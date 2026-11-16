@@ -27,6 +27,7 @@ import { morningBrief } from "./areas/morning";
 import { staffHome } from "./areas/staffHome";
 import { website } from "./areas/website";
 import { websiteAnalytics } from "./areas/websiteAnalytics";
+import { online } from "./areas/online";
 import { whatsNew } from "./areas/whatsNew";
 import { monthEnd } from "./areas/monthEnd";
 import { linking } from "./areas/linking";
@@ -69,6 +70,7 @@ export const AREAS: HelpArea[] = [
   { id: "insights", title: "Insights", description: "The Insights Lab: one thing to do at a time, how your numbers connect, and a tile for every question." },
   { id: "prep", title: "Prep list", description: "What the kitchen makes today: amounts from the forecast, on hand, pars, shelf life and stations." },
   { id: "kegs", title: "Kegs", description: "Scanning kegs on a phone, what's on tap, the walk-in, demand per beer, labels and importing." },
+  { id: "online", title: "Online", description: "How guests find you on Google Search, the Google listing and the website, and what they do next." },
   { id: "website", title: "Website", description: "What guests see on the public website: hours, the notice, the menu, events and inquiries." },
   { id: "training", title: "Training & certificates", description: "ATAP, ServSafe and other certificates, expiry reminders and onboarding checklists." },
   { id: "checklists", title: "Checklists", description: "Opening, mid and closing routines ticked on a phone and signed off." },
@@ -109,6 +111,7 @@ export const HELP: HelpEntry[] = [
   ...staffHome,
   ...website,
   ...websiteAnalytics,
+  ...online,
   ...whatsNew,
   ...monthEnd,
   ...checklists,

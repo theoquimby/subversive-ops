@@ -69,6 +69,29 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.16 (Online) ----
+  {
+    id: "2026-11-16.online",
+    date: "2026-11-16",
+    title: "Online: how guests find you",
+    line: "Google Search, your Google listing, the website and reviews on one page, against the period before.",
+    icon: "analytics",
+    area: "online",
+    href: "/online",
+    help: "online.page",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-16.google-listing",
+    date: "2026-11-16",
+    title: "Your Google listing's numbers",
+    line: "Times shown on Maps and Search, calls, directions and website clicks, once Google approves access.",
+    icon: "website",
+    area: "online",
+    href: "/online/google",
+    help: "online.google",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.15 (keg orders) ----
   {
     id: "2026-11-16.keg-orders",
@@ -509,7 +532,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     title: "The website, run from here",
     line: "Hours, the notice, the menu, events and inquiries — the site updates the moment you save.",
     icon: "website",
-    area: "numbers",
+    area: "online",
     href: "/website",
     tour: "website",
     help: "website.page",
@@ -522,7 +545,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     title: "Who visits the website",
     line: "Visitors, what they tap (call, directions, menu) and what Google searches bring them in.",
     icon: "analytics",
-    area: "numbers",
+    area: "online",
     href: "/website/analytics",
     tour: "webanalytics",
     help: "website.analytics",

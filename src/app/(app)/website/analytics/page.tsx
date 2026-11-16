@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, ExternalLink, MapPin, Search, Star } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ChevronRight, MapPin, Search } from "lucide-react";
 import { HelpTip, HelpZone } from "@/components/help";
 import { Badge, Card, cx, EmptyState, LinkButton, Section, Table, Td, Th, Tr } from "@/components/ui";
-import { GBP_LABEL } from "@/domain/googleData";
 import { EVENT_LABEL, MEDIUM_LABEL, parsePeriod, PERIODS, sourceLabel, type Medium } from "@/domain/webAnalytics";
 import { money, pct, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
@@ -65,7 +64,7 @@ export default async function WebsiteAnalyticsPage({ searchParams }: { searchPar
           <Inquiries d={d} />
         </>
       )}
-      <Google d={d} />
+      <Google />
       <TrackingSetup origins={d.origins} website={d.website} lastHit={lastHit?.at.toISOString() ?? null} ops={ops} />
     </div>
   );
@@ -420,113 +419,27 @@ function Inquiries({ d }: { d: WebDashboard }) {
 
 // ---- Google ------------------------------------------------------------------------------------
 
-function Google({ d }: { d: WebDashboard }) {
-  const g = d.google;
-  const s = g.search;
-  const p = g.profile;
-  const connected = g.status.connected;
+/** Google's own numbers live under Online; this is the way there, so nothing is shown twice. */
+function Google() {
+  const rows = [
+    { href: "/online#searches", icon: <Search className="size-4" />, title: "Google Search", body: "How often the website shows up in Google's results, the searches behind it, and how many people click through." },
+    { href: "/online/google", icon: <MapPin className="size-4" />, title: "Google listing", body: "How often the listing is shown on Maps and Search, and the calls, direction requests and website clicks from it." },
+  ];
   return (
-    <Section title="Google" description="How people find Subversive on Google Search and Maps, straight from Google." help="website.analytics.google" actions={<LinkButton href="/website/analytics/google" variant="ghost" size="sm">{connected ? "Manage" : "Connect"}</LinkButton>}>
-      <div className="grid gap-6 lg:grid-cols-2" data-tour="webanalytics.google">
-        {s ? (
-          <Card className="min-w-0 p-4 sm:p-5">
-            <div className="flex items-center gap-2 text-sm font-semibold"><Search className="size-4 text-muted" aria-hidden /> Search terms people use</div>
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Mini label="Clicks" value={n0(s.totals.clicks.cur)} k={s.totals.clicks} />
-              <Mini label="Seen in results" value={n0(s.totals.impressions.cur)} k={s.totals.impressions} />
-              <Mini label="Click rate" value={pct(s.totals.ctr, 1)} />
-              <Mini label="Average spot" value={s.totals.position != null ? s.totals.position.toFixed(1) : "—"} />
-            </div>
-            {s.brandShare != null && <p className="mt-3 text-xs text-muted">{pct(s.brandShare, 0)} of clicks come from searches for Subversive by name; the rest found you by searching for something else.</p>}
-            <div className="mt-4">
-              <TrendChart points={s.series.map((x) => ({ x: x.x, cur: x.y }))} label="Clicks from Google Search" height={130} />
-            </div>
-            <ul className="mt-4 divide-y divide-border text-sm">
-              {s.queries.slice(0, 10).map((q) => (
-                <li key={q.query} className="flex items-center justify-between gap-3 py-2">
-                  <span className="min-w-0 truncate">
-                    {q.query} {q.brand && <span className="ml-1 text-xs text-muted">by name</span>}
-                  </span>
-                  <span className="num shrink-0 text-xs text-muted">
-                    <span className="font-semibold text-ink">{q.clicks}</span> clicks · #{q.position?.toFixed(1) ?? "—"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {s.through && <p className="mt-2 text-xs text-muted">Google&apos;s numbers run 2–3 days behind; through {shortDate(s.through)}.</p>}
-          </Card>
-        ) : (
-          <ConnectCard icon={<Search className="size-4" />} title="Search terms people use" body="Connect Google Search Console to see the searches that show Subversive, how many people clicked, and where you rank." connected={connected} />
-        )}
-        {p ? (
-          <Card className="min-w-0 p-4 sm:p-5">
-            <div className="flex items-center gap-2 text-sm font-semibold"><MapPin className="size-4 text-muted" aria-hidden /> Google listing</div>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <Mini label="Times seen" value={n0(p.views.cur)} k={p.views} />
-              <Mini label="Calls, directions, website, menu" value={n0(p.actions.cur)} k={p.actions} />
-            </div>
-            <ul className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              {p.metrics
-                .filter((m) => !m.metric.startsWith("BUSINESS_IMPRESSIONS") && (m.cur > 0 || m.prev > 0))
-                .map((m) => (
-                  <li key={m.metric} className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-ink-2">{GBP_LABEL[m.metric]}</span>
-                    <span className="num font-semibold">{n0(m.cur)}</span>
-                  </li>
-                ))}
-            </ul>
-            <div className="mt-4">
-              <TrendChart points={p.series.map((x) => ({ x: x.x, cur: x.directions }))} label="Direction requests on Google" height={130} />
-            </div>
-            {p.keywords.length > 0 && (
-              <>
-                <div className="mt-4 text-xs font-medium text-muted">What people searched before finding the listing{p.keywordMonth ? ` (${new Date(`${p.keywordMonth}-01T00:00:00Z`).toLocaleDateString("en-US", { month: "long", timeZone: "UTC" })})` : ""}</div>
-                <ul className="mt-2 flex flex-wrap gap-1.5 text-xs">
-                  {p.keywords.map((k) => (
-                    <li key={k.keyword} className="rounded-md bg-surface-2 px-2 py-1">
-                      {k.keyword} <span className="num text-muted">{k.value != null ? k.value : `<${k.threshold}`}</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </Card>
-        ) : (
-          <ConnectCard icon={<MapPin className="size-4" />} title="Google listing" body="Connect Google Business Profile to see how often the listing shows on Search and Maps, and how many people call, ask for directions or open the website from it." connected={connected} note={connected && !g.status.grant.business ? "Business Profile wasn't allowed when connecting. Connect again and tick it." : undefined} />
-        )}
-      </div>
-      <Card className="mt-4 flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
-        <span className="flex min-w-0 items-center gap-2">
-          <Star className="size-4 shrink-0 text-muted" aria-hidden />
-          <span className="min-w-0">{g.reviews.connected ? <>Google reviews come in every morning{g.reviews.placeName ? <> for <b>{g.reviews.placeName}</b></> : null}.</> : "Google reviews aren't coming in yet."}</span>
-        </span>
-        <LinkButton href={g.reviews.connected ? "/reviews" : "/settings/connections?open=google"} variant="ghost" size="sm">
-          {g.reviews.connected ? "Reviews" : "Set up"} <ExternalLink className="size-3.5" aria-hidden />
-        </LinkButton>
+    <Section title="Google" description="Google Search and the Google listing have their own pages under Online, beside the website's numbers." help="website.analytics.google" actions={<LinkButton href="/website/analytics/google" variant="ghost" size="sm">Manage the connection</LinkButton>}>
+      <Card className="divide-y divide-border overflow-hidden" data-tour="webanalytics.google">
+        {rows.map((r) => (
+          <Link key={r.href} href={r.href} className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors duration-120 hover:bg-surface-2/60 active:bg-surface-2 sm:px-5">
+            <span aria-hidden className="shrink-0 text-muted">{r.icon}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">{r.title}</span>
+              <span className="block text-xs text-pretty text-muted">{r.body}</span>
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+          </Link>
+        ))}
       </Card>
     </Section>
-  );
-}
-
-function Mini({ label, value, k }: { label: string; value: string; k?: Kpi }) {
-  return (
-    <div className="min-w-0">
-      <div className="truncate text-xs text-muted">{label}</div>
-      <div className="num text-lg font-semibold">{value}</div>
-      {k && k.change != null && <div className={cx("num text-xs", k.clear ? (k.change > 0 ? "text-good" : "text-bad") : "text-muted")}>{k.change >= 0 ? "+" : "−"}{pct(Math.abs(k.change), 0)}</div>}
-    </div>
-  );
-}
-
-function ConnectCard({ icon, title, body, connected, note }: { icon: React.ReactNode; title: string; body: string; connected: boolean; note?: string }) {
-  return (
-    <Card className="flex min-w-0 flex-col justify-between gap-4 border-dashed p-5">
-      <div>
-        <div className="flex items-center gap-2 text-sm font-semibold"><span className="text-muted">{icon}</span> {title}</div>
-        <p className="mt-1.5 text-sm text-muted">{note ?? (connected ? "Connected. The first numbers arrive after tonight's sync (or press Sync now)." : body)}</p>
-      </div>
-      <LinkButton href="/website/analytics/google" variant={connected ? "secondary" : "primary"} className="self-start">{connected ? "Open Google settings" : "Connect Google"}</LinkButton>
-    </Card>
   );
 }
 

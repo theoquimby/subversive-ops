@@ -18,7 +18,7 @@ export async function GoogleSearchTile() {
               <span className="text-base font-semibold">Google Search & listing</span>
               <Badge tone={tone}>{text}</Badge>
             </div>
-            <p className="mt-0.5 text-sm text-ink-2">Search terms that find the website (Search Console) and how the Google listing is seen and used: calls, directions, website clicks. Shows on Website → Analytics.</p>
+            <p className="mt-0.5 text-sm text-ink-2">Search terms that find the website (Search Console) and how the Google listing is seen and used: calls, directions, website clicks. Shows under Online.</p>
           </div>
         </div>
         <LinkButton href="/website/analytics/google" variant={s.connected ? "secondary" : "primary"}>{s.connected ? "Manage" : "Set up"} <ChevronRight className="size-4" /></LinkButton>

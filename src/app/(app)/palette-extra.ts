@@ -61,6 +61,12 @@ export function managerExtra(hasRoute: (route: string) => boolean): Command[] {
         ] satisfies Command[])
       : []),
     ...(hasRoute("/website/analytics/google") ? [{ id: "go-google", label: "Connect Google (Search & Maps)", group: "Go to", href: "/website/analytics/google", hint: "search console business profile" } satisfies Command] : []),
+    ...(hasRoute("/online")
+      ? ([
+          { id: "go-online", label: "Online: how guests find you", group: "Go to", href: "/online", hint: "google search maps website reviews found overview" },
+          { id: "go-google-listing", label: "Google listing (Maps & Search)", group: "Go to", href: "/online/google", hint: "business profile gbp calls directions views" },
+        ] satisfies Command[])
+      : []),
     ...(hasRoute("/accounting") ? [{ id: "go-accounting", label: "Accounting & month-end", group: "Go to", href: "/accounting", hint: "close books accountant" } satisfies Command] : []),
   ];
 }

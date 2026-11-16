@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { addDays, parseISODate, toISODate, weekday, zonedMidnightUTC, type ISODate } from "@/domain/dates";
-import { GBP_METRICS } from "@/domain/googleData";
 import { classifySource, rollupDay, sessionId, type EventName } from "@/domain/webAnalytics";
+import { seedOnline } from "./online";
 
 /**
  * Demo website traffic: ~90 days of plausible visits shaped by the real
@@ -175,80 +175,8 @@ export async function seedWebAnalytics(db: PrismaClient, today: ISODate, opts: {
     await db.webConversion.create({ data: { day: parseISODate(d), at: zonedMidnightUTC(d, TZ), kind: "inquiry_submit", source, medium, path: "/private-events", privateEventId: pe.id } });
   }
 
-  if (opts.google) await seedGoogleDemo(db, today, r);
+  // Google Search and the Google listing have their own seed (./online.ts); here it starts them afresh.
+  if (opts.google) await seedOnline(db, today, { replace: true });
   await db.setting.upsert({ where: { key: "webAnalytics.builtThrough" }, create: { key: "webAnalytics.builtThrough", value: to }, update: { value: to } });
   return { hits: total, days: N };
-}
-
-async function seedGoogleDemo(db: PrismaClient, today: ISODate, r: () => number) {
-  const from = addDays(today, -120);
-  const to = addDays(today, -3);
-  await db.googleSearchDaily.deleteMany({});
-  await db.googleProfileDaily.deleteMany({});
-  await db.googleProfileKeyword.deleteMany({});
-  const queries: [string, number, number][] = [
-    ["subversive brewing", 9, 1.1],
-    ["subversive catskill", 6, 1.2],
-    ["subversive", 4, 2.4],
-    ["brewery catskill ny", 3, 3.8],
-    ["catskill restaurants", 2.5, 7.9],
-    ["breweries near hudson ny", 2, 6.2],
-    ["burgers catskill", 1.6, 4.4],
-    ["things to do in catskill", 1.4, 9.8],
-    ["trivia night catskill", 0.8, 2.9],
-    ["dog friendly brewery hudson valley", 0.7, 8.6],
-    ["new york grain beer", 0.4, 5.1],
-    ["subversive menu", 1.1, 1.0],
-  ];
-  const rows: Prisma.GoogleSearchDailyCreateManyInput[] = [];
-  const prof: Prisma.GoogleProfileDailyCreateManyInput[] = [];
-  for (let d = from; d <= to; d = addDays(d, 1)) {
-    const wd = weekday(d);
-    const m = [1.1, 0.9, 0.7, 0.9, 1.0, 1.4, 1.5][wd];
-    let tc = 0;
-    let ti = 0;
-    let tp = 0;
-    for (const [q, c, pos] of queries) {
-      const clicks = poisson(r, c * m);
-      const impressions = Math.max(clicks, poisson(r, c * m * (pos < 2 ? 2.6 : 9)));
-      if (!impressions) continue;
-      rows.push({ day: parseISODate(d), dim: "query", key: q, clicks, impressions, position: pos + (r() - 0.5) * 0.4 });
-      tc += clicks;
-      ti += impressions;
-      tp += pos * impressions;
-    }
-    const anonymous = poisson(r, 6 * m);
-    rows.push({ day: parseISODate(d), dim: "total", key: "all", clicks: tc + Math.round(anonymous * 0.3), impressions: ti + anonymous * 4, position: ti ? tp / ti : 0 });
-    for (const [page, share] of [["https://drinksubversive.com/", 0.55], ["https://drinksubversive.com/menu", 0.25], ["https://drinksubversive.com/events", 0.1], ["https://drinksubversive.com/visit", 0.1]] as [string, number][]) {
-      rows.push({ day: parseISODate(d), dim: "page", key: page, clicks: Math.round(tc * share), impressions: Math.round(ti * share), position: 3 });
-    }
-    const vals: Record<string, number> = {
-      BUSINESS_IMPRESSIONS_MOBILE_MAPS: poisson(r, 140 * m),
-      BUSINESS_IMPRESSIONS_DESKTOP_MAPS: poisson(r, 22 * m),
-      BUSINESS_IMPRESSIONS_MOBILE_SEARCH: poisson(r, 95 * m),
-      BUSINESS_IMPRESSIONS_DESKTOP_SEARCH: poisson(r, 40 * m),
-      BUSINESS_DIRECTION_REQUESTS: poisson(r, 16 * m),
-      CALL_CLICKS: poisson(r, 3.5 * m),
-      WEBSITE_CLICKS: poisson(r, 9 * m),
-      BUSINESS_FOOD_MENU_CLICKS: poisson(r, 6 * m),
-      BUSINESS_BOOKINGS: 0,
-    };
-    for (const k of GBP_METRICS) prof.push({ day: parseISODate(d), metric: k, value: vals[k] ?? 0 });
-  }
-  await db.googleSearchDaily.createMany({ data: rows });
-  await db.googleProfileDaily.createMany({ data: prof });
-  const months = [today.slice(0, 7), toISODate(new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 2, 1))).slice(0, 7)];
-  const kws: [string, number | null, number | null][] = [
-    ["subversive brewing", 410, null],
-    ["brewery", 260, null],
-    ["subversive", 190, null],
-    ["restaurants near me", 140, null],
-    ["catskill brewery", 96, null],
-    ["bar near me", 71, null],
-    ["burgers", 44, null],
-    ["food near me", 38, null],
-    ["subversive taproom", 22, null],
-    ["beer garden", null, 15],
-  ];
-  for (const month of months) await db.googleProfileKeyword.createMany({ data: kws.map(([keyword, value, threshold]) => ({ month, keyword, value, threshold })) });
 }
