@@ -7,43 +7,45 @@ export const brewery: HelpEntry[] = [
     area: "brewery",
     route: "/brewery",
     title: "Tanks",
-    body: "What is in each fermenter and brite tank right now, how long it has been there, and what needs doing next.",
-    article: `The page starts with **Needs doing**: brews ready to transfer or package (with how many days overdue), two brews booked into one tank in the next two weeks, and brew days today or tomorrow. Tap one to jump to its tank.
+    body: "What needs doing in the cellar, then every tank as a list or on the floor plan: what's in it, which day it's on and the next thing to do.",
+    article: `The page starts with **Needs doing**: brews ready to transfer or package (with how many days overdue), dry hops due, two brews booked into one tank in the next two weeks, and brew days today or tomorrow. Tap one to jump to its tank.
 
-Below that is a card for every tank in use, fermenters first, then brite tanks:
+Below that, every tank in use, as a **List** of cards or on the **Floor plan** (see [Floor plan](/help/brewery.floorPlan)). On each card:
 
 - The beer, its batch code and size, and **day N of M**: days in this tank so far against the days it's meant to spend there. Brew day is day 0.
 - The bar turns amber when the time is up, and red three days after.
-- **Ready to transfer?** shows on a fermenter once the recipe's fermenting days are up; **Ready to package?** on a brite once its conditioning days are up. A brew with no recipe uses the usual days from [Setup](/brewery/setup).
-- What goes in next, or when an empty tank is next booked.
+- The next thing to do, at the top right: **Check: transfer?**, **Transfer to brite**, **Package**, **Dry hop** or **Grav check**.
+- Its dry-hop, transfer or packaging, and release days, and what goes in next.
 
 ### On a tank's card
 
-- **Brew into this tank**: pick a recipe (or a beer with no recipe yet), the brew day and the volume. The batch code is the next number for the year (like 26-031) unless you type one. If a brite is free when fermenting should be done, it's pencilled in.
-- **Mark brewed**: for a brew planned on the [schedule](/brewery/schedule) for today or tomorrow. If you brewed early or late, the rest of its plan moves by the same number of days.
-- **Transfer**: pick the brite it went into. Tanks in use or too small can't be picked.
-- **Package**: the tank is freed and a keg batch with the brew's code is made. When you fill kegs of that beer, the code is a one-tap choice, so each keg is tied to its brew.
-- **Gravity**: a reading, or the OG or FG.
+- **Brew into this tank**: pick a recipe (or a beer with no recipe yet), the brew day and the volume. The batch code is the next number for the year (like 26-031) unless you type one. Its dates come from its timing profile; a free brite is pencilled in for its transfer day.
+- **Mark brewed**: for a brew planned on the [schedule](/brewery/schedule) for today or tomorrow. If you brewed early or late, the rest of its plan moves by the same number of days (a locked release stays).
+- **Transfer**: to a brite, another fermenter or between brites, with the gravity and a note. See [Moving a brew](/help/brewery.moves).
+- **Mark conditioning**: done fermenting, staying in its fermenter for now.
+- **Package**: with the final gravity, kegs, cases and CO₂. See [Packaging](/help/brewery.packaging).
+- **Gravity**: a reading, or the OG or FG, in °Plato or SG as the brewery is set.
 - **Dates**: change when it went in and when it's due out.
+- **Split**: part of it into another fermenter as its own brew.
 - **Dump**: with a reason, kept on the brew.
 
 When a brew is brewed, its ingredient cost is worked out from that day's prices and kept, so later price changes don't rewrite it.`,
     keywords: ["brewery", "tank", "fermenter", "brite", "floor", "cellar", "transfer", "package", "gravity", "dump"],
-    related: ["brewery.schedule", "brewery.batches", "brewery.setup"],
+    related: ["brewery.floorPlan", "brewery.moves", "brewery.packaging", "brewery.schedule", "brewery.batches", "brewery.setup"],
   },
   {
     id: "brewery.schedule",
     area: "brewery",
     route: "/brewery/schedule",
     title: "Tank schedule",
-    body: "Every tank over the coming weeks: what is planned where, when each brew moves to a brite tank, and when it is packaged.",
+    body: "Every tank over the coming weeks: what is planned where, its dry-hop, transfer, packaging and release days, the year by month, and a calendar feed.",
     article: `### Plan a brew
 
-Pick what you're brewing, the brew day and the size. Before anything is saved you see where it goes: the first free fermenter for its fermenting days, then the first free brite tank for its conditioning days, and the day it's ready to package. Pick a fermenter if you want a particular one.
+Pick what you're brewing, the brew day, the size and its timing. Before anything is saved you see where it goes: the first free fermenter until its transfer day, then the first free brite until packaging, with its dry-hop and release days.
 
-If no brite is free on transfer day, the plan keeps the beer in the fermenter a few extra days until one is, and says so. If nothing fits, it says why (every fermenter busy, or none big enough) and offers the first day that works.
+Dates come from its timing profile (Hazy IPA, Sour, Lager, Pale), snapped to your transfer and packaging weekdays: see [Timing profiles](/help/brewery.profiles). A recipe with no profile uses its own days, or the usual days on [Setup](/brewery/setup).
 
-Days come from the recipe, or from the usual days on [Setup](/brewery/setup) for a beer with no recipe.
+If no brite is free on transfer day, the plan keeps the beer in the fermenter until the next transfer day one is, and says so. If nothing fits, it says why (every fermenter busy, or none big enough) and offers the first day that works.
 
 ### Suggested brews
 
@@ -51,13 +53,19 @@ Worked out from keg sales on Square and the kegs you have. Take the day each bee
 
 ### The 12 weeks
 
-One row per tank, a bar per brew. Solid bars are in the tank or done; light dashed bars are planned. The line is today. A red outline is a clash (two brews in one tank at once) or a brew bigger than its tank. One brew can come out and the next go in on the same day. On a phone, each tank's coming brews are listed instead.
+One row per tank, a bar per brew. Solid bars are in the tank or done; light dashed bars are planned. A thin line inside a bar is its dry-hop day. The line down the page is today. A red outline is a clash (two brews in one tank at once) or a brew bigger than its tank. One brew can come out and the next go in on the same day. The last row is **Releases**, with a lock on locked ones. On a phone, each tank's coming brews are listed instead.
 
 ### Planned brews and the year
 
-**Move** a planned brew to a new day (or size, or fermenter) and its tanks are worked out again. **Cancel** takes it off the schedule. **Brews by month** lists every brew this year, done and planned.`,
-    keywords: ["schedule", "rotation", "plan", "tank", "calendar", "brew day", "suggested", "clash", "timeline"],
-    related: ["brewery.tanks", "brewery.batches"],
+**Move** a planned brew to a new day (or size, or fermenter) and its tanks and dates are worked out again; a locked release stays put and you're told if the new day is too late for it ([Locked releases](/help/brewery.lockedRelease)). **Brew now** starts its brew day. **Cancel** takes it off the schedule.
+
+**Brews by month** lists every brew this year, done and planned, with its timing, release day, any lock, and for planned brews how many supplier orders are placed ("Orders: 2 of 3 placed", amber when one is due).
+
+### Calendar
+
+**Add to Google Calendar** puts brew days, dry hops, transfers, packaging and releases in your calendar: see [Brewery calendar](/help/brewery.calendar).`,
+    keywords: ["schedule", "rotation", "plan", "tank", "calendar", "brew day", "suggested", "clash", "timeline", "year", "orders"],
+    related: ["brewery.tanks", "brewery.batches", "brewery.profiles", "brewery.lockedRelease", "brewery.calendar"],
   },
   {
     id: "brewery.recipes",
@@ -197,7 +205,7 @@ Once a maltster's or hop supplier's products are linked to these ingredients on 
 - **Cost** is the ingredient cost worked out on brew day from that day's prices, and kept. It says "not known yet" until it can be priced; you can type it in on the brew.
 - **Per pint** is that cost over the brew's volume (a barrel is 248 pints).
 
-Batch codes run by year: 26-001, 26-002 and so on, unless you type your own.`,
+Batch codes run by year: 26-001, 26-002 and so on, unless you type your own. A brew split from another takes its code and the next letter: 26-014B.`,
     keywords: ["batch", "brew", "brew log", "history", "packaged", "abv", "cost per pint"],
     related: ["brewery.batches.one", "brewery.tanks"],
   },
@@ -206,29 +214,35 @@ Batch codes run by year: 26-001, 26-002 and so on, unless you type your own.`,
     area: "brewery",
     route: "/brewery/batches/[id]",
     title: "One brew",
-    body: "A brew's path through the tanks with dates, its gravity readings, cost, and the kegs filled from it and where they are now.",
-    article: `- **Through the tanks**: each fermenter and brite stay with its dates and days. Change a date and the brew's own dates follow. On the tank it's in now, the second date is the day it's due out.
-- **Gravity**: every reading. OG and FG also set the brew's ABV.
-- **Kegs**: once packaged, the keg batch with the brew's code, how many kegs were filled from it by size, and where the ones still full are now. Each keg links to its page.
+    body: "A brew's planned days, its path through the tanks, history, gravity readings, cost, what packaging made and the kegs filled from it.",
+    article: `- **Planned days**: its timing, dry-hop day, release day and whether the release is locked (with why).
+- **Through the tanks**: each fermenter and brite stay with its dates and days. Change a date and the brew's own dates follow. On the tank it's in now, the second date is the day it's due out.
+- **History**: each move, stage change, packaging and split, with the gravity and notes taken.
+- **Gravity**: every reading, in °Plato or SG as the brewery is set. OG and FG also set the brew's ABV.
+- **Kegs**: what packaging made (½ and ⅙ bbl kegs, cases, CO₂), the keg batch with the brew's code, how many kegs were filled from it by size, and where the ones still full are now. **Fill kegs** opens the scanner ready to fill the rest.
+- **Split**: part of a planned or in-tank brew into another fermenter as its own brew ([Split batches](/help/brewery.splits)).
 - **Details**: code, beer, recipe, volume, OG, FG, cost and notes, each saved as you leave it.`,
-    keywords: ["brew", "batch", "kegs", "gravity", "path"],
-    related: ["brewery.batches"],
+    keywords: ["brew", "batch", "kegs", "gravity", "path", "history", "split", "release"],
+    related: ["brewery.batches", "brewery.splits", "brewery.lockedRelease", "brewery.packaging"],
   },
   {
     id: "brewery.setup",
     area: "brewery",
     route: "/brewery/setup",
     title: "Brewery setup",
-    body: "The tanks in the brewery, their sizes, and the usual days a beer spends fermenting and conditioning.",
-    article: `**Tanks**: add each fermenter and brite tank with its size in barrels. Click any cell to change it.
+    body: "The tanks in the brewery, their sizes and where they stand, the days you transfer and package, and the usual days a beer spends fermenting and conditioning.",
+    article: `**Tanks**: add each fermenter and brite tank with its size in barrels. Click any cell to change it. With no tanks yet, **Start with Brew Manager's tanks** fills in Zane's 11 tanks (FV1 to FV8, BBT1 to BBT3) with their sizes and places; change or remove any before adding them.
 
-- **Order** sets where a tank shows on the Tanks page and the schedule, and which tank is tried first when planning.
+- **Zone, row and column** place a tank on the floor plan: the room or wall it stands in ("Back wall", "Front", "Separate room"), then its row and column there, counting from 1. A tank with no place goes on a row of its own.
+- **Order** sets where a tank shows on the Tanks list and the schedule, and which tank is tried first when planning.
 - **Not in use** hides a tank from the floor and the schedule. A tank with a brew in it stays in use until the brew is moved or packaged.
 - A tank can only be deleted if no brew has ever been in it.
 
-**Usual days in tanks**: how long a beer ferments, then conditions, when its brew has no recipe. A recipe's own days always win.`,
-    keywords: ["tanks", "setup", "fermenter", "brite", "capacity", "barrels", "default days"],
-    related: ["brewery.tanks", "brewery.schedule"],
+**Transfer and packaging days**: tap the weekdays you transfer and package on (Monday or Tuesday, and Wednesday, until changed). Planned dates move to the nearest of them, up to three days either way. With none picked, any day goes.
+
+**Usual days in tanks**: how long a beer ferments, then conditions, when its brew has no recipe and no timing profile. A recipe's own days always win.`,
+    keywords: ["tanks", "setup", "fermenter", "brite", "capacity", "barrels", "default days", "zone", "floor plan", "transfer day", "packaging day"],
+    related: ["brewery.tanks", "brewery.schedule", "brewery.floorPlan", "brewery.profiles"],
   },
   {
     id: "brewery.import",

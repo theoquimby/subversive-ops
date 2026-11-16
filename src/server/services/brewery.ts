@@ -1,14 +1,19 @@
 import "server-only";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type { AttentionItem } from "@/domain/attention";
 import { breweryAttentionItems, CLASH_WINDOW_DAYS } from "@/domain/breweryAttention";
+import { breweryEvents, buildICalendar, calendarWindow, type CalBrew } from "@/domain/brewCalendar";
+import { DEFAULT_SNAP, parseWeekdays, type SnapRules } from "@/domain/brewProfiles";
 import { addDays, type ISODate } from "@/domain/dates";
+import type { GravityUnit } from "@/domain/gravity";
 import { displayCode, kegSizeInfo, placeLabel, STATUS_META, type KegStatus } from "@/domain/kegs";
 import {
   abv,
   costPerPint,
   findClashes,
+  floorLayout,
   needsDoing,
+  nextAction,
   occupancy,
   stayIntervals,
   suggestBrews,
@@ -17,6 +22,8 @@ import {
   type BrewSuggestion,
   type Clash,
   type FloorTank,
+  type FloorZone,
+  type NextAction,
   type PlanBatch,
   type PlanStay,
   type PlanTank,
@@ -25,6 +32,8 @@ import {
   type TodoItem,
 } from "@/domain/tankPlan";
 import { db, num } from "../db";
+import { brewOrderNeeds } from "./brewOrdering";
+import { gravityUnit } from "./brewDay";
 import { beerDemand } from "./kegs";
 import { businessToday } from "./sales";
 
@@ -50,10 +59,32 @@ export async function breweryDefaults(): Promise<{ fermentDays: number; conditio
   return { fermentDays: get(DEFAULT_FERMENT_KEY, 14), conditionDays: get(DEFAULT_CONDITION_KEY, 7) };
 }
 
+export const TRANSFER_DAYS_KEY = "brewery.transferDays";
+export const PACKAGE_DAYS_KEY = "brewery.packageDays";
+export const CALENDAR_TOKEN_KEY = "brewery.calendarToken";
+
+/** The weekdays transfers and packaging happen on (Mon/Tue and Wed until set). "none" in a setting = any day. */
+export async function brewerySnap(): Promise<SnapRules> {
+  const rows = await db.setting.findMany({ where: { key: { in: [TRANSFER_DAYS_KEY, PACKAGE_DAYS_KEY] } } });
+  const raw = (k: string) => rows.find((r) => r.key === k)?.value;
+  return { transferDays: parseWeekdays(raw(TRANSFER_DAYS_KEY), DEFAULT_SNAP.transferDays), packageDays: parseWeekdays(raw(PACKAGE_DAYS_KEY), DEFAULT_SNAP.packageDays) };
+}
+
 // ---- Shapes the pages use ---------------------------------------------------------------------------
 
 export interface TankView extends PlanTank {
   notes: string | null;
+  /** Floor plan: the room or wall, and the row and column in it. */
+  zone: string | null;
+  layoutRow: number | null;
+  layoutCol: number | null;
+}
+
+/** One line in a brew's history: moves, stage changes, packaging, splits. Kept in BrewBatch.extra.timeline. */
+export interface TimelineEntry {
+  on: ISODate;
+  kind: "transfer" | "brite" | "stage" | "package" | "split" | "note";
+  text: string;
 }
 
 export interface BatchView {
@@ -79,6 +110,26 @@ export interface BatchView {
   fermentDays: number;
   conditionDays: number;
   kegBatchCode: string | null;
+  /** Timing: the brew's own profile, else its recipe's (a key, a custom name, or null for the recipe's days). */
+  profile: string | null;
+  dryHopOn: ISODate | null;
+  /** Lagers: the planned fermenter-to-fermenter move. */
+  fvTransferOn: ISODate | null;
+  tapOn: ISODate | null;
+  tapLocked: boolean;
+  lockedReason: string | null;
+  /** What packaging produced. */
+  halfKegs: number | null;
+  sixthKegs: number | null;
+  cases: number | null;
+  co2Vols: number | null;
+  /** Split batches: the brew it was split from, and the ones split from it. */
+  splitFrom: { id: string; code: string } | null;
+  splits: { id: string; code: string }[];
+  /** Latest gravity reading's day. */
+  lastReadingOn: ISODate | null;
+  /** Supplier orders placed for it: supplier → day. */
+  ordered: Record<string, string>;
 }
 
 export interface RecipeOption {
@@ -88,6 +139,11 @@ export interface RecipeOption {
   batchBbl: number;
   fermentDays: number;
   conditionDays: number;
+  style: string | null;
+  /** Timing profile key (or custom), and its own dry-hop and release days. */
+  profile: string | null;
+  dryHopDay: number | null;
+  tapDay: number | null;
 }
 
 export interface BeerOption {
@@ -98,8 +154,10 @@ export interface BeerOption {
 
 const batchInclude = {
   beer: { select: { id: true, name: true, color: true } },
-  recipe: { select: { id: true, name: true, fermentDays: true, conditionDays: true } },
+  recipe: { select: { id: true, name: true, fermentDays: true, conditionDays: true, profile: true, style: true } },
   kegBatch: { select: { code: true } },
+  splitFrom: { select: { id: true, code: true } },
+  splits: { select: { id: true, code: true }, orderBy: { code: "asc" } },
 } as const;
 
 type BatchRow = Awaited<ReturnType<typeof loadBatches>>[number];
@@ -110,7 +168,23 @@ function loadBatches(where: Prisma.BrewBatchWhereInput) {
 
 export function toBatchView(b: BatchRow, defaults: { fermentDays: number; conditionDays: number }): BatchView {
   const og = num(b.og), fg = num(b.fg), bbl = num(b.bbl), cost = num(b.cost);
+  const x = readExtra(b.extra);
+  const ordered = b.ordered && typeof b.ordered === "object" && !Array.isArray(b.ordered) ? Object.fromEntries(Object.entries(b.ordered as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> : {};
   return {
+    profile: x.profile ?? b.recipe?.profile ?? null,
+    dryHopOn: iso(b.dryHopOn),
+    fvTransferOn: x.fvTransferOn,
+    tapOn: iso(b.tapOn),
+    tapLocked: b.tapLocked,
+    lockedReason: b.lockedReason,
+    halfKegs: b.halfKegs,
+    sixthKegs: b.sixthKegs,
+    cases: b.cases,
+    co2Vols: num(b.co2Vols),
+    splitFrom: b.splitFrom ? { id: b.splitFrom.id, code: b.splitFrom.code } : null,
+    splits: b.splits.map((s) => ({ id: s.id, code: s.code })),
+    lastReadingOn: x.readings.length ? x.readings[x.readings.length - 1].on : null,
+    ordered,
     id: b.id,
     code: b.code,
     name: b.beer?.name ?? b.recipe?.name ?? b.code,
@@ -134,11 +208,11 @@ export function toBatchView(b: BatchRow, defaults: { fermentDays: number; condit
   };
 }
 
-const toPlanBatch = (b: BatchView): PlanBatch => ({ id: b.id, code: b.code, name: b.name, status: b.status, bbl: b.bbl, fermentDays: b.fermentDays, conditionDays: b.conditionDays, plannedOn: b.plannedOn });
+const toPlanBatch = (b: BatchView): PlanBatch => ({ id: b.id, code: b.code, name: b.name, status: b.status, bbl: b.bbl, fermentDays: b.fermentDays, conditionDays: b.conditionDays, plannedOn: b.plannedOn, dryHopOn: b.dryHopOn });
 
 export async function loadTanks(): Promise<TankView[]> {
   const rows = await db.tank.findMany({ orderBy: [{ sort: "asc" }, { name: "asc" }] });
-  return rows.map((t) => ({ id: t.id, name: t.name, kind: t.kind as TankKind, capacityBbl: num(t.capacityBbl) ?? 0, sort: t.sort, active: t.active, notes: t.notes }));
+  return rows.map((t) => ({ id: t.id, name: t.name, kind: t.kind as TankKind, capacityBbl: num(t.capacityBbl) ?? 0, sort: t.sort, active: t.active, notes: t.notes, zone: t.zone, layoutRow: t.layoutRow, layoutCol: t.layoutCol }));
 }
 
 /**
@@ -160,7 +234,7 @@ export async function loadPlan(today: ISODate, historyDays = 120) {
 
 export async function brewOptions(): Promise<{ recipes: RecipeOption[]; beers: BeerOption[] }> {
   const [recipes, beers] = await Promise.all([
-    db.brewRecipe.findMany({ where: { status: { not: "archived" } }, orderBy: { name: "asc" }, select: { id: true, name: true, beerId: true, batchBbl: true, fermentDays: true, conditionDays: true } }),
+    db.brewRecipe.findMany({ where: { status: { not: "archived" } }, orderBy: { name: "asc" }, select: { id: true, name: true, beerId: true, batchBbl: true, fermentDays: true, conditionDays: true, style: true, profile: true, dryHopDay: true, tapDay: true } }),
     db.beer.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, color: true } }),
   ]);
   return { recipes: recipes.map((r) => ({ ...r, batchBbl: num(r.batchBbl) ?? 7 })), beers };
@@ -168,15 +242,26 @@ export async function brewOptions(): Promise<{ recipes: RecipeOption[]; beers: B
 
 // ---- The floor --------------------------------------------------------------------------------------
 
-export interface BriteChoice {
+export interface TankChoice {
   id: string;
   name: string;
   kind: TankKind;
   capacityBbl: number;
   /** Nothing in it now. */
   freeNow: boolean;
+  /** The brew in it now, if any. */
+  occupant: { batchId: string; code: string; name: string } | null;
   /** Next booking by another brew, if any. */
   bookedFrom: ISODate | null;
+}
+/** @deprecated the floor offers every tank now; kept for older imports. */
+export type BriteChoice = TankChoice;
+
+export interface BrewHouse {
+  /** A brew day that's been started and not finished: resume it. */
+  inProgress: { id: string; code: string; name: string } | null;
+  /** The next planned brew (or one whose day has passed and isn't brewed). */
+  next: { id: string; code: string; name: string; on: ISODate; recipeId: string | null } | null;
 }
 
 export interface FloorView {
@@ -184,35 +269,69 @@ export interface FloorView {
   tanks: (FloorTank & { tank: TankView })[];
   batches: Record<string, BatchView>;
   todos: TodoItem[];
-  /** Where a brew can be transferred to (brite and other tanks). */
-  transferTo: BriteChoice[];
+  /** Every tank in use, with what's in it now: where a brew can be moved. */
+  transferTo: TankChoice[];
   /** Brite tanks pencilled in for each brew (batchId → tankId). */
   plannedBrite: Record<string, string>;
+  /** The floor plan: zones with each tank's row and column. */
+  zones: FloorZone[];
+  /** The next thing to do with the brew in each tank (tankId → action). */
+  actions: Record<string, NextAction | null>;
+  brewHouse: BrewHouse;
+  unit: GravityUnit;
   recipes: RecipeOption[];
   beers: BeerOption[];
   defaults: { fermentDays: number; conditionDays: number };
   stats: { fermenting: number; conditioning: number; plannedNext14: number; bblInTanks: number };
 }
 
+/** Every tank in use as a place to move a brew: brites first, then fermenters, then other. */
+function tankChoices(tanks: TankView[], iv: ReturnType<typeof stayIntervals>, batches: BatchView[], today: ISODate): TankChoice[] {
+  const byId = new Map(batches.map((b) => [b.id, b]));
+  const rank: Record<TankKind, number> = { BRITE: 0, FERMENTER: 1, OTHER: 2 };
+  return tanks
+    .filter((t) => t.active)
+    .sort((a, b) => rank[a.kind] - rank[b.kind] || a.sort - b.sort)
+    .map((t) => {
+      const mine = iv.filter((i) => i.tankId === t.id);
+      const cur = mine.find((i) => i.current || (i.start <= today && i.end > today && !i.planned));
+      const next = mine.filter((i) => i.start > today && !i.current).sort((a, b) => a.start.localeCompare(b.start))[0];
+      const b = cur ? byId.get(cur.batchId) : undefined;
+      return { id: t.id, name: t.name, kind: t.kind, capacityBbl: t.capacityBbl, freeNow: !cur, occupant: cur ? { batchId: cur.batchId, code: b?.code ?? "", name: b?.name ?? "a brew" } : null, bookedFrom: next?.start ?? null };
+    });
+}
+
+async function brewHouse(today: ISODate, batches: BatchView[]): Promise<BrewHouse> {
+  const started = await db.brewBatch.findFirst({
+    where: { NOT: { brewLog: { equals: Prisma.AnyNull } }, OR: [{ status: "PLANNED" }, { brewedOn: asDate(today) }] },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, code: true, beer: { select: { name: true } }, recipe: { select: { name: true } } },
+  });
+  const next = batches.filter((b) => b.status === "PLANNED" && b.plannedOn && b.id !== started?.id).sort((a, b) => a.plannedOn!.localeCompare(b.plannedOn!))[0];
+  return {
+    inProgress: started ? { id: started.id, code: started.code, name: started.beer?.name ?? started.recipe?.name ?? started.code } : null,
+    next: next ? { id: next.id, code: next.code, name: next.name, on: next.plannedOn!, recipeId: next.recipeId } : null,
+  };
+}
+
 export async function tanksFloor(): Promise<FloorView> {
   const today = businessToday();
-  const [{ tanks, defaults, batches, planBatches, stays }, opts] = await Promise.all([loadPlan(today), brewOptions()]);
+  const [{ tanks, defaults, batches, planBatches, stays }, opts, unit] = await Promise.all([loadPlan(today), brewOptions(), gravityUnit()]);
   const floor = tankFloor(tanks, stays, planBatches, today) as (FloorTank & { tank: TankView })[];
   const iv = stayIntervals(stays, tanks, planBatches, today);
   const clashes = findClashes(iv, { from: today, to: addDays(today, CLASH_WINDOW_DAYS) });
   const todos = needsDoing({ floor, clashes, batches: planBatches, tanks, today });
-  const transferTo: BriteChoice[] = tanks
-    .filter((t) => t.active && t.kind !== "FERMENTER")
-    .sort((a, b) => (a.kind === b.kind ? a.sort - b.sort : a.kind === "BRITE" ? -1 : 1))
-    .map((t) => {
-      const mine = iv.filter((i) => i.tankId === t.id);
-      const next = mine.filter((i) => i.start > today && !i.current).sort((a, b) => a.start.localeCompare(b.start))[0];
-      return { id: t.id, name: t.name, kind: t.kind, capacityBbl: t.capacityBbl, freeNow: !mine.some((i) => i.current || (i.start <= today && i.end > today && !i.planned)), bookedFrom: next?.start ?? null };
-    });
+  const transferTo = tankChoices(tanks, iv, batches, today);
   const plannedBrite: Record<string, string> = {};
   const kindOf = new Map(tanks.map((t) => [t.id, t.kind]));
   for (const s of stays) if (s.planned && kindOf.get(s.tankId) !== "FERMENTER" && !plannedBrite[s.batchId]) plannedBrite[s.batchId] = s.tankId;
   const inTank = batches.filter((b) => b.status === "FERMENTING" || b.status === "CONDITIONING");
+  const byId = new Map(batches.map((b) => [b.id, b]));
+  const actions: Record<string, NextAction | null> = {};
+  for (const f of floor) {
+    const b = f.now ? byId.get(f.now.batchId) : undefined;
+    actions[f.tank.id] = f.now && b ? nextAction({ now: f.now, status: b.status, today, dryHopOn: b.dryHopOn, lastReadingOn: b.lastReadingOn, fg: b.fg }) : null;
+  }
   return {
     today,
     tanks: floor,
@@ -220,6 +339,10 @@ export async function tanksFloor(): Promise<FloorView> {
     todos,
     transferTo,
     plannedBrite,
+    zones: floorLayout(floor.map((f) => f.tank)),
+    actions,
+    brewHouse: await brewHouse(today, batches),
+    unit,
     ...opts,
     defaults,
     stats: {
@@ -285,6 +408,9 @@ export interface ScheduleView {
   recipes: RecipeOption[];
   beers: BeerOption[];
   defaults: { fermentDays: number; conditionDays: number };
+  /** Supplier orders each brew in the year view needs (batchId → orders). */
+  orders: Record<string, { supplier: string; orderBy: string; placedOn: string | null }[]>;
+  snap: SnapRules;
 }
 
 export async function scheduleView(weeks = 12): Promise<ScheduleView> {
@@ -294,7 +420,7 @@ export async function scheduleView(weeks = 12): Promise<ScheduleView> {
   const from = addDays(today, -wd);
   const to = addDays(from, weeks * 7);
   const yearStart = `${today.slice(0, 4)}-01-01`;
-  const [{ tanks, defaults, batches, planBatches, stays }, opts, suggestions, yearRows] = await Promise.all([
+  const [{ tanks, defaults, batches, planBatches, stays }, opts, suggestions, yearRows, snap] = await Promise.all([
     loadPlan(today),
     brewOptions(),
     brewSuggestions(today).catch((e) => {
@@ -302,6 +428,7 @@ export async function scheduleView(weeks = 12): Promise<ScheduleView> {
       return [] as BrewSuggestion[];
     }),
     loadBatches({ OR: [{ brewedOn: { gte: asDate(yearStart) } }, { plannedOn: { gte: asDate(yearStart) } }] }),
+    brewerySnap(),
   ]);
   const rows = occupancy(tanks, stays, planBatches, from, to, today) as (TankRow & { tank: TankView })[];
   const clashes = findClashes(stayIntervals(stays, tanks, planBatches, today), { from: today, to });
@@ -320,7 +447,11 @@ export async function scheduleView(weeks = 12): Promise<ScheduleView> {
   const end = lastMonth > `${today.slice(0, 4)}-12` ? lastMonth : `${today.slice(0, 4)}-12`;
   const months: ScheduleView["months"] = [];
   for (let m = yearStart.slice(0, 7); m <= end; m = nextMonth(m)) months.push({ month: m, brews: dated.filter((b) => when(b)!.startsWith(m)) });
-  return { today, from, to, rows, batches: Object.fromEntries(batches.map((b) => [b.id, b])), clashes, planned, months, suggestions, plannedStays, tanks, ...opts, defaults };
+  const needs = await brewOrderNeeds(dated.filter((b) => b.status === "PLANNED").map((b) => b.id)).catch((e) => {
+    console.error("brewery: order needs failed", (e as Error).message);
+    return new Map<string, { supplier: string; orderBy: string; placedOn: string | null }[]>();
+  });
+  return { today, from, to, rows, batches: Object.fromEntries(batches.map((b) => [b.id, b])), clashes, planned, months, suggestions, plannedStays, tanks, ...opts, defaults, orders: Object.fromEntries(needs), snap };
 }
 
 const nextMonth = (ym: string) => {
@@ -362,29 +493,61 @@ export interface BatchDetail {
   tanks: TankView[];
   recipes: RecipeOption[];
   beers: BeerOption[];
+  /** Moves, stage changes, packaging and splits, oldest first. */
+  timeline: TimelineEntry[];
+  unit: GravityUnit;
+  /** What packaging noted. */
+  packageNote: string | null;
+  /** Where a split could go: every tank in use, with what's in it now. */
+  splitTo: TankChoice[];
 }
 
-/** Gravity readings and dump details kept in BrewBatch.extra. */
-export function readExtra(extra: unknown): { readings: GravityReading[]; dumped: { on: ISODate; reason: string } | null } {
-  const e = (extra && typeof extra === "object" ? extra : {}) as { readings?: unknown; dumped?: unknown };
+export interface BatchExtra {
+  readings: GravityReading[];
+  dumped: { on: ISODate; reason: string } | null;
+  timeline: TimelineEntry[];
+  /** The brew's own timing profile (set when planned), over its recipe's. */
+  profile: string | null;
+  fvTransferOn: ISODate | null;
+  packageNote: string | null;
+}
+
+const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+
+/** Gravity readings, dump details, the brew's history and planning notes kept in BrewBatch.extra. */
+export function readExtra(extra: unknown): BatchExtra {
+  const e = (extra && typeof extra === "object" ? extra : {}) as { readings?: unknown; dumped?: unknown; timeline?: unknown; profile?: unknown; fvTransferOn?: unknown; packageNote?: unknown };
   const readings = Array.isArray(e.readings)
     ? e.readings.filter((r): r is GravityReading => !!r && typeof r === "object" && typeof (r as GravityReading).sg === "number" && typeof (r as GravityReading).on === "string")
     : [];
+  const timeline = Array.isArray(e.timeline)
+    ? e.timeline.filter((t): t is TimelineEntry => !!t && typeof t === "object" && typeof (t as TimelineEntry).on === "string" && typeof (t as TimelineEntry).text === "string")
+    : [];
   const d = e.dumped as { on?: unknown; reason?: unknown } | undefined;
-  return { readings: readings.sort((a, b) => a.on.localeCompare(b.on)), dumped: d && typeof d.on === "string" ? { on: d.on, reason: String(d.reason ?? "") } : null };
+  return {
+    readings: readings.sort((a, b) => a.on.localeCompare(b.on)),
+    dumped: d && typeof d.on === "string" ? { on: d.on, reason: String(d.reason ?? "") } : null,
+    timeline: timeline.sort((a, b) => a.on.localeCompare(b.on)),
+    profile: str(e.profile),
+    fvTransferOn: str(e.fvTransferOn),
+    packageNote: str(e.packageNote),
+  };
 }
 
 export async function batchDetail(id: string): Promise<BatchDetail | null> {
   const today = businessToday();
-  const [defaults, row, tanks, opts] = await Promise.all([
+  const [defaults, row, tanks, opts, unit, plan] = await Promise.all([
     breweryDefaults(),
     db.brewBatch.findUnique({ where: { id }, include: { ...batchInclude, stays: { include: { tank: true }, orderBy: { start: "asc" } } } }),
     loadTanks(),
     brewOptions(),
+    gravityUnit(),
+    loadPlan(today, 30),
   ]);
   if (!row) return null;
   const view = toBatchView(row, defaults);
-  const { readings, dumped } = readExtra(row.extra);
+  const { readings, dumped, timeline, packageNote } = readExtra(row.extra);
+  const splitTo = tankChoices(plan.tanks, stayIntervals(plan.stays, plan.tanks, plan.planBatches, today), plan.batches, today);
   const lastActual = [...row.stays].filter((s) => !s.planned).pop();
   const stays = row.stays.map((s) => {
     const start = iso(s.start)!, end = iso(s.end);
@@ -432,7 +595,64 @@ export async function batchDetail(id: string): Promise<BatchDetail | null> {
     kegBatch,
     tanks,
     ...opts,
+    timeline,
+    unit,
+    packageNote,
+    splitTo,
   };
+}
+
+// ---- The calendar feed ------------------------------------------------------------------------------
+
+/** The token in a calendar address, or null when it's wrong or not set. Constant-time compare. */
+export async function calendarTokenMatches(token: string): Promise<boolean> {
+  const row = await db.setting.findUnique({ where: { key: CALENDAR_TOKEN_KEY } });
+  const want = row?.value ?? "";
+  if (!want || token.length !== want.length) return false;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ token.charCodeAt(i);
+  return diff === 0;
+}
+
+/** The brewery calendar (.ics): brew days, dry hops, transfers, packaging and release days, last month to six months on. */
+export async function breweryCalendarIcs(): Promise<string> {
+  const today = businessToday();
+  const w = calendarWindow(today);
+  const from = asDate(w.from), to = asDate(w.to);
+  const rows = await db.brewBatch.findMany({
+    where: {
+      status: { not: "DUMPED" },
+      OR: [
+        { plannedOn: { gte: from, lt: to } },
+        { brewedOn: { gte: from, lt: to } },
+        { tapOn: { gte: from, lt: to } },
+        { dryHopOn: { gte: from, lt: to } },
+        { packagedOn: { gte: from, lt: to } },
+        { stays: { some: { OR: [{ start: { gte: from, lt: to } }, { end: { gte: from, lt: to } }] } } },
+      ],
+    },
+    select: {
+      id: true, code: true, status: true, plannedOn: true, brewedOn: true, packagedOn: true, dryHopOn: true, tapOn: true, tapLocked: true, lockedReason: true, extra: true,
+      beer: { select: { name: true } },
+      recipe: { select: { name: true } },
+      stays: { orderBy: { start: "asc" }, select: { start: true, end: true, tank: { select: { name: true, kind: true } } } },
+    },
+  });
+  const brews: CalBrew[] = rows.map((b) => ({
+    id: b.id,
+    code: b.code,
+    name: b.beer?.name ?? b.recipe?.name ?? b.code,
+    status: b.status,
+    brewOn: iso(b.brewedOn) ?? iso(b.plannedOn),
+    dryHopOn: iso(b.dryHopOn),
+    fvTransferOn: readExtra(b.extra).fvTransferOn,
+    tapOn: iso(b.tapOn),
+    tapLocked: b.tapLocked,
+    lockedReason: b.lockedReason,
+    packagedOn: iso(b.packagedOn),
+    stays: b.stays.map((s) => ({ tankName: s.tank.name, kind: s.tank.kind, start: iso(s.start)!, end: iso(s.end) })),
+  }));
+  return buildICalendar(breweryEvents(brews, w), { name: "Subversive brewery", stamp: new Date() });
 }
 
 // ---- Overview ---------------------------------------------------------------------------------------

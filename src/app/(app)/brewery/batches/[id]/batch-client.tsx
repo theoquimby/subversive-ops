@@ -4,13 +4,19 @@ import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, cx, DatePicker, Field, Input, Textarea } from "@/components/ui";
+import { profileLabel } from "@/domain/brewProfiles";
 import { daysBetween } from "@/domain/dates";
+import type { GravityUnit } from "@/domain/gravity";
 import { shortDate } from "@/lib/format";
 import type { BatchDetail, BeerOption, RecipeOption } from "@/server/services/brewery";
-import { Trash2 } from "lucide-react";
+import { Lock, LockOpen, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { cancelBrewAction, deleteReadingAction, dumpAction, editStayAction, gravityAction, setBatchFieldAction } from "../../actions";
+import { cancelBrewAction, deleteReadingAction, dumpAction, editStayAction, gravityAction, releaseLockAction, setBatchFieldAction, splitAction } from "../../actions";
+import { gravityExample, gravityIn } from "../../bits";
+import { BrewPick, pickBbl, pickIds } from "../../brew-pick";
+import { TankButtons, useForceable } from "../../floor-client";
 
 type Batch = BatchDetail["batch"];
 type Stay = BatchDetail["stays"][number];
@@ -70,8 +76,8 @@ export function StayRow({ stay, kindLabel, today }: { stay: Stay; kindLabel: str
 
 const KIND_TEXT = { og: "OG", fg: "FG", reading: "Reading" } as const;
 
-/** Gravity readings over the brew's life, and a quick add. */
-export function GravityPanel({ batchId, readings, today }: { batchId: string; readings: BatchDetail["readings"]; today: string }) {
+/** Gravity readings over the brew's life, and a quick add. Shown and typed in the brewery's unit. */
+export function GravityPanel({ batchId, readings, today, unit }: { batchId: string; readings: BatchDetail["readings"]; today: string; unit: GravityUnit }) {
   const [sg, setSg] = useState("");
   const [kind, setKind] = useState<"og" | "fg" | "reading">(readings.length ? "reading" : "og");
   const [on, setOn] = useState(today);
@@ -97,7 +103,7 @@ export function GravityPanel({ batchId, readings, today }: { batchId: string; re
           {readings.map((r, i) => (
             <li key={`${r.on}-${i}`} className="flex min-h-12 items-center gap-3 px-4 py-2">
               <span className="num w-14 shrink-0 text-xs text-muted">{shortDate(r.on)}</span>
-              <span className="num w-14 shrink-0 font-medium">{r.sg.toFixed(3)}</span>
+              <span className="num w-16 shrink-0 font-medium">{gravityIn(r.sg, unit)}</span>
               {r.kind !== "reading" && <Badge>{KIND_TEXT[r.kind]}</Badge>}
               <span className="min-w-0 flex-1 truncate text-sm text-muted">{r.note}</span>
               <button type="button" aria-label={`Remove the ${shortDate(r.on)} reading`} disabled={pending} onClick={() => go(() => deleteReadingAction(batchId, i))} className="grid size-10 shrink-0 place-items-center rounded-md text-muted hover:bg-bad-bg hover:text-bad sm:size-8">
@@ -119,7 +125,7 @@ export function GravityPanel({ batchId, readings, today }: { batchId: string; re
             <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)} className={cx("h-10 flex-1 rounded-lg border px-2.5 text-sm font-medium transition-colors duration-120 sm:h-9", kind === k ? "border-ink bg-ink text-surface" : "border-border-strong bg-surface hover:bg-surface-2")}>{KIND_TEXT[k]}</button>
           ))}
         </div>
-        <Field label="Gravity"><Input value={sg} onChange={(e) => setSg(e.target.value)} inputMode="decimal" placeholder="1.012" aria-label="Specific gravity" /></Field>
+        <Field label="Gravity"><Input value={sg} onChange={(e) => setSg(e.target.value)} inputMode="decimal" placeholder={gravityExample(unit)} aria-label="Gravity" /></Field>
         <Field label="Taken on"><DatePicker value={on} today={today} onChange={(e) => setOn(e.target.value)} aria-label="Reading day" /></Field>
         <Field label="Note" className="col-span-2 sm:col-span-1"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" aria-label="Note" /></Field>
         <Button type="submit" variant="primary" disabled={pending || !sg.trim()} className="col-span-2 h-11 sm:col-span-1 sm:h-9">Add</Button>
@@ -130,7 +136,7 @@ export function GravityPanel({ batchId, readings, today }: { batchId: string; re
 }
 
 /** The brew's own fields, each saved as you leave it. */
-export function BatchDetails({ batch: b, recipes, beers }: { batch: Batch; recipes: RecipeOption[]; beers: BeerOption[] }) {
+export function BatchDetails({ batch: b, recipes, beers, unit }: { batch: Batch; recipes: RecipeOption[]; beers: BeerOption[]; unit: GravityUnit }) {
   const save = (f: Parameters<typeof setBatchFieldAction>[1]) => setBatchFieldAction.bind(null, b.id, f);
   const [notes, setNotes] = useState(b.notes ?? "");
   const [, run] = useTransition();
@@ -150,8 +156,8 @@ export function BatchDetails({ batch: b, recipes, beers }: { batch: Batch; recip
           {row("Volume", <GridCell grid="brew" col="bbl" value={b.bbl} type="number" suffix="bbl" onSave={save("bbl")} ariaLabel="Volume in barrels" />)}
         </div>
         <div>
-          {row("OG", <GridCell grid="brew" col="og" value={b.og != null ? b.og.toFixed(3) : null} placeholder="1.050" onSave={save("og")} ariaLabel="Original gravity" />)}
-          {row("FG", <GridCell grid="brew" col="fg" value={b.fg != null ? b.fg.toFixed(3) : null} placeholder="1.010" onSave={save("fg")} ariaLabel="Final gravity" />)}
+          {row("OG", <GridCell grid="brew" col="og" value={b.og != null ? gravityExample(unit, b.og) : null} placeholder={gravityExample(unit, 1.05)} onSave={save("og")} ariaLabel="Original gravity" />)}
+          {row("FG", <GridCell grid="brew" col="fg" value={b.fg != null ? gravityExample(unit, b.fg) : null} placeholder={gravityExample(unit, 1.01)} onSave={save("fg")} ariaLabel="Final gravity" />)}
           {row("Ingredient cost", <GridCell grid="brew" col="cost" value={b.cost} type="number" prefix="$" decimals={2} placeholder="Not known yet" onSave={save("cost")} ariaLabel="Ingredient cost" />)}
           {row(b.status === "PLANNED" ? "Planned for" : "Brewed", (
             <DatePicker value={(b.status === "PLANNED" ? b.plannedOn : b.brewedOn) ?? ""} onChange={(e) => run(async () => { await setBatchFieldAction(b.id, b.status === "PLANNED" ? "plannedOn" : "brewedOn", e.target.value); })} aria-label={b.status === "PLANNED" ? "Planned brew day" : "Brew day"} />
@@ -212,5 +218,152 @@ export function BatchEnd({ batch: b, today }: { batch: Batch; today: string }) {
       )}
       {error && <p role="alert" className="text-sm text-bad">{error}</p>}
     </div>
+  );
+}
+
+/** The brew's planned days: its timing, dry hop, fermenter move and release, and the release lock. */
+export function PlanDates({ batch: b, today }: { batch: Batch; today: string }) {
+  const [reason, setReason] = useState(b.lockedReason ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, run] = useTransition();
+  const [toast, show] = useToast();
+  const go = (fn: () => Promise<{ ok: string } | { error?: string } | void>) =>
+    run(async () => {
+      const r = await fn();
+      if (r && "error" in r && r.error) setError(r.error);
+      else {
+        setError(null);
+        if (r && "ok" in r) show(r.ok);
+      }
+    });
+  const row = (label: string, node: React.ReactNode) => (
+    <div className="grid grid-cols-[7.5rem_1fr] items-center gap-2 border-b border-border px-2 py-1 last:border-b-0 sm:grid-cols-[9rem_1fr]">
+      <span className="px-2 text-sm text-muted">{label}</span>
+      <div className="min-w-0">{node}</div>
+    </div>
+  );
+  return (
+    <Card>
+      {toast}
+      <div className="grid md:grid-cols-2 md:divide-x md:divide-border">
+        <div>
+          {row("Timing", <span className="block px-2 py-2 text-sm">{profileLabel(b.profile)}</span>)}
+          {row("Dry hop", <DatePicker value={b.dryHopOn ?? ""} today={today} onChange={(e) => go(() => setBatchFieldAction(b.id, "dryHopOn", e.target.value))} aria-label="Dry-hop day" />)}
+          {b.fvTransferOn && row("Fermenter move", <span className="num block px-2 py-2 text-sm">{shortDate(b.fvTransferOn)}</span>)}
+        </div>
+        <div>
+          {row("Release", <DatePicker value={b.tapOn ?? ""} today={today} onChange={(e) => go(() => setBatchFieldAction(b.id, "tapOn", e.target.value))} aria-label="Release day" />)}
+          {row("Locked", (
+            <div className="flex flex-wrap items-center gap-2 px-1 py-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={b.tapLocked ? "primary" : "secondary"}
+                disabled={pending || (!b.tapLocked && !b.tapOn)}
+                aria-pressed={b.tapLocked}
+                className="h-10 sm:h-8"
+                onClick={() => go(() => releaseLockAction({ batchId: b.id, locked: !b.tapLocked, reason: reason || null }))}
+              >
+                {b.tapLocked ? <><Lock className="size-3.5" />Locked</> : <><LockOpen className="size-3.5" />Lock the release</>}
+              </Button>
+              <Input value={reason} onChange={(e) => setReason(e.target.value)} onBlur={() => reason !== (b.lockedReason ?? "") && go(() => setBatchFieldAction(b.id, "lockedReason", reason))} placeholder="Why, e.g. release event" aria-label="Why the release is locked" className="min-w-0 flex-1" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className="border-t border-border px-4 py-2.5 text-xs text-muted">A locked release stays on its day when the brew moves; the schedule says when a new brew day is too late for it.</p>
+      {error && <p role="alert" className="px-4 pb-3 text-sm text-bad">{error}</p>}
+    </Card>
+  );
+}
+
+/**
+ * Split part of this brew into another fermenter as its own brew, like the
+ * two lagers brewed together and split at two weeks.
+ */
+export function SplitForm({ batch: b, today, recipes, beers, choices, brewOn }: { batch: Batch; today: string; recipes: RecipeOption[]; beers: BeerOption[]; choices: BatchDetail["splitTo"]; brewOn: string }) {
+  const [open, setOpen] = useState(false);
+  const [pick, setPick] = useState("");
+  const [bbl, setBbl] = useState("");
+  const [tankId, setTankId] = useState("");
+  const [on, setOn] = useState(today > brewOn ? today : brewOn);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, run] = useTransition();
+  const [toast, show] = useToast();
+  const forceable = useForceable();
+  const tanks = choices.filter((c) => c.kind !== "BRITE");
+  if (!open) {
+    return (
+      <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
+        {toast}
+        <p className="text-sm text-muted">Brewed together, then part goes into its own fermenter as another beer.</p>
+        <Button type="button" variant="secondary" className="h-11 sm:h-9" onClick={() => setOpen(true)}>Split into another fermenter</Button>
+      </Card>
+    );
+  }
+  return (
+    <Card className="p-4">
+      {toast}
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!pick) return setError("Pick what the split part becomes");
+          if (!tankId) return setError("Pick the fermenter it goes into");
+          run(async () => {
+            const r = await forceable((force) => splitAction({ batchId: b.id, ...pickIds(pick), bbl, tankId, on, force }), "Split into that tank?", "Split anyway");
+            if (!r) return;
+            if ("error" in r) setError(r.error);
+            else {
+              setError(null);
+              setOpen(false);
+              setPick("");
+              show(r.ok);
+            }
+          });
+        }}
+      >
+        <div className="text-sm font-semibold">Split {b.code} into another fermenter</div>
+        <BrewPick value={pick} onChange={(v) => { setPick(v); if (!bbl) setBbl(String(Math.min(pickBbl(v, recipes, 4), Math.max(1, (b.bbl ?? 8) - 1)))); }} recipes={recipes} beers={beers} label="What the split part becomes" />
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Barrels taken" hint={b.bbl != null ? `Of ${b.bbl} bbl` : undefined}><Input value={bbl} onChange={(e) => setBbl(e.target.value)} inputMode="decimal" aria-label="Barrels taken" /></Field>
+          <Field label="Split on"><DatePicker value={on} today={today} onChange={(e) => setOn(e.target.value)} aria-label="Split day" /></Field>
+        </div>
+        <TankButtons choices={tanks} value={tankId} onPick={setTankId} bbl={Number(bbl) || null} label="Fermenter it goes into" />
+        {error && <p role="alert" className="text-sm text-bad">{error}</p>}
+        <div className="flex gap-2">
+          <Button type="submit" variant="primary" disabled={pending} className="h-11 flex-1 sm:h-9 sm:flex-none">{pending ? "Saving…" : "Split it"}</Button>
+          <Button type="button" variant="ghost" className="h-11 sm:h-9" onClick={() => setOpen(false)}>Cancel</Button>
+        </div>
+        <p className="text-xs text-muted">The new brew gets the next letter on this code ({b.code}B), its share of the volume and cost, and its own dates from its recipe.</p>
+      </form>
+    </Card>
+  );
+}
+
+/** The brew's history: moves, stage changes, packaging and splits, as noted. */
+export function History({ entries }: { entries: BatchDetail["timeline"] }) {
+  return (
+    <Card>
+      <ol className="divide-y divide-border">
+        {entries.map((e, i) => (
+          <li key={`${e.on}-${i}`} className="flex gap-3 px-4 py-2.5">
+            <span className="num w-14 shrink-0 pt-0.5 text-xs text-muted">{shortDate(e.on)}</span>
+            <span className="min-w-0 text-sm text-pretty">{e.text}</span>
+          </li>
+        ))}
+      </ol>
+    </Card>
+  );
+}
+
+/** "Split from 26-014" / "Split into 26-014B, 26-014C", linked. */
+export function SplitLinks({ from, into }: { from: { id: string; code: string } | null; into: { id: string; code: string }[] }) {
+  if (!from && !into.length) return null;
+  return (
+    <p className="mb-6 flex flex-wrap gap-x-4 gap-y-1 text-sm text-ink-2">
+      {from && <span>Split from <Link href={`/brewery/batches/${from.id}`} className="num font-medium underline underline-offset-2">{from.code}</Link></span>}
+      {into.length > 0 && <span>Split into {into.map((s, i) => <span key={s.id}>{i ? ", " : ""}<Link href={`/brewery/batches/${s.id}`} className="num font-medium underline underline-offset-2">{s.code}</Link></span>)}</span>}
+    </p>
   );
 }
