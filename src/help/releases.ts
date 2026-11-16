@@ -24,6 +24,21 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.21",
+    date: "2026-11-16",
+    title: "Announcements and event pages",
+    summary: "Short announcements in a band at the top of every website page, a page of its own for big nights like Oktoberfest, and your latest Instagram posts served to the website from Ops.",
+    entries: ["2026-11-16.website-announcements", "2026-11-16.website-event-pages"],
+    fixed: [
+      "Website → Announcements: write a line of up to 140 characters, pick orange (closure), yellow (event) or plain, link it to an event's page or any https:// address, and pick its first and last day. A phone preview shows it as guests will.",
+      "The website shows the first three that are on today, in your order; arrows change the order. Visitors can close a line. Show again to people who closed it brings a new message back for everyone.",
+      "Website → Events → Add page: a landscape photo (at least 1600 px wide; the app says plainly when one is too small or upright), an intro, up to 8 sections, a schedule of up to 24 rows and up to 6 links, with a preview.",
+      "The website is told at once when an announcement or an event page is saved, once its connection is set up.",
+      "The website can now read your five latest Instagram posts from Ops, so it no longer needs its own Instagram key that runs out every 60 days. Pictures whose Instagram address has run out are left out until the nightly sync brings fresh ones.",
+      "Changing an event's web address also updates announcements that link to it.",
+    ],
+  },
+  {
     version: "1.20",
     date: "2026-11-16",
     title: "The Brewery",

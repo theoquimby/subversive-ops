@@ -8,7 +8,7 @@ import { Badge, Button, Card, cx, LinkButton, Section } from "@/components/ui";
 import { EVENT_KIND_LABEL, isEventKind } from "@/domain/events";
 import { hhmmLabel } from "@/domain/websiteHours";
 import { shortDate } from "@/lib/format";
-import { ImageUp, Trash2 } from "lucide-react";
+import { FileText, ImageUp, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { removeEventImage, setEventWebField, setHolidaysClosed, uploadEventImage } from "../actions";
@@ -34,6 +34,21 @@ export interface WebEventRow {
   featured: boolean;
   kitchenCloseOverride: string | null;
   barCloseOverride: string | null;
+  /** "Photo · intro · 2 sections", or "No page" */
+  page: string;
+  hasPage: boolean;
+}
+
+function PageCell({ row }: { row: WebEventRow }) {
+  return (
+    <div className="flex items-center gap-2 px-1">
+      <LinkButton href={`/website/events/${row.id}`} size="sm" className="h-10 sm:h-8" variant={row.hasPage ? "secondary" : "ghost"} aria-label={`${row.hasPage ? "Edit" : "Add"} the page for ${row.title}`}>
+        <FileText className="size-4" />
+        {row.hasPage ? "Edit page" : "Add page"}
+      </LinkButton>
+      {row.hasPage && <span className="hidden truncate text-xs text-muted xl:inline">{row.page}</span>}
+    </div>
+  );
 }
 
 const kindLabel = (k: string) => (isEventKind(k) ? EVENT_KIND_LABEL[k] : k);
@@ -134,6 +149,7 @@ export function EventsTab({ rows, past, holidaysClosed }: { rows: WebEventRow[];
       { id: "price", header: "Price", edit: true, width: 130, sort: (e) => e.priceLabel ?? "", csv: (e) => e.priceLabel, cell: (e) => <GridCell grid="web-events" col="price" value={e.priceLabel ?? ""} placeholder="e.g. Free" ariaLabel={`Price for ${e.title}`} onSave={save(e, "priceLabel")} /> },
       { id: "ticket", header: "Tickets link", edit: true, width: 200, sort: (e) => e.ticketUrl ?? "", csv: (e) => e.ticketUrl, cell: (e) => <GridCell grid="web-events" col="ticket" value={e.ticketUrl ?? ""} placeholder="https://…" ariaLabel={`Tickets link for ${e.title}`} onSave={save(e, "ticketUrl")} /> },
       { id: "rsvp", header: "RSVP link", edit: true, width: 200, defaultHidden: true, sort: (e) => e.rsvpUrl ?? "", csv: (e) => e.rsvpUrl, cell: (e) => <GridCell grid="web-events" col="rsvp" value={e.rsvpUrl ?? ""} placeholder="https://…" ariaLabel={`RSVP link for ${e.title}`} onSave={save(e, "rsvpUrl")} /> },
+      { id: "page", header: "Event page", help: "website.events.page", width: 150, sort: (e) => (e.hasPage ? 1 : 0), csv: (e) => (e.hasPage ? e.page : ""), cell: (e) => <PageCell row={e} /> },
       { id: "featured", header: "Featured", edit: true, width: 110, sort: (e) => (e.featured ? 1 : 0), csv: (e) => (e.featured ? "yes" : ""), cell: (e) => <GridSelect value={e.featured ? "true" : "false"} options={[{ value: "false", label: "No" }, { value: "true", label: "Yes" }]} ariaLabel={`Feature ${e.title}`} onSave={save(e, "featured")} /> },
       { id: "kind", header: "Kind on the site", help: "website.events.kind", edit: true, width: 150, defaultHidden: true, sort: (e) => e.webKind ?? e.kind, csv: (e) => e.webKind ?? e.kind, cell: (e) => <GridSelect value={e.webKind ?? ""} options={[{ value: "", label: kindLabel(e.kind) }, { value: "TRIVIA", label: "Trivia" }, { value: "MOVIE", label: "Movie" }]} ariaLabel={`Kind on the website for ${e.title}`} onSave={save(e, "webKind")} /> },
       { id: "closed", header: "Closed that day", edit: true, width: 150, defaultHidden: true, sort: (e) => closedValue(e.closed), csv: (e) => closedValue(e.closed), cell: (e) => <GridSelect value={closedValue(e.closed)} options={[{ value: "", label: e.kind === "CLOSURE" ? "Closed (closure)" : e.kind === "HOLIDAY" ? "As holidays are" : "Open" }, { value: "closed", label: "Closed" }, { value: "open", label: "Open" }]} ariaLabel={`Closed on ${e.title}`} onSave={save(e, "closed")} /> },
@@ -203,7 +219,7 @@ export function EventsTab({ rows, past, holidaysClosed }: { rows: WebEventRow[];
               title: e.title,
               subtitle: `${shortDate(e.date)}${timeText(e) ? ` · ${timeText(e)}` : ""}`,
               value: e.hidden ? <span className="text-xs text-muted">Hidden</span> : isClosedOnSite(e, hol) ? <Badge tone="warn">Closed</Badge> : e.featured ? <Badge>Featured</Badge> : undefined,
-              sub: [e.priceLabel, e.imageUrl ? "Picture" : null].filter(Boolean).join(" · ") || undefined,
+              sub: [e.priceLabel, e.imageUrl ? "Picture" : null, e.hasPage ? "Event page" : null].filter(Boolean).join(" · ") || undefined,
             })}
             drawerTitle={(e) => e.title}
             drawer={(e) => <EventDrawer e={e} />}
@@ -227,6 +243,7 @@ function EventDrawer({ e }: { e: WebEventRow }) {
       <DetailRow label="Price"><GridCell grid="web-events-d" col="price" value={e.priceLabel ?? ""} placeholder="e.g. Free, $10 at the door" ariaLabel="Price" onSave={save("priceLabel")} /></DetailRow>
       <DetailRow label="Tickets link"><GridCell grid="web-events-d" col="ticket" value={e.ticketUrl ?? ""} placeholder="https://…" ariaLabel="Tickets link" onSave={save("ticketUrl")} /></DetailRow>
       <DetailRow label="RSVP link"><GridCell grid="web-events-d" col="rsvp" value={e.rsvpUrl ?? ""} placeholder="https://…" ariaLabel="RSVP link" onSave={save("rsvpUrl")} /></DetailRow>
+      <DetailRow label="Event page"><div className="flex flex-wrap items-center gap-2"><PageCell row={e} />{e.hasPage && <span className="text-xs text-muted">{e.page}</span>}</div></DetailRow>
       <DetailRow label="Featured"><GridSelect value={e.featured ? "true" : "false"} options={[{ value: "false", label: "No" }, { value: "true", label: "Yes" }]} ariaLabel="Featured" onSave={save("featured")} /></DetailRow>
       <DetailRow label="Kind on the site"><GridSelect value={e.webKind ?? ""} options={[{ value: "", label: kindLabel(e.kind) }, { value: "TRIVIA", label: "Trivia" }, { value: "MOVIE", label: "Movie" }]} ariaLabel="Kind on the website" onSave={save("webKind")} /></DetailRow>
       <DetailRow label="Closed that day"><GridSelect value={closedValue(e.closed)} options={[{ value: "", label: "As its kind" }, { value: "closed", label: "Closed" }, { value: "open", label: "Open" }]} ariaLabel="Closed that day" onSave={save("closed")} /></DetailRow>

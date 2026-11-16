@@ -9,7 +9,7 @@ site never breaks while Ops catches up.
 Ops (Website hub, Events, Kegs → Beers, Settings → Business)
   │  save ──► pingWebsite() ──POST /api/revalidate (x-revalidate-secret)──► website
   │                                                                          │
-  └── GET /api/public/{site,menu,events,taps,images/:id} ◄──── reads every 5 min / on ping
+  └── GET /api/public/{site,menu,events,taps,images/:id,instagram} ◄──── reads every 5 min / on ping
       POST /api/public/inquiry ◄──── private-event form
       POST /api/public/collect ◄──── analytics beacon (see docs/website-analytics.md)
 ```
@@ -65,10 +65,22 @@ plus Website → Hours & notice (exact minutes, kitchen close, notice, links, ph
     "instagram": "https://www.instagram.com/subversivebeer/",
     "facebook": "https://www.facebook.com/subversivemaltnbrew/"
   },
-  "updatedAt": "2026-11-15T22:35:29.657Z"
+  "updatedAt": "2026-11-15T22:35:29.657Z",
+  "announcements": [
+    { "id": "closed-thanksgiving-day-2026-11-16", "text": "Closed Thanksgiving Day.", "tone": "closure", "from": "2026-11-20", "until": "2026-11-26" },
+    { "id": "oktoberfest-is-october-2-and-3-2026-11-16", "text": "Oktoberfest is October 2 and 3.", "tone": "event", "link": { "href": "/events/2027-10-02-oktoberfest", "label": "Details" } }
+  ]
 }
 ```
 
+- `announcements` (Website → Announcements, model `WebAnnouncement`; never the internal
+  `Announcement`): the band under the header, exactly the shape in the website's
+  `docs/ops-feed-requests.md` and `src/lib/site/announcements.ts`. Active ones, in Max's order,
+  whose `until` hasn't passed; future ones are sent too, with `from` (the website keeps those that
+  stand on its New York day and shows the first three). `id` ≤ 64 and stable (Ops mints a new
+  one only on "Show again to people who closed it"), `text` ≤ 140, `tone` `closure | event | info`,
+  `link` only when set (`href` a `/path` on the website or `https://`, `label` ≤ 40), `from` /
+  `until` only when set. Saving pings the website with `{"tags":["site"]}`.
 - `hours`: the week **in force today**, seasonal hours applied. Same shape as `site.json → hours`
   (`null` = closed that weekday). Ops keeps whole hours. The exact minute and kitchen close
   are layered on top, and an exact time that no longer fits the Ops hours is ignored, so a
@@ -224,12 +236,96 @@ The existing feed, now with every optional field the website already parses.
   `kitchenCloseOverride`, `barCloseOverride` (`HH:mm`), `featured: true`, `updatedAt` (ISO,
   latest of the event and its web fields).
 - Never sent: `PRIVATE` events, events hidden on Website → Events, forecast impact.
+- `page` (Website → Events → Add page; `WebEvent.page`, `heroImageId`, `heroAlt`): a featured
+  event's own page, only when something is set, in the website's `eventPageSchema` shape:
+
+  ```json
+  "page": {
+    "hero": "https://subversive-ops.vercel.app/api/public/images/cm3x0hero00001",
+    "heroAlt": "The long tables in the yard",
+    "intro": "Two days in the yard.",
+    "sections": [{ "title": "Food", "body": "Brats and pretzels.\n\nAnd a vegan plate." }],
+    "schedule": [{ "time": "12:00", "what": "First pour" }],
+    "links": [{ "label": "Tickets", "href": "https://tickets.example.com/okt" }]
+  }
+  ```
+
+  `hero` is `publicOrigin()` + `/api/public/images/<WebImage id>`, so it is always on the Ops
+  origin (set `NEXT_PUBLIC_OPS_ORIGIN=https://subversive-ops.vercel.app` on the website, or it
+  won't show it). Ops only accepts a landscape photo at least 1600 px wide (read from the file
+  itself) and stores it at up to 2000 px wide. `hero` is left out when Ops is served over plain
+  http (local development). Limits: intro 600, 8 sections (title 80, body 4000, paragraphs at
+  blank lines), 24 schedule rows (`time` 20 in any wording, `what` 140), 6 links (`https://`
+  only, label 60), `heroAlt` 200. Each part is left out when empty; a page that wouldn't pass is
+  left off and the event still goes. Saving pings the website with `{"tags":["events"]}`.
 
 ## 4. `GET /api/public/taps` and `GET /api/public/images/:id`
 
 - `/api/public/taps`: the live tap list for a "what's pouring" widget (unchanged, 60 s cache).
   The menu feed already includes draft beer, so the website doesn't need both.
-- `/api/public/images/:id`: event pictures (see above). 404 when gone.
+- `/api/public/images/:id`: event pictures and event-page photos (see above). 404 when gone.
+
+## 4b. `GET /api/public/instagram`: the latest Instagram posts
+
+The five latest posts from what Ops already brings in each night from Instagram (Online →
+Instagram, table `OnlinePost`). Ops never calls Instagram for this request, so the website needs
+no Instagram token of its own.
+
+```json
+[
+  {
+    "id": "17912345678901234",
+    "caption": "Festbier is on. First pour at noon.",
+    "mediaType": "IMAGE",
+    "mediaUrl": "https://scontent-lga3-1.cdninstagram.com/v/t51.29350-15/…&oe=6745A1B2",
+    "thumbnailUrl": null,
+    "permalink": "https://www.instagram.com/p/DCabc123/",
+    "timestamp": "2026-11-15T18:02:11.000Z"
+  },
+  {
+    "id": "17998765432109876",
+    "caption": "Knicks night in the tent.",
+    "mediaType": "VIDEO",
+    "mediaUrl": null,
+    "thumbnailUrl": "https://scontent-lga3-1.cdninstagram.com/v/t51.71878-15/…&oe=6746B3C4",
+    "permalink": "https://www.instagram.com/reel/DCxyz789/",
+    "timestamp": "2026-11-14T23:40:00.000Z"
+  }
+]
+```
+
+- A bare array, newest first, at most five. `[]` until Instagram is connected in Ops.
+- `mediaType`: `IMAGE | VIDEO | CAROUSEL_ALBUM` (Instagram's own names; reels are `VIDEO`).
+  The picture is `mediaUrl` for `IMAGE` and `CAROUSEL_ALBUM` (a carousel's first picture) and
+  `thumbnailUrl` (the cover) for `VIDEO`. Ops keeps only pictures, never a video's own address, so
+  a `VIDEO`'s `mediaUrl` is `null`.
+- `caption`: the first couple of hundred characters on one line (what Ops stores), or `null`.
+- Picture addresses are Instagram's (`*.cdninstagram.com` / `*.fbcdn.net`). **They expire**: they
+  are signed, and `oe=` is the expiry (hex Unix seconds), typically days to a few weeks out. The
+  nightly Meta sync (`/api/cron/web-analytics`, 08:41 UTC) reads the latest 50 posts again and
+  saves fresh addresses, so the five here stay fresh while Instagram is connected. A post whose
+  address runs out within two hours (e.g. the sync stopped because the sign-in needs connecting
+  again) is left out rather than sent broken.
+- Caching: `public, s-maxage=1800, stale-while-revalidate=3600`. Errors: `503` as the other feeds.
+
+### What the website changes to read it (instead of `INSTAGRAM_ACCESS_TOKEN`)
+
+In `src/lib/social/instagram.ts`:
+
+1. Replace `fetchMedia(token)` with a fetch of `opsBase() + "/api/public/instagram"` through the
+   existing `fetchOps` helper (`src/lib/ops/fetch.ts`), and parse `z.array(z.unknown())` instead
+   of the `{ data }` envelope. Map each item to the existing `mediaSchema` field names:
+   `media_type ← mediaType`, `media_url ← mediaUrl`, `thumbnail_url ← thumbnailUrl`, the rest
+   as is. `parseMedia` and `isInstagramCdn` stay unchanged.
+2. `getInstagramPosts`: gate on `opsBase()` instead of `process.env.INSTAGRAM_ACCESS_TOKEN`.
+   Keep `unstable_cache(..., ["instagram-media"], { revalidate: 3600, tags: ["instagram"] })`
+   and the `[]` on any failure. **Fallback**: no Ops base, a non-200, or an empty list renders
+   nothing, exactly as without a token today.
+3. `next.config.ts`: change `const INSTAGRAM = Boolean(process.env.INSTAGRAM_ACCESS_TOKEN)` to
+   `Boolean(process.env.OPS_BASE_URL)`, so `*.cdninstagram.com` and `*.fbcdn.net` stay allowed
+   in `images.remotePatterns` and the CSP `img-src`.
+4. Then remove `INSTAGRAM_ACCESS_TOKEN` from Vercel and the 60-day refresh reminder from
+   `docs/announcements-and-instagram.md`.
 
 ## 5. `POST /api/public/inquiry`: private-event inquiries
 
