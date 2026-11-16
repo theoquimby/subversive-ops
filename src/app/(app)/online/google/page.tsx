@@ -174,11 +174,11 @@ function Connection({ c, through, waiting }: { c: ListingConnection | null; thro
         {c ? (
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-ink">{c.title ?? "No listing picked yet"}</span>
+              <span className="text-sm font-semibold text-ink">{c.title ?? (waiting ? "Signed in to Google" : "No listing picked yet")}</span>
               <Badge tone={waiting ? "neutral" : c.error ? "warn" : c.connected ? "good" : "neutral"}>{waiting ? "Waiting on Google" : c.error ? "Needs a look" : c.connected ? "Google connected" : "Not connected"}</Badge>
             </div>
             <p className="mt-1 text-sm text-pretty text-muted">
-              {c.lastSyncAt ? `Last checked ${relativeTime(new Date(c.lastSyncAt))}` : "Not checked yet"}
+              {c.lastSyncAt ? `Last checked ${relativeTime(new Date(c.lastSyncAt))}` : waiting ? "Google hasn't let the app read the listing yet" : "Not checked yet"}
               {through ? `. Numbers through ${shortDate(through)}` : ""}
               {c.connectedBy ? `. Connected by ${c.connectedBy}` : ""}.
             </p>

@@ -53,6 +53,10 @@ describe("Google OAuth", () => {
     expect(friendlyGoogleError(400, JSON.stringify({ error: "invalid_grant" }))).toMatch(/Testing/);
     expect(friendlyGoogleError(403, JSON.stringify({ error: { status: "PERMISSION_DENIED", message: "Business Profile Performance API has not been used in project 1 before or it is disabled." } }))).toMatch(/isn't turned on/);
     expect(friendlyGoogleError(429, "")).toMatch(/slow down/);
+    // A project Google hasn't approved has a quota of zero, which arrives as 429: that isn't "slow down".
+    const zeroQuota = JSON.stringify({ error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "Quota exceeded for quota metric 'Requests' and limit 'Requests per minute' of service 'mybusinessaccountmanagement.googleapis.com' for consumer 'project_number:1'." } });
+    expect(friendlyGoogleError(429, zeroQuota)).toMatch(/hasn't approved Business Profile/);
+    expect(friendlyGoogleError(429, zeroQuota)).not.toMatch(/slow down/);
   });
   it("checks pasted credentials", () => {
     expect(validateSecret("GOOGLE_OAUTH_CLIENT_ID", `  ${FAKE_ID} `)).toEqual({ ok: true, value: FAKE_ID });

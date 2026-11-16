@@ -509,7 +509,7 @@ export function listingState(f: GoogleFacts): SourceState {
   return {
     kind: "waiting",
     title: "Waiting on Google's approval",
-    body: `Once Google approves access, this shows ${LISTING_WILL_SHOW}.${f.listingAllowed ? "" : " Business Profile wasn't ticked at sign-in, so connect Google again when the approval arrives."}`,
+    body: `Your Google sign-in is done and nothing is broken. Google reviews each request to read a listing's numbers by hand, usually within two weeks, and emails when it's approved. After that, press Find again on the Connect Google page and this shows ${LISTING_WILL_SHOW}.${f.listingAllowed ? "" : " Business Profile wasn't ticked at sign-in, so connect Google again when the approval arrives."}`,
     href: GOOGLE_SETUP_HREF,
     action: "See the status",
   };

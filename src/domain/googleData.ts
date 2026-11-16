@@ -114,6 +114,8 @@ export function friendlyGoogleError(status: number, body: string): string {
   if (status === 403 && /has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(message + reason)) return `An API isn't turned on in the Google Cloud project yet: ${message.slice(0, 160)}`;
   if (status === 403 && /quota|0 QPM|RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(message + reason)) return "Google hasn't approved Business Profile API access for this project yet (its quota is 0). Search Console still works. See step 6 of the guide.";
   if (status === 403) return `Google refused: ${message.slice(0, 160) || "the signed-in account can't see this property or listing."}`;
+  // An unapproved project has a Business Profile quota of zero, which Google reports as "too many requests".
+  if (status === 429 && /mybusiness|businessprofile|business profile/i.test(message + reason + body)) return "Google hasn't approved Business Profile API access for this project yet (its quota is 0). The sign-in is fine and Search Console still works. Google reviews each request by hand; nothing more is needed until it emails.";
   if (status === 429) return "Google asked us to slow down. The next nightly sync tries again.";
   if (status >= 500) return "Google's service had a problem. The next nightly sync tries again.";
   return message ? `Google said: ${message.slice(0, 200)}` : `Google answered ${status}.`;
