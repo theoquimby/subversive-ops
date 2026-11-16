@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.14 (kegs everywhere) ----
+  {
+    id: "2026-11-16.keg-signals",
+    date: "2026-11-16",
+    title: "Kegs in your Overview and briefs",
+    line: "Kegs out too long, kegs gone quiet and the week in kegs now show in the Overview, briefs and Insights.",
+    icon: "brief",
+    area: "today",
+    href: "/brief",
+    help: "kegs.fleet.look",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.13 (keg accounts and reports) ----
   {
     id: "2026-11-16.keg-accounts",

@@ -24,6 +24,20 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.14",
+    date: "2026-11-16",
+    title: "Kegs everywhere you look",
+    summary: "What the keg history knows now reaches the Overview, the morning and weekly briefs and Insights, not just the keg pages.",
+    entries: ["2026-11-16.keg-signals"],
+    fixed: [
+      "Overview: kegs out at accounts too long and kegs not scanned in a long time sit at the bottom of Needs you.",
+      "Morning brief: those two show on Mondays, or on the day another keg crosses the line, so they don't nag daily.",
+      "Weekly brief: a Kegs section with fills, taps, kegs sent out and how many came back with no scan.",
+      "Insights: the keg tile shows turns, days per cycle and the scan gap, and the feed can raise the scan gap or a fleet with kegs to spare.",
+      "Insights no longer prints $0 a month on a finding that has no dollar figure.",
+    ],
+  },
+  {
     version: "1.13",
     date: "2026-11-16",
     title: "Keg accounts and reports",

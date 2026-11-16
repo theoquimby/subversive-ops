@@ -160,6 +160,8 @@ function AllClear() {
 function MoneyLine({ a, size = "lg", count }: { a: DeckAction; size?: "lg" | "md" | "sm"; count?: boolean }) {
   const one = isOneOff(a);
   const v = one ? a.oneOff! : a.monthly;
+  // Some findings have no dollar figure (website, keg fleet): say so rather than print $0.
+  if (!v) return size === "lg" ? <div className="text-sm text-muted">Worth doing, with no dollar figure on it</div> : null;
   return (
     <div className="flex items-baseline gap-1.5 whitespace-nowrap">
       <span className={cx("font-semibold tracking-tight text-ink", size === "lg" ? "text-[2.75rem] leading-none sm:text-[3.25rem]" : size === "md" ? "num text-[1.05rem]" : "num text-[0.95rem]")}>
