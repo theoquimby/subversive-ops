@@ -17,7 +17,8 @@ import { insightFeed } from "./analytics";
 import { badReviewSummary, staffRequestSummary } from "../email/templates/manager-requests";
 import { shiftUpdatePush } from "../email/templates/shift-update";
 import { emailReady, isEmail, sendEmail } from "../integrations/email";
-import { weeklyBrief } from "./brief";
+import { weeklyBreweryItems, weeklyBrief } from "./brief";
+import { focusKey, parseFocus } from "@/domain/focus";
 import { recentPriceMoves } from "./insights";
 import { loadTolerance, STATUS_META } from "./invoices";
 import { PUSH_NOT_SET_UP, PushPayload, pushReady, sendPush } from "./push";
@@ -265,17 +266,27 @@ export function notifySwapDecided(swapId: string) {
 
 // ---- Managers ---------------------------------------------------------------------------
 
-/** The weekly brief digest to every manager. Called by /api/cron/weekly-brief. */
+/** The weekly brief digest to every manager, built for what each looks after (domain/focus). Called by /api/cron/weekly-brief. */
 export function notifyWeeklyBrief() {
   return safely("weeklyBrief", async () => {
-    const digest = briefDigest(await weeklyBrief());
+    const [b, to] = await Promise.all([weeklyBrief(), managers()]);
+    const focusOf = new Map((await db.user.findMany({ where: { id: { in: to.map((m) => m.userId!).filter(Boolean) } }, select: { id: true, focus: true } })).map((u) => [u.id, parseFocus(u.focus)]));
+    // The brewery's to-dos are only read when someone looks after the brewery.
+    const brewery = [...focusOf.values()].some((f) => f.includes("brewery")) ? await weeklyBreweryItems() : [];
+    const built = new Map<string, ReturnType<typeof briefDigest>>();
     const base = appUrl();
-    const n = digest.todo.length;
-    return (await managers()).map((m) => ({
-      to: m,
-      email: weeklyBriefEmail({ name: m.name, digest, baseUrl: base }),
-      push: { title: "Your weekly brief", body: n ? `${n} thing${n === 1 ? " needs" : "s need"} you: ${digest.todo.slice(0, 2).map((t) => t.title).join(", ")}${n > 2 ? "…" : ""}` : "Nothing urgent this week.", url: "/brief", tag: `brief-${digest.week}` },
-    }));
+    return to.map((m) => {
+      const focus = (m.userId && focusOf.get(m.userId)) || [];
+      const key = focusKey(focus);
+      const digest = built.get(key) ?? briefDigest(b, { focus, brewery });
+      built.set(key, digest);
+      const n = digest.todo.length;
+      return {
+        to: m,
+        email: weeklyBriefEmail({ name: m.name, digest, baseUrl: base }),
+        push: { title: "Your weekly brief", body: n ? `${n} thing${n === 1 ? " needs" : "s need"} you: ${digest.todo.slice(0, 2).map((t) => t.title).join(", ")}${n > 2 ? "…" : ""}` : "Nothing urgent this week.", url: "/brief", tag: `brief-${digest.week}` },
+      };
+    });
   });
 }
 

@@ -7,7 +7,7 @@ import { purchaseOrderEmail } from "./purchase-order";
 import { schedulePublishedEmail } from "./schedule-published";
 import { shiftUpdateEmail } from "./shift-update";
 import { weeklyBriefEmail } from "./weekly-brief";
-import { MORNING_SAMPLE, morningBriefEmail } from "./morning-brief";
+import { MORNING_BREWERY_SAMPLE, MORNING_SAMPLE, morningBriefEmail } from "./morning-brief";
 import { teamNoteEmail } from "./team-note";
 
 export { badReviewEmail, certReminderEmail, creditRequestEmail, invoiceIssueEmail, priceSpikesEmail, staffRequestEmail, purchaseOrderEmail, schedulePublishedEmail, shiftUpdateEmail, weeklyBriefEmail };
@@ -86,6 +86,10 @@ export const SAMPLES = {
   "morning-brief": {
     label: "Morning brief",
     render: () => morningBriefEmail({ name: "Max", baseUrl: BASE, digest: MORNING_SAMPLE }),
+  },
+  "morning-brief-brewery": {
+    label: "Morning brief (brewery focus)",
+    render: () => morningBriefEmail({ name: "Zane", baseUrl: BASE, digest: MORNING_BREWERY_SAMPLE }),
   },
   "weekly-brief": {
     label: "Weekly brief",

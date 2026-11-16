@@ -60,6 +60,9 @@ model User {
   failedPinAttempts Int       @default(0)
   lockedUntil       DateTime?
   createdAt DateTime @default(now())
+  /// What this person looks after (domain/focus.ts ids: business, brewery, kegs, kitchen, people, online), in their order.
+  /// Empty = everything. Decides what the Overview and the briefs lead with, never what they may do.
+  focus     String[] @default([])
   counts    StockCount[]
   feedbackGiven EmployeeFeedback[]
   appFeedback AppFeedback[]

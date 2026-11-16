@@ -66,6 +66,8 @@ export interface TonightItem {
   detail: string;
   href: string;
   tone: "bad" | "warn" | "neutral";
+  /** As on the Overview, when known: urgent lines show whatever someone looks after (domain/focus). */
+  urgency?: number;
 }
 
 const clock = (hhmm: string) => {
@@ -79,7 +81,7 @@ const FULL_DAY = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 function orderItem(t: TodayItem, today: ISODate): TonightItem | null {
   const when = (d: ISODate) => (d === today ? "today" : d === addDays(today, 1) ? "tomorrow" : DAY[weekday(d)]);
   if (t.kind === "deadline" && t.deadline) {
-    return { key: t.key, kind: "deadline", title: `Order from ${t.supplierName}`, detail: `Due ${when(t.deadline.cutoffDate)} ${clock(t.deadline.cutoffTime)} · delivers ${when(t.deliveryDate)}`, href: `/ordering/${t.supplierId}`, tone: (t.hoursToCutoff ?? 99) <= 6 ? "bad" : "warn" };
+    return { key: t.key, kind: "deadline", title: `Order from ${t.supplierName}`, detail: `Due ${when(t.deadline.cutoffDate)} ${clock(t.deadline.cutoffTime)} · delivers ${when(t.deliveryDate)}`, href: `/ordering/${t.supplierId}`, tone: (t.hoursToCutoff ?? 99) <= 6 ? "bad" : "warn", ...(t.hoursToCutoff != null ? { urgency: 100 - t.hoursToCutoff } : {}) };
   }
   if (t.kind === "draft") {
     return { key: t.key, kind: "draft", title: `Send the ${t.supplierName} order`, detail: `Draft saved${t.deadline ? ` · due ${when(t.deadline.cutoffDate)} ${clock(t.deadline.cutoffTime)}` : ""} · delivers ${when(t.deliveryDate)}`, href: `/ordering/po/${t.orderId}`, tone: t.hoursToCutoff != null && t.hoursToCutoff <= 24 ? "warn" : "neutral" };
@@ -194,7 +196,7 @@ export async function morningBrief(now = new Date()) {
     if (a.key.startsWith("order")) continue; // covered above, per supplier
     if (a.standing) continue; // long-standing with nothing new today (the keg fleet's lists): Mondays only
     // A missed order cutoff ("Missed: … next chance …") sits with today's deadlines.
-    tonight.push({ key: a.key, kind: (KINDS.has(a.key) ? a.key : a.key.startsWith("missed.") ? "deadline" : a.key.startsWith("kegs.") ? "kegs" : a.key.startsWith("brewery.") ? "brewery" : "other") as TonightItem["kind"], title: a.title, detail: a.detail, href: a.href, tone: a.tone });
+    tonight.push({ key: a.key, kind: (KINDS.has(a.key) ? a.key : a.key.startsWith("missed.") ? "deadline" : a.key.startsWith("kegs.") ? "kegs" : a.key.startsWith("brewery.") ? "brewery" : "other") as TonightItem["kind"], title: a.title, detail: a.detail, href: a.href, tone: a.tone, urgency: a.urgency });
   }
   // Kegs nearly out on tap: change them before service, and say when nothing full is behind.
   const kegAlerts = attention.filter((a) => a.key === "kegs").map((a) => a.title);

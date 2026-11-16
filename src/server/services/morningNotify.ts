@@ -1,45 +1,64 @@
 import "server-only";
+import { focusKey, parseFocus, showSection, type Focus } from "@/domain/focus";
 import { morningDue, morningPush } from "@/domain/morningBrief";
 import { db } from "../db";
 import { env } from "../env";
-import { morningDigest } from "../email/morning-digest";
+import { morningDigest, morningForFocus } from "../email/morning-digest";
 import { morningBriefEmail } from "../email/templates/morning-brief";
 import { insightFeed } from "./analytics";
 import { getMorningHour, MORNING_SENT_KEY, morningBrief } from "./morningBrief";
 import { appUrl, notify, type NotifyResult, type Recipient } from "./notify";
 import { businessToday, localHour } from "./sales";
 
-/** Managers only: staff don't get a brief (their shifts already come by push). */
-async function managers(): Promise<Recipient[]> {
-  const users = await db.user.findMany({ where: { role: "MANAGER", active: true }, select: { id: true, name: true } });
+/** Managers only: staff don't get a brief (their shifts already come by push). Each with what they look after. */
+async function managers(): Promise<(Recipient & { focus: Focus[] })[]> {
+  const users = await db.user.findMany({ where: { role: "MANAGER", active: true }, select: { id: true, name: true, focus: true } });
   const emps = await db.employee.findMany({ where: { userId: { in: users.map((u) => u.id) } }, select: { userId: true, email: true } });
-  return users.map((u) => ({ userId: u.id, name: u.name, email: emps.find((e) => e.userId === u.id)?.email ?? null }));
+  return users.map((u) => ({ userId: u.id, name: u.name, email: emps.find((e) => e.userId === u.id)?.email ?? null, focus: parseFocus(u.focus) }));
 }
 
-/** Push (and, for anyone who turned it on, email) today's morning brief to every manager. */
+/**
+ * Push (and, for anyone who turned it on, email) today's morning brief to every
+ * manager, built for what each looks after (the same brief for everyone with no focus).
+ */
 export async function notifyMorningBrief(now = new Date()): Promise<NotifyResult> {
   try {
     const b = await morningBrief(now);
     const insight = await insightFeed({ limit: 1 })
       .then((r) => r.items[0] ?? null)
       .catch(() => null);
-    const digest = morningDigest(b, insight ? { title: insight.title, action: insight.action, monthly: insight.monthly, oneOff: insight.oneOff ?? null } : null);
-    const push = morningPush({
-      weekdayName: b.weekdayName,
-      forecast: b.day.forecast,
-      busy: b.day.busy?.label ?? null,
-      tonight: b.tonight.length,
-      yesterday: b.y && !b.y.closed ? b.y.line.split(". ")[0].replace(/ in sales/, "") : null,
-      closed: b.day.closed,
-    });
+    const pick = insight ? { title: insight.title, action: insight.action, monthly: insight.monthly, oneOff: insight.oneOff ?? null } : null;
+    // One digest and notification per distinct focus.
+    const built = new Map<string, { digest: ReturnType<typeof morningDigest>; push: ReturnType<typeof morningPush> }>();
+    const forFocus = (focus: Focus[]) => {
+      const key = focusKey(focus);
+      const hit = built.get(key);
+      if (hit) return hit;
+      const digest = morningDigest(b, pick, focus);
+      // The forecast and yesterday lead the notification only for someone who sees them in the brief.
+      const sales = showSection("today", focus);
+      const push = morningPush({
+        weekdayName: b.weekdayName,
+        forecast: sales ? b.day.forecast : null,
+        busy: sales ? (b.day.busy?.label ?? null) : null,
+        tonight: morningForFocus(b, focus).tonight.length,
+        yesterday: showSection("yesterday", focus) && b.y && !b.y.closed ? b.y.line.split(". ")[0].replace(/ in sales/, "") : null,
+        closed: b.day.closed,
+      });
+      built.set(key, { digest, push });
+      return { digest, push };
+    };
     const base = appUrl();
     return await notify(
       "morning",
-      (await managers()).map((m) => ({
-        to: m,
-        email: morningBriefEmail({ name: m.name, digest, baseUrl: base }),
-        push: { ...push, url: "/brief", tag: `morning-${b.today}` },
-      })),
+      (await managers()).map(({ focus, ...m }) => {
+        const { digest, push } = forFocus(focus);
+        return {
+          to: m,
+          email: morningBriefEmail({ name: m.name, digest, baseUrl: base }),
+          push: { ...push, url: "/brief", tag: `morning-${b.today}` },
+        };
+      }),
     );
   } catch (e) {
     console.error("morning brief: building messages failed", e);

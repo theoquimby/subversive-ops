@@ -1,10 +1,12 @@
 import { HelpZone } from "@/components/help";
 import { Badge, Card, cx, LinkButton } from "@/components/ui";
+import type { AttentionItem } from "@/domain/attention";
 import { addDays, weekday } from "@/domain/dates";
+import { elsewhereGroups, focusLabels, showSection, splitByFocus, type BriefSection, type ElsewhereGroup, type Focus } from "@/domain/focus";
 import { idleLine, outLine } from "@/domain/kegSignals";
 import { dayDate, money, pct, shortDate, signedPct } from "@/lib/format";
-import { weeklyBrief, WeeklyBrief } from "@/server/services/brief";
-import { BadgeCheck, Beer, CalendarDays, ChevronRight, ClipboardList, Gavel, History, Lightbulb, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Star, Tag, Trash2, TrendingUp, Unlink, UtensilsCrossed } from "lucide-react";
+import { weeklyBrief, WeeklyBrief, weeklyBreweryItems } from "@/server/services/brief";
+import { BadgeCheck, Beer, CalendarDays, ChevronRight, ClipboardList, Compass, Cylinder, Gavel, History, Lightbulb, type LucideIcon, MessageSquareText, Scale, ShoppingCart, Star, Tag, Trash2, TrendingUp, Unlink, UtensilsCrossed } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CreateOrderButton } from "./create-order-button";
@@ -22,19 +24,28 @@ interface Item {
   title: string;
   status: string;
   needsYou: boolean;
+  /** Red: shows whatever someone looks after (domain/focus). */
+  tone?: "bad";
   body?: ReactNode;
   action: ReactNode;
 }
 
-/** The weekly brief ("This week" on /brief): last week, decisions, next week's forecast and one-tap cards. */
-export async function WeeklyView({ name }: { name: string }) {
-  const b = await weeklyBrief();
-  const items = buildItems(b);
-  const todo = items.filter((i) => i.needsYou);
-  const clear = items.filter((i) => !i.needsYou);
+/**
+ * The weekly brief ("This week" on /brief): last week, decisions, next week's forecast and one-tap cards.
+ * With a focus (domain/focus) it keeps the person's areas, adds the brewery's to-dos when that's one of
+ * them, and folds the rest into Elsewhere; anything red always stays.
+ */
+export async function WeeklyView({ name, focus = [] }: { name: string; focus?: Focus[] }) {
+  const show = (s: BriefSection) => showSection(s, focus);
+  const [b, brewery] = await Promise.all([weeklyBrief(), focus.includes("brewery") ? weeklyBreweryItems() : ([] as AttentionItem[])]);
+  const all = [...brewery.map(breweryItem), ...buildItems(b)].map((i) => ({ ...i, key: i.id }));
+  const { mine: todo, elsewhere: todoElsewhere } = splitByFocus(all.filter((i) => i.needsYou), focus);
+  const clear = splitByFocus(all.filter((i) => !i.needsYou), focus).mine;
+  const decisions = splitByFocus(b.decisions, focus);
+  const elsewhere = elsewhereGroups([...decisions.elsewhere, ...todoElsewhere.map((i) => ({ ...i, href: undefined }))], focus);
 
   const summary: string[] = [];
-  if (b.forecast.total > 0) summary.push(`We're forecasting ${money(b.forecast.total, { whole: true })} in sales${b.forecast.busiest.length ? `, busiest on ${list(b.forecast.busiest.map((d) => fullDay(d.date)))}` : ""}.`);
+  if (b.forecast.total > 0 && show("forecast")) summary.push(`We're forecasting ${money(b.forecast.total, { whole: true })} in sales${b.forecast.busiest.length ? `, busiest on ${list(b.forecast.busiest.map((d) => fullDay(d.date)))}` : ""}.`);
   summary.push(todo.length === 0 ? "Everything else is in hand." : `${todo.length} thing${todo.length === 1 ? " needs" : "s need"} you before the week starts.`);
 
   return (
@@ -47,13 +58,18 @@ export async function WeeklyView({ name }: { name: string }) {
           {greeting()}, {name}.
         </h1>
         <p className="mt-3 max-w-2xl text-[1.05rem] leading-relaxed text-ink-2">{summary.join(" ")}</p>
+        {focus.length > 0 && (
+          <p className="mt-2 text-sm text-muted">
+            Led by what you look after: {focusLabels(focus).join(", ")}. Anything urgent elsewhere is in too. <Link href="/settings/notifications#focus" className="underline decoration-border-strong underline-offset-2 hover:text-ink">Change</Link>
+          </p>
+        )}
       </header></HelpZone>
 
-      {b.lastWeek && <LastWeekCard r={b.lastWeek} />}
-      {b.kegs && <KegsCard k={b.kegs} />}
-      <DecisionsCard items={b.decisions} />
-      <InsightsCard items={b.insights} />
-      <ForecastCard b={b} />
+      {b.lastWeek && show("lastWeek") && <LastWeekCard r={b.lastWeek} />}
+      {b.kegs && show("kegs") && <KegsCard k={b.kegs} />}
+      {(focus.length === 0 || decisions.mine.length > 0) && <DecisionsCard items={decisions.mine} />}
+      {show("insights") && <InsightsCard items={b.insights} />}
+      {show("forecast") && <ForecastCard b={b} />}
 
       {todo.length > 0 && (
         <HelpZone id="brief.actions" className="mt-10"><section>
@@ -84,8 +100,37 @@ export async function WeeklyView({ name }: { name: string }) {
         </section></HelpZone>
       )}
 
+      {elsewhere.length > 0 && <ElsewhereCard groups={elsewhere} />}
+
       <p className="mt-10 text-center text-xs text-muted">Built {dayDate(b.today)} from Square sales, your recipes, counts and the schedule.</p>
     </div>
+  );
+}
+
+/** A brewery to-do (transfers, packaging, clashes, brews to plan, brewery orders) as a weekly card. */
+function breweryItem(a: AttentionItem): Item {
+  return { id: a.key, icon: Cylinder, title: a.title, status: a.detail, needsYou: true, ...(a.tone === "bad" ? { tone: "bad" as const } : {}), action: go(a.href, "Open") };
+}
+
+/** The areas this person doesn't look after, a line each (only with a focus). */
+function ElsewhereCard({ groups }: { groups: ElsewhereGroup<{ key: string; title: string; href?: string }>[] }) {
+  return (
+    <HelpZone id="brief.elsewhere" className="mt-10"><section>
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-[0.95rem] font-semibold"><Compass className="size-4 text-muted" strokeWidth={1.75} /> Elsewhere</h2>
+        <Link href="/settings/notifications#focus" className="relative text-xs text-muted hover:text-ink after:absolute after:-inset-2 after:content-['']">Change →</Link>
+      </div>
+      <Card className="divide-y divide-border">
+        {groups.map((g) => (
+          <Link key={g.area} href={g.items[0]?.href ?? g.href} className="flex min-h-12 items-center gap-3 px-4 py-2.5 text-sm hover:bg-surface-2/60">
+            <span className="w-20 shrink-0 font-medium text-ink">{g.label}</span>
+            <span className={cx("min-w-0 flex-1 truncate", g.items.length ? "text-ink-2" : "text-muted")}>{g.line}</span>
+            {g.items.length > 0 && <span className="num shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-xs font-medium text-ink-2">{g.items.length}</span>}
+            <ChevronRight aria-hidden className="size-4 shrink-0 text-muted" />
+          </Link>
+        ))}
+      </Card>
+    </section></HelpZone>
   );
 }
 
@@ -519,6 +564,7 @@ function buildItems(b: WeeklyBrief): Item[] {
       title: "Training & certificates",
       status: parts.length ? parts.join(" · ") : `Everyone's certificates are in date${t.summary.nextExpiry ? ` · next expiry ${shortDate(t.summary.nextExpiry)}` : ""}`,
       needsYou: needs,
+      ...(t.expired.length || t.missing.length ? { tone: "bad" as const } : {}),
       body: rows.length ? (
         <Rows>
           {rows.slice(0, 5).map((r) => (
