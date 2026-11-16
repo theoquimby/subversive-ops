@@ -35,6 +35,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   return (
     <>
       <PageHeader
+        help="brewery.batches.one"
         back={{ href: "/brewery/batches", label: "Brews" }}
         title={<span className="flex flex-wrap items-center gap-x-3 gap-y-1">{b.name}<span className="num text-lg font-normal text-muted">{b.code}</span><StatusBadge status={b.status} /></span>}
         description={sub || undefined}
