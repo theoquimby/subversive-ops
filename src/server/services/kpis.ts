@@ -5,7 +5,7 @@ import { emptySplit, groupSplit, GroupSplit } from "@/domain/revenueClass";
 import { KpiDay, PeriodTotals, rollupKpis, summarize, theoreticalByDay } from "@/domain/pnl";
 import { blockCost, blockHours } from "@/domain/timecards";
 import { db } from "../db";
-import { buildContext, CostingSnapshot, loadCostingSnapshot, safeCost } from "./costing";
+import { buildContext, CostingSnapshot, firstPriceDate, loadCostingSnapshot, safeCost } from "./costing";
 import { classSettings, recipeClasses } from "./insights";
 import { loadTimecards } from "./labor";
 import { getLaborRules } from "./labor-rules";
@@ -58,7 +58,11 @@ async function salesByDay(from: ISODate, toExclusive: ISODate, itemTotalP: Promi
 export function asOfCoster(snap: CostingSnapshot) {
   const ctxs = new Map<ISODate, CostingContext>();
   const memo = new Map<string, { cost: number; incomplete: boolean } | null>();
-  return (recipeId: string, date: ISODate) => {
+  // Before the first price on file there are no costs at all, so those days are
+  // costed at the earliest prices instead (shown as an estimate) rather than $0.
+  const first = firstPriceDate(snap);
+  return (recipeId: string, asked: ISODate) => {
+    const date = first && asked < first ? first : asked;
     const key = `${date}|${recipeId}`;
     if (memo.has(key)) return memo.get(key)!;
     let ctx = ctxs.get(date);

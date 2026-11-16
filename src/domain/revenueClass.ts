@@ -69,15 +69,17 @@ export function parseClassSettings(raw: string | null | undefined): ClassSetting
 export interface ClassTotals {
   sales: number;
   cogs: number;
+  /** Sales whose recipe had no cost on that date (no prices yet), so they add nothing to cogs. */
+  uncostedSales?: number;
 }
 
 export type ClassSplit = Record<RevenueClass, ClassTotals>;
 
-export const emptySplit = (): ClassSplit => ({ food: { sales: 0, cogs: 0 }, beer: { sales: 0, cogs: 0 }, otherBev: { sales: 0, cogs: 0 }, retail: { sales: 0, cogs: 0 } });
+export const emptySplit = (): ClassSplit => ({ food: { sales: 0, cogs: 0, uncostedSales: 0 }, beer: { sales: 0, cogs: 0, uncostedSales: 0 }, otherBev: { sales: 0, cogs: 0, uncostedSales: 0 }, retail: { sales: 0, cogs: 0, uncostedSales: 0 } });
 
 export function addSplits(a: ClassSplit, b: ClassSplit): ClassSplit {
   const out = emptySplit();
-  for (const c of REVENUE_CLASSES) out[c.value] = { sales: a[c.value].sales + b[c.value].sales, cogs: a[c.value].cogs + b[c.value].cogs };
+  for (const c of REVENUE_CLASSES) out[c.value] = { sales: a[c.value].sales + b[c.value].sales, cogs: a[c.value].cogs + b[c.value].cogs, uncostedSales: (a[c.value].uncostedSales ?? 0) + (b[c.value].uncostedSales ?? 0) };
   return out;
 }
 
@@ -88,6 +90,8 @@ export interface SplitLine {
   pct: number | null;
   /** Share of total sales. */
   mix: number | null;
+  /** Share of these sales that had a recipe cost behind them (1 = all); null with no sales. */
+  costedShare: number | null;
 }
 
 export interface GroupSplit {
@@ -106,17 +110,18 @@ export interface GroupSplit {
  * linked to a recipe; that remainder lands in `other`.
  */
 export function groupSplit(split: ClassSplit, totalSales: number): GroupSplit {
-  const line = (sales: number, cogs: number): SplitLine => ({ sales, cogs, pct: sales > 0 ? cogs / sales : null, mix: totalSales > 0 ? sales / totalSales : null });
+  const line = (sales: number, cogs: number, uncosted = 0): SplitLine => ({ sales, cogs, pct: sales > 0 ? cogs / sales : null, mix: totalSales > 0 ? sales / totalSales : null, costedShare: sales > 0 ? Math.max(0, 1 - uncosted / sales) : null });
+  const u = (c: ClassTotals) => c.uncostedSales ?? 0;
   const food = split.food;
   const bevSales = split.beer.sales + split.otherBev.sales;
   const bevCogs = split.beer.cogs + split.otherBev.cogs;
   const classified = food.sales + bevSales;
   const totalCogs = food.cogs + bevCogs + split.retail.cogs;
   return {
-    food: line(food.sales, food.cogs),
-    beverage: line(bevSales, bevCogs),
-    beer: line(split.beer.sales, split.beer.cogs),
+    food: line(food.sales, food.cogs, u(food)),
+    beverage: line(bevSales, bevCogs, u(split.beer) + u(split.otherBev)),
+    beer: line(split.beer.sales, split.beer.cogs, u(split.beer)),
     other: line(Math.max(0, totalSales - classified), split.retail.cogs),
-    total: line(totalSales, totalCogs),
+    total: line(totalSales, totalCogs, u(food) + u(split.beer) + u(split.otherBev) + u(split.retail)),
   };
 }

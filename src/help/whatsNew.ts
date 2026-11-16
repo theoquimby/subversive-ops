@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov ----
+  {
+    id: "2026-11-16.honest-numbers",
+    date: "2026-11-16",
+    title: "Cards say when numbers are missing",
+    line: "Overview flags weeks without food costs or timecards instead of comparing against them.",
+    icon: "pnl",
+    area: "numbers",
+    href: "/",
+    help: "overview.foodCost",
+    audience: "manager",
+  },
   // ---- 15 Nov ----
   {
     id: "2026-11-15.release-notes",

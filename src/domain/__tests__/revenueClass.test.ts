@@ -69,6 +69,13 @@ describe("groupSplit", () => {
   it("adds splits", () => {
     const a = emptySplit();
     a.beer = { sales: 10, cogs: 2 };
-    expect(addSplits(a, a).beer).toEqual({ sales: 20, cogs: 4 });
+    expect(addSplits(a, a).beer).toEqual({ sales: 20, cogs: 4, uncostedSales: 0 });
+  });
+  it("says how much of each line had costs", () => {
+    const a = emptySplit();
+    a.food = { sales: 100, cogs: 10, uncostedSales: 60 };
+    const g = groupSplit(a, 100);
+    expect(g.food.costedShare).toBeCloseTo(0.4);
+    expect(groupSplit(emptySplit(), 0).food.costedShare).toBeNull();
   });
 });

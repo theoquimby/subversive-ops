@@ -38,6 +38,13 @@ const loadRecipes = () =>
  * Loaded once per server render (Overview, P&L, ordering and the brief each pull it from
  * several services); fresh on every call in actions and route handlers. Treat it as read-only.
  */
+/** The first date any price is on file (null with none). Days before it have no costs of their own. */
+export function firstPriceDate(snap: CostingSnapshot): ISODate | null {
+  let min: ISODate | null = null;
+  for (const h of snap.priceHistory.values()) if (h.length && (min == null || h[0].date < min)) min = h[0].date;
+  return min;
+}
+
 export const loadCostingSnapshot = cache(async (): Promise<CostingSnapshot> => {
   const [ingredients, recipes, prices] = await Promise.all([
     loadIngredients(),

@@ -118,6 +118,8 @@ export function theoreticalByDay(
     if (!c || c.incomplete) uncosted.add(s.recipeId);
     split[cls].sales += s.sales;
     if (c) split[cls].cogs += s.qty * c.cost;
+    // No cost at all on that date (typically: no prices on file yet) — these sales add nothing to cogs.
+    if (!c || (c.incomplete && c.cost <= 0)) split[cls].uncostedSales = (split[cls].uncostedSales ?? 0) + s.sales;
     byDay.set(s.date, split);
   }
   return { byDay, uncosted };

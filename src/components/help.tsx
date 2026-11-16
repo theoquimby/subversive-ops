@@ -298,6 +298,32 @@ export function HelpTip({ id, placement = "top", className, label }: { id: strin
  * inside are swallowed so exploring never presses a button.
  * `tour` also sets `data-tour` so tours can target the same element.
  */
+/**
+ * Mouse hover in help mode, with a short grace period: moving from a zone to
+ * its tip often crosses another zone (or a gap), which must not switch the tip
+ * or close it. While the mouse is on a tip, nothing else takes over.
+ */
+let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+let tipHovered: string | null = null;
+/** The tip under the mouse, if it's still on screen (a tip can unmount without a pointerleave). */
+const onTip = () => {
+  if (!tipHovered) return null;
+  const el = document.getElementById(`${tipHovered}-help`);
+  return el?.isConnected && el.matches(":hover") ? tipHovered : (tipHovered = null);
+};
+function hoverZone(zone: string | null, delay = zone ? 140 : 220) {
+  if (hoverTimer) clearTimeout(hoverTimer);
+  hoverTimer = null;
+  const apply = () => {
+    hoverTimer = null;
+    const tip = onTip();
+    if (tip && zone !== tip) return;
+    if (mode.zone !== zone) setMode({ zone });
+  };
+  if (delay <= 0) apply();
+  else hoverTimer = setTimeout(apply, delay);
+}
+
 export function HelpZone({ id, tour, className, children }: { id: string; tour?: string; className?: string; children: ReactNode }) {
   const entry = getHelp(id);
   const key = useId();
@@ -331,8 +357,15 @@ export function HelpZone({ id, tour, className, children }: { id: string; tour?:
         helpable && "relative rounded-xl outline-1 outline-offset-4 transition-[outline-color,background-color] duration-150",
         helpable && (active ? "bg-focus/[0.06] outline-2 outline-focus outline-solid" : "bg-focus/[0.025] outline-[1.5px] outline-focus/70 outline-dashed hover:bg-focus/[0.05]"),
       )}
-      onPointerOver={helpable ? (e) => { if (e.pointerType === "mouse") { e.stopPropagation(); if (mode.zone !== key) setMode({ zone: key }); } } : undefined}
-      onPointerLeave={helpable ? (e) => { if (e.pointerType === "mouse" && mode.zone === key) setMode({ zone: null }); } : undefined}
+      onPointerOver={helpable ? (e) => {
+        if (e.pointerType !== "mouse") return;
+        e.stopPropagation();
+        // Events from the tip itself bubble here through the portal: keep this zone.
+        if (refs.floating.current?.contains(e.target as Node)) return hoverZone(key, 0);
+        if (mode.zone !== key) hoverZone(key);
+        else hoverZone(key, 0);
+      } : undefined}
+      onPointerLeave={helpable ? (e) => { if (e.pointerType === "mouse" && mode.zone === key) hoverZone(null); } : undefined}
       onFocus={helpable ? (e) => { if (e.target === e.currentTarget) setMode({ zone: key }); } : undefined}
       onClickCapture={helpable ? (e) => {
         if (refs.floating.current?.contains(e.target as Node)) return; // "Learn more" inside the popover
@@ -346,7 +379,9 @@ export function HelpZone({ id, tour, className, children }: { id: string; tour?:
       {children}
       {isMounted && entry && (
         <FloatingPortal>
-          <div ref={refs.setFloating} id={`${key}-help`} role="tooltip" style={{ ...floatingStyles, ...motion }} className={clsx(popoverClass, !active && "pointer-events-none")} {...getFloatingProps()}>
+          <div ref={refs.setFloating} id={`${key}-help`} role="tooltip" style={{ ...floatingStyles, ...motion }} className={clsx(popoverClass, !active && "pointer-events-none")} {...getFloatingProps()}
+            onPointerEnter={(e) => { if (e.pointerType === "mouse") { tipHovered = key; hoverZone(key, 0); } }}
+            onPointerLeave={(e) => { if (e.pointerType === "mouse") { tipHovered = null; hoverZone(null); } }}>
             <HelpCard entry={entry} onNavigate={() => setHelpMode(false)} />
           </div>
         </FloatingPortal>

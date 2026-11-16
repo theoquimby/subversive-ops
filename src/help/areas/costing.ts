@@ -49,7 +49,9 @@ Below that: the biggest price moves, menu items over target, and which suppliers
 
 It only counts Square items linked to a recipe, so link your Square items on the [Sales](/sales) page to make it complete. Which categories count as food is set on [Menu costs](/menu).
 
-To see what food cost **actually** was, including waste and over-portioning, use the [Margin gap](/variance) page, which compares two stock counts.`,
+To see what food cost **actually** was, including waste and over-portioning, use the [Margin gap](/variance) page, which compares two stock counts.
+
+**When it shows a dash or a warning dot.** If fewer than 8 in 10 of the week's food sales have ingredient prices behind them, the card shows "—" and says how much is missing instead of a misleading low number. It also won't compare against a week before that had no costs. Days before your first price on file are costed at the earliest prices you have, and the card says so.`,
     related: ["variance.page", "sales.mapping", "settings.target", "menu.classes"],
     keywords: ["theoretical", "food cost %", "cogs"],
   },

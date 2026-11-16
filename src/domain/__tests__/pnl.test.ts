@@ -133,8 +133,11 @@ describe("theoreticalByDay", () => {
     expect(byDay.get("2026-11-04")!.food.cogs).toBe(30);
     expect(byDay.get("2026-11-06")!.food.cogs).toBe(40);
     expect(byDay.get("2026-11-06")!.food.sales).toBe(199);
-    expect(byDay.get("2026-11-06")!.beer).toEqual({ sales: 160, cogs: 24 });
+    expect(byDay.get("2026-11-06")!.beer).toMatchObject({ sales: 160, cogs: 24 });
     expect([...uncosted]).toEqual(["mystery"]);
+    // The uncostable item's sales are tracked so food cost can say it's incomplete.
+    expect(byDay.get("2026-11-06")!.food.uncostedSales).toBe(9);
+    expect(byDay.get("2026-11-04")!.food.uncostedSales).toBe(0);
   });
 });
 

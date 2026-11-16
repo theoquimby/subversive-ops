@@ -9,7 +9,7 @@ import { pnlReport, todaySoFar } from "@/server/services/pnl";
 import { periodKpis } from "@/server/services/kpis";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { loadCostingSnapshot } from "@/server/services/costing";
+import { firstPriceDate, loadCostingSnapshot } from "@/server/services/costing";
 import { menuCosts, recentPriceMoves } from "@/server/services/insights";
 import { deliveryWindow } from "@/server/services/planning";
 import { businessToday } from "@/server/services/sales";
@@ -57,6 +57,7 @@ export default async function OverviewPage() {
     attentionList(now),
     refreshIfStale(),
   ]);
+  const reviewsEver = recentReviews.length ? 1 : await db.review.count({ take: 1 });
   const rating = ratingTrend(recentReviews.map((r) => ({ rating: r.rating, date: businessDate(r.postedAt, env.BUSINESS_TIMEZONE) })), today, 30);
   const ctx = buildContext(snap, today);
   const wasteCost = waste.reduce((s, w) => s + w.qtyBase.toNumber() * (ctx.ingredients.get(w.ingredientId)?.costPerBase ?? 0), 0);
@@ -75,6 +76,20 @@ export default async function OverviewPage() {
   const weekB = bridge({ sales: t.sales, cogs: t.cogs, labor: t.labor, unlinkedSales: weekDays.reduce((s, d) => s + d.unlinkedSales, 0), fees: weekDays.reduce((s, d) => s + (d.fees ?? 0), 0) });
   const prevB = bridge({ sales: prevWeek.total.sales, cogs: prevWeek.total.cogs, labor: prevWeek.total.labor, unlinkedSales: prevWeek.days.filter((d) => d.date < today).reduce((s, d) => s + unlinkedSales(d.split, d.sales), 0), fees: prevWeek.days.filter((d) => d.date < today).reduce((s, d) => s + ("fees" in d && typeof d.fees === "number" ? d.fees : 0), 0) });
   const hasPrev = prevWeek.total.sales > 0;
+
+  // ---- What's missing, so the cards never compare against a half-empty week.
+  const firstPrice = firstPriceDate(snap);
+  const weekFrom = addDays(today, -7);
+  const COVERED = 0.8;
+  const foodCovered = (l: { sales: number; costedShare: number | null }) => l.sales > 0 && (l.costedShare ?? 0) >= COVERED;
+  const foodOk = foodCovered(split.food);
+  const prevFoodOk = foodCovered(prevWeek.split.food);
+  const laborOk = t.labor > 0 || t.sales <= 0;
+  const prevLaborOk = prevWeek.total.labor > 0;
+  /** Why last week can't be compared, in a few words (null when it can). */
+  const prevGap = !hasPrev ? null : !prevLaborOk ? "no timecards" : !prevFoodOk ? "no food costs" : null;
+  const nowGap = !laborOk ? "no timecards" : !foodOk && split.food.sales > 0 ? "food costs incomplete" : null;
+  const pricedFrom = firstPrice && firstPrice > addDays(today, -14) ? firstPrice : null;
   const strip = weekDays.map((d) => ({ date: d.date, sales: d.sales, forecast: d.forecast, profit: bridge(d).profit, closed: d.sales <= 0 }));
 
   // Today: pace against what the forecast expected by now.
@@ -219,27 +234,34 @@ export default async function OverviewPage() {
             label={<span className="inline-flex items-center gap-1.5">Profit <HelpTip id="overview.profit" /></span>}
             value={signedWhole(weekB.profit)}
             tone={weekB.profit < 0 ? "bad" : undefined}
-            hint={<span className="flex flex-col gap-1">{hasPrev && <Delta value={weekB.profit - prevB.profit} format={fmt.money} label="vs week before" compact />}<span className="truncate">{pct(weekB.margin, 0)} of sales{weekB.estimated ? " · est." : ""}</span></span>}
+            hint={<span className="flex flex-col gap-1">{hasPrev && !prevGap && !nowGap && <Delta value={weekB.profit - prevB.profit} format={fmt.money} label="vs week before" compact />}{(prevGap || nowGap) && <Missing>{nowGap ? `This week: ${nowGap}` : `Week before had ${prevGap}`} — not compared</Missing>}<span className="truncate">{pct(weekB.margin, 0)} of sales{weekB.estimated || nowGap ? " · est." : ""}</span></span>}
           />
           <Stat
             label="Labor"
-            value={pct(t.laborPct)}
             tone={budget?.laborPct != null && costTone(t.laborPct, budget.laborPct) !== "good" ? costTone(t.laborPct, budget.laborPct) : undefined}
-            hint={<span className="flex flex-col gap-1">{hasPrev && <Delta value={pointsChange(t.laborPct, prevWeek.total.laborPct)} format={fmt.pts} label="vs week before" goodWhenUp={false} flatBelow={0.0025} compact />}<span className="truncate">{whole(t.labor)}{budget?.laborPct != null ? ` · target ${pct(budget.laborPct, 0)}` : ` · ${money(t.salesPerLaborHour, { whole: true })} per hour`}</span></span>}
+            value={laborOk ? pct(t.laborPct) : "—"}
+            hint={laborOk ? <span className="flex flex-col gap-1">{hasPrev && prevLaborOk ? <Delta value={pointsChange(t.laborPct, prevWeek.total.laborPct)} format={fmt.pts} label="vs week before" goodWhenUp={false} flatBelow={0.0025} compact /> : hasPrev ? <Missing>Week before had no timecards</Missing> : null}{week.missingRates > 0 && <Missing href="/team">{week.missingRates} shift{week.missingRates === 1 ? "" : "s"} with no pay rate</Missing>}<span className="truncate">{whole(t.labor)} · {money(t.salesPerLaborHour, { whole: true })} sales per labor hour{budget?.laborPct != null ? ` · target ${pct(budget.laborPct, 0)}` : ""}</span></span> : <Missing href="/team">No timecards this week — connect Square Team or add shifts</Missing>}
           />
           <Stat
             help="overview.foodCost"
             label={<span className="inline-flex items-center gap-1.5">Food cost <HelpTip id="overview.foodCost" /></span>}
-            value={pct(split.food.pct)}
-            tone={split.food.pct == null || costTone(split.food.pct, targets.food) === "good" ? undefined : costTone(split.food.pct, targets.food)}
-            hint={<span className="flex flex-col gap-1">{hasPrev && prevWeek.split.food.pct != null && split.food.pct != null && <Delta value={pointsChange(split.food.pct, prevWeek.split.food.pct)} format={fmt.pts} label="vs week before" goodWhenUp={false} flatBelow={0.0025} compact />}<span className="truncate">Target {pct(targets.food, 0)}</span></span>}
+            value={foodOk ? pct(split.food.pct) : "—"}
+            tone={!foodOk || split.food.pct == null || costTone(split.food.pct, targets.food) === "good" ? undefined : costTone(split.food.pct, targets.food)}
+            hint={<span className="flex flex-col gap-1">
+              {split.food.sales <= 0 ? <Missing href="/sales#sales-items">No food sales linked to recipes</Missing>
+                : !foodOk ? <Missing href="/prices">Only {pct(split.food.costedShare ?? 0, 0)} of food sales have prices behind them — add ingredient prices</Missing>
+                : hasPrev && prevFoodOk && prevWeek.split.food.pct != null && split.food.pct != null ? <Delta value={pointsChange(split.food.pct, prevWeek.split.food.pct)} format={fmt.pts} label="vs week before" goodWhenUp={false} flatBelow={0.0025} compact />
+                : hasPrev ? <Missing>Week before had no food costs</Missing> : null}
+              {foodOk && pricedFrom && pricedFrom > weekFrom.slice(0, 10) ? <span className="truncate">Days before {shortDate(pricedFrom)} at {shortDate(pricedFrom)} prices</span> : null}
+              <span className="truncate">Target {pct(targets.food, 0)}</span>
+            </span>}
           />
           <Link href="/reviews" className="block h-full rounded-xl [&>*]:h-full">
             <Stat
               help="overview.rating"
               label="Rating, 30 days"
               value={rating.avg != null ? `${rating.avg.toFixed(1)}★` : "—"}
-              hint={rating.avg == null ? "No reviews in 30 days" : `${rating.count} review${rating.count === 1 ? "" : "s"}${rating.delta != null && Math.abs(rating.delta) >= 0.05 ? ` · ${rating.delta > 0 ? "▲" : "▼"} ${Math.abs(rating.delta).toFixed(1)} vs prior` : rating.delta != null ? " · steady" : ""}`}
+              hint={rating.avg == null ? (reviewsEver ? "No reviews in 30 days" : <Missing>Reviews aren&apos;t coming in yet — connect Google</Missing>) : `${rating.count} review${rating.count === 1 ? "" : "s"}${rating.delta != null && Math.abs(rating.delta) >= 0.05 ? ` · ${rating.delta > 0 ? "▲" : "▼"} ${Math.abs(rating.delta).toFixed(1)} vs prior` : rating.delta != null ? " · steady" : ""}`}
               tone={rating.delta != null && rating.delta <= -0.3 ? "warn" : undefined}
             />
           </Link>
@@ -331,5 +353,15 @@ export default async function OverviewPage() {
         </HelpZone>
       )}
     </>
+  );
+}
+
+/** A quiet "this figure is missing something" line, optionally linking to the fix. */
+function Missing({ children, href }: { children: React.ReactNode; href?: string }) {
+  const body = <><span aria-hidden className="mt-[0.3rem] size-1.5 shrink-0 rounded-full bg-warn" /><span className="line-clamp-2">{children}</span></>;
+  return href ? (
+    <Link href={href} className="flex items-start gap-1.5 text-xs text-ink-2 underline-offset-2 hover:text-ink hover:underline">{body}</Link>
+  ) : (
+    <span className="flex items-start gap-1.5 text-xs text-ink-2">{body}</span>
   );
 }

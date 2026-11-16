@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.5",
+    date: "2026-11-16",
+    title: "Honest numbers and safer saving",
+    summary: "The Overview tells you when a figure is missing data, older sales get food costs, and waste and counts never claim to save when they didn't.",
+    entries: ["2026-11-16.honest-numbers"],
+    fixed: [
+      "Waste and counts: a page left open from before an update now says to reload instead of “saved on this phone”. Reload once and anything waiting sends.",
+      "Days before your first prices are costed at the earliest prices on file (marked as an estimate) instead of $0.",
+      "Help mode: moving the mouse onto a tip no longer jumps to the section underneath.",
+      "Prep list says “1 batch”, not “1 batches”.",
+    ],
+  },
+  {
     version: "1.4",
     date: "2026-11-15",
     title: "Month-end for your accountant",
