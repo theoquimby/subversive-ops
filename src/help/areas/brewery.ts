@@ -88,11 +88,15 @@ Each line of a recipe is matched to an ingredient, and costed at that ingredient
 
 A line has no cost when it isn't matched to an ingredient, the ingredient has no price yet, or its unit doesn't fit (a malt in gallons). Those lines are never counted as $0 without saying so: the cost reads "at least $X, 4 ingredients have no price", and the list says **Needs prices**. Add the prices in [Brewing ingredient prices](/brewery/recipes#prices) below the list.
 
+### Lines not linked to an ingredient
+
+When lines aren't linked (recipes from Brew Manager arrive that way), the page says how many with a **Link them** button. It links every such line to an ingredient, making the malt, hops and yeast that aren't there yet, and says what it did and any lines it left. Then fill in their prices below.
+
 ### Keg costs
 
 When a recipe is **Live**, linked to a beer, and every line has a price, the keg pages ([Demand](/kegs/demand)) take that beer's cost per pint from it.`,
-    related: ["brewery.recipes.editor", "brewery.recipes.prices", "brewery.recipes.numbers", "brewery.import"],
-    keywords: ["recipe", "grain", "malt", "hops", "yeast", "cost", "ibu", "abv", "srm", "beersmith", "cost per pint", "cost per keg"],
+    related: ["brewery.recipes.editor", "brewery.recipes.prices", "brewery.recipes.link", "brewery.recipes.numbers", "brewery.import"],
+    keywords: ["recipe", "grain", "malt", "hops", "yeast", "cost", "ibu", "abv", "srm", "beersmith", "cost per pint", "cost per keg", "link them"],
   },
   {
     id: "brewery.recipes.editor",
@@ -247,6 +251,31 @@ Once a maltster's or hop supplier's products are linked to these ingredients on 
 The ones with no price come first. Search by name, category or supplier; filter by **Category** or **Supplier**, or show only **No price yet** or those **In a recipe**. On a phone, tap an ingredient to type its price.`,
     related: ["brewery.recipes"],
     keywords: ["price", "malt price", "hop price", "yeast price", "manual price"],
+  },
+  {
+    id: "brewery.recipes.link",
+    area: "brewery",
+    route: "/brewery/recipes",
+    title: "Linking recipe lines to ingredients",
+    body: "A recipe line only counts toward brewing stock, ordering and costs once it's linked to an ingredient. Link them does it for every line that isn't, making the ingredients it needs.",
+    article: `Recipes imported from Brew Manager come with names like "Pils, Hudson Valley Malt (NYS)" but no ingredient behind them, so stock, ordering and costs skip them. When any line isn't linked, Recipes says how many, with a **Link them** button. Brewing stock has a **Link ingredients** button while its list is empty. The import links its recipes on its own.
+
+Each line gets one ingredient, named the same way every time:
+
+- **Malt**: "Pils malt (NYS) · Hudson Valley Malt", "Munich malt (NYS) · Subversive"
+- **Hops**: "Cascade hops (NYS) · NY Hop Guild", "Tettnang hops"
+- **Yeast**: "Philly Sour yeast · MoreBeer"; a co-pitch keeps both strains, "Helio Gazer + CellarScience HAZY yeast · Omega Yeast + MoreBeer"
+- **Everything else** keeps its own name: "Pickling spice", "Brewzyme D"
+
+**(NYS)** means New York grown and stays in the name, so NY and other Cascade are different ingredients, and so is the same hop from two suppliers. The same malt from the same maltster in ten recipes is one ingredient. Brew Manager's short names are spelled out (NYHG is NY Hop Guild, HVM is Hudson Valley Malt).
+
+An ingredient that already has that name (in the kitchen too) is used rather than copied. New ones go on the brewery side, counted in lb, gallons or each. When the line names a brewery supplier, the ingredient is set up as bought from them (by the lb, gallon or package, no price yet), so [Ordering](/brewery/ordering) knows who to order from. Subversive's own malt has no supplier.
+
+A line is left alone when its unit doesn't fit the ingredient, like cups of a spice that's weighed. The summary lists those with why: say on the ingredient what one cup weighs, then match the line on its recipe.
+
+Running it again changes nothing that's already linked. Next, fill in prices in [Brewing ingredient prices](/brewery/recipes#prices).`,
+    related: ["brewery.recipes", "brewery.recipes.prices", "brewery.import", "brewery.stock"],
+    keywords: ["link", "link ingredients", "unlinked", "not linked", "match ingredient", "brew manager", "nys", "new york grown"],
   },
   {
     id: "brewery.batches",

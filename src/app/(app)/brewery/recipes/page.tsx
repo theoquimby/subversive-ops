@@ -2,8 +2,10 @@ import { HelpTip } from "@/components/help";
 import { Card, LinkButton, PageHeader, Section } from "@/components/ui";
 import { PACKAGING_LOSS } from "@/domain/brewRecipes";
 import { requireUser } from "@/server/auth";
+import { brewLinkStatus } from "@/server/services/brewIngredientLink";
 import { brewingPriceRows, brewSuppliers, listBrewRecipes } from "@/server/services/brewRecipes";
 import Link from "next/link";
+import { LinkIngredients } from "./link-ingredients";
 import { PriceTable } from "./price-table";
 import { RecipeList } from "./recipe-list";
 
@@ -11,7 +13,7 @@ export const metadata = { title: "Brewing recipes" };
 
 export default async function Page() {
   await requireUser("MANAGER");
-  const [rows, prices, suppliers] = await Promise.all([listBrewRecipes(), brewingPriceRows(), brewSuppliers()]);
+  const [rows, prices, suppliers, link] = await Promise.all([listBrewRecipes(), brewingPriceRows(), brewSuppliers(), brewLinkStatus()]);
   const needPrices = rows.filter((r) => r.status !== "archived" && r.unpricedLines > 0).length;
   const unpricedIngredients = prices.filter((p) => p.price == null && p.usedBy > 0).length;
   return (
@@ -27,6 +29,7 @@ export default async function Page() {
           </>
         }
       />
+      <LinkIngredients unlinked={link.unlinkedLines} show={link.unlinkedLines > 0} pricesHref="#prices" />
       {needPrices > 0 && (
         <Card className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 border-warn/30 bg-warn-bg/40 px-4 py-3 text-sm">
           <span className="min-w-0 flex-1">

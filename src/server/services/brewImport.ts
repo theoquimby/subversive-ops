@@ -21,7 +21,9 @@ import {
 } from "@/domain/brewImport";
 import { daysBetween, parseISODate, type ISODate } from "@/domain/dates";
 import { nextBatchCode, planBrew, stayIntervals } from "@/domain/tankPlan";
+import type { LinkSummary } from "@/domain/brewIngredientLink";
 import { db } from "../db";
+import { linkBrewIngredients } from "./brewIngredientLink";
 import { asDate, loadPlan } from "./brewery";
 import { businessToday } from "./sales";
 
@@ -81,6 +83,8 @@ export interface BrewImportResult {
   linkedBeers: number;
   unmatchedRecipes: string[];
   unmatchedBrews: string[];
+  /** Recipe lines linked to ingredients after the import (null if that failed: Link them on Recipes) */
+  links: LinkSummary | null;
 }
 
 export interface AppImportResult {
@@ -104,6 +108,8 @@ export interface AppImportResult {
   profilesSet: string[];
   linkedBeers: number;
   firstPlanned: ISODate | null;
+  /** Recipe lines linked to ingredients after the import (null if that failed: Link them on Recipes) */
+  links: LinkSummary | null;
 }
 
 export type AnyImportResult = BrewImportResult | AppImportResult;
@@ -113,12 +119,24 @@ export async function runBrewManagerImport(json: unknown, opts: AppImportOptions
   if (kind === "app") {
     const mapped = mapAppData(json);
     if (!mapped.ok) return { error: mapped.error };
-    return { result: await runAppImport(mapped.data, opts) };
+    const { recipeIds, ...result } = await runAppImport(mapped.data, opts);
+    return { result: { ...result, links: await linkAfterImport(recipeIds) } };
   }
   const mapped = mapBackup(json);
   if (!mapped.ok) return { error: mapped.error };
   if (!mapped.data.recipes.length && !mapped.data.batches.length) return { error: "There's nothing to import in this file." };
-  return { result: await runBackupImport(mapped.data) };
+  const { recipeIds, ...result } = await runBackupImport(mapped.data);
+  return { result: { ...result, links: await linkAfterImport(recipeIds) } };
+}
+
+/** Link the imported recipes' lines to ingredients. The import is already saved, so a failure here only leaves the lines for the Link them button on Recipes. */
+async function linkAfterImport(recipeIds: string[]): Promise<LinkSummary | null> {
+  try {
+    return await linkBrewIngredients({ recipeIds });
+  } catch (e) {
+    console.error("Linking imported recipe lines to ingredients failed", e);
+    return null;
+  }
 }
 
 // ---- Recipes (both files) ----------------------------------------------------------------
@@ -232,7 +250,7 @@ async function upsertRecipes(tx: Tx, recipes: MappedRecipe[], beers: { id: strin
 
 // ---- The backup ---------------------------------------------------------------------------
 
-async function runBackupImport(d: MappedBackup): Promise<BrewImportResult> {
+async function runBackupImport(d: MappedBackup): Promise<BrewImportResult & { recipeIds: string[] }> {
   return db.$transaction(
     async (tx) => {
       const [beers, tanks, codes] = await Promise.all([
@@ -241,8 +259,10 @@ async function runBackupImport(d: MappedBackup): Promise<BrewImportResult> {
         tx.brewBatch.findMany({ select: { code: true, sourceKey: true } }),
       ]);
       const recipes = await upsertRecipes(tx, d.recipes, beers, false);
-      const out: BrewImportResult = {
+      const out: BrewImportResult & { recipeIds: string[] } = {
         kind: "backup",
+        recipeIds: [...new Set([...recipes.bySource.values()].map((r) => r.id))],
+        links: null,
         recipesCreated: recipes.created,
         recipesUpdated: recipes.updated,
         batchesCreated: 0,
@@ -351,7 +371,7 @@ async function appContext(d: MappedAppData, opts: AppImportOptions): Promise<App
   };
 }
 
-async function runAppImport(d: MappedAppData, opts: AppImportOptions): Promise<AppImportResult> {
+async function runAppImport(d: MappedAppData, opts: AppImportOptions): Promise<AppImportResult & { recipeIds: string[] }> {
   const ctx = await appContext(d, opts);
   const today = ctx.today;
   const toPlace: { id: string; name: string; brewOn: ISODate; bbl: number; fermentDays: number; conditionDays: number }[] = [];
@@ -359,8 +379,10 @@ async function runAppImport(d: MappedAppData, opts: AppImportOptions): Promise<A
   const out = await db.$transaction(
     async (tx) => {
       const beers = await tx.beer.findMany({ select: { id: true, name: true } });
-      const res: AppImportResult = {
+      const res: AppImportResult & { recipeIds: string[] } = {
         kind: "app",
+        recipeIds: [],
+        links: null,
         recipesCreated: 0,
         recipesUpdated: 0,
         devCreated: 0,
@@ -402,6 +424,7 @@ async function runAppImport(d: MappedAppData, opts: AppImportOptions): Promise<A
 
       // ---- Recipes and development beers
       const recipes = await upsertRecipes(tx, d.recipes, beers, true);
+      res.recipeIds = [...new Set([...recipes.bySource.values()].map((r) => r.id))];
       Object.assign(res, { recipesCreated: recipes.created, recipesUpdated: recipes.updated, devCreated: recipes.devCreated, devUpdated: recipes.devUpdated, linkedBeers: recipes.linkedBeers });
 
       // ---- Brewery suppliers and what their lead time counts back from
