@@ -161,7 +161,8 @@ export function CostsClient({ view }: { view: CogsView }) {
         urlSearch={false}
         rowClassName={(r) => (active && r.affected ? "bg-warn-bg/25" : undefined)}
         summary={(vis) => {
-          const priced = vis.filter((r) => r.next.pintMargin != null);
+          // Only fully priced recipes: one with unpriced lines has a margin that is only a ceiling (no prices at all reads 100%).
+          const priced = vis.filter((r) => r.next.pintMargin != null && r.next.complete);
           const avg = priced.length ? priced.reduce((s, r) => s + r.next.pintMargin!, 0) / priced.length : null;
           return [
             { value: vis.length, label: vis.length === 1 ? "recipe" : "recipes" },
@@ -174,7 +175,7 @@ export function CostsClient({ view }: { view: CogsView }) {
           title: r.name,
           subtitle: <>{money(r.next.total)} a batch · {r.pintPrice != null ? `sells ${money(r.pintPrice)}` : "no pour price"}</>,
           value: <Money base={r.base.perPint} next={r.next.perPint} show={active && r.affected} floor={!r.next.complete} />,
-          sub: r.next.pintMargin != null ? `${pct(r.next.pintMargin, 0)} margin` : "a pint",
+          sub: r.next.pintMargin != null ? `${r.next.complete ? "" : "≤ "}${pct(r.next.pintMargin, 0)} margin` : "a pint",
         })}
         drawerTitle={(r) => r.name}
         drawer={(r) => <RecipeDrawer r={r} history={view.history[r.id]} pourYield={view.pourYield} />}
@@ -234,7 +235,7 @@ function RecipeDrawer({ r, history, pourYield }: { r: Row; history?: { date: str
         {line("Per pint packaged", money(r.next.perPint))}
         {line("Per pint poured", money(r.next.pouredPint), `after foam and line loss (${Math.round(pourYield * 100)}% reaches the glass)`)}
         {line("Pint sells for", money(r.pintPrice), r.pintPrice == null ? "no draft sales on Square for this beer lately" : "average on Square, last 4 months")}
-        {line("Pint margin", r.next.pintMargin == null ? "—" : pct(r.next.pintMargin, 0))}
+        {line("Pint margin", r.next.pintMargin == null ? "—" : `${r.next.complete ? "" : "≤ "}${pct(r.next.pintMargin, 0)}`)}
         {r.halfPrice != null && line("½ keg wholesale margin", r.next.halfMargin == null ? "—" : pct(r.next.halfMargin, 0), `at ${money(r.halfPrice)}`)}
         {r.sixthPrice != null && line("⅙ keg wholesale margin", r.next.sixthMargin == null ? "—" : pct(r.next.sixthMargin, 0), `at ${money(r.sixthPrice)}`)}
       </div>

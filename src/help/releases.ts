@@ -24,6 +24,37 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.25",
+    date: "2026-11-16",
+    title: "Ordering speaks up only when it should",
+    summary: "Driscoll, Kilcoyne and See & Be keep their every-delivery reminders; every other supplier only alerts when counts and sales say something will run short. Alerts can be set per supplier, and orders can go out by text, call or a supplier's website.",
+    entries: ["2026-11-16.order-cadence", "2026-11-16.order-send"],
+    fixed: [
+      "Each supplier is Every delivery or When stock runs low. When stock runs low works out, item by item, whether anything would fall below its safety level before the delivery after next; items not counted in three weeks say a count is needed instead of nagging.",
+      "Alerts per supplier: a first reminder (the day before, four hours before or the morning of), a last call before the cutoff, and who gets them (managers, chosen people or whoever is on shift). A cutoff missed with no order shows as Missed, with the next chance.",
+      "Send orders by text (opens Messages with the order written out), phone (a call script) or the supplier's website (the order with item numbers to copy, as a file, or ticked off line by line). Nothing is ever sent by itself.",
+      "Staff picked to place orders get a guided path on their phone, with why each amount is suggested and warnings for an unusually big amount, an empty order or a missed cutoff.",
+      "Brewery suppliers and ingredients stay out of kitchen ordering and counts; they're ordered from the Brewery.",
+    ],
+  },
+  {
+    version: "1.24",
+    date: "2026-11-16",
+    title: "Brew Manager, inside Ops",
+    summary: "Everything Zane's Brew Manager did now lives in the Brewery: brew day on a phone, °Plato, the tank floor plan, timing profiles and locked releases, packaging counts, split batches, a calendar for Google, and brewing stock, ordering and costs kept apart from the kitchen.",
+    entries: ["2026-11-16.brew-day", "2026-11-16.brewery-floor", "2026-11-16.brewery-stock", "2026-11-16.brewery-costs"],
+    fixed: [
+      "Brew day: mash, lauter, boil, fermentation and packaging, each with the recipe's targets beside your readings, a timer that survives closing the phone, a hop checklist and autosave. Finish puts the brew in a fermenter and takes its ingredients out of stock.",
+      "Gravity in °Plato everywhere (or SG, your pick), with an ABV calculator and a printable brew sheet.",
+      "Recipes keep strike and mash temperatures, mash, kettle and knock-out targets, a timing profile, and development beers with what's still missing and whether the artwork is done.",
+      "Tanks: a floor plan laid out like the brewery (back wall, front, separate room), FV to FV, to brite and BBT to BBT moves, Mark conditioning, packaging counts (½ and ⅙ kegs, cases, CO₂) and Fill N kegs straight into the scanner.",
+      "Schedule: Hazy, Sour, Lager and Pale timings with transfers on Monday or Tuesday and packaging on Wednesday, locked release dates that hold when a brew moves, a year view, split batches, and an address to add the brewery calendar to Google Calendar.",
+      "Stock and orders: malt, hops and yeast on hand from counts and deliveries less what each brew used, and what to order from whom by when for every planned brew, from each supplier's lead time.",
+      "Costs: cost per batch, barrel, keg and pint against what it sells for, with a what-if for price changes, batch size and loss.",
+      "Import: Brew Manager's recipes, development beers, 2026 schedule, tanks and supplier lead times come in from one file; its backup file brings brews.",
+    ],
+  },
+  {
     version: "1.23",
     date: "2026-11-16",
     title: "Announcements and event pages",
