@@ -5,7 +5,8 @@ import { GridCell, GridSelect } from "@/components/grid";
 import { Badge, Button, cx, DatePicker, Input, Select } from "@/components/ui";
 import { displayTime, EVENT_KIND_LABEL, EVENT_KINDS } from "@/domain/events";
 import { dayDate, shortDate } from "@/lib/format";
-import { Plus, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Plus, Trash2, X } from "lucide-react";
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { addEvents, addHolidaysFor, applyLearned, deleteEvent, setEventField } from "./actions";
 
@@ -20,6 +21,8 @@ export interface EventRowView {
   endTime: string | null;
   impact: number;
   notes: string | null;
+  /** Kept by a private event booking: shown read-only, with a link to the booking. */
+  privateEventId?: string | null;
   lift?: { lift: number | null; actual: number; baseline: number } | null;
 }
 
@@ -164,6 +167,7 @@ export function EventsGrid({ rows, grid, past = false }: { rows: EventRowView[];
         </thead>
         <tbody>
           {rows.map((r) => {
+            if (r.privateEventId) return <BookedRow key={r.id} r={r} past={past} />;
             const save = (field: Parameters<typeof setEventField>[1]) => setEventField.bind(null, r.id, field);
             const closed = r.kind === "CLOSURE";
             return (
@@ -223,6 +227,38 @@ export function EventsGrid({ rows, grid, past = false }: { rows: EventRowView[];
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** A private event booking's entry: read here, changed on the booking. */
+function BookedRow({ r, past }: { r: EventRowView; past: boolean }) {
+  const href = `/events/private/${r.privateEventId}`;
+  return (
+    <tr className="transition-colors hover:bg-surface-2/60 [&:last-child>td]:border-b-0">
+      <td className="num hidden w-40 border-b border-border px-4 py-2.5 text-ink-2 sm:table-cell">{shortDate(r.date)}</td>
+      <td className="border-b border-border px-3 py-2.5">
+        <Link href={href} className="font-medium underline-offset-2 hover:underline">{r.title}</Link>
+        <div className="text-xs text-muted">
+          <span className="sm:hidden">{shortDate(r.date)}{r.startTime ? ` · ${displayTime(r.startTime)}` : ""} · </span>
+          From the booking: change it there
+        </div>
+      </td>
+      <td className="hidden w-40 border-b border-border px-3 py-2.5 text-ink-2 sm:table-cell">{EVENT_KIND_LABEL.PRIVATE}</td>
+      <td className="hidden w-28 border-b border-border px-3 py-2.5 text-ink-2 md:table-cell">{displayTime(r.startTime) || "—"}</td>
+      <td className="hidden w-28 border-b border-border px-3 py-2.5 text-ink-2 lg:table-cell">{displayTime(r.endTime) || "—"}</td>
+      <td className="num w-24 border-b border-border px-3 py-2.5 text-right text-ink-2">{pctText(r.impact)}%</td>
+      {past && (
+        <td className="num hidden border-b border-border px-3 py-2.5 text-right whitespace-nowrap sm:table-cell">
+          {r.lift?.lift != null ? <Badge tone={r.lift.lift >= 1.05 ? "good" : r.lift.lift <= 0.95 ? "warn" : "neutral"}>{pctText(r.lift.lift)}%</Badge> : <span className="text-xs text-muted">not enough history</span>}
+        </td>
+      )}
+      <td className={cx("hidden border-b border-border px-3 py-2.5 text-ink-2", past ? "2xl:table-cell" : "xl:table-cell")}>{r.notes}</td>
+      <td className="border-b border-border pr-2 text-right">
+        <Link href={href} aria-label={`Open the booking for ${r.title}`} className="inline-grid size-10 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-ink sm:size-8">
+          <ArrowUpRight className="size-4" />
+        </Link>
+      </td>
+    </tr>
   );
 }
 

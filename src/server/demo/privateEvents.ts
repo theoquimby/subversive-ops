@@ -93,7 +93,7 @@ export async function seedPrivateEvents(db: PrismaClient, today: ISODate): Promi
     const e = await db.privateEvent.create({
       data: {
         ...data,
-        ownerId,
+        owner: ownerId ? { connect: { id: ownerId } } : undefined,
         lines: lines?.length ? { create: lines.map((l, j) => ({ ...l, sort: j + 1 })) } : undefined,
         payments: pays?.length ? { create: pays.map((p) => ({ amount: D(p.amount), kind: p.kind, method: p.method, paidOn: parseISODate(p.on) })) } : undefined,
       },

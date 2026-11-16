@@ -1,4 +1,5 @@
 import "server-only";
+import { MIN_ON_HAND_KEY } from "@/domain/ordering";
 import { buildPlan, googleSheetXlsxUrl, parToBase, type ImportPlan, type Mapping, type RawTable, type TableKind } from "@/domain/bulkImport";
 import { parseISODate } from "@/domain/dates";
 import type { BaseUnit } from "@/domain/units";
@@ -40,7 +41,7 @@ export async function fetchGoogleSheet(url: string): Promise<RawTable[]> {
 }
 
 // Same setting the ingredients page edits ("Min on hand"); base units per ingredient id.
-const PAR_KEY = "ordering.minOnHand";
+const PAR_KEY = MIN_ON_HAND_KEY;
 
 async function loadParsIn(tx: Prisma.TransactionClient): Promise<Record<string, number>> {
   const row = await tx.setting.findUnique({ where: { key: PAR_KEY } });

@@ -21,6 +21,16 @@ const usual = (): GoogleHubFacts => ({
 
 const piece = (pieces: HubPiece[], id: HubPiece["id"]) => pieces.find((p) => p.id === id)!;
 
+describe("reviews that follow the listing", () => {
+  it("says so when the business is the picked listing", () => {
+    const f = usual();
+    f.reviews = { ...f.reviews, fromListing: true, placeName: "Subversive" };
+    const reviews = piece(googleHub(f).pieces, "reviews");
+    expect(reviews.status).toBe("working");
+    expect(reviews.line).toMatch(/^Follows your Google listing, Subversive\./);
+  });
+});
+
 describe("the Google page", () => {
   it("lists the five pieces in order, each feeding its page", () => {
     const h = googleHub(nothing());

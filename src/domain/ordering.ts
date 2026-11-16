@@ -196,6 +196,48 @@ export function cutoffRule(saved: Partial<CutoffRule> | undefined, leadTimeDays:
   return { time, daysBefore, autoDraft: saved?.autoDraft !== false, ...(Object.keys(perDay).length ? { perDay } : {}) };
 }
 
+/** Setting holding each ingredient's minimum on hand (par), JSON by ingredient id, in base units. */
+export const MIN_ON_HAND_KEY = "ordering.minOnHand";
+
+// ---- A supplier's cutoff columns ------------------------------------------------------------
+
+/** Supplier.cutoffTime / cutoffDaysBefore / autoDraft / cutoffPerDay (they were the Setting `ordering.cutoffs`). */
+export interface CutoffColumns {
+  cutoffTime: string | null;
+  cutoffDaysBefore: number | null;
+  autoDraft: boolean;
+  cutoffPerDay: unknown;
+}
+
+const perDayOf = (raw: unknown): CutoffRule["perDay"] => (raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as CutoffRule["perDay"]) : undefined);
+
+/**
+ * What a supplier has set, as a saved rule for `cutoffRule`; undefined when
+ * nothing is set (the deadline then follows the lead time, 2pm, auto-draft on).
+ */
+export function savedCutoff(c: CutoffColumns): Partial<CutoffRule> | undefined {
+  const perDay = perDayOf(c.cutoffPerDay);
+  const out: Partial<CutoffRule> = {};
+  if (c.cutoffTime) out.time = c.cutoffTime;
+  if (c.cutoffDaysBefore != null) out.daysBefore = c.cutoffDaysBefore;
+  if (c.autoDraft === false) out.autoDraft = false;
+  if (perDay && Object.keys(perDay).length) out.perDay = perDay;
+  return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * A change to a supplier's deadline as column values. Days before delivery the
+ * same as the lead time aren't kept twice: the deadline follows the lead time.
+ */
+export function cutoffColumnsPatch(patch: Partial<CutoffRule>, leadTimeDays: number): Partial<CutoffColumns> {
+  const out: Partial<CutoffColumns> = {};
+  if (patch.time !== undefined) out.cutoffTime = patch.time && TIME.test(patch.time) ? patch.time : null;
+  if (patch.daysBefore !== undefined) out.cutoffDaysBefore = Number.isInteger(patch.daysBefore) && patch.daysBefore >= 0 && patch.daysBefore !== leadTimeDays ? patch.daysBefore : null;
+  if (patch.autoDraft !== undefined) out.autoDraft = patch.autoDraft !== false;
+  if (patch.perDay !== undefined) out.cutoffPerDay = patch.perDay && Object.keys(patch.perDay).length ? patch.perDay : null;
+  return out;
+}
+
 /**
  * The next delivery whose order cutoff hasn't passed, and that cutoff.
  * `nowDate`/`nowTime` are the business-local date and "HH:MM".

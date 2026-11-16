@@ -10,14 +10,15 @@
  * (not a tick count), so a reload or a locked phone doesn't lose time.
  */
 
+import { BREW_PROFILES as TIMING_PROFILES, DEFAULT_SNAP, isProfileKey, PROFILE_KEYS, type ProfileKey, type SnapRules } from "./brewProfiles";
 import { addDays, weekday, type ISODate } from "./dates";
 import { formatGravity, type GravityUnit } from "./gravity";
 
 // ---- Timing profiles ------------------------------------------------------------------
+// One set of profiles, in brewProfiles.ts. Here they carry the weekdays
+// transfers and packaging land on, the way Brew Manager's forecast reads them.
 
-export type ProfileKey = "hazy" | "sour" | "lager" | "pale";
-export const PROFILE_KEYS: ProfileKey[] = ["hazy", "sour", "lager", "pale"];
-export const isProfileKey = (s: unknown): s is ProfileKey => typeof s === "string" && (PROFILE_KEYS as string[]).includes(s);
+export { isProfileKey, PROFILE_KEYS, type ProfileKey };
 
 export interface BrewProfile {
   label: string;
@@ -36,13 +37,28 @@ export interface BrewProfile {
   pkgDay: number[];
 }
 
-/** Brew Manager's profiles, as it ships them. */
-export const BREW_PROFILES: Record<ProfileKey, BrewProfile> = {
-  hazy: { label: "Hazy IPA", dryHop: 7, brite: 20, pkg: 23, tap: 30, briteDay: [1, 2], pkgDay: [3] },
-  sour: { label: "Sour", brite: 38, pkg: 42, tap: 49, briteDay: [1, 2], pkgDay: [3] },
-  lager: { label: "Lager", fvTransfer: 21, brite: 49, pkg: 52, tap: 60, briteDay: [1, 2], pkgDay: [3] },
-  pale: { label: "Pale / Clear IPA", brite: 32, pkg: 35, tap: 42, briteDay: [1, 2], pkgDay: [3] },
-};
+/** A profile from brewProfiles.ts with the brewery's transfer and packaging weekdays (Brewery setup). */
+export function profileWithDays(key: ProfileKey, rules: SnapRules = DEFAULT_SNAP): BrewProfile {
+  const p = TIMING_PROFILES[key];
+  return {
+    label: p.label,
+    ...(p.dryHop != null ? { dryHop: p.dryHop } : {}),
+    ...(p.fvTransfer != null ? { fvTransfer: p.fvTransfer } : {}),
+    brite: p.brite,
+    pkg: p.pkg,
+    tap: p.tap,
+    briteDay: [...rules.transferDays],
+    pkgDay: [...rules.packageDays],
+  };
+}
+
+/** Every profile with the brewery's weekdays. Pass `brewerySnap()` from the brewery service to honour Brewery setup. */
+export function brewDayProfiles(rules: SnapRules = DEFAULT_SNAP): Record<ProfileKey, BrewProfile> {
+  return Object.fromEntries(PROFILE_KEYS.map((k) => [k, profileWithDays(k, rules)])) as Record<ProfileKey, BrewProfile>;
+}
+
+/** The profiles with the default weekdays (transfers Monday or Tuesday, packaging Wednesday). */
+export const BREW_PROFILES: Record<ProfileKey, BrewProfile> = brewDayProfiles();
 
 export const PROFILE_OPTIONS: { value: string; label: string }[] = [
   ...PROFILE_KEYS.map((k) => ({ value: k, label: BREW_PROFILES[k].label })),
@@ -129,12 +145,9 @@ export function forecastDates(brewDay: ISODate, p: BrewProfile): Forecast {
 }
 
 // ---- Suppliers' lead times ------------------------------------------------------------
+// One definition, in brewOrdering.ts.
 
-/** Setting holding, per brewery supplier id, which day its lead time counts back from. */
-export const LEAD_REFS_KEY = "brewery.supplierLeadRefs";
-export type LeadRef = "brew" | "dryHop" | "pkg";
-export const isLeadRef = (s: unknown): s is LeadRef => s === "brew" || s === "dryHop" || s === "pkg";
-export const LEAD_REF_LABEL: Record<LeadRef, string> = { brew: "brew day", dryHop: "dry-hop day", pkg: "packaging day" };
+export { isLeadRef, LEAD_REF_LABEL, LEAD_REFS_KEY, type LeadRef } from "./brewOrdering";
 
 // ---- What a beer in development still needs --------------------------------------------
 

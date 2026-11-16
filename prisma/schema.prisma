@@ -66,6 +66,7 @@ model User {
   counts    StockCount[]
   feedbackGiven EmployeeFeedback[]
   appFeedback AppFeedback[]
+  privateEvents PrivateEvent[]
 }
 
 model Setting {
@@ -90,6 +91,31 @@ model Supplier {
   department    String         @default("kitchen")
   /// "regular": an order every delivery (nag when none is placed); "as_needed": only when counts and sales say stock runs short
   orderCadence  String         @default("regular")
+  /// Brewery ordering: days before the reference day the order must go in (null = leadTimeDays),
+  /// and the day it counts back from: "brew" | "dryHop" | "pkg" (null = brew day).
+  /// leadTimeDays stays the kitchen's "days before delivery".
+  brewLeadDays  Int?
+  brewLeadRef   String?
+  /// Order reminders: null = follow the cadence; "on" | "low" | "off"
+  orderAlert    String?
+  /// First reminder: "24h" | "4h" | "morning" | "none"
+  orderFirst    String         @default("4h")
+  /// Last call this many minutes before the cutoff; null = no last call
+  orderLastCallMins Int?       @default(60)
+  /// Who is reminded: "managers" | "people" | "shift"; orderPeople = User ids when "people"
+  orderRecipients String       @default("managers")
+  orderPeople   String[]       @default([])
+  /// How the order is sent: "email" | "text" | "portal" | "phone"
+  sendBy        String         @default("email")
+  orderPhone    String?
+  portalName    String?
+  portalUrl     String?
+  /// Order deadline: local "HH:MM" (null = 14:00); days before delivery when it differs from leadTimeDays
+  cutoffTime    String?
+  cutoffDaysBefore Int?
+  autoDraft     Boolean        @default(true)
+  /// Deadlines per delivery weekday: { "5": { "day": 3, "time": "17:00" } }
+  cutoffPerDay  Json?
   products      SupplierProduct[]
   imports       PriceImport[]
   orders        PurchaseOrder[]
@@ -712,6 +738,8 @@ model Event {
   createdAt DateTime @default(now())
   /// Bumped on every edit (the website feed sends it as updatedAt)
   updatedAt DateTime @default(now()) @updatedAt
+  /// The private event booking that keeps this entry (kind PRIVATE) up to date
+  privateEvent PrivateEvent?
 
   @@index([date])
 }
@@ -1372,13 +1400,17 @@ model PrivateEvent {
   endTime       String?
   space         String?
   headcount     Int       @default(0)
-  /// User id (no relation, so User stays untouched)
+  /// The manager looking after it
   ownerId       String?
+  owner         User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   notes         String?
   followUpOn    DateTime? @db.Date
   lostReason    String?
   /// Calendar Event this booking keeps up to date once confirmed
   calendarEventId String? @unique
+  calendarEvent Event?    @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
+  inquiries     WebInquiry[]
+  conversions   WebConversion[]
   // Quote
   roomFee       Decimal   @default(0) @db.Decimal(10, 2)
   /// NONE | TICKETS | OPEN_TAB | MINIMUM
@@ -1412,6 +1444,7 @@ model PrivateEvent {
 
   @@index([stage, date])
   @@index([date])
+  @@index([ownerId])
 }
 
 model PrivateEventLine {
@@ -1685,6 +1718,7 @@ model WebImage {
 model WebInquiry {
   id             String   @id @default(cuid())
   privateEventId String?
+  privateEvent   PrivateEvent? @relation(fields: [privateEventId], references: [id], onDelete: SetNull)
   name           String
   email          String?
   phone          String?
@@ -1699,6 +1733,7 @@ model WebInquiry {
 
   @@index([ipHash, createdAt])
   @@index([createdAt])
+  @@index([privateEventId])
 }
 
 // ---- Website analytics (first-party, cookieless) + Google Search Console / Business Profile ----
@@ -1772,6 +1807,7 @@ model WebConversion {
   campaign       String?
   path           String?
   privateEventId String?
+  privateEvent   PrivateEvent? @relation(fields: [privateEventId], references: [id], onDelete: SetNull)
   props          Json?
 
   @@index([day])
@@ -1917,6 +1953,9 @@ model Equipment {
   notes         String?
   active        Boolean      @default(true)
   createdAt     DateTime     @default(now())
+  /// The brewery tank this is (its upkeep and repairs); a repair that marks it down shows the tank unavailable
+  tankId        String?      @unique
+  tank          Tank?        @relation(fields: [tankId], references: [id], onDelete: SetNull)
   tasks         UpkeepTask[]
   logs          UpkeepLog[]
 }
@@ -2239,6 +2278,8 @@ model Tank {
   layoutRow   Int?
   layoutCol   Int?
   stays       TankStay[]
+  /// Its Upkeep record (repairs, service), when one has been opened
+  equipment   Equipment?
 }
 
 /// A brewing recipe (grain bill, hops, yeast, process) for one beer. Costed live from ingredient prices.
@@ -2348,7 +2389,7 @@ model BrewBatch {
   tapOn      DateTime?   @db.Date
   tapLocked  Boolean     @default(false)
   lockedReason String?
-  /// Supplier orders placed for this brew: { "<supplier name>": "YYYY-MM-DD" }
+  /// Supplier orders placed for this brew: { "<supplier id>": "YYYY-MM-DD" } (older entries whose name matched no supplier stay under the name)
   ordered    Json?
   /// A split batch: brewed together, split into separate fermenters (e.g. two lagers from one base)
   splitFromId String?

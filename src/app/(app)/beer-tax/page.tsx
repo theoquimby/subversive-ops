@@ -1,10 +1,10 @@
 import { HelpTip, HelpZone } from "@/components/help";
-import { Card, cx, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
-import { FEDERAL_REDUCED_BBL, FORM_INFO, FREQS, GAL_PER_BBL, nextPeriod, parsePeriod, periodKey, periodOf, previousPeriod, returnsDue, type Form, type Period } from "@/domain/beerTax";
+import { Badge, Card, cx, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
+import { CASE_GALLONS, FEDERAL_REDUCED_BBL, FORM_INFO, FREQS, GAL_PER_BBL, nextPeriod, parsePeriod, periodKey, periodOf, previousPeriod, returnsDue, type Form, type Period } from "@/domain/beerTax";
 import { money, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { beerTaxReport, filingsFor, historySince, taxSettings } from "@/server/services/beerTax";
+import { beerTaxReport, brewKegCheck, filingsFor, historySince, taxSettings } from "@/server/services/beerTax";
 import { businessToday } from "@/server/services/sales";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
@@ -26,12 +26,16 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
   const pressing = due.filter((d) => !d.filed && (!sp.form || d.form === sp.form)).sort((a, b) => a.due.localeCompare(b.due))[0];
   const lastFinished = previousPeriod(periodOf(today, s.freq.federal));
   const period: Period = parsePeriod(sp.p) ?? pressing?.period ?? (since && lastFinished.end < since ? periodOf(today, s.freq.federal) : lastFinished);
-  const [r, beers] = await Promise.all([beerTaxReport(period), db.beer.findMany({ where: { house: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })]);
+  const [r, beers, kegCheck] = await Promise.all([beerTaxReport(period), db.beer.findMany({ where: { house: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }), brewKegCheck(period)]);
   const w = r.worksheet;
   const href = (p: Period) => `/beer-tax?p=${periodKey(p)}`;
   const future = period.start > today;
   const ytdBbl = r.ytd.taxableGal / GAL_PER_BBL;
-  const typedPackaged = r.moves.filter((m) => m.adjustmentId && m.kind === "packaged").reduce((t, m) => t + m.gallons, 0);
+  const typedPackaged = r.moves.filter((m) => m.source === "typed" && m.kind === "packaged").reduce((t, m) => t + m.gallons, 0);
+  const brewRows = r.moves.filter((m) => m.source === "brew");
+  const brewCases = brewRows.filter((m) => m.kind === "packaged").reduce((t, m) => t + m.gallons, 0);
+  const kegRows = r.moves.filter((m) => m.source === "keg");
+  const kegDiffs = kegCheck.filter((k) => k.differs).length;
   const filedHere = filings.filter((f) => f.periodStart === period.start);
 
   const lines: { label: string; gal: number; ytd: number; strong?: boolean; sign?: "−"; help?: string }[] = [
@@ -93,7 +97,7 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
         <Stat help="beertax.taxable" label="Taxable removals" value={`${bbl(w.taxableGal)} bbl`} hint={`${gal(w.taxableGal)} gallons`} />
         <Stat help="beertax.federal" label="Federal excise" value={money(w.federalTax)} hint={`at $${s.federalRate.toFixed(2)} a barrel`} />
         <Stat help="beertax.ny" label="New York beer tax" value={money(w.nyTax)} hint={w.nyCredit > 0 ? `${money(w.nyGross)} less ${money(w.nyCredit)} small brewer credit` : `at $${s.nyRate.toFixed(2)} a gallon`} />
-        <Stat help="beertax.packaged" label="Packaged" value={`${bbl(w.packagedGal)} bbl`} hint={`${gal(w.packagedGal)} gallons filled`} />
+        <Stat help="beertax.packaged" label="Packaged" value={`${bbl(w.packagedGal)} bbl`} hint={`${gal(w.packagedGal)} gallons in kegs and cases`} />
       </div>
 
       {r.skipped > 0 && (
@@ -124,7 +128,7 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
               </tbody>
             </Table>
             <p className="mt-2 text-xs text-muted">
-              {qty(ytdBbl, 1)} of the {FEDERAL_REDUCED_BBL.toLocaleString()} barrels at the reduced federal rate used this year. {typedPackaged > 0 && <>Packaged outside kegs: {gal(typedPackaged)} gal. </>}{w.lossGal > 0 && <>Dumped or lost: {gal(w.lossGal)} gal.</>}
+              {qty(ytdBbl, 1)} of the {FEDERAL_REDUCED_BBL.toLocaleString()} barrels at the reduced federal rate used this year. {brewCases > 0 && <>Cases from the brewery: {gal(brewCases)} gal. </>}{typedPackaged > 0 && <>Packaged outside kegs (typed in): {gal(typedPackaged)} gal. </>}{w.lossGal > 0 && <>Dumped or lost: {gal(w.lossGal)} gal.</>}
             </p>
           </Section>
         </HelpZone>
@@ -135,7 +139,7 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
               <Card className="p-4 text-sm text-muted">{future ? "This period hasn't started." : "No house beer was filled or removed in this period."}</Card>
             ) : (
               <Table>
-                <thead><tr><Th>Beer</Th><Th align="right" className="hidden sm:table-cell">Filled</Th><Th align="right">Taproom</Th><Th align="right" className="hidden sm:table-cell">Accounts</Th><Th align="right">Taxable bbl</Th></tr></thead>
+                <thead><tr><Th>Beer</Th><Th align="right" className="hidden sm:table-cell">Packaged</Th><Th align="right">Taproom</Th><Th align="right" className="hidden sm:table-cell">Accounts</Th><Th align="right">Taxable bbl</Th></tr></thead>
                 <tbody>
                   {w.byBeer.map((b) => (
                     <Tr key={b.beerId ?? b.beer}>
@@ -155,19 +159,82 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
       </div>
 
       <HelpZone id="beertax.adjustments" className="mb-10">
-        <Section title={<span className="inline-flex items-center gap-1.5">Not in a keg <HelpTip id="beertax.adjustments" /></span>} description="Cans, bottles or crowlers filled straight from the tank, beer returned to the brewery, or beer dumped. Kegs are counted on their own.">
+        <Section title={<span className="inline-flex items-center gap-1.5">Not in a keg <HelpTip id="beertax.adjustments" /></span>} description="Crowlers or growlers filled from the tank, beer returned to the brewery, or anything else. Kegs, cases and dumped brews are counted on their own.">
           <AdjustmentForm beers={beers} defaultDate={period.end < today ? period.end : today} today={today} />
-          <AdjustmentList rows={r.moves.filter((m) => m.adjustmentId).map((m) => ({ id: m.adjustmentId!, date: m.date, kind: m.kind, gallons: m.gallons, beer: m.beer, note: m.note }))} />
+          <AdjustmentList rows={r.moves.filter((m) => m.source === "typed" && m.adjustmentId).map((m) => ({ id: m.adjustmentId!, date: m.date, kind: m.kind, gallons: m.gallons, beer: m.beer, note: m.note }))} />
+        </Section>
+      </HelpZone>
+
+      <HelpZone id="beertax.brewery" className="mb-10">
+        <Section title={<span className="inline-flex items-center gap-1.5">From the brewery <HelpTip id="beertax.brewery" /></span>} description={`Cases packaged (${CASE_GALLONS} gallons a case of 24 twelve-ounce cans) and brews dumped, read from each brew. Kegs come from the keg scans below.`}>
+          {typedPackaged > 0 && brewCases > 0 && (
+            <Card className="mb-3 border-warn/40 bg-warn-bg/40 px-4 py-3 text-sm text-ink-2">
+              <span className="font-medium text-warn">Cases may be counted twice.</span> Packaged gallons were typed in under Not in a keg as well as read from the brews. If they&apos;re the same cans, delete the typed line.
+            </Card>
+          )}
+          {brewRows.length === 0 ? (
+            <Card className="p-4 text-sm text-muted">No cases packaged or brews dumped in this period.</Card>
+          ) : (
+            <Table>
+              <thead><tr><Th>Date</Th><Th>Brew</Th><Th className="hidden sm:table-cell">Beer</Th><Th>What</Th><Th align="right">Gal</Th></tr></thead>
+              <tbody>
+                {brewRows.map((m) => (
+                  <Tr key={`${m.brewId}-${m.kind}`}>
+                    <Td className="num whitespace-nowrap text-muted">{shortDate(m.date)}</Td>
+                    <Td><Link href={`/brewery/batches/${m.brewId}`} className="num font-medium underline-offset-2 hover:underline">{m.ref}</Link><span className="block text-xs text-muted sm:hidden">{m.beer}</span></Td>
+                    <Td className="hidden sm:table-cell">{m.beer}</Td>
+                    <Td className="text-ink-2">{m.kind === "loss" ? "Dumped" : `${qty(m.gallons / CASE_GALLONS, 0)} cases`}</Td>
+                    <Td align="right">{gal(m.gallons)}</Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+          {r.heldBack.length > 0 && (
+            <p className="mt-2 text-xs text-muted">{r.heldBack.length} brewery line{r.heldBack.length === 1 ? " is" : "s are"} in a period already marked filed, so {r.heldBack.length === 1 ? "it isn't" : "they aren't"} added: a filed return&apos;s numbers don&apos;t change.</p>
+          )}
+
+          <div className="mt-6">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold">Kegs: brew counts against scans</h3>
+              {kegDiffs > 0 && <Badge tone="warn">{kegDiffs} to check</Badge>}
+            </div>
+            {kegCheck.length === 0 ? (
+              <Card className="p-4 text-sm text-muted">No brews were kegged in this period.</Card>
+            ) : (
+              <Table>
+                <thead><tr><Th>Brew</Th><Th align="right">Half kegs</Th><Th align="right">Sixtels</Th><Th className="hidden sm:table-cell">Check</Th></tr></thead>
+                <tbody>
+                  {kegCheck.map((k) => (
+                    <Tr key={k.brewId}>
+                      <Td>
+                        <Link href={`/brewery/batches/${k.brewId}`} className="num font-medium underline-offset-2 hover:underline">{k.code}</Link>
+                        <span className="block text-xs text-muted">{k.name}{k.packagedOn ? ` · ${shortDate(k.packagedOn)}` : ""}</span>
+                        <span className="block sm:hidden">{!k.linked ? <span className="text-xs text-muted">No keg batch linked</span> : k.differs ? <Badge tone="warn">Differs</Badge> : null}</span>
+                      </Td>
+                      <Td align="right" className={cx(k.linked && k.brewHalf !== k.scannedHalf && "text-warn")}>{k.brewHalf}{k.linked && <span className="block text-xs text-muted">{k.scannedHalf} scanned</span>}</Td>
+                      <Td align="right" className={cx(k.linked && k.brewSixth !== k.scannedSixth && "text-warn")}>{k.brewSixth}{k.linked && <span className="block text-xs text-muted">{k.scannedSixth} scanned</span>}</Td>
+                      <Td className="hidden text-sm sm:table-cell">
+                        {!k.linked ? <span className="text-muted">No keg batch linked, so no scans to compare</span> : k.differs ? <Badge tone="warn">Differs</Badge> : <span className="text-good">Matches</span>}
+                        {k.scannedOther > 0 && <span className="block text-xs text-muted">{k.scannedOther} other size{k.scannedOther === 1 ? "" : "s"} scanned</span>}
+                      </Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+            <p className="mt-2 text-xs text-muted">The keg counts written at packaging, next to the kegs scanned as filled from that brew&apos;s keg batch. The worksheet counts the scans.</p>
+          </div>
         </Section>
       </HelpZone>
 
       <HelpZone id="beertax.moves" className="mb-10">
         <Section title={<span className="inline-flex items-center gap-1.5">Keg by keg <HelpTip id="beertax.moves" /></span>} description="Every keg counted above, so you can check it against the cellar log.">
-          {r.moves.filter((m) => !m.adjustmentId).length === 0 ? <Card className="p-4 text-sm text-muted">No keg movements in this period.</Card> : (
+          {kegRows.length === 0 ? <Card className="p-4 text-sm text-muted">No keg movements in this period.</Card> : (
             <Table sticky className="max-h-[28rem]">
               <thead><tr><Th>Date</Th><Th>Keg</Th><Th>Beer</Th><Th className="hidden sm:table-cell">What</Th><Th align="right">Gal</Th></tr></thead>
               <tbody>
-                {r.moves.filter((m) => !m.adjustmentId).map((m, i) => (
+                {kegRows.map((m, i) => (
                   <Tr key={`${m.ref}-${m.kind}-${i}`}>
                     <Td className="num whitespace-nowrap text-muted">{shortDate(m.date)}</Td>
                     <Td><Link href={`/kegs/k/${m.ref}`} className="num font-medium underline-offset-2 hover:underline">{m.ref}</Link><span className="block text-xs text-muted">{m.size}</span></Td>

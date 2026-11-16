@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  brewLead,
   brewOrderAttention,
   detectBrewSupplier,
   orderBucket,
   orderByDate,
   parseLeadRefs,
+  placedOnFor,
   planBrewOrders,
+  withPlaced,
   type BrewOrder,
   type OrderSupplier,
   type PlannedBrew,
@@ -50,6 +53,29 @@ describe("lead references", () => {
     expect(parseLeadRefs('{"a":"dryHop","b":"pkg","c":"soon","d":3}')).toEqual({ a: "dryHop", b: "pkg" });
     expect(parseLeadRefs("not json")).toEqual({});
     expect(parseLeadRefs(null)).toEqual({});
+  });
+  it("reads a supplier's own brewery lead, falling back to its lead time and brew day", () => {
+    expect(brewLead({ brewLeadDays: 7, brewLeadRef: "dryHop", leadTimeDays: 1 })).toEqual({ leadDays: 7, ref: "dryHop" });
+    expect(brewLead({ brewLeadDays: null, brewLeadRef: null, leadTimeDays: 14 })).toEqual({ leadDays: 14, ref: "brew" });
+    expect(brewLead({ brewLeadDays: 0, brewLeadRef: "soon", leadTimeDays: 14 })).toEqual({ leadDays: 0, ref: "brew" });
+  });
+});
+
+describe("placed orders, kept by supplier id", () => {
+  const hvm = { id: "hvm", name: "Hudson Valley Malt" };
+  it("finds a placed order by id, or an older one under the name", () => {
+    expect(placedOnFor({ hvm: "2026-11-10" }, hvm)).toBe("2026-11-10");
+    expect(placedOnFor({ "Hudson Valley Malt": "2026-11-09" }, hvm)).toBe("2026-11-09");
+    expect(placedOnFor({ hvm: "2026-11-10", "Hudson Valley Malt": "2026-11-09" }, hvm)).toBe("2026-11-10");
+    expect(placedOnFor({}, hvm)).toBeNull();
+  });
+  it("writes by id and drops the old name entry", () => {
+    expect(withPlaced({ "Hudson Valley Malt": "2026-11-09", omega: "2026-11-01" }, hvm, "2026-11-12")).toEqual({ hvm: "2026-11-12", omega: "2026-11-01" });
+    expect(withPlaced({ hvm: "2026-11-12", "Hudson Valley Malt": "2026-11-09" }, hvm, null)).toEqual({});
+  });
+  it("still shows a placed order after the supplier is renamed", () => {
+    const [o] = planBrewOrders({ today: "2026-11-01", suppliers: [{ ...SUPPLIERS[0], name: "HV Malt Co." }], onHand: new Map(), brews: [brew({ id: "a", brewOn: "2026-12-01", ordered: { hvm: "2026-10-30" }, lines: [{ ingredientId: "pils", name: "Pils", qtyBase: 5, dryHop: false, supplierId: "hvm" }] })] });
+    expect(o.placedOn).toBe("2026-10-30");
   });
 });
 
@@ -134,7 +160,7 @@ describe("what to order when", () => {
       today,
       suppliers: NO_LABELS,
       onHand: new Map(),
-      brews: [brew({ id: "a", brewOn: "2026-11-25", ordered: { "Hudson Valley Malt": "2026-11-10" }, lines: [pils(30), pils(20)] }), brew({ id: "b", brewOn: "2026-11-26", lines: [pils(10)] })],
+      brews: [brew({ id: "a", brewOn: "2026-11-25", ordered: { hvm: "2026-11-10" }, lines: [pils(30), pils(20)] }), brew({ id: "b", brewOn: "2026-11-26", lines: [pils(10)] })],
     }).filter((o) => o.supplierId === "hvm");
     expect(orders[0].lines).toHaveLength(1);
     expect(orders[0].lines[0].needBase).toBe(50);

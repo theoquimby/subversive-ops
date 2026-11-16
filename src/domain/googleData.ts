@@ -230,6 +230,21 @@ export interface GbpLocation {
   title: string;
   address: string | null;
   websiteUri: string | null;
+  /** The listing's Google Maps place id (metadata.placeId): the same business Google reviews are read from. */
+  placeId: string | null;
+}
+
+/** A Google place id as Places takes it ("ChIJ…"). */
+export const isPlaceId = (s: unknown): s is string => typeof s === "string" && /^[A-Za-z0-9_-]{10,200}$/.test(s);
+
+/**
+ * Which Google business reviews come from: the Business Profile listing when
+ * one is picked and Google gave its place id, so there's one business, not
+ * two; otherwise the business found with the reviews key's search.
+ */
+export function reviewsPlace(listing: { location: string | null; title: string | null; placeId: string | null }, searched: { id: string | null; name: string | null }): { id: string | null; name: string | null; fromListing: boolean } {
+  if (listing.location && isPlaceId(listing.placeId)) return { id: listing.placeId, name: listing.title ?? searched.name, fromListing: true };
+  return { id: searched.id || null, name: searched.name || null, fromListing: false };
 }
 
 export function parseAccounts(j: unknown): GbpAccount[] {
@@ -238,7 +253,7 @@ export function parseAccounts(j: unknown): GbpAccount[] {
 }
 
 export function parseLocations(j: unknown): GbpLocation[] {
-  const list = (j as { locations?: { name?: string; title?: string; websiteUri?: string; storefrontAddress?: { addressLines?: string[]; locality?: string } }[] })?.locations ?? [];
+  const list = (j as { locations?: { name?: string; title?: string; websiteUri?: string; storefrontAddress?: { addressLines?: string[]; locality?: string }; metadata?: { placeId?: string } }[] })?.locations ?? [];
   return list
     .filter((l) => typeof l.name === "string" && l.name.startsWith("locations/"))
     .map((l) => ({
@@ -246,6 +261,7 @@ export function parseLocations(j: unknown): GbpLocation[] {
       title: l.title ?? l.name!,
       address: l.storefrontAddress ? [...(l.storefrontAddress.addressLines ?? []), l.storefrontAddress.locality].filter(Boolean).join(", ") || null : null,
       websiteUri: l.websiteUri ?? null,
+      placeId: isPlaceId(l.metadata?.placeId) ? l.metadata!.placeId! : null,
     }));
 }
 

@@ -734,7 +734,7 @@ Past event days are left out of the "usual day" averages, for both the sales for
     area: "events",
     route: "/events",
     title: "Upcoming events",
-    body: "Everything on the calendar from today on. Edit any cell in place; it saves as you go. This list is also what the website shows, so keep titles and times tidy.",
+    body: "Everything on the calendar from today on. Edit any cell in place; it saves as you go. This list is also what the website shows, so keep titles and times tidy. A private event booking's entry is kept by the booking: tap it to change it there. A buyout shows on the website only as Closed for a private event.",
     related: ["app.grids", "events.impact"],
   },
   {

@@ -16,6 +16,8 @@ export interface ReviewsSetup {
   key: SecretStatus;
   placeId: string | null;
   placeName: string | null;
+  /** The business is the picked Google listing: nothing to search for or pick here. */
+  fromListing: boolean;
   businessName: string;
   test: TestResult | null;
 }
@@ -27,6 +29,12 @@ export function ReviewsManage({ r }: { r: ReviewsSetup }) {
   const confirm = useConfirm();
   return (
     <div className="space-y-4">
+      {r.fromListing ? (
+        <div className="rounded-lg border border-border px-3.5 py-3 text-sm">
+          <span className="text-muted">Business · </span><span className="font-medium">{r.placeName ?? "Your Google listing"}</span>
+          <span className="mt-0.5 block text-muted">Follows the Google listing picked under your Google sign-in. Pick a different listing there to change it.</span>
+        </div>
+      ) : (
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-3.5 py-3 text-sm">
         <span className="min-w-0"><span className="text-muted">Business · </span><span className="font-medium">{r.placeName ?? "Picked"}</span></span>
         <Button
@@ -42,6 +50,7 @@ export function ReviewsManage({ r }: { r: ReviewsSetup }) {
           Pick a different one
         </Button>
       </div>
+      )}
       <SecretField name="GOOGLE_PLACES_API_KEY" status={r.key} label="Google key" placeholder="AIza…" hint="Starts with AIza, 39 characters." />
     </div>
   );
@@ -106,6 +115,19 @@ function FindBusiness({ r }: { r: ReviewsSetup }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const ready = r.key.set;
+
+  if (r.fromListing) {
+    return (
+      <>
+        <Note tone="good">
+          Reviews follow your Google listing, <b>{r.placeName ?? "your business"}</b>, picked under your Google sign-in. Nothing to search for here.
+        </Note>
+        <div className="flex flex-wrap gap-2">
+          <LinkButton href="/reviews">See reviews</LinkButton>
+        </div>
+      </>
+    );
+  }
 
   if (r.placeId && !places) {
     return (

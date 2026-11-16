@@ -8,6 +8,7 @@ import { hashPin, requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { env } from "@/server/env";
 import { syncLabor } from "@/server/services/labor";
+import { deletePositionEverywhere } from "@/server/services/positions";
 import { friendlySquareError } from "@/server/integrations/square-http";
 import { businessToday } from "@/server/services/sales";
 import { Prisma } from "@prisma/client";
@@ -94,7 +95,7 @@ export async function deletePosition(id: string): R {
   await requireUser("MANAGER");
   const [shifts, cards] = await Promise.all([db.shift.count({ where: { positionId: id } }), db.timecard.count({ where: { positionId: id } })]);
   if (shifts || cards) return { error: `Used on ${shifts} shift${shifts === 1 ? "" : "s"} and ${cards} timecard${cards === 1 ? "" : "s"} — rename it instead.` };
-  await db.position.delete({ where: { id } });
+  await deletePositionEverywhere(id);
   refresh();
 }
 

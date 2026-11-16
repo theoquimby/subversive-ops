@@ -22,7 +22,7 @@ export default async function EventsPage() {
   const year = yearOf(today);
   const view = (e: (typeof upcoming)[number]): EventRowView => {
     const l = learning.lifts.get(e.id);
-    return { id: e.id, date: e.date, title: e.title, kind: e.kind, startTime: e.startTime, endTime: e.endTime, impact: e.impact, notes: e.notes, lift: l ? { lift: l.lift, actual: l.actual, baseline: l.baseline } : null };
+    return { id: e.id, date: e.date, title: e.title, kind: e.kind, startTime: e.startTime, endTime: e.endTime, impact: e.impact, notes: e.notes, privateEventId: e.privateEventId, lift: l ? { lift: l.lift, actual: l.actual, baseline: l.baseline } : null };
   };
   // A readable name for each learned series: the full title if there's only one, else the shared head ("Knicks").
   const titles = new Map<string, Set<string>>();

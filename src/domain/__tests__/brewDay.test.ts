@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { BREW_PROFILES as TIMING } from "../brewProfiles";
 import {
   BREW_PROFILES,
+  brewDayProfiles,
+  PROFILE_KEYS,
   cleanFieldValue,
   clock,
   finishDefaults,
@@ -57,6 +60,18 @@ describe("timing profiles", () => {
     expect([1, 2]).toContain(weekday(lager.fvTransfer!));
     expect(weekday(lager.pkg)).toBe(3);
     expect(lager.tap).toBe("2026-03-23");
+  });
+
+  it("are the same profiles as the schedule's, with the brewery's weekdays", () => {
+    for (const k of PROFILE_KEYS) {
+      expect(BREW_PROFILES[k]).toMatchObject({ label: TIMING[k].label, brite: TIMING[k].brite, pkg: TIMING[k].pkg, tap: TIMING[k].tap });
+      expect(BREW_PROFILES[k].dryHop ?? null).toBe(TIMING[k].dryHop);
+      expect(BREW_PROFILES[k].fvTransfer ?? null).toBe(TIMING[k].fvTransfer);
+    }
+    expect(BREW_PROFILES.hazy).toMatchObject({ briteDay: [1, 2], pkgDay: [3] });
+    const thursdays = brewDayProfiles({ transferDays: [4], packageDays: [4] });
+    expect(thursdays.pale).toMatchObject({ briteDay: [4], pkgDay: [4] });
+    expect(weekday(forecastDates("2026-01-16", thursdays.hazy).pkg)).toBe(4);
   });
 
   it("read Brew Manager's own profiles, dropping broken ones", () => {

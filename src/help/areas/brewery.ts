@@ -321,6 +321,7 @@ Batch codes run by year: 26-001, 26-002 and so on, unless you type your own. A b
 - **Order** sets where a tank shows on the Tanks list and the schedule, and which tank is tried first when planning.
 - **Not in use** hides a tank from the floor and the schedule. A tank with a brew in it stays in use until the brew is moved or packaged. Tanks not in use are listed under **Show tanks not in use**.
 - A tank can only be deleted if no brew has ever been in it.
+- **Upkeep** opens the tank's service and repair log on Upkeep (made the first time, named after the tank). A repair there that marks it down shows the tank as down for repair on the Tanks page and the schedule until it's marked fixed.
 
 **Transfer and packaging days**: tap the weekdays you transfer and package on (Monday or Tuesday, and Wednesday, until changed). Planned dates move to the nearest of them, up to three days either way. With none picked, any day goes.
 

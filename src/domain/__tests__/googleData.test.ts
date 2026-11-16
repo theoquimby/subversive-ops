@@ -17,6 +17,7 @@ import {
   parseLocations,
   parseSites,
   pickSite,
+  reviewsPlace,
   SCOPE_BUSINESS,
   SCOPE_SEARCH_CONSOLE,
   sumGsc,
@@ -136,7 +137,16 @@ describe("Business Profile", () => {
   });
   it("parses accounts and locations", () => {
     expect(parseAccounts({ accounts: [{ name: "accounts/1", accountName: "Max" }, { name: "x" }] })).toEqual([{ name: "accounts/1", accountName: "Max" }]);
-    expect(parseLocations({ locations: [{ name: "locations/9", title: "Subversive", storefrontAddress: { addressLines: ["96 West Bridge St"], locality: "Catskill" } }] })).toEqual([{ name: "locations/9", title: "Subversive", address: "96 West Bridge St, Catskill", websiteUri: null }]);
+    expect(parseLocations({ locations: [{ name: "locations/9", title: "Subversive", storefrontAddress: { addressLines: ["96 West Bridge St"], locality: "Catskill" } }] })).toEqual([{ name: "locations/9", title: "Subversive", address: "96 West Bridge St, Catskill", websiteUri: null, placeId: null }]);
+    expect(parseLocations({ locations: [{ name: "locations/9", title: "Subversive", metadata: { placeId: "ChIJabc123xyz" } }] })[0].placeId).toBe("ChIJabc123xyz");
+    expect(parseLocations({ locations: [{ name: "locations/9", title: "Subversive", metadata: { placeId: "<b>" } }] })[0].placeId).toBeNull();
+  });
+  it("reads reviews from the picked listing when Google gave its place id, else the searched business", () => {
+    const searched = { id: "ChIJsearched1", name: "Subversive Malting" };
+    expect(reviewsPlace({ location: "locations/9", title: "Subversive", placeId: "ChIJlisting12" }, searched)).toEqual({ id: "ChIJlisting12", name: "Subversive", fromListing: true });
+    expect(reviewsPlace({ location: "locations/9", title: "Subversive", placeId: null }, searched)).toEqual({ id: "ChIJsearched1", name: "Subversive Malting", fromListing: false });
+    expect(reviewsPlace({ location: null, title: null, placeId: "ChIJlisting12" }, searched)).toMatchObject({ id: "ChIJsearched1", fromListing: false });
+    expect(reviewsPlace({ location: null, title: null, placeId: null }, { id: "", name: "" })).toEqual({ id: null, name: null, fromListing: false });
   });
   it("syncs 18 months the first time, then the last 10 days", () => {
     expect(gbpWindow("2026-11-15", "2026-11-14")).toEqual({ from: "2026-11-04", to: "2026-11-14" });

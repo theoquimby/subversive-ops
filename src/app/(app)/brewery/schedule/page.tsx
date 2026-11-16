@@ -9,6 +9,7 @@ import { publicOrigin } from "@/server/services/public-url";
 import { Lock } from "lucide-react";
 import Link from "next/link";
 import { BeerDot, beerFill, KIND_LABEL, STATUS } from "../bits";
+import { TanksDownNote } from "../tanks-down";
 import { CalendarCard } from "./calendar-client";
 import { PlanArea, PlannedList } from "./plan-client";
 
@@ -34,6 +35,7 @@ export default async function Page() {
   return (
     <>
       {header}
+      <TanksDownNote />
       <PlanArea today={v.today} recipes={v.recipes} beers={v.beers} tanks={v.tanks} suggestions={v.suggestions} />
 
       <Section

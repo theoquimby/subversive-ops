@@ -2,14 +2,14 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import type { AttentionItem } from "@/domain/attention";
 import {
+  brewLead,
   brewOrderAttention,
   DUE_SOON_DAYS,
   isLeadRef,
-  LEAD_REFS_KEY,
   ORDER_HORIZON_DAYS,
-  parseLeadRefs,
   parseOrdered,
   planBrewOrders,
+  withPlaced,
   type BrewOrder,
   type LeadRef,
   type OrderSupplier,
@@ -25,6 +25,11 @@ import { businessToday } from "./sales";
  * Brewery ordering: what to order from which brewing supplier, by when, for
  * each planned brew; placing and un-placing orders; brewery suppliers' lead
  * times. Kitchen ordering never sees these suppliers (department "brewery").
+ *
+ * A brewery supplier's lead is its own: Supplier.brewLeadDays and brewLeadRef
+ * (days before brew, dry-hop or packaging day). leadTimeDays stays the
+ * kitchen's "days before delivery"; it is only read here when brewLeadDays is
+ * empty. Placed orders on a brew are kept by supplier id.
  */
 
 export interface BrewerySupplierRow {
@@ -39,17 +44,13 @@ export interface BrewerySupplierRow {
   products: number;
 }
 
-async function leadRefs(): Promise<Record<string, LeadRef>> {
-  const s = await db.setting.findUnique({ where: { key: LEAD_REFS_KEY } });
-  return parseLeadRefs(s?.value);
-}
-
 export async function brewerySuppliers(includeInactive = true): Promise<BrewerySupplierRow[]> {
-  const [rows, refs] = await Promise.all([
-    db.supplier.findMany({ where: { department: BREWERY, ...(includeInactive ? {} : { active: true }) }, orderBy: { name: "asc" }, select: { id: true, name: true, leadTimeDays: true, deliveryDays: true, email: true, notes: true, active: true, _count: { select: { products: true } } } }),
-    leadRefs(),
-  ]);
-  return rows.map((s) => ({ id: s.id, name: s.name, leadDays: s.leadTimeDays, ref: refs[s.id] ?? "brew", deliveryDays: s.deliveryDays, email: s.email, notes: s.notes, active: s.active, products: s._count.products }));
+  const rows = await db.supplier.findMany({
+    where: { department: BREWERY, ...(includeInactive ? {} : { active: true }) },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, leadTimeDays: true, brewLeadDays: true, brewLeadRef: true, deliveryDays: true, email: true, notes: true, active: true, _count: { select: { products: true } } },
+  });
+  return rows.map((s) => ({ id: s.id, name: s.name, ...brewLead(s), deliveryDays: s.deliveryDays, email: s.email, notes: s.notes, active: s.active, products: s._count.products }));
 }
 
 const toOrderSupplier = (s: BrewerySupplierRow): OrderSupplier => ({ id: s.id, name: s.name, leadDays: s.leadDays, ref: s.ref, deliveryDays: s.deliveryDays });
@@ -142,13 +143,15 @@ export async function orderingView(): Promise<OrderingView> {
 
 // ---- Writing ---------------------------------------------------------------------------------
 
-/** Mark a supplier's order for a brew placed (on `on`, default today) or not placed. */
-export async function setOrderPlaced(batchId: string, supplier: string, placed: boolean, on: ISODate = businessToday()): Promise<{ error?: string }> {
-  const b = await db.brewBatch.findUnique({ where: { id: batchId }, select: { ordered: true } });
+/** Mark a supplier's order for a brew placed (on `on`, default today) or not placed. Kept by supplier id. */
+export async function setOrderPlaced(batchId: string, supplierId: string, placed: boolean, on: ISODate = businessToday()): Promise<{ error?: string }> {
+  const [b, s] = await Promise.all([
+    db.brewBatch.findUnique({ where: { id: batchId }, select: { ordered: true } }),
+    db.supplier.findUnique({ where: { id: supplierId }, select: { id: true, name: true } }),
+  ]);
   if (!b) return { error: "That brew no longer exists. Reload the page." };
-  const ordered = parseOrdered(b.ordered);
-  if (placed) ordered[supplier] = on;
-  else delete ordered[supplier];
+  if (!s) return { error: "That supplier no longer exists. Reload the page." };
+  const ordered = withPlaced(parseOrdered(b.ordered), s, placed ? on : null);
   await db.brewBatch.update({ where: { id: batchId }, data: { ordered: Object.keys(ordered).length ? ordered : Prisma.DbNull } });
   return {};
 }
@@ -164,23 +167,19 @@ export async function setBrewerySupplierField(id: string, field: SupplierField, 
       if (!v) return { error: "A supplier needs a name." };
       const clash = await db.supplier.findFirst({ where: { name: { equals: v, mode: "insensitive" }, id: { not: id } }, select: { id: true } });
       if (clash) return { error: "Another supplier already has that name." };
-      // Placed orders are kept by supplier name: carry them over.
-      const old = (await db.supplier.findUnique({ where: { id }, select: { name: true } }))!.name;
+      // Placed orders are kept by supplier id, so they follow the new name.
       await db.supplier.update({ where: { id }, data: { name: v.slice(0, 120) } });
-      if (old !== v) await renameInOrdered(old, v);
       return {};
     }
     case "leadDays": {
       const n = Number(v);
       if (!Number.isInteger(n) || n < 0 || n > 120) return { error: "Whole days, like 14" };
-      await db.supplier.update({ where: { id }, data: { leadTimeDays: n } });
+      await db.supplier.update({ where: { id }, data: { brewLeadDays: n } });
       return {};
     }
     case "ref": {
       if (!isLeadRef(v)) return { error: "Pick brew day, dry-hop day or packaging day." };
-      const refs = await leadRefs();
-      refs[id] = v;
-      await db.setting.upsert({ where: { key: LEAD_REFS_KEY }, create: { key: LEAD_REFS_KEY, value: JSON.stringify(refs) }, update: { value: JSON.stringify(refs) } });
+      await db.supplier.update({ where: { id }, data: { brewLeadRef: v } });
       return {};
     }
     case "deliveryDays": {
@@ -201,25 +200,13 @@ export async function setBrewerySupplierField(id: string, field: SupplierField, 
   }
 }
 
-async function renameInOrdered(from: string, to: string) {
-  const rows = await db.brewBatch.findMany({ where: { status: "PLANNED", ordered: { not: Prisma.DbNull } }, select: { id: true, ordered: true } });
-  for (const r of rows) {
-    const o = parseOrdered(r.ordered);
-    if (!(from in o)) continue;
-    o[to] = o[from];
-    delete o[from];
-    await db.brewBatch.update({ where: { id: r.id }, data: { ordered: o } });
-  }
-}
-
 /** A new brewing supplier, on the brewery side from the start. */
 export async function addBrewerySupplier(name: string, leadDays: number, ref: LeadRef): Promise<{ id: string } | { error: string }> {
   const clean = name.trim().replace(/\s+/g, " ").slice(0, 120);
   if (!clean) return { error: "Name the supplier." };
   const existing = await db.supplier.findFirst({ where: { name: { equals: clean, mode: "insensitive" } }, select: { id: true, department: true } });
   if (existing) return { error: existing.department === BREWERY ? `${clean} is already here.` : `${clean} is a kitchen supplier. Pick it under "Move a kitchen supplier here".` };
-  const s = await db.supplier.create({ data: { name: clean, kind: "LOCAL", department: BREWERY, orderCadence: "as_needed", leadTimeDays: leadDays } });
-  if (ref !== "brew") await setBrewerySupplierField(s.id, "ref", ref);
+  const s = await db.supplier.create({ data: { name: clean, kind: "LOCAL", department: BREWERY, orderCadence: "as_needed", brewLeadDays: leadDays, brewLeadRef: ref } });
   return { id: s.id };
 }
 

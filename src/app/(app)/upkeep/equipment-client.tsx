@@ -6,6 +6,7 @@ import { Badge, Card, cx, DatePicker, Table, Td, Th, Tr } from "@/components/ui"
 import { money, shortDate } from "@/lib/format";
 import type { EquipmentView } from "@/server/services/upkeep";
 import { Phone, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useTransition } from "react";
 import { AddRow } from "../team/team-client";
 import { addEquipment, deleteEquipment, setEquipmentField } from "./actions";
@@ -45,11 +46,12 @@ function Row({ e, today }: { e: EquipmentView; today: string }) {
   const [pending, start] = useTransition();
   const save = (f: Parameters<typeof setEquipmentField>[1]) => setEquipmentField.bind(null, e.id, f);
   return (
-    <Tr className={cx(!e.active && "opacity-60", pending && "opacity-60")}>
+    <Tr id={`equipment-${e.id}`} className={cx("scroll-mt-24 target:bg-surface-2/60", !e.active && "opacity-60", pending && "opacity-60")}>
       <Td className="min-w-[11rem] px-2 py-1.5">
         <GridCell grid="eq" col="name" value={e.name} onSave={save("name")} ariaLabel="Equipment name" className="font-medium" />
         <div className="flex flex-wrap items-center gap-1.5 px-2">
           {e.down && <Badge tone="bad">Down</Badge>}
+          {e.tank && <Link href="/brewery/setup" className="inline-flex min-h-8 items-center text-xs text-ink-2 underline-offset-2 hover:underline">Brewery tank{e.down ? ": unavailable on the schedule" : ""}</Link>}
           {e.warranty === "ending" && <Badge tone="warn">Warranty ends {shortDate(e.warrantyUntil!)}</Badge>}
           <span className="text-xs text-muted md:hidden">{e.area}</span>
           {e.vendorPhone && <a href={`tel:${e.vendorPhone.replace(/[^\d+]/g, "")}`} className="inline-flex min-h-8 items-center gap-1 text-xs text-ink-2 underline-offset-2 hover:underline sm:hidden"><Phone className="size-3" />{e.vendor ?? "Call"}</a>}

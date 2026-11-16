@@ -24,6 +24,23 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.29",
+    date: "2026-11-16",
+    title: "One record each, linked",
+    summary: "Suppliers, private events, tanks and beer tax each read from one record instead of keeping copies that could drift apart.",
+    entries: ["2026-11-16.one-record"],
+    fixed: [
+      "A supplier's reminders, how it takes orders and its order deadline are kept on the supplier itself. Everything set before is carried over.",
+      "Brewery suppliers keep their own lead time (days before brew, dry-hop or packaging day); the kitchen's lead time (days before delivery) is separate and no longer overwritten.",
+      "Brewery orders marked placed stay placed when the supplier is renamed, on the Brewery or in Settings.",
+      "Beer tax adds cases packaged (2.25 gallons a case) and dumped brews from the brewery, and checks each brew's keg counts against the kegs scanned. Periods already marked filed don't change.",
+      "A buyout shows on the website as Closed for a private event, with nothing about who booked it. On Events, a booking's entry is read-only and opens the booking.",
+      "Google reviews follow the Google listing picked under the Google sign-in, so there's one business, not two.",
+      "Each tank on Brewery setup has an Upkeep link to its service and repair log; a repair that marks it down shows on the Tanks page and the schedule.",
+      "Deleting a position takes it off certificates, checklists, training and onboarding. A checklist or training only for that position is switched off rather than becoming everyone's.",
+    ],
+  },
+  {
     version: "1.28",
     date: "2026-11-16",
     title: "Overview and briefs lead with what you look after",

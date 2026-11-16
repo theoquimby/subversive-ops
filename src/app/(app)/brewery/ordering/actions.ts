@@ -13,11 +13,11 @@ function refresh() {
 
 const iso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-export async function setPlacedAction(batchId: string, supplier: string, placed: boolean, on?: string): Promise<{ error?: string }> {
+export async function setPlacedAction(batchId: string, supplierId: string, placed: boolean, on?: string): Promise<{ error?: string }> {
   await requireUser("MANAGER");
-  const p = z.object({ batchId: z.string().min(1), supplier: z.string().trim().min(1).max(120), placed: z.boolean(), on: iso.optional() }).safeParse({ batchId, supplier, placed, on });
+  const p = z.object({ batchId: z.string().min(1), supplierId: z.string().trim().min(1).max(60), placed: z.boolean(), on: iso.optional() }).safeParse({ batchId, supplierId, placed, on });
   if (!p.success) return { error: "Reload the page and try again." };
-  const r = await setOrderPlaced(p.data.batchId, p.data.supplier, p.data.placed, p.data.on);
+  const r = await setOrderPlaced(p.data.batchId, p.data.supplierId, p.data.placed, p.data.on);
   if (!r.error) refresh();
   return r;
 }

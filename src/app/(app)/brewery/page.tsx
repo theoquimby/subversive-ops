@@ -3,6 +3,7 @@ import { requireUser } from "@/server/auth";
 import { tanksFloor } from "@/server/services/brewery";
 import { ChevronRight, Plus } from "lucide-react";
 import Link from "next/link";
+import { TanksDownNote } from "./tanks-down";
 import { TanksView } from "./tanks-view";
 
 export const metadata = { title: "Brewery" };
@@ -47,6 +48,7 @@ export default async function Page() {
   return (
     <>
       {header}
+      <TanksDownNote />
       <Section title="Needs doing" description={f.todos.length ? undefined : "Nothing due today or tomorrow."}>
         {f.todos.length ? (
           <ul className="divide-y divide-border rounded-xl border border-border bg-surface">

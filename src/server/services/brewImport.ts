@@ -1,6 +1,6 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
-import { isProfileKey, LEAD_REFS_KEY, profileDays, type LeadRef } from "@/domain/brewDay";
+import { isProfileKey, profileDays } from "@/domain/brewDay";
 import {
   detectBrewManagerFile,
   mapAppData,
@@ -427,30 +427,17 @@ async function runAppImport(d: MappedAppData, opts: AppImportOptions): Promise<A
       res.recipeIds = [...new Set([...recipes.bySource.values()].map((r) => r.id))];
       Object.assign(res, { recipesCreated: recipes.created, recipesUpdated: recipes.updated, devCreated: recipes.devCreated, devUpdated: recipes.devUpdated, linkedBeers: recipes.linkedBeers });
 
-      // ---- Brewery suppliers and what their lead time counts back from
-      const refs: Record<string, LeadRef> = {};
+      // ---- Brewery suppliers: their lead time and the day it counts back from live on the supplier
       for (const s of d.suppliers) {
         const cur = await tx.supplier.findFirst({ where: { name: { equals: s.name, mode: "insensitive" } }, select: { id: true, name: true } });
         if (cur) {
-          await tx.supplier.update({ where: { id: cur.id }, data: { leadTimeDays: s.leadDays, department: "brewery" } });
-          refs[cur.id] = s.ref;
+          // brewLeadDays, not leadTimeDays: a supplier the kitchen also uses keeps its delivery lead time.
+          await tx.supplier.update({ where: { id: cur.id }, data: { brewLeadDays: s.leadDays, brewLeadRef: s.ref, department: "brewery" } });
           res.suppliersUpdated.push(cur.name);
         } else {
-          const created = await tx.supplier.create({ data: { name: s.name, kind: "LOCAL", leadTimeDays: s.leadDays, department: "brewery", notes: "Added by the Brew Manager import." } });
-          refs[created.id] = s.ref;
+          await tx.supplier.create({ data: { name: s.name, kind: "LOCAL", brewLeadDays: s.leadDays, brewLeadRef: s.ref, department: "brewery", notes: "Added by the Brew Manager import." } });
           res.suppliersCreated.push(s.name);
         }
-      }
-      if (Object.keys(refs).length) {
-        const cur = await tx.setting.findUnique({ where: { key: LEAD_REFS_KEY } });
-        let merged: Record<string, unknown> = {};
-        try {
-          merged = asObj(cur ? JSON.parse(cur.value) : {});
-        } catch {
-          merged = {};
-        }
-        const value = JSON.stringify({ ...merged, ...refs });
-        await tx.setting.upsert({ where: { key: LEAD_REFS_KEY }, create: { key: LEAD_REFS_KEY, value }, update: { value } });
       }
 
       // ---- The schedule: planned brews

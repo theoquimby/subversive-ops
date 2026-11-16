@@ -18,9 +18,11 @@ export interface EventRow {
   impact: number;
   notes: string | null;
   series: string;
+  /** The private event booking that keeps this entry up to date (edit it there, not here). */
+  privateEventId: string | null;
 }
 
-const toRow = (e: { id: string; date: Date; title: string; kind: string; startTime: string | null; endTime: string | null; impact: Prisma.Decimal; notes: string | null }): EventRow => ({
+const toRow = (e: { id: string; date: Date; title: string; kind: string; startTime: string | null; endTime: string | null; impact: Prisma.Decimal; notes: string | null; privateEvent?: { id: string } | null }): EventRow => ({
   id: e.id,
   date: toISODate(e.date),
   title: e.title,
@@ -30,10 +32,11 @@ const toRow = (e: { id: string; date: Date; title: string; kind: string; startTi
   impact: e.impact.toNumber(),
   notes: e.notes,
   series: eventSeries(e.kind, e.title),
+  privateEventId: e.privateEvent?.id ?? null,
 });
 
 export async function listEvents(from: ISODate, to: ISODate) {
-  const rows = await db.event.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(to) } }, orderBy: [{ date: "asc" }, { startTime: "asc" }, { createdAt: "asc" }] });
+  const rows = await db.event.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(to) } }, orderBy: [{ date: "asc" }, { startTime: "asc" }, { createdAt: "asc" }], include: { privateEvent: { select: { id: true } } } });
   return rows.map(toRow);
 }
 
@@ -107,7 +110,8 @@ export async function applyLearnedImpact(series: string) {
   const { learned } = await eventLearning();
   const l = learned.get(series);
   if (!l) return { error: "Nothing learned for that kind of event yet." };
-  const future = await db.event.findMany({ where: { date: { gte: parseISODate(today) }, kind: { not: "CLOSURE" } } });
+  // A booking's entry keeps the impact the booking works out; it isn't overwritten here.
+  const future = await db.event.findMany({ where: { date: { gte: parseISODate(today) }, kind: { not: "CLOSURE" }, privateEvent: { is: null } } });
   const ids = future.filter((e) => eventSeries(e.kind, e.title) === series).map((e) => e.id);
   await db.event.updateMany({ where: { id: { in: ids } }, data: { impact: new Prisma.Decimal(l.impact) } });
   return { updated: ids.length, impact: l.impact };

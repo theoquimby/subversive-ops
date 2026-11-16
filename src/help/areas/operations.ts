@@ -1229,7 +1229,7 @@ Connecting takes you to the [Square page](/settings/square), where your sales hi
     area: "settings",
     route: "/settings/connections/google",
     title: "Google reviews key",
-    body: "Brings in new Google reviews every morning. Create a free Google Cloud project, turn on Places API (New), paste the key, then use Find your business — no Place ID needed. The search doubles as the test.",
+    body: "Brings in new Google reviews every morning. Create a free Google Cloud project, turn on Places API (New) and paste the key. When your Google listing is picked under the Google sign-in, reviews follow that listing and there's nothing to find; otherwise use Find your business. The search doubles as the test.",
     related: ["reviews.import", "settings.google"],
     keywords: ["google", "places", "place id", "reviews", "maps"],
   },
@@ -1247,7 +1247,7 @@ Each part says its state, which page it feeds, when it last read from Google (or
 - **Search Console** — the searches that show the website. Feeds Online → Overview.
 - **Google listing** — how the listing is seen and used on Search and Maps. Feeds Online → Google listing. Google approves access by hand, usually within two weeks; until then it says **Waiting on Google**, which is not an error. When Google emails, press **Find again**.
 - **Google Analytics** — coming next. To get ready, whoever runs the Google Analytics property adds the sign-in's Google account as a **Viewer** (Admin → Property access management → Add users) and notes the property ID (Admin → Property details).
-- **Google reviews key** — a Places API key, then **Find your business**. Feeds Reviews. Google only shares the five most relevant reviews at a time.`,
+- **Google reviews key** — a Places API key. Reviews follow the Google listing picked above, so there's one business, not two; **Find your business** is only needed when no listing is picked. Feeds Reviews. Google only shares the five most relevant reviews at a time.`,
     related: ["website.analytics.googleSetup", "settings.connections.google", "online.google", "settings.connections"],
     keywords: ["google", "search console", "business profile", "listing", "maps", "reviews", "places", "analytics", "ga4", "sign-in", "oauth", "waiting on google"],
   },
@@ -1292,7 +1292,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     body: "Delivery days and lead time decide when each order is due and how many days it covers. Minimum order warns you when an order is too small. You can also add a supplier straight from an invoice — including stores like Price Chopper.",
     article: `- **Type** — **Distributor** sends a price sheet (Sysco, Hudson Valley Foodservice); **Local** is a farm, bakery or store run like Price Chopper. It shows on each supplier and you can filter by it. A store added from a receipt (or a known store like Price Chopper) starts as Local.
 - **Delivery days** — the weekdays the truck comes.
-- **Lead time** — how many days before delivery the order must be in. A 1-day lead time means today's order arrives on the next delivery day from tomorrow on.
+- **Lead time** — how many days before delivery the order must be in. A 1-day lead time means today's order arrives on the next delivery day from tomorrow on. Brewery suppliers keep their own lead time (days before brew, dry-hop or packaging day) on the Brewery's ordering page; the two never overwrite each other.
 - **Minimum order** — the order builder warns when you're under it.
 - **Email** — lets you email orders in one tap.
 - **Type** — distributor (big price sheets) or local (farms, bakeries; prices updated by hand).

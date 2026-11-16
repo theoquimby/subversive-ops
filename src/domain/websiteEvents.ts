@@ -1,7 +1,8 @@
 /**
  * Calendar events as the website reads them (GET /api/public/events): only
  * guest-facing fields, the optional web fields Max sets on the Website page, and
- * stable slugs. Private bookings and hidden events never leave. Pure.
+ * stable slugs. Hidden events never leave, nor does anything about a private
+ * booking: a buyout goes out only as "Closed for a private event". Pure.
  */
 
 import { kebab } from "./websiteMenu";
@@ -112,6 +113,30 @@ export function feedEvent(e: EventIn, w: WebEventIn | null, opts: EventFeedOptio
   delete out.page;
   const again = feedEventSchema.safeParse(out);
   return again.success ? again.data : null;
+}
+
+/** What the website says on a day the whole place is booked. Never who booked it. */
+export const PRIVATE_CLOSURE_TITLE = "Closed for a private event";
+
+/**
+ * A buyout on the website: a closure with its hours and nothing else (no
+ * client, no headcount, no notes). Bookings that only take part of the place
+ * aren't sent at all.
+ */
+export function privateClosureEvent(e: { id: string; date: string; startTime: string | null; endTime: string | null; updatedAt: string }): FeedEvent | null {
+  const out: FeedEvent = {
+    id: e.id,
+    date: e.date,
+    title: PRIVATE_CLOSURE_TITLE,
+    kind: "CLOSURE",
+    closed: true,
+    startTime: e.startTime && isHHmm(e.startTime) ? e.startTime : null,
+    endTime: e.endTime && isHHmm(e.endTime) ? e.endTime : null,
+    description: null,
+    updatedAt: e.updatedAt,
+  };
+  const ok = feedEventSchema.safeParse(out);
+  return ok.success ? ok.data : null;
 }
 
 /** pastDays and days from the query string, clamped. */

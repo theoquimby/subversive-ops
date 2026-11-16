@@ -99,7 +99,7 @@ export function GoogleKeyField({ name, label, placeholder, set, hint, sensitive 
  */
 function useGoogleTargets() {
   const [sites, setSites] = useState<{ siteUrl: string }[] | null>(null);
-  const [locations, setLocations] = useState<{ name: string; title: string; address: string | null }[] | null>(null);
+  const [locations, setLocations] = useState<{ name: string; title: string; address: string | null; placeId: string | null }[] | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -148,7 +148,7 @@ export function SearchConsolePicker({ siteUrl }: { siteUrl: string | null }) {
 }
 
 /** Business Profile: which listing is Subversive. A note about Google's approval is said calmly, not as a warning. */
-export function ListingPicker({ location, locationTitle }: { location: string | null; locationTitle: string | null }) {
+export function ListingPicker({ location, locationTitle, reviewsFollow }: { location: string | null; locationTitle: string | null; reviewsFollow: boolean }) {
   const t = useGoogleTargets();
   const notes = t.notes.filter(isListingNote);
   return (
@@ -160,9 +160,10 @@ export function ListingPicker({ location, locationTitle }: { location: string | 
       {t.locations && t.locations.length > 0 && (
         <label className="block max-w-lg">
           <span className="mb-1.5 block text-[0.8rem] font-medium text-ink-2">Business Profile listing</span>
-          <Select value={location ?? ""} onChange={(e) => { const l = t.locations!.find((x) => x.name === e.target.value); t.choose({ location: l?.name ?? null, locationTitle: l?.title ?? null }); }} options={[{ value: "", label: "None" }, ...t.locations.map((l) => ({ value: l.name, label: l.title, hint: l.address ?? undefined }))]} />
+          <Select value={location ?? ""} onChange={(e) => { const l = t.locations!.find((x) => x.name === e.target.value); t.choose({ location: l?.name ?? null, locationTitle: l?.title ?? null, locationPlaceId: l?.placeId ?? null }); }} options={[{ value: "", label: "None" }, ...t.locations.map((l) => ({ value: l.name, label: l.title, hint: l.address ?? undefined }))]} />
         </label>
       )}
+      {reviewsFollow && <p className="text-sm text-ink-2">Google reviews follow this listing, so they always come from the same business.</p>}
       {notes.map((n) => <p key={n} className={/hasn't approved|quota is 0/i.test(n) ? "text-sm text-muted" : "text-sm text-warn"}>{n}</p>)}
       {t.error && <p className="text-sm text-bad">{t.error}</p>}
     </div>

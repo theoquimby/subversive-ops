@@ -119,7 +119,7 @@ export async function listLocations(token: string, account: string): Promise<Gbp
   const out: GbpLocation[] = [];
   let pageToken = "";
   for (let i = 0; i < 10; i++) {
-    const q = new URLSearchParams({ readMask: "name,title,storefrontAddress,websiteUri", pageSize: "100" });
+    const q = new URLSearchParams({ readMask: "name,title,storefrontAddress,websiteUri,metadata", pageSize: "100" });
     if (pageToken) q.set("pageToken", pageToken);
     const j = (await call(`${gbpLocationsUrl(account)}?${q}`, bearer(token))) as { nextPageToken?: string };
     out.push(...parseLocations(j));

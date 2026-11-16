@@ -3,7 +3,10 @@
 import { requireUser } from "@/server/auth";
 import { breweryDefaults } from "@/server/services/brewery";
 import { addStarterTanks, addTank, deleteTank, saveBreweryDefaults, saveSnapDays, setTankField, type TankField } from "@/server/services/breweryWrite";
+import { equipmentHref } from "@/domain/tankUpkeep";
+import { openTankUpkeep } from "@/server/services/tankUpkeep";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 
 function refresh() {
@@ -43,6 +46,16 @@ export async function setTankFieldAction(id: string, field: TankField, raw: stri
   const r = await setTankField(id, field, String(raw).slice(0, 500));
   if ("error" in r) return { error: r.error };
   refresh();
+}
+
+/** A tank's Upkeep record (made the first time), then off to it on Upkeep. */
+export async function openTankUpkeepAction(tankId: string): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const r = await openTankUpkeep(String(tankId));
+  if ("error" in r) return r;
+  revalidatePath("/upkeep");
+  revalidatePath("/brewery/setup");
+  redirect(equipmentHref(r.equipmentId));
 }
 
 export async function deleteTankAction(id: string): Promise<{ ok?: string; error?: string }> {

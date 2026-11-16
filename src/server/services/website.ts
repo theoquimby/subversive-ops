@@ -6,13 +6,15 @@ import { beerColor } from "@/domain/kegs";
 import { parseAddress, parseLinks, parsePhone, isEmailAddress, type WebLinks } from "@/domain/websiteContact";
 import { feedAnnouncements, type StoredAnnouncement } from "@/domain/websiteAnnouncements";
 import { feedPage, parseStoredPage } from "@/domain/websiteEventPage";
-import { feedEvent, slugFor, type WebEventIn } from "@/domain/websiteEvents";
+import { isBuyout } from "@/domain/privateEvents";
+import { feedEvent, privateClosureEvent, slugFor, type WebEventIn } from "@/domain/websiteEvents";
 import { liveNotice, parseExactHours, parseNotice, webSeasons, webWeek, type ExactHours, type StoredNotice } from "@/domain/websiteHours";
 import { buildMenu, DEFAULT_NOTICES, type MenuRecipeIn, type MenuWarning, type SectionMetaIn, type TapBeerIn } from "@/domain/websiteMenu";
 import { eventsFeedSchema, siteFeedSchema, SITE_TIMEZONE, type EventsFeed, type SiteFeed, type WebMenu } from "@/domain/websiteSchema";
 import { db, num } from "../db";
 import { env } from "../env";
 import { getRegularHours, getSeasonalHours } from "./labor-rules";
+import { getPrivateEventConfig } from "./privateEvents";
 import { businessToday } from "./sales";
 import { getSecrets } from "./secrets";
 import { getBusinessContact } from "./settings";
@@ -213,7 +215,24 @@ export async function eventsFeed(opts: { days: number; pastDays: number; origin:
       return feedEvent({ id: e.id, date: toISODate(e.date), title: e.title, kind: e.kind, startTime: e.startTime, endTime: e.endTime, notes: e.notes, updatedAt: e.updatedAt.toISOString() }, web, { holidaysClosed: s.holidaysClosed });
     })
     .filter((e): e is NonNullable<typeof e> => !!e);
-  return eventsFeedSchema.parse({ timezone: SITE_TIMEZONE, events });
+  const closures = await privateClosures(where.date);
+  const all = closures.length ? [...events, ...closures].sort((a, b) => a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? "")) : events;
+  return eventsFeedSchema.parse({ timezone: SITE_TIMEZONE, events: all });
+}
+
+/** Buyouts (the whole place booked) as "Closed for a private event"; nothing about the booking leaves. */
+async function privateClosures(date: { gte: Date; lt: Date }) {
+  const rows = await db.event.findMany({
+    where: { date, kind: "PRIVATE", privateEvent: { isNot: null } },
+    orderBy: [{ date: "asc" }, { startTime: "asc" }],
+    select: { id: true, date: true, startTime: true, endTime: true, updatedAt: true, privateEvent: { select: { space: true, type: true } } },
+  });
+  if (!rows.length) return [];
+  const { spaces } = await getPrivateEventConfig();
+  return rows
+    .filter((r) => r.privateEvent && isBuyout(r.privateEvent, spaces))
+    .map((r) => privateClosureEvent({ id: r.id, date: toISODate(r.date), startTime: r.startTime, endTime: r.endTime, updatedAt: r.updatedAt.toISOString() }))
+    .filter((e): e is NonNullable<typeof e> => !!e);
 }
 
 // ---- Revalidate ping ------------------------------------------------------------------------

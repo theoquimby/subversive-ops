@@ -58,7 +58,7 @@ export async function syncGoogleNow(): Promise<{ error?: string; message?: strin
   }
 }
 
-export async function findGoogleTargets(): Promise<{ error?: string; sites?: { siteUrl: string }[]; locations?: { name: string; title: string; address: string | null }[]; notes?: string[] }> {
+export async function findGoogleTargets(): Promise<{ error?: string; sites?: { siteUrl: string }[]; locations?: { name: string; title: string; address: string | null; placeId: string | null }[]; notes?: string[] }> {
   await requireUser("MANAGER");
   try {
     const r = await discover();
@@ -69,9 +69,9 @@ export async function findGoogleTargets(): Promise<{ error?: string; sites?: { s
   }
 }
 
-export async function chooseTargets(p: { siteUrl?: string | null; location?: string | null; locationTitle?: string | null }): Promise<{ error?: string }> {
+export async function chooseTargets(p: { siteUrl?: string | null; location?: string | null; locationTitle?: string | null; locationPlaceId?: string | null }): Promise<{ error?: string }> {
   await requireUser("MANAGER");
-  const s = z.object({ siteUrl: z.string().max(300).nullable().optional(), location: z.string().regex(/^locations\/\d+$/).nullable().optional(), locationTitle: z.string().max(200).nullable().optional() }).safeParse(p);
+  const s = z.object({ siteUrl: z.string().max(300).nullable().optional(), location: z.string().regex(/^locations\/\d+$/).nullable().optional(), locationTitle: z.string().max(200).nullable().optional(), locationPlaceId: z.string().regex(/^[A-Za-z0-9_-]{10,200}$/).nullable().optional() }).safeParse(p);
   if (!s.success) return { error: "That choice isn't valid." };
   try {
     await chooseGoogleTargets(s.data);

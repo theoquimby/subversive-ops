@@ -252,6 +252,15 @@ export interface SpaceOption {
   capacity: number | null;
 }
 
+/**
+ * Whether a booking closes the place to the public: its space is set up as a
+ * buyout (Packages & defaults), or, with no known space, the booking is a buyout.
+ */
+export function isBuyout(e: { space: string | null; type: string }, spaces: readonly SpaceOption[]): boolean {
+  const space = spaces.find((s) => s.name === e.space);
+  return space ? space.buyout : e.type === "BUYOUT";
+}
+
 export interface PrivateEventConfig {
   spaces: SpaceOption[];
   taxPct: number;
