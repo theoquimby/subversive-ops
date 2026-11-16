@@ -75,7 +75,7 @@ function Tile({ i, today, tomorrow }: { i: TodayEntry; today: string; tomorrow: 
 }
 
 /** What needs doing now: deadlines in the next 48 hours, drafts to send, trucks to check in and tomorrow's. */
-export function TodayStrip({ items, today, tomorrow, nextUp }: { items: TodayEntry[]; today: string; tomorrow: string; nextUp?: { name: string; supplierId: string; at: number | null; label: string } | null }) {
+export function TodayStrip({ items, today, tomorrow, nextUp, unscheduled = 0, total = 0 }: { items: TodayEntry[]; today: string; tomorrow: string; nextUp?: { name: string; supplierId: string; at: number | null; label: string } | null; unscheduled?: number; total?: number }) {
   const [all, setAll] = useState(false);
   const c = todayCounts(items);
   const head = [
@@ -90,11 +90,14 @@ export function TodayStrip({ items, today, tomorrow, nextUp }: { items: TodayEnt
     <section aria-labelledby="ordering-today" className="mb-6">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3">
         <h2 id="ordering-today" className="text-[0.95rem] font-semibold text-ink">Today</h2>
-        <span className="text-sm text-muted">{items.length ? head : "Nothing needs you right now."}</span>
+        <span className="text-sm text-muted">{items.length ? head : !nextUp && total > 0 && unscheduled === total ? "Set delivery days to see deadlines" : "Nothing needs you right now."}</span>
       </div>
       {items.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border-strong px-4 py-3 text-sm text-muted">
-          No deadlines in the next 48 hours, no drafts waiting and nothing to check in.
+          {/* Honest when deadlines can't be known: no delivery days means no order-by time to warn about. */}
+          {!nextUp && total > 0 && unscheduled === total
+            ? <>No order deadlines to show yet: none of your {total} suppliers has delivery days set. Tick the days each one delivers in the table below and its order-by time and countdown show up here.</>
+            : <>No deadlines in the next 48 hours, no drafts waiting and nothing to check in.{unscheduled > 0 && ` ${unscheduled} supplier${unscheduled === 1 ? " has" : "s have"} no delivery days, so ${unscheduled === 1 ? "its deadline isn't" : "their deadlines aren't"} tracked.`}</>}
           {nextUp && <> Next deadline: <Link href={`/ordering/${nextUp.supplierId}`} className="text-ink-2 hover:underline">{nextUp.name}</Link>, {nextUp.label} {nextUp.at != null && <Countdown at={nextUp.at} quiet />}</>}
         </div>
       ) : (

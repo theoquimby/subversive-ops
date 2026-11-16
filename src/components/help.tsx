@@ -431,7 +431,7 @@ export function HelpButton({ className, compact }: { className?: string; compact
       </button>
       {isMounted && (
         <FloatingPortal>
-          <div ref={refs.setFloating} style={{ ...floatingStyles, ...motion }} className="z-[66] w-64 rounded-xl border border-border bg-surface p-1.5 shadow-xl" {...getFloatingProps()}>
+          <div ref={refs.setFloating} style={{ ...floatingStyles, ...motion, ...hideUntilPlaced(isPositioned) }} className="z-[66] w-64 rounded-xl border border-border bg-surface p-1.5 shadow-xl" {...getFloatingProps()}>
             <button type="button" role="menuitem" className={item} onClick={() => { toggleHelpMode(); setOpen(false); }}>
               <MousePointerClick className="size-4" strokeWidth={1.75} />
               <span className="flex-1">{on ? "Turn off help mode" : "Help mode"}</span>

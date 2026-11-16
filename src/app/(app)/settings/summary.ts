@@ -68,7 +68,7 @@ export async function settingsSummary(): Promise<{ values: Record<string, string
     "business.weather": loc.label,
     "business.timezone": env.BUSINESS_TIMEZONE.replace("America/New_York", "Eastern (New York)").replace(/_/g, " "),
     "people.logins": `${plural(users.length, "person", "people")} · ${plural(managers, "manager")}`,
-    "people.access": "Staff: shifts, counts, waste, help",
+    "people.access": "Staff: shifts, counts, waste, prep, kegs, notes, checklists",
     "people.positions": plural(positions, "position"),
     "pay.wage": `${wageAuto ? "NY schedule" : "Your rate"} · ${money(rules.minimumWage)}`,
     "pay.overtime": `After ${rules.weeklyOvertimeHours}h · ${rules.overtimeMultiplier}×`,

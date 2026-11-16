@@ -119,7 +119,7 @@ export default async function InsightsPage() {
           help="insights.story"
           className="mb-12 scroll-mt-20"
           title={title("lab-story", "How it all connects", "insights.story")}
-          description="A month of the business as a chain: guests bring sales, food, drink and wages come off, the rest is yours."
+          description="A month of the business as a chain: guests bring sales; food, drink, wages and rent come off; the rest is yours."
         >
           <ProfitStory base={{ ...base, fixed: fixedTotal }} levers={(dd?.levers ?? []).filter((l) => l.monthly >= 1).sort((a, b) => b.monthly - a.monthly)} costMeasured={base.costMeasured ?? true} fixedSet={fixedTotal > 0} />
           {dd?.month && dd.laborSplit && (

@@ -37,11 +37,14 @@ export function ProfitStory({ base, levers, costMeasured, fixedSet }: { base: Pr
     else if (key === "labor") setHours(1);
     else if (key === "price") setPrice(1);
   };
-  const leftAfter = r.after.sales - r.after.cogs - r.after.labor - r.after.waste;
+  // Rent and bills (when entered) are part of the sum, so the chain's arithmetic adds up on screen.
+  const rent = fixedSet ? (base.fixed ?? 0) : 0;
+  const leftAfter = r.after.sales - r.after.cogs - r.after.labor - r.after.waste - rent;
   const parts = [
     { key: "cogs", label: "Food & drink", v: r.after.cogs, fill: "var(--lab-context-2)", text: "var(--ink)" },
     { key: "labor", label: "Wages", v: r.after.labor, fill: "var(--lab-context)", text: "var(--ink)" },
     ...(r.after.waste > 0 ? [{ key: "waste", label: "Waste", v: r.after.waste, fill: "var(--lab-hot)", text: "#fff" }] : []),
+    ...(rent > 0 ? [{ key: "rent", label: "Rent & bills", v: rent, fill: "var(--border-strong)", text: "var(--ink)" }] : []),
     { key: "left", label: "Left for you", v: Math.max(0, leftAfter), fill: "var(--lab-accent)", text: "#fff" },
   ];
   const per100 = (v: number) => (r.after.sales > 0 ? (v / r.after.sales) * 100 : 0);
@@ -55,12 +58,12 @@ export function ProfitStory({ base, levers, costMeasured, fixedSet }: { base: Pr
           <Node label="Sales" value={whole(r.after.sales)} delta={moved ? r.after.sales - base.sales : 0} fmt={signed} hint="guests × what they spend" lit={moved} />
           <Joint sign="minus" />
           <Node
-            label="Food, drink & wages"
-            value={whole(r.after.cogs + r.after.labor + r.after.waste)}
+            label={rent > 0 ? "Food, drink, wages & rent" : "Food, drink & wages"}
+            value={whole(r.after.cogs + r.after.labor + r.after.waste + rent)}
             delta={moved ? r.after.cogs + r.after.labor + r.after.waste - (base.cogs + base.labor + base.waste) : 0}
             fmt={signed}
             invert
-            hint={`wages ${Math.round(r.after.laborPct * 100)}% of sales`}
+            hint={rent > 0 ? `wages ${Math.round(r.after.laborPct * 100)}% · rent ${whole(rent)}` : `wages ${Math.round(r.after.laborPct * 100)}% of sales`}
             lit={hours !== 0 || moved}
           />
           <Joint sign="equals" />

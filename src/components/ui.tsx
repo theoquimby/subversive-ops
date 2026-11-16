@@ -42,8 +42,8 @@ export function Section({ title, description, actions, children, className, help
   return withHelp(help, (
     <section className={cn("mb-10", fill && "flex h-full flex-col [&>*:last-child]:flex-1", !help && className)}>
       {(title || actions) && (
-        <div className="mb-3 flex items-end justify-between gap-4">
-          <div>
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+          <div className="min-w-0">
             {title && <h2 className="text-[0.95rem] font-semibold text-ink">{title}</h2>}
             {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
           </div>

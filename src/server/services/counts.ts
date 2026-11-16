@@ -184,9 +184,9 @@ async function valuesAt(countIds: { id: string; takenAt: Date }[]) {
 
 /** The value of the last few completed counts, oldest first (for the trend). */
 export async function valueTrend(n = 8) {
-  const counts = await db.stockCount.findMany({ where: { completed: true }, orderBy: { takenAt: "desc" }, take: n, select: { id: true, takenAt: true, area: true } });
+  const counts = await db.stockCount.findMany({ where: { completed: true }, orderBy: { takenAt: "desc" }, take: n, select: { id: true, takenAt: true, area: true, _count: { select: { lines: true, prepLines: true } } } });
   const vals = await valuesAt(counts);
-  return counts.reverse().map((c) => ({ id: c.id, date: businessDateOf(c.takenAt), area: c.area, total: vals.get(c.id)?.total ?? 0 }));
+  return counts.reverse().map((c) => ({ id: c.id, date: businessDateOf(c.takenAt), area: c.area, items: c._count.lines + c._count.prepLines, total: vals.get(c.id)?.total ?? 0 }));
 }
 
 /** One count's result: value by area and category, carried items, change vs the previous count, and stock not on the menu. */
