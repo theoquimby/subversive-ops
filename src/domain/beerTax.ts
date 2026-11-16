@@ -184,8 +184,7 @@ export interface DueReturn { form: Form; period: Period; due: ISODate; filed: bo
  * Each return's latest finished period (and the one before, if it's still
  * not filed and this return has been marked filed here before), with its due date
  * and whether it's been marked filed. Periods that ended before `since` (the
- * first keg history) are left out. and whether it's been marked filed. "open" =
- * the current period, not finished yet.
+ * first keg history) are left out — and with no history at all, nothing is due.
  */
 export function returnsDue(today: ISODate, s: TaxSettings, filings: Filing[], soonDays = 10, since: ISODate | null = null): DueReturn[] {
   const filed = new Set(filings.map((f) => `${f.form}|${f.periodStart}`));
@@ -203,9 +202,9 @@ export function returnsDue(today: ISODate, s: TaxSettings, filings: Filing[], so
     // The period before only once filings are tracked here, so a new install doesn't
     // nag about returns filed before the app was in use.
     const b = mk(before);
-    if (b.state === "overdue" && filings.some((f) => f.form === form) && (!since || before.end >= since)) out.push(b);
-    // A period that ended before there was any history here has nothing to show.
-    if (!since || last.end >= since || filings.some((f) => f.form === form && f.periodStart === last.start)) out.push(mk(last));
+    if (b.state === "overdue" && filings.some((f) => f.form === form) && since && before.end >= since) out.push(b);
+    // A period that ended before there was any history here (or with no history at all) has nothing to show.
+    if ((since && last.end >= since) || filings.some((f) => f.form === form && f.periodStart === last.start)) out.push(mk(last));
   }
   return out;
 }

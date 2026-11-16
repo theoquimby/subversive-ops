@@ -45,7 +45,7 @@ describe("beer tax worksheet", () => {
 
 describe("returns due", () => {
   it("lists the last finished period of each return with its state", () => {
-    const r = returnsDue("2026-11-16", DEFAULT_TAX_SETTINGS, [{ form: "brop", periodStart: "2026-07-01" }]);
+    const r = returnsDue("2026-11-16", DEFAULT_TAX_SETTINGS, [{ form: "brop", periodStart: "2026-07-01" }], 10, "2025-01-01");
     const fed = r.filter((x) => x.form === "federal");
     // Q3 was due Oct 14 and isn't filed → overdue; nothing older is shown unless it's overdue too
     expect(fed.map((x) => x.period.label)).toContain("Q3 2026");
@@ -55,10 +55,13 @@ describe("returns due", () => {
     expect(ny).toMatchObject({ due: "2026-11-20", state: "due-soon" });
   });
   it("only chases an older period once filings are tracked", () => {
-    const fresh = returnsDue("2026-11-16", DEFAULT_TAX_SETTINGS, []).filter((x) => x.form === "ny");
+    const fresh = returnsDue("2026-11-16", DEFAULT_TAX_SETTINGS, [], 10, "2025-01-01").filter((x) => x.form === "ny");
     expect(fresh.map((x) => x.period.label)).toEqual(["Oct 2026"]);
-    const tracked = returnsDue("2026-11-16", DEFAULT_TAX_SETTINGS, [{ form: "ny", periodStart: "2026-08-01" }]).filter((x) => x.form === "ny");
+    const tracked = returnsDue("2026-11-16", DEFAULT_TAX_SETTINGS, [{ form: "ny", periodStart: "2026-08-01" }], 10, "2025-01-01").filter((x) => x.form === "ny");
     expect(tracked.map((x) => x.period.label)).toEqual(["Sep 2026", "Oct 2026"]);
+  });
+  it("asks for nothing when there's no keg history at all", () => {
+    expect(returnsDue("2026-11-16", DEFAULT_TAX_SETTINGS, [], 10, null)).toEqual([]);
   });
   it("leaves out periods from before there was any history", () => {
     const r = returnsDue("2026-11-16", DEFAULT_TAX_SETTINGS, [], 10, "2026-10-24");

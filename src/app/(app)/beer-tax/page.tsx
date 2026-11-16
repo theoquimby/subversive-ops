@@ -59,12 +59,16 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
 
       <HelpZone id="beertax.returns" tour="beertax.returns" className="mb-10">
         <Section title={<span className="inline-flex items-center gap-1.5">Returns <HelpTip id="beertax.returns" /></span>} description="The last finished period of each return. Mark one filed once it's in, with what you paid.">
-          <ReturnsDue
+          {due.length === 0 ? (
+            <Card className="p-4 text-sm text-ink-2">
+              {since ? "Nothing due yet — returns show up here once a period with keg history has finished." : <>No keg history yet, so there&apos;s nothing to report. Returns show up here once kegs are filled, tapped or sent out in the app (or imported from your old keg app). If you file now, keep doing it the way you do today.</>}
+            </Card>
+          ) : <ReturnsDue
             rows={due.map((d) => ({ form: d.form, name: FORM_INFO[d.form].short, who: FORM_INFO[d.form].who, periodLabel: d.period.label, periodKey: periodKey(d.period), due: d.due, state: d.state, filing: filings.find((f) => f.form === d.form && f.periodStart === d.period.start) ?? null }))}
             today={today}
             current={periodKey(period)}
             amounts={{ federal: w.federalTax, brop: null, ny: w.nyTax }}
-          />
+          />}
         </Section>
       </HelpZone>
 
