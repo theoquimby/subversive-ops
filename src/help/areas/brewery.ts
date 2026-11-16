@@ -67,6 +67,8 @@ One row per tank, a bar per brew. Solid bars are in the tank or done; light dash
     body: "Every brewing recipe with its gravity, bitterness, colour and cost worked out live from ingredient prices.",
     article: `Recipes are grouped **Live** (brewed now), **In development** and **Archived**. Each row shows the beer it pours as, the batch size, OG → FG, ABV, IBU, a colour swatch and what a pint costs in ingredients.
 
+**In use** shows live and in-development recipes; the **Archived** tab has the rest. Search by name, style or beer, filter by beer or style, or show only those that **Need prices**. Sort by any number, group by status, beer or style, and **CSV** saves what's shown.
+
 ### Where the cost comes from
 
 Each line of a recipe is matched to an ingredient, and costed at that ingredient's price today: the same price the menu costs use, from price sheets, invoices or a price typed in. Nothing is kept twice.
@@ -181,7 +183,9 @@ Once you pick a supplier and type a price, the ingredient is costed from that su
 
 Malt and hops are priced per lb (hops also show per oz), yeast per package, liquids per gallon.
 
-Once a maltster's or hop supplier's products are linked to these ingredients on [Prices](/prices), their price sheets and invoices keep these current without typing.`,
+Once a maltster's or hop supplier's products are linked to these ingredients on [Prices](/prices), their price sheets and invoices keep these current without typing.
+
+The ones with no price come first. Search by name, category or supplier; filter by **Category** or **Supplier**, or show only **No price yet** or those **In a recipe**. On a phone, tap an ingredient to type its price.`,
     related: ["brewery.recipes"],
     keywords: ["price", "malt price", "hop price", "yeast price", "manual price"],
   },
@@ -191,7 +195,7 @@ Once a maltster's or hop supplier's products are linked to these ingredients on 
     route: "/brewery/batches",
     title: "Brews",
     body: "Every brew, planned or done: when it was brewed, where it sat, what it cost and the kegs it filled.",
-    article: `Filter by **Planned**, **In tanks**, **Packaged** or **All**, and search by code, beer or recipe.
+    article: `Pick **Planned**, **In tanks**, **Packaged** or **All**, and search by code, beer or recipe. Filter by **Beer**, **Recipe** or **Year**, or show only brews with **No cost yet**. Sort by any column, group by status, beer, recipe or year; the totals row adds up volume and cost, and **CSV** saves what's shown. The tab, beer, recipe and year stay in the address, so a view can be bookmarked.
 
 - **ABV** comes from the OG and FG.
 - **Cost** is the ingredient cost worked out on brew day from that day's prices, and kept. It says "not known yet" until it can be priced; you can type it in on the brew.
@@ -223,7 +227,7 @@ Batch codes run by year: 26-001, 26-002 and so on, unless you type your own.`,
     article: `**Tanks**: add each fermenter and brite tank with its size in barrels. Click any cell to change it.
 
 - **Order** sets where a tank shows on the Tanks page and the schedule, and which tank is tried first when planning.
-- **Not in use** hides a tank from the floor and the schedule. A tank with a brew in it stays in use until the brew is moved or packaged.
+- **Not in use** hides a tank from the floor and the schedule. A tank with a brew in it stays in use until the brew is moved or packaged. Tanks not in use are listed under **Show tanks not in use**.
 - A tank can only be deleted if no brew has ever been in it.
 
 **Usual days in tanks**: how long a beer ferments, then conditions, when its brew has no recipe. A recipe's own days always win.`,

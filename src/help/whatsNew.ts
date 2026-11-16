@@ -69,6 +69,29 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.21 (long lists) ----
+  {
+    id: "2026-11-16.keg-tables",
+    date: "2026-11-16",
+    title: "Search and filter every keg list",
+    line: "All kegs, accounts, orders, reports and the Brewery now search, filter, sort, group and export.",
+    icon: "table",
+    area: "floor",
+    href: "/kegs/all",
+    help: "kegs.all",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-16.keg-history-paging",
+    date: "2026-11-16",
+    title: "Keg history, all the way back",
+    line: "Filter history by what, beer, who, account and dates, then load older entries back to the first scan.",
+    icon: "keg",
+    area: "floor",
+    href: "/kegs/history",
+    help: "kegs.history",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.20 (the Brewery) ----
   {
     id: "2026-11-16.brewery-tanks",

@@ -105,7 +105,8 @@ This is the real yield for draft costing: if it's well under the yield on [Draft
     title: "The walk-in",
     body: "Every keg that isn't on tap or out, by spot. Solid tiles are full, dashed are empty. Find the next keg of a beer to see exactly where the oldest full one is. On a tablet, drag a keg to move it.",
     article: `- **Find the next keg of…** picks the oldest full keg of that beer (cold before just-filled) and lights it up, with its spot written out.
-- **Filter by beer** fades everything else.
+- **Filter by beer** fades everything else. With many beers, the first dozen chips show and **Show more beers** has the rest; a beer opened from its own page comes first.
+- On a phone, each spot lists its first 10 kegs, the one to take next at the top; **Show more kegs** has the rest.
 - **Move a keg:** drag the tile to another spot, or tap the tile, then tap the spot. On a phone, open the keg and press **Moved to…**
 - Spots are set by a manager on [Setup](/kegs/setup).`,
     audience: "all",
@@ -125,7 +126,9 @@ This is the real yield for draft costing: if it's well under the yield on [Draft
 
 **On hand** is full kegs plus what's left on tap. **Need** is the forecast over the next 2 and 4 weeks, in kegs of the size you usually fill it in, at the pints per keg you actually get. **Fill** is what covers the next two weeks at the busy end of the range.
 
-Beers are in three groups. **Core beers** get the plan and the Fill badge. **In rotation** shows the same pints a week and forecast for information, with no Fill. **Retired** beers are under **Show retired**.`,
+Beers are in three groups. **Core beers** get the plan and the Fill badge. **In rotation** shows the same pints a week and forecast for information, with no Fill. **Retired** beers are under **Show retired**.
+
+**Search** finds a beer by name in every group, retired ones too. **In stock** keeps beers with a full keg or one on tap; **Sold lately** keeps beers that sold in the last four weeks. A long group shows its first few cards, with **Show more** for the rest.`,
     related: ["kegs.demand.beers", "kegs.standing", "kegs.yield", "insights.kegs"],
     keywords: ["forecast", "demand", "brew", "what to brew", "fill next", "pints a week", "seasonal"],
   },
@@ -172,7 +175,7 @@ Change any of them and **Save**. After that, set a beer's standing on [Setup](/k
 
 - **Standing** saves as soon as you pick it.
 - **Kegs of it right now** counts 1/2 bbl, 1/6 bbl and every other size in use: full in storage, on tap here, and out at accounts.
-- **Where the full ones are** lists the oldest fill first, the one to use next. **In the walk-in** opens the walk-in board filtered to this beer.
+- **Where the full ones are** lists the oldest fill first, the one to use next: the first eight, then **Show more kegs**. **In All kegs** opens them as a list you can sort and export; **In the walk-in** opens the walk-in board filtered to this beer.
 - **Out at accounts** shows who has kegs of it and the longest one has been there.
 - **Fills over time** is kegs filled each month, this year beside last, when it was last filled, and how its fills ended: tapped here, sent out, still full, or back with no scan.
 - **Pints a week** comes from Square. Core beers get the fill plan; for the others it's for information.
@@ -187,9 +190,11 @@ Everything is counted from keg scans, so a keg that moved without a scan is coun
     route: "/kegs/accounts",
     title: "Accounts",
     body: "Every bar, restaurant and shop you send kegs to: how many kegs each has now, how long the oldest has been there, and how often you deliver.",
-    article: `Sorted with the accounts holding the most kegs first. A tan badge means a keg has been there longer than the number of days set on [Setup](/kegs/setup).
+    article: `Sorted with the accounts holding the most kegs first; tap a column to sort by it instead. A tan badge means a keg has been there longer than the number of days set on [Setup](/kegs/setup).
 
-Tap an account for its own page. **Add account** makes a new one; accounts you no longer deliver to can be switched off on their page and sit under **Show all**.
+Search by name, filter by **Type**, or show only accounts with **Kegs there now** or one **out over** the set days. **Group** by type, pick **View** columns, and **CSV** saves what's shown.
+
+Tap an account for its own page. **Add account** makes a new one; accounts you no longer deliver to can be switched off on their page and sit under the **No longer used** tab (one still holding kegs stays under **In use**).
 
 Everything here comes from scans: a delivery is a keg scanned **Out to an account**. A keg sent out with no scan won't show.`,
     related: ["kegs.accounts.page", "kegs.reports", "kegs.fleet.look"],
@@ -203,9 +208,9 @@ Everything here comes from scans: a delivery is a keg scanned **Out to an accoun
     body: "An account's details, the kegs it has right now and for how long, what it takes by beer, deliveries per month and its full delivery history.",
     article: `**Details** save as you type: contact, phone, email, address and notes.
 
-**Kegs here now** lists each keg with the beer, size and days there. Tap a code to open the keg.
+**Kegs here now** lists each keg with the beer, size and days there, the longest first; a long list shows the first 10. Tap a code to open the keg.
 
-**Delivery history** shows when each keg came back. **No return scan** means the keg turned up somewhere else, or was filled again, without being scanned back in.
+**Delivery history** shows when each keg came back, up to the latest 1,000 deliveries. Search a keg code or beer, filter by beer, size or whether it came back, sort any column, group by beer or year, and save it as CSV. **No return scan** means the keg turned up somewhere else, or was filled again, without being scanned back in.
 
 **Median days a keg stays** is the middle of every stay that has a scanned return, so one keg left for a year doesn't skew it.`,
     related: ["kegs.accounts", "kegs.reports"],
@@ -220,7 +225,7 @@ Everything here comes from scans: a delivery is a keg scanned **Out to an accoun
 
 **Kegs at accounts** lists every account holding kegs, how many, and how many have been there longer than the number of days you pick.
 
-Each table has its own **Export** button, which saves a file a spreadsheet can open.`,
+Each table has a search, sorts by any column and has a totals row. Its **CSV** button saves a file a spreadsheet can open: kegs and barrels for each row, then a total line, for the rows in view (so a search or filter narrows the file too).`,
     related: ["kegs.accounts", "kegs.fleet", "kegs.fleet.went"],
     keywords: ["report", "export", "csv", "volume", "consumption", "barrels", "snapshot", "TTB"],
   },
@@ -229,7 +234,7 @@ Each table has its own **Export** button, which saves a file a spreadsheet can o
     area: "kegs",
     route: "/kegs/orders",
     title: "Keg orders",
-    body: "What your wholesale accounts have asked for: open orders with the soonest first, how many kegs have gone out on each, and the last ones finished. Below them, how many full kegs are free to promise.",
+    body: "What your wholesale accounts have asked for: open orders with the soonest first, how many kegs have gone out on each, and every finished one under its own tab. Below them, how many full kegs are free to promise.",
     article: `An order is for one account: delivery or pickup, a date if there is one, and lines of beer, keg size and how many.
 
 1. Tap **New order**, pick the account and add a line for each beer and size.
@@ -238,7 +243,7 @@ Each table has its own **Export** button, which saves a file a spreadsheet can o
 
 **Today** means the order is due today; **Overdue** means its date has passed. Both show under Needs you on the [Overview](/).
 
-The search box finds an order by account, beer or order number, and looks further back than the page shows.`,
+**Open**, **Fulfilled** and **Cancelled** are tabs over one list (the latest 1,000 finished orders). The search finds an order by account, beer or order number. Filter by **Account**, **Beer**, **Month** (when it's due, or when it closed) or delivery and pickup, or show only orders **Due today or late** or with **Kegs to fill**. Group by account, month or status; **CSV** saves what's shown.`,
     related: ["kegs.orders.new", "kegs.orders.order", "kegs.orders.scan", "kegs.orders.availability", "kegs.accounts"],
     keywords: ["orders", "wholesale", "delivery", "pickup", "preorder", "reserve", "sales order", "distribrewtion"],
   },
@@ -384,7 +389,9 @@ The fix is the habit, not the app: scan a keg when it goes on and when it goes o
     body: "Two lists: kegs that have been out at an account too long, and kegs in service that nobody has scanned in a long time. Managers also see a summary on the Kegs page.",
     article: `**Out too long** is every keg at an account for more than 14 days, grouped by account with the longest wait first. Call the account or pick the kegs up.
 
-**Not seen lately** is every keg that isn't out and hasn't been scanned for 90 days. Find it and scan it. If it's gone, **Retire** takes it off the boards and keeps its history; it's still under [All kegs](/kegs/all) → Retired if it turns up.
+**Not seen lately** is every keg that isn't out and hasn't been scanned for 90 days. Find it and scan it. If it's gone, **Retire** takes it off the boards and keeps its history; it's still under [All kegs](/kegs/all) → Retired if it turns up. Tick several and **Retire** them together.
+
+Both lists search by keg, beer or account, filter by account, beer, size or last status, sort by any column and save as CSV.
 
 Both numbers of days can be changed on [Setup](/kegs/setup) under Taps and storage.`,
     related: ["kegs.fleet", "kegs.all", "kegs.setup"],
@@ -395,8 +402,17 @@ Both numbers of days can be changed on [Setup](/kegs/setup) under Taps and stora
     area: "kegs",
     route: "/kegs/all",
     title: "All kegs",
-    body: "Every keg with its code, beer, status and where it is. Filter by status; open one to change its size, owner, old sticker code or retire it.",
+    body: "Every keg with its code, beer, status and where it is. Search, filter and sort; open one to change its size, owner, old sticker code or retire it.",
+    article: `**In service** shows the kegs in use; retired ones are under the **Retired** tab, or **All kegs** for both.
+
+- **Search** by our code, the old sticker's code, the beer, the account or the keg's label.
+- **Filter** by status, beer, size, owner, or where it is (an area, a spot in it, on tap, or at an account). Status, beer, size and place stay in the address, so a filtered list can be bookmarked or sent.
+- **Sort** by code, status, how long it has been in that status, or any column; **Group** by status, beer, size or place.
+- **CSV** saves what's shown. Tick kegs (or tick the header for everything shown) and **Print labels** prints just those.
+
+Tap a keg to open it.`,
     related: ["kegs.labels", "kegs.import"],
+    keywords: ["keg list", "find a keg", "filter", "export", "retired kegs", "print labels"],
   },
   {
     id: "kegs.labels",
@@ -426,6 +442,9 @@ Kegs that already have stickers from your old app keep them: import them and the
     route: "/kegs/setup",
     title: "Beers",
     body: "Each beer you keg, its standing (core, in rotation or retired), its color on the walk-in board, and the Square item names that pour it. Alert under: for core beers, managers hear when full kegs drop below this. Link the brewer's recipe to get a cost per pint.",
+    article: `Type in any cell to change it; it saves when you leave the cell. On a phone, tap a beer to edit it.
+
+Search by name or Square item. **In use** shows core and in-rotation beers; **Core**, **In rotation** and **Retired** each have a tab, so retired beers stay out of the way until you want them. **No Square items** and **No recipe** find the ones still to set up.`,
     related: ["kegs.standing", "kegs.setup.pours", "kegs.demand"],
     keywords: ["beer list", "square names", "color", "recipe", "batch cost", "core", "retired"],
   },
@@ -434,7 +453,7 @@ Kegs that already have stickers from your old app keep them: import them and the
     area: "kegs",
     route: "/kegs/setup",
     title: "Spots",
-    body: "Named places inside an area, like “Back left” or “Door, top”. Staff pick one when they move a keg and can add a note like “stack 2”. Areas are the same storage areas as Counts.",
+    body: "Named places inside an area, like “Back left” or “Door, top”. Staff pick one when they move a keg and can add a note like “stack 2”. Areas are the same storage areas as Counts. Every spot is in one list: search it, or pick an area's tab; add a spot under the list.",
     related: ["kegs.cooler"],
     keywords: ["position", "slot", "shelf", "stack", "walk-in layout"],
   },
@@ -452,7 +471,7 @@ Kegs that already have stickers from your old app keep them: import them and the
     area: "kegs",
     route: "/kegs/setup",
     title: "Accounts",
-    body: "Bars, restaurants, distributors and people your kegs go out to, with a contact. A keg sent out shows where it is until it's scanned back.",
+    body: "Bars, restaurants, distributors and people your kegs go out to, with a contact. A keg sent out shows where it is until it's scanned back. Search, filter by type, and find accounts no longer used under their own tab.",
     related: ["kegs.import"],
     keywords: ["customers", "accounts", "deliveries", "returns", "out"],
   },
@@ -462,7 +481,16 @@ Kegs that already have stickers from your old app keep them: import them and the
     route: "/kegs/history",
     title: "Keg history",
     body: "Every scan and change, with who, when and from where to where. It's never edited or deleted; an undo strikes the entry through. Imported history from your old app is here too.",
-    keywords: ["log", "audit", "who kicked", "history"],
+    article: `The newest entries come first, 200 at a time: **Load older** under the list brings the next 200, back to the very first scan.
+
+- **Search** a keg's code or old sticker to see just that keg. Anything else (a beer, an account, a person, a note) finds every entry that mentions it.
+- **Filter** by what happened, beer, who did it and account, and pick dates: **Today**, **Last 7 days**, **Last 30 days**, **This year**, or your own from and to.
+- Every filter applies to the whole history, not just what's loaded, and stays in the address, so a view can be bookmarked or sent.
+- **CSV** saves every entry that matches, up to 20,000 at a time.
+
+A keg's own card links to all of its entries.`,
+    related: ["kegs.all", "kegs.scan"],
+    keywords: ["log", "audit", "who kicked", "history", "activity", "export", "date range"],
   },
   {
     id: "kegs.import",

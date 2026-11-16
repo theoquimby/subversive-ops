@@ -24,6 +24,23 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.21",
+    date: "2026-11-16",
+    title: "Long lists in Kegs and the Brewery",
+    summary: "Every long list in Kegs and the Brewery now searches, filters, sorts, groups and exports, and keg history reaches back to the very first scan.",
+    entries: ["2026-11-16.keg-tables", "2026-11-16.keg-history-paging"],
+    fixed: [
+      "All kegs: every keg, with retired ones under their own tab. Search by code, old sticker, beer or account; filter by status, beer, size, owner or place; sort by how long a keg has been in its status. Tick kegs to print just their labels.",
+      "Keg history: search a keg's code to see that keg, or any beer, account, person or note. Filter by what happened, beer, who and account, pick dates, and load older entries 200 at a time. CSV saves everything that matches.",
+      "Accounts, orders, reports and Fleet: each list searches, filters, sorts and exports. Orders puts open, fulfilled and cancelled under tabs, with account, beer and month filters. Reports have a totals row.",
+      "An account's delivery history now holds up to 1,000 deliveries, with beer, size and came-back filters.",
+      "Setup: beers, spots and accounts are searchable tables you still type straight into. Retired beers and accounts no longer used are one tab away.",
+      "Demand: a search, In stock and Sold lately, and long groups shortened with Show more.",
+      "Short lists that can grow (a beer's full kegs, kegs at an account, the walk-in's beer chips, Needs you, a brew's kegs) show the first few with Show more.",
+      "Brewery: brews, recipes and ingredient prices search, filter, sort and export. Recipes hide archived ones until you pick their tab.",
+    ],
+  },
+  {
     version: "1.20",
     date: "2026-11-16",
     title: "The Brewery",
