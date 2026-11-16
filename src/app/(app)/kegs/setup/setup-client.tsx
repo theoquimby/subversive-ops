@@ -4,7 +4,8 @@ import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
 import { Button, Input, Select, Table, Td, Th, Tr } from "@/components/ui";
 import { BEER_COLORS } from "@/domain/kegs";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addAccount, addBeer, addSpot, removeSpot, renameSpot, saveConfig, savePour, setAccountField, setBeerField } from "../actions";
@@ -156,7 +157,12 @@ export function AccountsTable({ accounts }: { accounts: AccountRow[] }) {
           <tbody>
             {accounts.map((a) => (
               <Tr key={a.id}>
-                <Td className="min-w-40 py-1"><GridCell grid="acc" col="name" ariaLabel="Account name" value={a.name} onSave={(v) => setAccountField(a.id, "name", v)} /></Td>
+                <Td className="min-w-40 py-1">
+                  <div className="flex items-center gap-1">
+                    <GridCell className="min-w-0 flex-1" grid="acc" col="name" ariaLabel="Account name" value={a.name} onSave={(v) => setAccountField(a.id, "name", v)} />
+                    <Link href={`/kegs/accounts/${a.id}`} aria-label={`Open ${a.name}`} title="Open this account's page" className="grid size-10 shrink-0 place-items-center rounded-lg text-muted transition-colors duration-120 hover:bg-surface-2 hover:text-ink sm:size-8"><ArrowUpRight className="size-4" /></Link>
+                  </div>
+                </Td>
                 <Td className="hidden w-40 py-1 sm:table-cell"><GridSelect ariaLabel="Type" value={a.kind} options={KINDS} onSave={(v) => setAccountField(a.id, "kind", v)} /></Td>
                 <Td className="hidden py-1 md:table-cell"><GridCell grid="acc" col="contact" ariaLabel="Contact" value={a.contact} placeholder="—" onSave={(v) => setAccountField(a.id, "contact", v)} /></Td>
                 <Td className="hidden py-1 lg:table-cell"><GridCell grid="acc" col="phone" ariaLabel="Phone" value={a.phone} placeholder="—" onSave={(v) => setAccountField(a.id, "phone", v)} /></Td>
