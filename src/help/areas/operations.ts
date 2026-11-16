@@ -1254,7 +1254,7 @@ Timecards you corrected here, or that are in an approved week, are never overwri
     area: "settings",
     route: "/settings/people",
     title: "Team logins",
-    body: "Everyone signs in with their name and a 4–8 digit PIN. Staff see their shifts, counts, waste and help; managers see everything. Rename, change access, set a new PIN (it unlocks a locked login), switch a login off or add one here.",
+    body: "Everyone signs in with their name and a 4–8 digit PIN. Staff see their shifts, counts, waste, prep, kegs, shift notes, checklists and help; managers see everything. Rename, change access, set a new PIN (it unlocks a locked login), switch a login off or add one here.",
     related: ["app.roles"],
   },
   {

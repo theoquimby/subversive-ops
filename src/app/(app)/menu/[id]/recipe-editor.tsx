@@ -459,8 +459,8 @@ function CostBreakdown({ rows, total, isPrep, menuPrice, target, yieldText, onCl
             <>
               <span aria-hidden className="size-2.5 shrink-0 rounded-[3px] bg-area" style={{ opacity: x.cost != null && x.cost > 0 ? shade(i) : 0.12 }} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-ink">{x.name}{x.prep && <span className="ml-1.5 text-xs text-muted">prep recipe</span>}</span>
-                <span className="num block text-xs text-muted">{x.amount}</span>
+                <span className="block text-sm break-words text-ink">{x.name}</span>
+                <span className="num block text-xs text-muted">{x.amount}{x.prep && " · prep recipe"}</span>
               </span>
               <span className="num w-12 shrink-0 text-right text-xs text-muted">{share != null ? pct(share, 0) : ""}</span>
               <span className={cx("num w-20 shrink-0 text-right text-sm", x.cost == null && "text-warn")}>{x.cost != null ? money(x.cost) : x.problem === "Unit" ? "Unit?" : "No price"}</span>

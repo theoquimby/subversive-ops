@@ -87,7 +87,7 @@ export const dailyUse: HelpEntry[] = [
     area: "settings",
     route: "/settings/people",
     title: "Role changes apply straight away",
-    body: "Switching a login between Staff and Manager (or switching it off) takes effect on that person's next tap — they don't need to sign out. Staff see Today, shifts, counts, waste, prep, kegs and shift notes; managers see everything, including costs, pay and settings.",
+    body: "Switching a login between Staff and Manager (or switching it off) takes effect on that person's next tap — they don't need to sign out. Staff see Today, shifts, counts, waste, prep, kegs, shift notes, checklists and help; managers see everything, including costs, pay and settings.",
     related: ["settings.people.role"],
     keywords: ["permissions", "access", "promote", "demote"],
   },

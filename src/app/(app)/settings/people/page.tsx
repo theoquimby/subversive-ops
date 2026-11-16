@@ -12,6 +12,10 @@ const STAFF_CAN = [
   ["My shifts", "Their shifts, open shifts to pick up, swaps, time off, sick leave and availability"],
   ["Counts", "Stock counts, area by area"],
   ["Waste", "Logging what gets thrown out"],
+  ["Prep list", "Today's prep, marking batches made"],
+  ["Kegs", "Scanning kegs, the tap list and the walk-in"],
+  ["Shift notes", "Reading and writing the handover log"],
+  ["Checklists", "Opening, closing and cleaning checklists"],
   ["Help", "The help center and the staff tours"],
 ] as const;
 
@@ -39,7 +43,7 @@ export default async function PeopleSettingsPage() {
       </HelpZone>
 
       <HelpZone id="settings.people.access">
-        <SettingGroup id="access" title="What staff can open" description="Managers see everything. Staff logins see only these, on their phone or the shared tablet.">
+        <SettingGroup id="access" title="What staff can open" description="Managers see everything. Staff logins see only these, on their phone or the shared tablet. A change of role applies on that person's next tap — no need to sign out.">
           {STAFF_CAN.map(([t, d]) => (
             <div key={t} className="px-4 py-3 sm:px-5">
               <div className="text-sm font-medium text-ink">{t}</div>

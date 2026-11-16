@@ -36,7 +36,7 @@ export default async function OrderingPage({ searchParams }: { searchParams: Pro
     <NowProvider now={board.now}>
       <PageHeader help="ordering.page" title="Ordering" description="Every supplier, its next deadline and where its order stands. Tap a row for the suggested order, or tick several to draft them at once." />
       <HelpZone id="ordering.today" tour="ordering.today">
-        <TodayStrip items={items} today={today} tomorrow={tomorrow} nextUp={nextUp} />
+        <TodayStrip items={items} today={today} tomorrow={tomorrow} nextUp={nextUp} unscheduled={suppliers.filter((s) => !s.next).length} total={suppliers.length} />
       </HelpZone>
       <OrderingTabs
         initial={tab === "orders" ? "orders" : "suppliers"}

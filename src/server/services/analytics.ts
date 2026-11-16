@@ -1,4 +1,5 @@
 import "server-only";
+import { TYPICAL_COST_SHARE, unlinkedSales } from "@/domain/pnlStory";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { after } from "next/server";
@@ -185,7 +186,9 @@ export async function gatherPayload(today = businessToday(), opts: { range?: Ran
   };
   const days = [
     ...older.map((o) => dayRow(o.date, { ...o, cogs: 0, foodSales: 0 })),
-    ...kpis.days.map((d) => dayRow(d.date, { sales: d.sales, orders: d.orders, labor: d.labor, laborHours: d.laborHours, cogs: d.cogs, foodSales: d.group.food.sales, synced: d.salesSynced })),
+    // Sales with no recipe behind them (beer, anything not linked yet) cost a typical 30%, the same as
+    // the Overview and P&L — leaving them at $0 made the Lab's profit chain far too rosy.
+    ...kpis.days.map((d) => dayRow(d.date, { sales: d.sales, orders: d.orders, labor: d.labor, laborHours: d.laborHours, cogs: d.cogs + TYPICAL_COST_SHARE * unlinkedSales(d.split, d.sales), foodSales: d.group.food.sales, synced: d.salesSynced })),
   ];
 
   const future = futureF.map((f) => {

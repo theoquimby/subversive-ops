@@ -80,8 +80,10 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
         <HelpZone id="count.value" tour="count.value" className="mb-8"><Link href={`/count/${latest.id}/summary`} className="block"><Card className="p-4 hover:border-border-strong">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-sm text-muted">Inventory value · {shortDate(latest.date)}</div>
+              <div className="text-sm text-muted">Inventory value{latest.area !== "All" ? ` · ${latest.area}` : ""} · {shortDate(latest.date)}</div>
               <div className="num mt-0.5 text-2xl font-semibold tracking-tight">{money(latest.total, { whole: true })}</div>
+              {/* Say how much the number stands on: a 2-item count isn't the whole stock. */}
+              <div className="text-xs text-muted">From {latest.items} item{latest.items === 1 ? "" : "s"} counted{latest.items < 20 ? " — a full count gives the real figure" : ""}</div>
               {change && <div className="num text-sm text-ink-2">{change.amount >= 0 ? "+" : "−"}{money(Math.abs(change.amount), { whole: true })} <span className="text-muted">vs the count before</span></div>}
             </div>
             <span className="text-sm text-ink-2">Details →</span>
