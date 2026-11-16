@@ -1,11 +1,13 @@
 import { PageHeader } from "@/components/ui";
 import { addDays, dateRange } from "@/domain/dates";
+import { whyLine } from "@/domain/orderGuards";
 import { dayDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
+import { minutesToCutoff, usualQuantities } from "@/server/services/orderPlacing";
 import { buildOrderPlan } from "@/server/services/planning";
 import { businessToday } from "@/server/services/sales";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { OrderBuilder } from "./order-builder";
 
 export const metadata = { title: "Build order" };
@@ -14,11 +16,17 @@ export default async function BuildOrderPage({ params, searchParams }: { params:
   await requireUser("MANAGER");
   const { supplierId } = await params;
   const { delivery, until } = await searchParams;
-  if (!(await db.supplier.findUnique({ where: { id: supplierId } }))) notFound();
+  const supplier = await db.supplier.findUnique({ where: { id: supplierId }, select: { id: true, department: true, leadTimeDays: true, deliveryDays: true } });
+  if (!supplier) notFound();
+  // Brewing suppliers are ordered from the Brewery's own screens.
+  if (supplier.department === "brewery") redirect("/brewery/ordering");
   const valid = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined);
   const plan = await buildOrderPlan(supplierId, { deliveryDate: valid(delivery), coverUntil: valid(until) });
   const today = businessToday();
   const deliveryOptions = dateRange(addDays(today, 0), addDays(today, 15));
+  const productIds = [...new Set(plan.lines.flatMap((l) => [l.supplierProductId, ...(l.options ?? []).map((o) => o.supplierProductId)]))];
+  const [usual, cutoff] = await Promise.all([usualQuantities(productIds), minutesToCutoff(supplier, plan.deliveryDate)]);
+  const byDate = addDays(plan.coverUntil, -1);
 
   return (
     <>
@@ -36,7 +44,16 @@ export default async function BuildOrderPage({ params, searchParams }: { params:
         deliveryOptions={deliveryOptions}
         minOrder={plan.supplier.minOrder}
         problems={plan.problems}
-        lines={plan.lines.map((l) => ({ ...l, onHandNote: plan.onHandNotes.get(l.ingredientId) ?? "" }))}
+        usual={Object.fromEntries(usual)}
+        minsToCutoff={cutoff?.mins ?? null}
+        lines={plan.lines.map((l) => {
+          const pos = plan.positions.get(l.ingredientId);
+          return {
+            ...l,
+            onHandNote: plan.onHandNotes.get(l.ingredientId) ?? "",
+            why: pos ? whyLine({ onHandBase: pos.onHandNow, needBase: Math.max(0, pos.usageUntilDelivery + l.neededForCover - pos.incoming), packQtyBase: l.packQtyBase, unit: l.purchaseUnit, byDate, known: pos.known }) : "",
+          };
+        })}
       />
     </>
   );

@@ -6,6 +6,9 @@ import { GridCell } from "@/components/grid";
 import { Badge, Button, cx, LinkButton, type Tone } from "@/components/ui";
 import { WEEKDAYS } from "@/domain/dates";
 import { clock, compareByDeadline, DEADLINE_BUCKETS, deadlineBucket, deadlineKey, deadlineSummary, mondayFirst, needsOrder, type DeadlineBucket, type SupplierStateKind } from "@/domain/orderingBoard";
+import { shouldNag } from "@/domain/orderNeed";
+import { HelpTip } from "@/components/help";
+import { CadenceToggle, SupplierOrderSettings } from "./supplier-order-settings";
 import { dayDate, money, shortDate } from "@/lib/format";
 import type { BoardPo, BoardSupplier, SuggestedOrder } from "@/server/services/orderingBoard";
 import { RefreshCw, Sparkles } from "lucide-react";
@@ -45,12 +48,22 @@ function deadlineText(r: Row, today: string) {
   return `${day} ${clock(r.next.cutoffTime)}`;
 }
 
-function StatusCell({ r }: { r: Row }) {
+/** The stock check for an as-needed supplier: from the suggested order once loaded, else what the page knew. */
+const needOf = (r: Row, sugg: Suggestions) => sugg[r.id]?.need ?? r.need;
+
+/** Whether a missing order for this supplier should look overdue (see domain/orderNeed shouldNag). */
+const nagOf = (r: Row, sugg: Suggestions) => shouldNag(r.mode, needOf(r, sugg));
+
+/** As-needed suppliers with nothing short, nothing on order and nothing missed sit in the quiet "Nothing needed" group. */
+const quiet = (r: Row, sugg: Suggestions) => r.cadence === "as_needed" && !r.missed && r.state.kind === "none" && !needOf(r, sugg)?.needs;
+
+function StatusCell({ r, nag }: { r: Row; nag: boolean }) {
   const s = STATE[r.state.kind];
   const o = r.state.order;
   return (
     <div className="min-w-0">
-      <Badge tone={r.state.kind === "none" && r.next && r.hoursToCutoff != null && r.hoursToCutoff <= 48 ? "bad" : s.tone}>{s.label}</Badge>
+      <Badge tone={nag && r.state.kind === "none" && r.next && r.hoursToCutoff != null && r.hoursToCutoff <= 48 ? "bad" : s.tone}>{s.label}</Badge>
+      {r.missed && <div className="mt-0.5 text-xs text-bad" title={r.missed.detail}>Missed the last cutoff</div>}
       {o && (
         <Link href={`/ordering/po/${o.id}`} className="num mt-0.5 block text-xs whitespace-nowrap text-ink-2 hover:underline" title={`For ${dayDate(o.deliveryDate)}`}>
           {o.total != null ? money(o.total, { whole: true }) : "—"} · {lines(o.lines)}{!r.state.forNext && <span className="text-muted"> · {shortDay(o.deliveryDate)}</span>}
@@ -91,7 +104,21 @@ function DraftButton({ r, label = "Draft this order", variant = "secondary" }: {
   );
 }
 
-function SupplierPanel({ r, today, s, loading, reload }: { r: Row; today: string; s: SuggestedOrder | undefined; loading: boolean; reload: () => void }) {
+/** For an as-needed supplier: what the stock check found, in a line. */
+function NeedLine({ r, s, loading }: { r: Row; s: SuggestedOrder | undefined; loading: boolean }) {
+  const need = s?.need ?? r.need;
+  if (r.cadence !== "as_needed") return null;
+  if (!need) return <p className="mt-1 text-sm text-muted">{loading ? "Checking stock…" : "Ordered when stock runs low."}</p>;
+  if (need.needs) return <p className="mt-1 text-sm text-warn">Runs short before the delivery after next: {need.short.slice(0, 4).join(", ")}{need.short.length > 4 ? ` and ${need.short.length - 4} more` : ""}.</p>;
+  return (
+    <p className="mt-1 text-sm text-muted">
+      Stock covers it past the delivery after next. Nothing needed.
+      {need.countNeeded.length > 0 && <span className="block text-xs">Count needed to know: {need.countNeeded.slice(0, 4).join(", ")}{need.countNeeded.length > 4 ? ` and ${need.countNeeded.length - 4} more` : ""}.</span>}
+    </p>
+  );
+}
+
+function SupplierPanel({ r, today, s, loading, reload, people }: { r: Row; today: string; s: SuggestedOrder | undefined; loading: boolean; reload: () => void; people: { id: string; name: string }[] }) {
   const o = r.state.order;
   const f = (label: string, el: React.ReactNode) => (
     <div className="grid items-center gap-1 py-1.5 sm:grid-cols-[7.5rem_1fr] sm:gap-3">
@@ -116,6 +143,8 @@ function SupplierPanel({ r, today, s, loading, reload }: { r: Row; today: string
         ) : (
           <p className="mt-1 text-sm text-muted">{r.deliveryDays.length ? "No deadline coming up." : "Set delivery days to get deadlines and auto-drafts."}</p>
         )}
+        {r.missed && <p className="mt-1 text-sm text-bad">{r.missed.title}. {r.missed.detail}.</p>}
+        <NeedLine r={r} s={s} loading={loading} />
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <LinkButton href={`/ordering/${r.id}`} variant="primary" className="h-10 sm:h-9">Build order</LinkButton>
           {o && <LinkButton href={`/ordering/po/${o.id}`} className="h-10 sm:h-9">{o.status === "DRAFT" ? "Open draft" : "Open order"}</LinkButton>}
@@ -177,6 +206,11 @@ function SupplierPanel({ r, today, s, loading, reload }: { r: Row; today: string
       </section>
 
       <section>
+        <div className="mb-1 flex items-center gap-1 text-[0.8rem] font-medium text-ink-2">Ordering and reminders <HelpTip id="ordering.cadence" /></div>
+        <SupplierOrderSettings id={r.id} name={r.name} cadence={r.cadence} prefs={r.prefs} people={people} />
+      </section>
+
+      <section>
         <div className="mb-1 text-[0.8rem] font-medium text-ink-2">Supplier</div>
         {f("Delivers on", <DayChips key={r.deliveryDays.join()} id={r.id} value={r.deliveryDays} name={r.name} />)}
         {f("Order email", <GridCell grid="ord-d" col="email" value={r.email} placeholder="none" ariaLabel="Order email" onSave={(v) => saveSupplierField(r.id, "email", v)} className="rounded-md border border-border" />)}
@@ -191,7 +225,41 @@ function SupplierPanel({ r, today, s, loading, reload }: { r: Row; today: string
   );
 }
 
-export function SuppliersBoard({ rows, today, emailReady }: { rows: Row[]; today: string; emailReady: boolean }) {
+/** As-needed suppliers with nothing short: one quiet, collapsed list instead of rows that look overdue. */
+function NothingNeeded({ rows, sugg, loading, today }: { rows: Row[]; sugg: Suggestions; loading: boolean; today: string }) {
+  if (rows.length === 0) return null;
+  const counting = rows.filter((r) => (needOf(r, sugg)?.countNeeded.length ?? 0) > 0).length;
+  return (
+    <details className="group mt-4 rounded-xl border border-border bg-surface">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm [&::-webkit-details-marker]:hidden">
+        <span>
+          <span className="font-medium text-ink">Nothing needed</span>
+          <span className="text-muted"> · {rows.length} supplier{rows.length === 1 ? "" : "s"} ordered when stock runs low{loading ? " · checking stock…" : ""}{counting ? ` · ${counting} need a count to know` : ""}</span>
+        </span>
+        <span aria-hidden className="text-muted transition-transform group-open:rotate-90">›</span>
+      </summary>
+      <ul className="divide-y divide-border border-t border-border">
+        {rows.map((r) => {
+          const need = needOf(r, sugg);
+          return (
+            <li key={r.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5">
+              <div className="min-w-0">
+                <Link href={`/ordering/${r.id}`} className="font-medium text-ink hover:underline">{r.name}</Link>
+                <div className="text-xs text-muted">
+                  {!need ? (loading ? "Checking stock…" : r.next ? `Next deadline ${deadlineText(r, today)?.toLowerCase() ?? ""}` : "No delivery days") : "Stock covers it past the delivery after next"}
+                  {need && need.countNeeded.length > 0 && <span className="block text-ink-2">Count needed to know: {need.countNeeded.slice(0, 3).join(", ")}{need.countNeeded.length > 3 ? ` and ${need.countNeeded.length - 3} more` : ""}</span>}
+                </div>
+              </div>
+              <CadenceToggle id={r.id} name={r.name} value={r.cadence} compact />
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
+}
+
+export function SuppliersBoard({ rows: allRows, today, emailReady, people }: { rows: Row[]; today: string; emailReady: boolean; people: { id: string; name: string }[] }) {
   const confirm = useConfirm();
   const [sugg, setSugg] = useState<Suggestions>({});
   const [loading, setLoading] = useState(true);
@@ -212,6 +280,9 @@ export function SuppliersBoard({ rows, today, emailReady }: { rows: Row[]; today
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  const rows = useMemo(() => allRows.filter((r) => !quiet(r, sugg)), [allRows, sugg]);
+  const quietRows = useMemo(() => allRows.filter((r) => quiet(r, sugg)).sort((a, b) => a.name.localeCompare(b.name)), [allRows, sugg]);
 
   const columns = useMemo<Column<Row>[]>(() => [
     {
@@ -246,7 +317,7 @@ export function SuppliersBoard({ rows, today, emailReady }: { rows: Row[]; today
               <>
                 <div className="num whitespace-nowrap">{deadlineText(r, today)}</div>
                 <div className="flex flex-wrap items-center gap-1">
-                  {r.state.kind === "none" ? <Countdown at={r.cutoffAt} /> : <span className="text-xs text-muted">ordered{r.guessed && " ·"}</span>}
+                  {r.state.kind !== "none" ? <span className="text-xs text-muted">ordered{r.guessed && " ·"}</span> : nagOf(r, sugg) ? <Countdown at={r.cutoffAt} /> : <span className="text-xs text-muted">{r.mode === "off" ? "reminders off" : "only if stock runs low"}</span>}
                   {r.guessed && <span className="text-xs text-warn" title="No deadline set for this delivery day yet: guessed from the lead time">guessed</span>}
                 </div>
               </>
@@ -258,7 +329,8 @@ export function SuppliersBoard({ rows, today, emailReady }: { rows: Row[]; today
         </div>
       ),
     },
-    { id: "status", header: "Status", width: 130, sort: (r) => STATE_RANK[r.state.kind], csv: (r) => STATE[r.state.kind].label, cell: (r) => <StatusCell r={r} /> },
+    { id: "status", header: "Status", width: 130, sort: (r) => STATE_RANK[r.state.kind], csv: (r) => STATE[r.state.kind].label, cell: (r) => <StatusCell r={r} nag={nagOf(r, sugg)} /> },
+    { id: "cadence", header: "Orders", help: "ordering.cadence", edit: true, width: 200, sort: (r) => r.cadence, csv: (r) => (r.cadence === "regular" ? "Every delivery" : "When stock runs low"), cell: (r) => <CadenceToggle key={r.cadence} id={r.id} name={r.name} value={r.cadence} compact /> },
     { id: "suggested", header: "Suggested", help: "ordering.board.suggested", align: "right", width: 130, firstDir: "desc", sort: (r) => sugg[r.id]?.total ?? null, csv: (r) => sugg[r.id]?.total ?? "", cell: (r) => <SuggestedCell s={sugg[r.id]} loading={loading} items={r.items} /> },
     { id: "items", header: "Items", align: "right", width: 70, firstDir: "desc", sort: (r) => r.items, csv: (r) => r.items, cell: (r) => <span className={r.items ? "text-ink-2" : "text-muted"}>{r.items}</span> },
     {
@@ -281,12 +353,13 @@ export function SuppliersBoard({ rows, today, emailReady }: { rows: Row[]; today
   const filters = useMemo<Filter<Row>[]>(() => [
     { id: "today", label: "Deadline today", kind: "toggle", test: (r) => bucket(r) === "today", tone: "bad" },
     { id: "week", label: "Deadline this week", kind: "toggle", test: (r) => ["today", "tomorrow", "week"].includes(bucket(r)) },
-    { id: "needs", label: "Needs an order", kind: "toggle", test: (r) => needsOrder(r.state, r.next), tone: "warn" },
+    { id: "needs", label: "Needs an order", kind: "toggle", test: (r) => needsOrder(r.state, r.next, nagOf(r, sugg)), tone: "warn" },
+    { id: "cadence", label: "Orders", kind: "facet", values: (r) => r.cadence, options: [{ value: "regular", label: "Every delivery" }, { value: "as_needed", label: "When stock runs low" }] },
     { id: "draft", label: "Has a draft", kind: "toggle", test: (r) => r.state.kind === "draft" },
     { id: "nodays", label: "No delivery days", kind: "toggle", test: (r) => r.deliveryDays.length === 0, tone: "warn" },
     { id: "kind", label: "Type", kind: "facet", values: (r) => r.kind, options: KINDS },
     { id: "status", label: "Status", kind: "facet", values: (r) => r.state.kind, options: (Object.keys(STATE) as SupplierStateKind[]).map((k) => ({ value: k, label: STATE[k].label })) },
-  ], [bucket]);
+  ], [bucket, sugg]);
 
   const groups = useMemo<GroupBy<Row>[]>(() => [
     { id: "delivery", label: "Next delivery", key: (r) => r.next?.deliveryDate ?? "", title: (k) => (k ? dayDate(k) : "No delivery coming up") },
@@ -322,7 +395,7 @@ export function SuppliersBoard({ rows, today, emailReady }: { rows: Row[]; today
         summary={(vis) => [
           { value: vis.length, label: vis.length === 1 ? "supplier" : "suppliers" },
           { value: vis.filter((r) => bucket(r) === "today").length, label: "deadline today", tone: "bad", filter: { id: "today" } },
-          { value: vis.filter((r) => needsOrder(r.state, r.next)).length, label: "need an order", tone: "warn", filter: { id: "needs" } },
+          { value: vis.filter((r) => needsOrder(r.state, r.next, nagOf(r, sugg))).length, label: "need an order", tone: "warn", filter: { id: "needs" } },
           { value: vis.filter((r) => r.state.kind === "draft").length, label: "drafts", filter: { id: "draft" } },
           { value: vis.filter((r) => r.deliveryDays.length === 0).length, label: "no delivery days", filter: { id: "nodays" } },
         ]}
@@ -335,11 +408,11 @@ export function SuppliersBoard({ rows, today, emailReady }: { rows: Row[]; today
               {r.state.order ? ` · for ${shortDay(r.state.order.deliveryDate)}` : r.next ? ` · for ${shortDay(r.next.deliveryDate)}` : r.deliveryDays.length ? "" : " · no delivery days"}
             </>
           ),
-          value: r.next && r.state.kind === "none" ? <Countdown at={r.cutoffAt} /> : r.next ? <span className="text-xs font-normal text-muted">{STATE[r.state.kind].label.toLowerCase()}</span> : null,
+          value: r.next && r.state.kind === "none" && nagOf(r, sugg) ? <Countdown at={r.cutoffAt} /> : r.next ? <span className="text-xs font-normal text-muted">{r.state.kind === "none" ? "only if low" : STATE[r.state.kind].label.toLowerCase()}</span> : null,
           sub: r.next ? `by ${deadlineText(r, today)?.replace(/^(Today|Tomorrow)/, (w) => w.toLowerCase())}` : undefined,
         })}
         drawerTitle={(r) => r.name}
-        drawer={(r) => <SupplierPanel r={r} today={today} s={sugg[r.id]} loading={loading} reload={() => void load()} />}
+        drawer={(r) => <SupplierPanel r={r} today={today} s={sugg[r.id]} loading={loading} reload={() => void load()} people={people} />}
         bulkActions={(api) => {
           const drafts = api.rows.map((r) => r.state.order).filter((o): o is BoardPo => o?.status === "DRAFT");
           return (
@@ -360,8 +433,9 @@ export function SuppliersBoard({ rows, today, emailReady }: { rows: Row[]; today
             </>
           );
         }}
-        empty={<span>No active suppliers yet. Add them in <Link href="/settings/suppliers" className="underline">Settings → Suppliers</Link>.</span>}
+        empty={quietRows.length ? <span>Nothing needs ordering right now.</span> : <span>No active suppliers yet. Add them in <Link href="/settings/suppliers" className="underline">Settings → Suppliers</Link>.</span>}
       />
+      <NothingNeeded rows={quietRows} sugg={sugg} loading={loading} today={today} />
     </>
   );
 }

@@ -3,6 +3,8 @@
 import { Badge, Button, Card, cx, Field, Select } from "@/components/ui";
 import { addDays } from "@/domain/dates";
 import { packTradeoff, type OrderSuggestion } from "@/domain/ordering";
+import { orderWarnings } from "@/domain/orderGuards";
+import { useConfirm } from "@/components/dialog";
 import { dayDate, money, qty, shortDate } from "@/lib/format";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -10,7 +12,7 @@ import { DataTable, type Column, type Filter } from "@/components/data-table";
 import { createOrder } from "../actions";
 import { HelpTip, HelpZone } from "@/components/help";
 
-type Line = OrderSuggestion & { onHandNote: string };
+type Line = OrderSuggestion & { onHandNote: string; why?: string };
 
 const STATUS_LABEL: Record<Line["status"], string> = { "runs-out": "Runs out first", order: "To order", "needs-count": "Needs a count", "needs-setup": "Needs pack size", covered: "Covered" };
 const packs = (base: number, l: Line) => (l.packQtyBase ? base / l.packQtyBase : null);
@@ -75,8 +77,13 @@ export function OrderBuilder(props: {
   minOrder: number | null;
   problems: string[];
   lines: Line[];
+  /** Usual quantity per supplier product (middle of recent orders), for the "far above usual" check. */
+  usual?: Record<string, number | null>;
+  /** Minutes to this delivery's cutoff (negative once passed). */
+  minsToCutoff?: number | null;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [qtys, setQtys] = useState<Record<string, number>>(() => Object.fromEntries(props.lines.map((l) => [l.ingredientId, l.suggestedUnits])));
   // Which pack each line is ordered in (starts on the one ordered last time).
   const [pack, setPack] = useState<Record<string, string>>(() => Object.fromEntries(props.lines.map((l) => [l.ingredientId, l.supplierProductId])));
@@ -106,6 +113,7 @@ export function OrderBuilder(props: {
         <div className={cx(l.status === "covered" && (qtys[l.ingredientId] ?? 0) === 0 && "opacity-60")}>
           <div className="font-medium text-ink">{l.ingredientName}</div>
           <div className="text-xs text-muted">{l.description} · {money(l.unitPrice)}/{l.purchaseUnit}</div>
+          {l.why && <div className="text-xs text-ink-2">{l.why}</div>}
           <PackPicker l={l} onPick={choosePack} />
           {l.status === "needs-setup" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="warn">Set pack size</Badge><HelpTip id="ordering.builder.needsSetup" /></span>}
           {l.status === "needs-count" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="warn">Count to auto-order</Badge><HelpTip id="ordering.builder.needsCount" /></span>}
@@ -221,7 +229,11 @@ export function OrderBuilder(props: {
           <Button
             variant="primary"
             disabled={pending || ordering === 0}
-            onClick={() => start(async () => {
+            onClick={async () => {
+              // Guard rails: far above the usual, or after the cutoff. Never blocks; asks for a second look.
+              const warnings = orderWarnings({ lines: rows.map((l) => ({ name: l.ingredientName, qty: qtys[l.ingredientId] ?? 0, usual: props.usual?.[l.supplierProductId] ?? null, unit: l.purchaseUnit })), minsToCutoff: props.minsToCutoff ?? null });
+              if (warnings.length && !(await confirm({ title: "Check before saving", body: <ul className="list-disc space-y-1 pl-4">{warnings.map((w) => <li key={w.text}>{w.text}</li>)}</ul>, confirmLabel: "Save anyway" }))) return;
+              start(async () => {
               setError(null);
               const res = await createOrder({
                 supplierId: props.supplierId,
@@ -230,7 +242,8 @@ export function OrderBuilder(props: {
                 lines: rows.map((l) => ({ supplierProductId: l.supplierProductId, suggestedQty: l.suggestedUnits, qty: qtys[l.ingredientId] ?? 0, unitPrice: l.unitPrice })),
               });
               if (res?.error) setError(res.error);
-            })}
+              });
+            }}
           >
             {pending ? "Saving…" : "Save order"}
           </Button>

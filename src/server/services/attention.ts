@@ -5,7 +5,7 @@ import { INVOICE_ISSUE_STATUSES, isInvoiceIssue } from "@/domain/alerts";
 import { addDays, parseISODate } from "@/domain/dates";
 import { db } from "../db";
 import { stockSummary } from "./kegs";
-import { supplierCutoffs } from "./planning";
+import { orderAlertStates } from "./orderAlerts";
 import { businessToday } from "./sales";
 import { certMatrix } from "./training";
 import { privateEventNeedsYou } from "./privateEvents";
@@ -19,7 +19,9 @@ import { breweryNeedsYou } from "./brewery";
 import { brewOrderingNeedsYou } from "./brewOrdering";
 
 /**
- * What needs a manager right now, for the Overview: order cutoffs coming up,
+ * What needs a manager right now, for the Overview: order cutoffs coming up
+ * (kitchen suppliers that should nag: every-delivery ones, and when-stock-runs-low
+ * ones only when something runs short) and cutoffs missed with no order,
  * invoices to approve, staff requests, an unpublished schedule, taps with no
  * keg behind them, keg orders due today or overdue, brewery transfers,
  * packaging, tank clashes, brews to plan and brewery orders to place, certificates and low
@@ -50,8 +52,9 @@ export async function attentionList(now = new Date()): Promise<AttentionItem[]> 
   const brewery = soft("brewery", breweryNeedsYou(today), []);
   // Brewery orders: "Order <supplier> by <day> for <brew>" when due within three days, or late.
   const brewOrders = soft("brewery orders", brewOrderingNeedsYou(today), []);
-  const [cutoffs, invoices, timeOff, swaps, draftShifts, kegs, certs, badReviews] = await Promise.all([
-    soft("cutoffs", supplierCutoffs(now), []),
+  const [orderStates, invoices, timeOff, swaps, draftShifts, kegs, certs, badReviews] = await Promise.all([
+    // Kitchen suppliers only; ones ordered "when stock runs low" only when something runs short.
+    soft("cutoffs", orderAlertStates(now), []),
     soft("invoices", db.invoice.groupBy({ by: ["status"], where: { status: { not: "APPROVED" } }, _count: { _all: true } }), []),
     soft("time off", db.timeOffRequest.count({ where: { status: "PENDING", endDate: { gte: parseISODate(today) } } }), 0),
     soft("swaps", db.shiftSwap.count({ where: { ...NEEDS_MANAGER, shift: { start: { gte: now } } } }), 0),
@@ -60,23 +63,21 @@ export async function attentionList(now = new Date()): Promise<AttentionItem[]> 
     soft("certificates", certMatrix(today).then((m) => m.summary), null),
     soft("reviews", db.review.count({ where: { replied: false, rating: { lte: 2 }, postedAt: { gte: parseISODate(addDays(today, -60)) } } }), 0),
   ]);
-  const draftIds = cutoffs.map((c) => c.draftId).filter((id): id is string => !!id);
-  const orders = draftIds.length ? await soft("orders", db.purchaseOrder.findMany({ where: { id: { in: draftIds } }, select: { id: true, status: true } }), []) : [];
-  const status = new Map(orders.map((o) => [o.id, o.status]));
   const count = (pred: (s: string) => boolean) => invoices.filter((r) => pred(r.status)).reduce((s, r) => s + r._count._all, 0);
   const items = attentionItems({
     today,
-    cutoffs: cutoffs
-      .filter((c) => c.next && c.hoursToCutoff != null)
+    cutoffs: orderStates
+      .filter((c) => c.nag && c.next && c.hoursToCutoff != null)
       .map((c) => ({
         supplierId: c.supplierId,
         supplier: c.name,
         cutoffDate: c.next!.cutoffDate,
         cutoffTime: c.next!.cutoffTime,
         hoursToCutoff: c.hoursToCutoff!,
-        sent: !!c.draftId && status.get(c.draftId) !== "DRAFT",
-        drafted: !!c.draftId && status.get(c.draftId) === "DRAFT",
+        sent: c.placed === "sent",
+        drafted: c.placed === "draft",
       })),
+    missed: orderStates.flatMap((c) => (c.missed ? [{ supplierId: c.supplierId, title: c.missed.title, detail: c.missed.detail }] : [])),
     invoicesToReview: count((s) => !isInvoiceIssue(s)),
     invoiceIssues: count((s) => (INVOICE_ISSUE_STATUSES as readonly string[]).includes(s)),
     timeOff,

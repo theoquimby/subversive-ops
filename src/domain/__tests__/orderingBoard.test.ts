@@ -115,6 +115,20 @@ describe("todayItems", () => {
     const suppliers = [sup({ id: "a", name: "A", next: next("2026-11-15"), hoursToCutoff: 30 })];
     expect(todayItems({ today: TODAY, suppliers, orders: [], windowHours: 24 })).toEqual([]);
   });
+
+  it("leaves out deadlines for suppliers that shouldn't nag (ordered when stock runs low, nothing short)", () => {
+    const suppliers = [sup({ id: "a", name: "A", next: next(TODAY), hoursToCutoff: 5, nag: false }), sup({ id: "b", name: "B", next: next(TODAY), hoursToCutoff: 6, nag: true })];
+    expect(todayItems({ today: TODAY, suppliers, orders: [] }).map((i) => i.key)).toEqual(["deadline:b"]);
+  });
+});
+
+describe("needsOrder with nagging", () => {
+  const none = { kind: "none" as const, order: null, forNext: false };
+  const nx = { deliveryDate: "2026-11-17", cutoffDate: "2026-11-15", cutoffTime: "14:00" };
+  it("only counts suppliers that should nag", () => {
+    expect(needsOrder(none, nx)).toBe(true);
+    expect(needsOrder(none, nx, false)).toBe(false);
+  });
 });
 
 describe("capPerKind", () => {

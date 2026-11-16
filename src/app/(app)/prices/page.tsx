@@ -29,7 +29,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
   const [products, ingredients, imports, snap, threshold, hiddenCount] = await Promise.all([
     db.supplierProduct.findMany({
       where: { active: !hiddenView },
-      include: { supplier: { select: { id: true, name: true } }, ingredient: { select: { id: true, name: true, category: true, storageArea: true } } },
+      include: { supplier: { select: { id: true, name: true, department: true } }, ingredient: { select: { id: true, name: true, category: true, storageArea: true, department: true } } },
       orderBy: [{ supplier: { name: "asc" } }, { description: "asc" }],
     }),
     db.ingredient.findMany({ where: { active: true }, select: { id: true, name: true, baseUnit: true }, orderBy: { name: "asc" } }),
@@ -72,6 +72,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
       change: change != null && Math.abs(change) >= 0.0005 ? change : null,
       since: hist.at(-1)?.date ?? null,
       history: hist.slice(-24),
+      side: p.supplier.department === "brewery" || p.ingredient?.department === "brewery" ? "brewery" : "kitchen",
     };
   });
 

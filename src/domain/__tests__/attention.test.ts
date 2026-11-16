@@ -39,4 +39,11 @@ describe("attentionItems", () => {
     expect(items.find((i) => i.key === "certs")).toMatchObject({ title: "1 certificate expired", detail: "and 2 expiring soon", tone: "bad", href: "/team/training" });
     expect(items.find((i) => i.key === "kegs")).toMatchObject({ title: "Festbier: no full keg behind it" });
   });
+
+  it("lists a missed cutoff plainly, above upcoming ones", () => {
+    const missed = [{ supplierId: "k", title: "Missed: Kilcoyne cutoff passed with no order", detail: "Next chance Thu 2pm, for the Fri delivery" }];
+    const items = attentionItems({ ...base, missed, cutoffs: [cutoff({})] });
+    expect(items[0]).toMatchObject({ key: "missed.k", title: "Missed: Kilcoyne cutoff passed with no order", detail: "Next chance Thu 2pm, for the Fri delivery", href: "/ordering/k", tone: "bad" });
+    expect(items[1].key).toBe("order.s1");
+  });
 });

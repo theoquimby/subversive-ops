@@ -43,13 +43,16 @@ export interface OrderDraft {
 }
 
 async function orderDrafts(today: ISODate, weekEnd: ISODate): Promise<OrderDraft[]> {
-  const suppliers = await db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } });
+  // Kitchen suppliers only (brewery ones are ordered from the Brewery).
+  const suppliers = await db.supplier.findMany({ where: { active: true, department: { not: "brewery" } }, orderBy: { name: "asc" } });
   const open = await db.purchaseOrder.findMany({ where: { status: "DRAFT", deliveryDate: { gte: parseISODate(today) } }, select: { id: true, supplierId: true, notes: true } });
   const out: OrderDraft[] = [];
   for (const s of suppliers) {
     try {
       const plan = await buildOrderPlan(s.id);
       if (plan.deliveryDate >= weekEnd) continue;
+      // Ordered "when stock runs low": only listed when something runs short (an open draft still shows).
+      if (s.orderCadence === "as_needed" && !plan.need.needs && !open.some((o) => o.supplierId === s.id)) continue;
       const ordering = plan.lines.filter((l) => l.suggestedUnits > 0);
       out.push({
         supplierId: s.id,

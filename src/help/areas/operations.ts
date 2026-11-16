@@ -165,7 +165,7 @@ The fresher the count, the better the order. "Not counted yet" means there's no 
 
 Until you set them, deadlines are guessed from the supplier's lead time (marked "guessed").
 
-Each morning, any supplier whose cutoff falls in the next 36 hours gets a **draft** order built from the forecast, unless an order for that delivery already exists. Drafts are never sent on their own. They show up in Today on Ordering, on the [weekly brief](/brief) and under Orders, marked "Auto-drafted".`,
+Each morning, any supplier whose cutoff falls in the next 36 hours gets a **draft** order built from the forecast, unless an order for that delivery already exists. Suppliers ordered **when stock runs low** only get one when something runs short. Drafts are never sent on their own. They show up in Today on Ordering, on the [weekly brief](/brief) and under Orders, marked "Auto-drafted".`,
     related: ["ordering.builder", "brief.page", "settings.suppliers"],
     keywords: ["deadline", "cutoff", "auto order", "draft"],
   },
@@ -198,14 +198,16 @@ Each morning, any supplier whose cutoff falls in the next 36 hours gets a **draf
     area: "ordering",
     route: "/ordering",
     title: "Sending an order",
-    body: "Copy the order as text, download it as a spreadsheet file, or email it to the supplier. Then press Mark as sent so its quantities count as incoming.",
-    article: `- **Copy as text** — paste into a text, email or the distributor's order notes.
+    body: "The main button follows how the supplier takes orders: email, a text typed out for your phone, a copy for their website, or a call script. You can also copy, download or mark it sent. Sent orders count as incoming.",
+    article: `The main button follows the supplier's **Send orders by** setting (see [How each supplier takes orders](/help/ordering.sendBy)): **Send to supplier** (email), **Text the order**, **Copy order for** their site, or **Call the order in**. After a text, site or call, press **I sent it** / **I placed it**. If the cutoff has passed, the page says so: call or text first.
+
+- **Copy as text** — paste into a text, email or the distributor's order notes.
 - **Download spreadsheet** — a .csv file, for distributor sites that take an upload.
 - **Email** — opens your mail app with the order filled in (needs the supplier's email in Settings).
 - **Mark as sent** — the order now counts as on its way, so the next order won't double up.
 
 A draft can be deleted; a sent order can be checked in.`,
-    related: ["ordering.po.receive"],
+    related: ["ordering.po.receive", "ordering.sendBy"],
   },
   {
     id: "ordering.po.receive",
@@ -1293,8 +1295,13 @@ Timecards you corrected here, or that are in an approved week, are never overwri
 - **Lead time** — how many days before delivery the order must be in. A 1-day lead time means today's order arrives on the next delivery day from tomorrow on.
 - **Minimum order** — the order builder warns when you're under it.
 - **Email** — lets you email orders in one tap.
-- **Type** — distributor (big price sheets) or local (farms, bakeries; prices updated by hand).`,
-    related: ["ordering.builder.window", "overview.deliveries"],
+- **Type** — distributor (big price sheets) or local (farms, bakeries; prices updated by hand).
+- **Orders** — Every delivery, or When stock runs low (only reminds you when something runs short). See [Every delivery or when stock runs low](/help/ordering.cadence).
+- **Ordering and reminders** (tap a supplier) — when and whom to remind, and **Send orders by**: email, text, their website or a phone call.
+- **Staff who can place orders** — at the bottom: those staff get a guided order screen on their phone.
+
+Brewery suppliers (malt, hops, yeast) are listed apart under **Brewery suppliers, ordered from the Brewery** and stay off kitchen ordering, counts and reminders.`,
+    related: ["ordering.builder.window", "overview.deliveries", "ordering.cadence", "ordering.reminders", "ordering.sendBy", "ordering.staff"],
   },
   {
     id: "settings.target",

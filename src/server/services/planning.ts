@@ -4,6 +4,7 @@ import { addDays, dateRange, daysBetween, ISODate, nextWeekdayOnOrAfter, parseIS
 import { DayForecast, forecastSeries } from "@/domain/forecast";
 import type { BaseUnit } from "@/domain/units";
 import { CutoffRule, cutoffRule, defaultPack, estimateOnHand, hoursUntil, nextCutoff, OrderSuggestion, packOptions, shouldAutoDraft, suggestLine } from "@/domain/ordering";
+import { itemNeed, supplierNeed, type ItemNeed, type SupplierNeed } from "@/domain/orderNeed";
 import { dayDate } from "@/lib/format";
 import { Prisma } from "@prisma/client";
 import { db, num } from "../db";
@@ -68,8 +69,19 @@ export async function forecastItems(dates: ISODate[]) {
 
 // ---- Order plan ---------------------------------------------------------------
 
+/** The numbers behind one line, for "why" notes and the as-needed check. Base units. */
+export interface LinePosition {
+  onHandNow: number;
+  known: boolean;
+  countedOn: ISODate | null;
+  usageUntilDelivery: number;
+  usageDuringCover: number;
+  incoming: number;
+  par: number | null;
+}
+
 export interface OrderPlan {
-  supplier: { id: string; name: string; email: string | null; minOrder: number | null };
+  supplier: { id: string; name: string; email: string | null; minOrder: number | null; cadence: string; department: string };
   today: ISODate;
   deliveryDate: ISODate;
   coverUntil: ISODate; // exclusive
@@ -77,6 +89,12 @@ export interface OrderPlan {
   total: number;
   problems: string[];
   onHandNotes: Map<string, string>;
+  positions: Map<string, LinePosition>;
+  /**
+   * Whether stock runs short before the delivery after next (`coverUntil` on the
+   * default window) — what decides alerts for suppliers ordered "when stock runs low".
+   */
+  need: SupplierNeed;
 }
 
 /** Delivery date and cover window for a supplier, from its delivery days and lead time. */
@@ -108,7 +126,8 @@ async function computePlans(requests: { supplierId: string; override?: { deliver
   const today = businessToday();
   const suppliers = await db.supplier.findMany({
     where: { id: { in: requests.map((r) => r.supplierId) } },
-    include: { products: { where: { active: true, ingredientId: { not: null } }, include: { ingredient: true } } },
+    // Brewing ingredients (malt, hops, yeast) are ordered from the Brewery, never on a kitchen order.
+    include: { products: { where: { active: true, ingredientId: { not: null }, ingredient: { department: { not: "brewery" } } }, include: { ingredient: true } } },
   });
   if (suppliers.length === 0) return out;
   const rules = await loadCutoffRules();
@@ -171,6 +190,8 @@ async function computePlans(requests: { supplierId: string; override?: { deliver
     const incoming = await incomingBy(ingredientIds, deliveryDate);
     const forecastDates = dateRange(today, coverUntil);
     const onHandNotes = new Map<string, string>();
+    const positions = new Map<string, LinePosition>();
+    const needs: ItemNeed[] = [];
     const lines: OrderSuggestion[] = [];
     for (const [ingredientId, preferred] of byIngredient) {
       const ing = preferred.ingredient!;
@@ -180,6 +201,17 @@ async function computePlans(requests: { supplierId: string; override?: { deliver
       const product = packs.find((p) => p.id === chosenId) ?? preferred;
       const st = stock.get(ingredientId)!;
       onHandNotes.set(ingredientId, st.countedOn ? `counted ${st.countedOn}` : "not counted yet");
+      const pos: LinePosition = {
+        onHandNow: st.qty,
+        known: st.known,
+        countedOn: st.countedOn,
+        usageUntilDelivery: usageBetween(ingredientId, today, deliveryDate),
+        usageDuringCover: usageBetween(ingredientId, deliveryDate, coverUntil),
+        incoming: incoming.get(ingredientId) ?? 0,
+        par: pars[ingredientId] ?? null,
+      };
+      positions.set(ingredientId, pos);
+      needs.push(itemNeed({ name: ing.name, today, countedOn: st.countedOn, onHandNow: st.qty, incoming: pos.incoming, usageToNext: pos.usageUntilDelivery, usageNextToAfter: pos.usageDuringCover, safetyPct: ing.safetyPct.toNumber(), par: pos.par }));
       const line = (
         suggestLine(
           {
@@ -195,10 +227,10 @@ async function computePlans(requests: { supplierId: string; override?: { deliver
           {
             onHandNow: st.qty,
             onHandKnown: st.known,
-            usageUntilDelivery: usageBetween(ingredientId, today, deliveryDate),
-            usageDuringCover: usageBetween(ingredientId, deliveryDate, coverUntil),
-            incomingBeforeDelivery: incoming.get(ingredientId) ?? 0,
-            parLevel: pars[ingredientId] ?? null,
+            usageUntilDelivery: pos.usageUntilDelivery,
+            usageDuringCover: pos.usageDuringCover,
+            incomingBeforeDelivery: pos.incoming,
+            parLevel: pos.par,
             dailyUsage: forecastDates.map((d) => usageBetween(ingredientId, d, addDays(d, 1))),
             daysUntilDelivery: Math.max(0, daysBetween(today, deliveryDate)),
             coverDays: Math.max(0, daysBetween(deliveryDate, coverUntil)),
@@ -214,7 +246,7 @@ async function computePlans(requests: { supplierId: string; override?: { deliver
     const rank = (l: OrderSuggestion) => (l.status === "runs-out" ? 2 : l.suggestedUnits > 0 ? 1 : 0);
     lines.sort((a, b) => rank(b) - rank(a) || a.ingredientName.localeCompare(b.ingredientName));
     out.set(supplier.id, {
-      supplier: { id: supplier.id, name: supplier.name, email: supplier.email, minOrder: num(supplier.minOrder) },
+      supplier: { id: supplier.id, name: supplier.name, email: supplier.email, minOrder: num(supplier.minOrder), cadence: supplier.orderCadence, department: supplier.department },
       today,
       deliveryDate,
       coverUntil,
@@ -222,6 +254,8 @@ async function computePlans(requests: { supplierId: string; override?: { deliver
       total: lines.reduce((s, l) => s + (l.lineCost ?? 0), 0),
       problems,
       onHandNotes,
+      positions,
+      need: supplierNeed(needs),
     });
   }
   return out;
@@ -428,15 +462,23 @@ export interface SupplierCutoff {
   supplierId: string;
   name: string;
   rule: CutoffRule;
+  deliveryDays: number[];
+  /** "regular" | "as_needed" (see domain/orderNeed). */
+  cadence: string;
   next: { deliveryDate: ISODate; cutoffDate: ISODate; cutoffTime: string } | null;
   hoursToCutoff: number | null;
   draftId: string | null;
 }
 
-/** Each active supplier's cutoff rule, next order deadline and any order already in for that delivery. */
-export async function supplierCutoffs(now = new Date()): Promise<SupplierCutoff[]> {
+/**
+ * Each active supplier's cutoff rule, next order deadline and any order already in for
+ * that delivery. Kitchen suppliers only unless asked: brewery suppliers are ordered from the Brewery.
+ */
+export async function supplierCutoffs(now = new Date(), opts: { department?: "kitchen" | "brewery" | "all" } = {}): Promise<SupplierCutoff[]> {
   const { date, time } = localNow(now);
-  const [suppliers, rules] = await Promise.all([db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }), loadCutoffRules()]);
+  const dept = opts.department ?? "kitchen";
+  const where = dept === "all" ? { active: true } : dept === "brewery" ? { active: true, department: "brewery" } : { active: true, department: { not: "brewery" } };
+  const [suppliers, rules] = await Promise.all([db.supplier.findMany({ where, orderBy: { name: "asc" } }), loadCutoffRules()]);
   const nexts = suppliers.map((s) => {
     const rule = cutoffRule(rules[s.id], s.leadTimeDays);
     return { s, rule, next: nextCutoff(s.deliveryDays, rule, date, time) };
@@ -449,6 +491,8 @@ export async function supplierCutoffs(now = new Date()): Promise<SupplierCutoff[
     supplierId: s.id,
     name: s.name,
     rule,
+    deliveryDays: s.deliveryDays,
+    cadence: s.orderCadence,
     next,
     hoursToCutoff: next ? hoursUntil(date, time, next.cutoffDate, next.cutoffTime) : null,
     draftId: next ? existing.find((o) => o.supplierId === s.id && toISODate(o.deliveryDate) === next.deliveryDate)?.id ?? null : null,
@@ -479,7 +523,8 @@ export async function autoDraftOrders(now = new Date()) {
       continue;
     }
     try {
-      const r = await draftSuggestedOrder(c.supplierId, c.next, `Auto-drafted ahead of the ${clock(c.next.cutoffTime)} ${dayDate(c.next.cutoffDate)} cutoff. Review and send.`);
+      // Suppliers ordered "when stock runs low" only get a draft when something actually runs short.
+      const r = await draftSuggestedOrder(c.supplierId, c.next, `Auto-drafted ahead of the ${clock(c.next.cutoffTime)} ${dayDate(c.next.cutoffDate)} cutoff. Review and send.`, { onlyIfNeeded: c.cadence === "as_needed" });
       if (r.status === "skipped") results.push({ supplier: c.name, deliveryDate: r.deliveryDate, status: "skipped", reason: r.reason });
       else results.push({ supplier: c.name, deliveryDate: r.deliveryDate, status: "drafted", orderId: r.orderId, lines: r.lines });
     } catch (e) {
@@ -500,11 +545,13 @@ export async function draftSuggestedOrder(
   supplierId: string,
   next: { deliveryDate: ISODate } | null,
   note: string,
+  opts: { onlyIfNeeded?: boolean } = {},
 ): Promise<{ status: "drafted"; deliveryDate: ISODate; orderId: string; lines: number } | { status: "skipped"; deliveryDate?: ISODate; reason: string }> {
   const s = await db.supplier.findUniqueOrThrow({ where: { id: supplierId }, select: { deliveryDays: true } });
   const plan = next
     ? await buildOrderPlan(supplierId, { deliveryDate: next.deliveryDate, coverUntil: nextWeekdayOnOrAfter(addDays(next.deliveryDate, 1), s.deliveryDays) ?? addDays(next.deliveryDate, 7) })
     : await buildOrderPlan(supplierId);
+  if (opts.onlyIfNeeded && !plan.need.needs) return { status: "skipped", deliveryDate: plan.deliveryDate, reason: plan.need.countNeeded.length ? "stock unknown: count needed" : "stock covers it" };
   const lines = plan.lines.filter((l) => l.suggestedUnits > 0);
   if (lines.length === 0) return { status: "skipped", deliveryDate: plan.deliveryDate, reason: "nothing to order" };
   const runsOut = plan.lines.filter((l) => l.status === "runs-out").length;

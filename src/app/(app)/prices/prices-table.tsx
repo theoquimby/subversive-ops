@@ -30,6 +30,8 @@ export interface PriceRow {
   change: number | null;
   since: string | null;
   history: { date: string; price: number }[];
+  /** Brewing products (a brewery supplier or ingredient) are kept apart from the kitchen's. */
+  side: "kitchen" | "brewery";
 }
 
 const changeBadge = (c: number | null) => (c == null ? <span className="text-muted">—</span> : <Badge tone={c > 0 ? "bad" : "good"}>{signedPct(c)}</Badge>);
@@ -106,7 +108,9 @@ export function PricesTable({ rows, ingredients, hiddenView, today }: { rows: Pr
 
   const filters = useMemo<Filter<PriceRow>[]>(() => {
     const suppliers = [...new Map(rows.map((r) => [r.supplierId, r.supplier])).entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value, label }));
+    const hasBrewery = rows.some((r) => r.side === "brewery");
     return [
+      ...(hasBrewery ? [{ id: "side", label: "Side", kind: "facet" as const, single: true, display: "segmented" as const, allLabel: "Both", values: (p: PriceRow) => p.side, options: [{ value: "kitchen", label: "Kitchen" }, { value: "brewery", label: "Brewery" }], param: "side" }] : []),
       { id: "supplier", label: "Supplier", kind: "facet", values: (p) => p.supplierId, options: suppliers, param: "supplier" },
       { id: "link", label: "Ingredient", kind: "facet", values: (p) => (p.ingredientId ? "linked" : "unlinked"), options: [{ value: "unlinked", label: "Not linked" }, { value: "linked", label: "Linked" }], single: true, param: "filter" },
       { id: "category", label: "Category", kind: "facet", values: (p) => p.category ?? "No category" },
@@ -143,6 +147,8 @@ export function PricesTable({ rows, ingredients, hiddenView, today }: { rows: Pr
       searchPlaceholder="Search products"
       filters={filters}
       groups={groups}
+      // Kitchen first: brewing products (malt, hops, yeast) are one tap away under Side → Brewery.
+      defaultView={rows.some((r) => r.side === "brewery") ? { filters: { side: ["kitchen"] } } : undefined}
       csvName="prices"
       empty={empty}
       summary={(vis) => [

@@ -18,14 +18,16 @@ interface Props {
   mailto: string | null;
   isDraft: boolean;
   items: number;
+  /** Another way of sending is the main one for this supplier: show this as "Email instead". */
+  secondary?: boolean;
 }
 
 export function SendToSupplier(p: Props) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant={p.isDraft ? "primary" : "secondary"} onClick={() => setOpen(true)}>
-        <Send className="size-4" />{p.isDraft ? "Send to supplier" : "Send again"}
+      <Button variant={p.isDraft && !p.secondary ? "primary" : "secondary"} onClick={() => setOpen(true)}>
+        <Send className="size-4" />{!p.isDraft ? "Send again" : p.secondary ? "Email instead" : "Send to supplier"}
       </Button>
       {open && <SendSheet {...p} onClose={() => setOpen(false)} />}
     </>

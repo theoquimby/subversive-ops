@@ -9,7 +9,11 @@ import { db, num } from "../db";
 import { env } from "../env";
 import { emailReady } from "../integrations/email";
 import { pendingSuggestions, type SupplierSuggestion } from "./learned";
-import { buildOrderPlans, supplierCutoffs } from "./planning";
+import { cadenceOf, type AlertMode, type OrderCadence, type SupplierNeed } from "@/domain/orderNeed";
+import type { Missed } from "@/domain/orderReminders";
+import type { SupplierPrefs } from "@/domain/supplierPrefs";
+import { orderAlertStates } from "./orderAlerts";
+import { buildOrderPlans } from "./planning";
 import { businessToday } from "./sales";
 
 /** One purchase order as the Ordering page lists it. */
@@ -52,6 +56,15 @@ export interface BoardSupplier {
   recent: BoardPo[];
   learned: SupplierSuggestion | null;
   hint?: LearnedHint;
+  /** "regular" (every delivery) or "as_needed" (when stock runs low). */
+  cadence: OrderCadence;
+  /** Alert mode in force (the supplier's setting, else what its cadence implies). */
+  mode: AlertMode;
+  prefs: SupplierPrefs;
+  /** Whether a missing order raises an alert; for as-needed suppliers known only near a deadline (else it comes with the suggested order). */
+  nag: boolean;
+  need: SupplierNeed | null;
+  missed: Missed | null;
 }
 
 export interface OrderingBoard {
@@ -68,14 +81,15 @@ export async function orderingBoard(now = new Date()): Promise<OrderingBoard> {
   const today = businessToday();
   const since = new Date(now.getTime() - HISTORY_DAYS * 86400_000);
   const [suppliers, orders, cutoffs, learned, canEmail] = await Promise.all([
-    db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" }, include: { _count: { select: { products: { where: { ingredientId: { not: null } } } } } } }),
+    // Kitchen suppliers only: brewery ones are ordered from the Brewery.
+    db.supplier.findMany({ where: { active: true, department: { not: "brewery" } }, orderBy: { name: "asc" }, include: { _count: { select: { products: { where: { ingredientId: { not: null }, ingredient: { department: { not: "brewery" } } } } } } } }),
     db.purchaseOrder.findMany({
-      where: { OR: [{ status: { in: ["DRAFT", "SENT"] } }, { createdAt: { gte: since } }] },
+      where: { OR: [{ status: { in: ["DRAFT", "SENT"] } }, { createdAt: { gte: since } }], supplier: { department: { not: "brewery" } } },
       orderBy: { createdAt: "desc" },
       take: 500,
       include: { supplier: { select: { name: true, email: true } }, lines: { select: { qty: true, unitPrice: true, supplierProductId: true } }, invoices: { select: { total: true } } },
     }),
-    supplierCutoffs(now),
+    orderAlertStates(now),
     pendingSuggestions(),
     emailReady().catch(() => false),
   ]);
@@ -147,6 +161,12 @@ export async function orderingBoard(now = new Date()): Promise<OrderingBoard> {
       recent: mine.slice(0, 6),
       learned: l,
       hint,
+      cadence: cadenceOf(s.orderCadence),
+      mode: c.mode,
+      prefs: c.prefs,
+      nag: c.nag,
+      need: c.need,
+      missed: c.missed,
     }];
   });
 
@@ -164,6 +184,8 @@ export interface SuggestedOrder {
   needsSetup: number;
   minOrder: number | null;
   top: { name: string; units: number; unit: string; cost: number | null; runsOut: boolean }[];
+  /** Stock check to the delivery after next: decides whether an as-needed supplier needs an order. */
+  need: SupplierNeed;
 }
 
 export async function suggestedOrders(supplierIds: string[]): Promise<Record<string, SuggestedOrder>> {
@@ -184,6 +206,7 @@ export async function suggestedOrders(supplierIds: string[]): Promise<Record<str
         .sort((a, b) => Number(b.status === "runs-out") - Number(a.status === "runs-out") || (b.lineCost ?? 0) - (a.lineCost ?? 0))
         .slice(0, 40)
         .map((l) => ({ name: l.ingredientName, units: l.suggestedUnits, unit: l.purchaseUnit, cost: l.lineCost, runsOut: l.status === "runs-out" })),
+      need: p.need,
     };
   }
   return out;
