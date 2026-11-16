@@ -40,6 +40,8 @@ export function ScanMany({ ctx, role, switcher, fill }: { ctx: PanelContext; rol
   const [running, setRunning] = useState(false);
   const [beerId, setBeerId] = useState(fill?.beerId ?? "");
   const [batchCode, setBatchCode] = useState(fill?.batchCode ?? "");
+  // A picked chip is the batch itself (by id); a typed code is looked up for this beer.
+  const [batchId, setBatchId] = useState<string | null>(null);
   const [area, setArea] = useState(ctx.coldArea);
   const [accountId, setAccountId] = useState("");
   const [sizeId, setSizeId] = useState("");
@@ -96,7 +98,7 @@ export function ScanMany({ ctx, role, switcher, fill }: { ctx: PanelContext; rol
 
   const begin = () => {
     if (!m || !ready) return;
-    form.current = { mode: m.id, beerId: beerId || null, batchCode: batchCode.trim() || null, area: m.id === "STORE" ? area : null, accountId: accountId || null, sizeId: sizeId || null };
+    form.current = { mode: m.id, beerId: beerId || null, batchId: batchCode.trim() ? batchId : null, batchCode: batchCode.trim() || null, area: m.id === "STORE" ? area : null, accountId: accountId || null, sizeId: sizeId || null };
     done.current = new Set();
     setRows([]);
     setNote(null);
@@ -131,8 +133,8 @@ export function ScanMany({ ctx, role, switcher, fill }: { ctx: PanelContext; rol
           {m?.id === "FILL" && (
             <div className="mt-4 grid gap-3">
               <Field label="Beer"><Select aria-label="Beer" value={beerId} onChange={(e) => setBeerId(e.target.value)} placeholder="Pick the beer" options={ctx.beers.map((b) => ({ value: b.id, label: b.name }))} searchable /></Field>
-              <BatchChips batches={ctx.batches.filter((b) => b.beerId === beerId)} value={batchCode} onPick={setBatchCode} />
-              <Field label="Batch" hint="Optional"><Input value={batchCode} onChange={(e) => setBatchCode(e.target.value)} placeholder="e.g. 2-2026" aria-label="Batch" autoComplete="off" maxLength={40} /></Field>
+              <BatchChips batches={ctx.batches.filter((b) => b.beerId === beerId)} value={batchCode} onPick={(code, id) => { setBatchCode(code); setBatchId(id); }} />
+              <Field label="Batch" hint="Optional"><Input value={batchCode} onChange={(e) => { setBatchCode(e.target.value); setBatchId(null); }} placeholder="e.g. 2-2026" aria-label="Batch" autoComplete="off" maxLength={40} /></Field>
             </div>
           )}
           {m?.id === "STORE" && <div className="mt-4"><Field label="Where"><Select aria-label="Where" value={area} onChange={(e) => setArea(e.target.value)} options={ctx.areas.map((a) => ({ value: a, label: a }))} /></Field></div>}

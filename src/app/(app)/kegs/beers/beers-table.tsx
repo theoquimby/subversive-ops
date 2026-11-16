@@ -6,6 +6,7 @@ import { GridCell, GridSelect } from "@/components/grid";
 import { Button, cx, Input } from "@/components/ui";
 import { STANDING_LABEL, STANDINGS, type Standing } from "@/domain/beerStanding";
 import { BEER_COLORS } from "@/domain/kegs";
+import { abvView } from "@/domain/beerLinks";
 import { abvText, DIET_TAGS, formatBoardPours, priceText, type BoardPour, type SquareCheck } from "@/domain/taps";
 import { ArrowUpRight, ImageUp, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -21,6 +22,8 @@ export interface BeerBoardRow {
   style: string | null;
   color: string;
   abv: number | null;
+  /** ABV from the latest packaged brew (shown when none is typed). */
+  measuredAbv: number | null;
   ibu: number | null;
   description: string | null;
   diet: string | null;
@@ -39,6 +42,9 @@ export interface BeerBoardRow {
 }
 
 const COLORS = BEER_COLORS.map((c) => ({ value: c.id, label: c.label }));
+
+/** Blank ABV: the board shows the brewery's measured one, so say so. */
+const abvPlaceholder = (b: BeerBoardRow) => (b.measuredAbv != null ? `${abvText(b.measuredAbv)} measured` : "—");
 const STANDING_OPTIONS = STANDINGS.map((s) => ({ value: s, label: STANDING_LABEL[s] }));
 
 /** The arrow beside a beer's name that opens its own page. */
@@ -131,7 +137,7 @@ export function BeersBoardTable({ rows }: { rows: BeerBoardRow[] }) {
     { id: "name", header: "Beer", edit: true, width: 190, hideable: false, sort: (b) => b.name, csv: (b) => b.name, cell: (b) => <div className="flex items-center gap-2 pl-1"><BeerDot color={b.color} /><GridCell grid="bb" col="name" value={b.name} ariaLabel={`Name of ${b.name}`} onSave={(v) => setBeerField(b.id, "name", v)} className="min-w-28 flex-1 font-medium" /><OpenBeer row={b} /></div> },
     { id: "tap", header: "On", align: "right", width: 64, firstDir: "asc", sort: (b) => b.taps[0] ?? 999, csv: (b) => b.taps.join(" "), cell: (b) => <span className="num text-sm">{b.taps.length ? b.taps.map((t) => `#${t}`).join(" ") : <span className="text-muted">—</span>}</span> },
     { id: "style", header: "Style", edit: true, width: 150, sort: (b) => b.style, csv: (b) => b.style, cell: (b) => <GridCell grid="bb" col="style" value={b.style} placeholder="e.g. Hazy IPA" ariaLabel={`Style of ${b.name}`} onSave={(v) => setBeerField(b.id, "style", v)} /> },
-    { id: "abv", header: "ABV", align: "right", edit: true, width: 84, firstDir: "desc", sort: (b) => b.abv, csv: (b) => b.abv, cell: (b) => <GridCell grid="bb" col="abv" type="number" suffix="%" value={b.abv} placeholder="—" ariaLabel={`ABV of ${b.name}`} onSave={(v) => setBeerBoardField(b.id, "abv", v)} /> },
+    { id: "abv", header: "ABV", align: "right", edit: true, width: 84, firstDir: "desc", sort: (b) => b.abv, csv: (b) => b.abv, cell: (b) => <GridCell grid="bb" col="abv" type="number" suffix="%" value={b.abv} placeholder={abvPlaceholder(b)} ariaLabel={`ABV of ${b.name}`} onSave={(v) => setBeerBoardField(b.id, "abv", v)} /> },
     { id: "ibu", header: "IBU", align: "right", edit: true, width: 72, firstDir: "desc", sort: (b) => b.ibu, csv: (b) => b.ibu, cell: (b) => <GridCell grid="bb" col="ibu" type="number" value={b.ibu} placeholder="—" ariaLabel={`IBU of ${b.name}`} onSave={(v) => setBeerBoardField(b.id, "ibu", v)} /> },
     { id: "desc", header: "Short description", edit: true, width: 230, sort: (b) => b.description, csv: (b) => b.description, cell: (b) => <GridCell grid="bb" col="desc" value={b.description} placeholder="One line for the board" ariaLabel={`Description of ${b.name}`} onSave={(v) => setBeerBoardField(b.id, "description", v)} /> },
     {
@@ -155,7 +161,7 @@ export function BeersBoardTable({ rows }: { rows: BeerBoardRow[] }) {
   const filters = useMemo<Filter<BeerBoardRow>[]>(() => [
     { id: "status", label: "Status", kind: "facet", single: true, display: "segmented", allLabel: "All", values: (b) => (b.active ? "active" : "retired"), options: [{ value: "active", label: "Active" }, { value: "retired", label: "Retired" }] },
     { id: "ontap", label: "On tap", kind: "toggle", test: (b) => b.taps.length > 0 },
-    { id: "missing", label: "Missing details", kind: "toggle", tone: "warn", test: (b) => b.active && (!b.style || b.abv == null || !b.pours.length) },
+    { id: "missing", label: "Missing details", kind: "toggle", tone: "warn", test: (b) => b.active && (!b.style || (b.abv ?? b.measuredAbv) == null || !b.pours.length) },
     { id: "square", label: "Square issues", kind: "toggle", tone: "bad", test: (b) => b.square?.tone === "bad" || b.square?.tone === "warn" },
   ], []);
 
@@ -178,12 +184,12 @@ export function BeersBoardTable({ rows }: { rows: BeerBoardRow[] }) {
       summary={(vis) => [
         { value: vis.length, label: vis.length === 1 ? "beer" : "beers" },
         { value: vis.filter((b) => b.taps.length).length, label: "on tap", filter: { id: "ontap" } },
-        ...(vis.some((b) => b.active && (!b.style || b.abv == null || !b.pours.length)) ? [{ value: vis.filter((b) => b.active && (!b.style || b.abv == null || !b.pours.length)).length, label: "missing details", tone: "warn" as const, filter: { id: "missing" } }] : []),
+        ...(vis.some((b) => b.active && (!b.style || (b.abv ?? b.measuredAbv) == null || !b.pours.length)) ? [{ value: vis.filter((b) => b.active && (!b.style || (b.abv ?? b.measuredAbv) == null || !b.pours.length)).length, label: "missing details", tone: "warn" as const, filter: { id: "missing" } }] : []),
       ]}
       card={(b) => ({
         title: <span className="inline-flex items-center gap-2"><BeerDot color={b.color} />{b.name}</span>,
         subtitle: [b.taps.length ? `Tap ${b.taps.join(", ")}` : null, b.style].filter(Boolean).join(" · ") || "No style yet",
-        value: abvText(b.abv) ?? undefined,
+        value: abvText(b.abv ?? b.measuredAbv) ?? undefined,
         sub: b.square && b.square.tone !== "good" ? <span className={toneText(b.square.tone)}>{b.square.tone === "bad" ? "Square price differs" : b.square.text}</span> : b.pours.length ? `${b.pours[b.pours.length - 1].label} ${priceText(b.pours[b.pours.length - 1].price)}` : "No prices",
       })}
       drawerTitle={(b) => b.name}
@@ -206,7 +212,10 @@ function BeerDrawer({ b }: { b: BeerBoardRow }) {
       {f("Standing", <GridSelect value={b.standing} options={STANDING_OPTIONS} ariaLabel="Standing" onSave={(v) => setBeerField(b.id, "standing", v)} />, <Link href={`/kegs/beers/${b.id}`} className="underline hover:text-ink">Open {b.name}&apos;s page: kegs by size, fills and demand</Link>)}
       {f("Style", <GridCell grid="bbd" col="style" value={b.style} placeholder="e.g. Hazy IPA" ariaLabel="Style" onSave={(v) => setBeerField(b.id, "style", v)} />)}
       <div className="grid grid-cols-2 gap-3">
-        {f("ABV", <GridCell grid="bbd" col="abv" type="number" suffix="%" value={b.abv} placeholder="—" ariaLabel="ABV" onSave={(v) => setBeerBoardField(b.id, "abv", v)} />)}
+        {f("ABV", <>
+          <GridCell grid="bbd" col="abv" type="number" suffix="%" value={b.abv} placeholder={abvPlaceholder(b)} ariaLabel="ABV" onSave={(v) => setBeerBoardField(b.id, "abv", v)} />
+          {abvView(b.abv, b.measuredAbv).differs && <div className="px-2 text-xs text-warn">Measured {abvText(b.measuredAbv)} from the latest packaged brew</div>}
+        </>)}
         {f("IBU", <GridCell grid="bbd" col="ibu" type="number" value={b.ibu} placeholder="—" ariaLabel="IBU" onSave={(v) => setBeerBoardField(b.id, "ibu", v)} />)}
       </div>
       {f("Short description", <GridCell grid="bbd" col="desc" value={b.description} placeholder="One line for the board" ariaLabel="Short description" onSave={(v) => setBeerBoardField(b.id, "description", v)} />, "Up to 140 characters. Shown when 8 or fewer taps are on.")}

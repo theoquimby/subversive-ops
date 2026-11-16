@@ -302,10 +302,10 @@ Batch codes run by year: 26-001, 26-002 and so on, unless you type your own. A b
     article: `- **Planned days**: its timing, dry-hop day, release day and whether the release is locked (with why).
 - **Through the tanks**: each fermenter and brite stay with its dates and days. Change a date and the brew's own dates follow. On the tank it's in now, the second date is the day it's due out.
 - **History**: each move, stage change, packaging and split, with the gravity and notes taken.
-- **Gravity**: every reading, in °Plato or SG as the brewery is set. OG and FG also set the brew's ABV.
-- **Kegs**: what packaging made (½ and ⅙ bbl kegs, cases, CO₂), the keg batch with the brew's code, how many kegs were filled from it by size, and where the ones still full are now. **Fill kegs** opens the scanner ready to fill the rest.
+- **Gravity**: every reading, in °Plato or SG as the brewery is set. The readings are where OG and FG come from: OG is the first reading marked OG (else the brew day's OG), FG the latest reading marked FG or taken on or after packaging (else the brew day's packaging FG). Delete a reading and OG, FG and ABV follow; type OG or FG in Details and it's kept as a reading.
+- **Kegs**: what packaging made (½ and ⅙ bbl kegs, cases, CO₂), the keg batch with the brew's code, how many kegs were filled from it by size, and where the ones still full are now. **Fill kegs** opens the scanner ready to fill the rest. The keg batch takes its beer and dates from the brew, and follows when they change. Packaging a brew with a cost also sets the beer's keg cost (Menu → Draft beer).
 - **Split**: part of a planned or in-tank brew into another fermenter as its own brew ([Split batches](/help/brewery.splits)).
-- **Details**: code, beer, recipe, volume, OG, FG, cost and notes, each saved as you leave it.`,
+- **Details**: code, beer, recipe, volume, OG, FG, cost and notes, each saved as you leave it. A brew with a recipe pours as the recipe's beer: change the beer on the recipe (its planned brews follow). Only a brew with no recipe has its own beer.`,
     keywords: ["brew", "batch", "kegs", "gravity", "path", "history", "split", "release"],
     related: ["brewery.batches", "brewery.splits", "brewery.lockedRelease", "brewery.packaging"],
   },

@@ -163,6 +163,8 @@ model Ingredient {
   brewStock   BrewStockMove[]
   /// "kitchen" or "brewery" (malt, hops, yeast and other brewing ingredients)
   department  String       @default("kitchen")
+  /// Beers poured from this keg ingredient (Beer.ingredientId)
+  beers       Beer[]
 }
 
 /// One photo per count item (an ingredient or a prep recipe), shown on the count sheet. Compressed in the browser first.
@@ -247,8 +249,16 @@ model PriceRecord {
   importId          String?
   import            PriceImport?    @relation(fields: [importId], references: [id], onDelete: SetNull)
   createdAt         DateTime        @default(now())
+  /// A keg price worked out from a packaged brew's cost (house beer)
+  brewBatchId       String?
+  brewBatch         BrewBatch?      @relation(fields: [brewBatchId], references: [id], onDelete: SetNull)
+  /// A keg price worked out from a live brewing recipe's cost (house beer)
+  brewRecipeId      String?
+  brewRecipe        BrewRecipe?     @relation(fields: [brewRecipeId], references: [id], onDelete: SetNull)
 
   @@index([supplierProductId, effectiveDate])
+  @@index([brewBatchId])
+  @@index([brewRecipeId])
 }
 
 model PriceImport {
@@ -326,8 +336,12 @@ model SquareMapping {
   unitCost   Decimal? @db.Decimal(10, 2)
   /// Revenue class for a bought-in item ("food" | "beer" | "otherBev" | "retail"); null = by its Square category.
   costClass  String?
+  /// The beer this item pours (draft pours). Sales reach a beer by this link first; names only for items not linked.
+  beerId     String?
+  beer       Beer?   @relation(fields: [beerId], references: [id], onDelete: SetNull)
 
   @@index([recipeId]) // perf
+  @@index([beerId])
 }
 
 // Daily sales per Square object (variation or modifier) — aggregated from orders.
@@ -1090,11 +1104,15 @@ model Beer {
   /// Board color (a preset key from src/domain/kegs.ts BEER_COLORS)
   color        String   @default("amber")
   house        Boolean  @default(true)
-  /// The keg ingredient used for pour costing, e.g. "Subversive IPA (keg)"
+  /// The keg ingredient used for pour costing, e.g. "Subversive IPA (keg)". Its price is the keg cost
+  /// everywhere (menu, P&L, demand); packaging a brew of this beer records a new price on it.
   ingredientId String?
-  /// The beer's PREP recipe (batch yield in bbl), so a keg's cost per pint comes from the batch cost
+  ingredient   Ingredient? @relation(fields: [ingredientId], references: [id], onDelete: SetNull)
+  /// @deprecated Old costing path: the beer's kitchen PREP recipe. Only used when the beer has neither a
+  /// keg ingredient nor a live brewing recipe. Kept so no data is lost.
   recipeId     String?
-  /// Square item names (the part before " · ") whose pours come out of this beer's kegs
+  /// Square item names (the part before " · ") whose pours come out of this beer's kegs. Matching by name is
+  /// the fallback; Square items linked to this beer (SquareMapping.beerId) win.
   squareNames  String[] @default([])
   /// Alert when full kegs on hand drop below this many
   minFull      Int      @default(1)
@@ -1125,6 +1143,9 @@ model Beer {
   orderLines   KegOrderLine[]
   brewRecipes  BrewRecipe[]
   brewBatches  BrewBatch[]
+  squareItems  SquareMapping[]
+
+  @@index([ingredientId])
 }
 
 /// A small label/logo image for a beer on the tap list (≤ 300 KB, resized in the browser).
@@ -2324,6 +2345,8 @@ model BrewRecipe {
   updatedAt     DateTime         @updatedAt
   lines         BrewRecipeLine[]
   batches       BrewBatch[]
+  /// Keg prices worked out from this recipe
+  prices        PriceRecord[]
 
   @@index([beerId])
 }
@@ -2407,6 +2430,8 @@ model BrewBatch {
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   stays      TankStay[]
+  /// Keg prices recorded from this brew's cost at packaging
+  prices     PriceRecord[]
 
   @@index([status])
   @@index([beerId])

@@ -113,18 +113,19 @@ export async function linkAssistant() {
   const today = businessToday();
   const from = addDays(today, -LINK_WINDOW_DAYS);
   const [mappings, meta, recipes, cls, beers, sales, rejected, history, cfg, kegs] = await Promise.all([
-    db.squareMapping.findMany({ select: { squareId: true, squareName: true, squareType: true, recipeId: true, ignored: true, unitCost: true, costClass: true, recipe: { select: { name: true } } } }),
+    db.squareMapping.findMany({ select: { squareId: true, squareName: true, squareType: true, recipeId: true, ignored: true, unitCost: true, costClass: true, beerId: true, recipe: { select: { name: true } } } }),
     squareCatalogMeta(),
     linkRecipes(),
     classSettings(),
-    db.beer.findMany({ where: { active: true }, select: { id: true, name: true, squareNames: true, recipeId: true } }),
+    // Each beer with the Square items linked to it (matched by id before name) and its keg ingredient.
+    db.beer.findMany({ where: { active: true }, select: { id: true, name: true, squareNames: true, recipeId: true, ingredientId: true, squareItems: { select: { squareId: true } } } }).then((bs) => bs.map(({ squareItems, ...b }) => ({ ...b, squareIds: squareItems.map((s) => s.squareId) }))),
     db.dailySale.groupBy({ by: ["squareId"], _sum: { qty: true, netSales: true }, where: { date: { gte: new Date(`${from}T00:00:00Z`) } } }),
     loadRejected(),
     linkHistory(),
     kegConfig(),
     db.ingredient.findMany({
       where: { active: true, baseUnit: "ml", conversions: { some: { unit: "keg" } } },
-      select: { name: true, yieldPct: true, conversions: { where: { unit: "keg" }, select: { baseQty: true } }, preferredProduct: { select: { prices: { orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }], take: 1, select: { price: true } } } } },
+      select: { id: true, name: true, yieldPct: true, conversions: { where: { unit: "keg" }, select: { baseQty: true } }, preferredProduct: { select: { prices: { orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }], take: 1, select: { price: true } } } } },
     }),
   ]);
   const byId = new Map(sales.map((s) => [s.squareId, { qty: s._sum.qty?.toNumber() ?? 0, sales: s._sum.netSales?.toNumber() ?? 0 }]));
@@ -170,11 +171,14 @@ export async function linkAssistant() {
   }
   rows.sort((a, b) => b.sales30 - a.sales30 || a.name.localeCompare(b.name));
 
-  // Keg cost per beer: an existing keg ingredient's last price, else none (typed once per beer).
+  // Keg cost per beer: the beer's linked keg ingredient's last price, else none (typed once per beer).
+  // A Square name that isn't a beer yet can only find a keg ingredient by its "(keg)" name.
+  const kegById = new Map(kegs.map((k) => [k.id, k]));
   const kegByName = new Map(kegs.map((k) => [k.name.toLowerCase(), k]));
   const unlinked = rows.filter((r) => !isSettled(r.state));
   const groups: BeerGroupView[] = beerGroups(unlinked, beers, cfg.pours).map((g) => {
-    const k = kegByName.get(`${g.beer.trim()} (keg)`.toLowerCase());
+    const beer = g.beerId ? beers.find((b) => b.id === g.beerId) : undefined;
+    const k = beer ? (beer.ingredientId ? kegById.get(beer.ingredientId) : undefined) : kegByName.get(`${g.beer.trim()} (keg)`.toLowerCase());
     const ml = k?.conversions[0]?.baseQty.toNumber() ?? null;
     const sizeId = ml == null ? "half" : Math.abs(ml / ML_PER_GAL - 7.75) < 0.2 ? "quarter" : Math.abs(ml / ML_PER_GAL - 5.16) < 0.2 ? "sixtel" : Math.abs(ml / ML_PER_GAL - 31) < 0.3 ? "bbl" : Math.abs(ml / ML_PER_FL_OZ / 128 - 13.2) < 0.2 ? "euro50" : "half";
     return { ...g, kegCost: k?.preferredProduct?.prices[0]?.price.toNumber() ?? null, kegSizeId: sizeId, yieldPct: k ? k.yieldPct.toNumber() : 0.9 };

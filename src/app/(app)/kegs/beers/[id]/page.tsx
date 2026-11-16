@@ -4,8 +4,10 @@ import { STANDING_LABEL } from "@/domain/beerStanding";
 import { daysBetween } from "@/domain/dates";
 import { displayCode } from "@/domain/kegs";
 import { abvText } from "@/domain/taps";
+import { abvView } from "@/domain/beerLinks";
 import { requireUser } from "@/server/auth";
 import { beerPage } from "@/server/services/beers";
+import { measuredAbvByBeer } from "@/server/services/beerLinks";
 import { Warehouse } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -28,14 +30,18 @@ const WENT_ORDER = ["tapped", "out", "stock", "none"] as const;
 export default async function BeerPage({ params }: { params: Promise<{ id: string }> }) {
   await requireUser("MANAGER");
   const { id } = await params;
-  const p = await beerPage(id);
+  const [p, measured] = await Promise.all([beerPage(id), measuredAbvByBeer([id]).catch(() => new Map<string, { abv: number; code: string; packagedOn: string | null }>())]);
   if (!p) notFound();
   const { beer: b, bySize, fills, demand } = p;
   const core = b.standing === "core";
   const sold = !!demand && demand.weekly.some((w) => w.pints > 0);
   const nothing = fills.total === 0 && bySize.total.total === 0 && !sold;
   const lastAgo = fills.last ? daysBetween(fills.last, p.today) : null;
-  const facts = [b.style, abvText(b.abv), b.house ? null : "Guest beer"].filter(Boolean).join(" · ");
+  // ABV: typed on Beers, else the brewery's from the latest packaged brew; a typed one far from it gets a hint.
+  const m = measured.get(b.id) ?? null;
+  const abv = abvView(b.abv, m?.abv ?? null);
+  const facts = [b.style, abvText(abv.shown), b.house ? null : "Guest beer"].filter(Boolean).join(" · ");
+  const abvHint = abv.differs && m ? ` Measured ${abvText(m.abv)} (brew ${m.code}).` : "";
 
   return (
     <>
@@ -43,7 +49,7 @@ export default async function BeerPage({ params }: { params: Promise<{ id: strin
         help="kegs.beer"
         title={<span className="inline-flex items-center gap-2.5"><BeerDot color={b.color} className="size-4" />{b.name}</span>}
         back={{ href: "/kegs/beers", label: "Beers" }}
-        description={`${facts ? `${facts}. ` : ""}Counted from keg scans and Square sales, so a keg that moved without a scan is counted where it was last seen.`}
+        description={`${facts ? `${facts}.` : ""}${abvHint}${facts || abvHint ? " " : ""}Counted from keg scans and Square sales, so a keg that moved without a scan is counted where it was last seen.`}
         actions={<LinkButton href={`/kegs/cooler?beer=${b.id}`} size="sm" className="h-10 sm:h-8"><Warehouse className="size-4" /> In the walk-in</LinkButton>}
       />
 

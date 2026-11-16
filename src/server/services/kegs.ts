@@ -4,7 +4,9 @@ import { forecastBeer, monthProfile, planBeer, rotationSentence, runOutFinding, 
 import { nagsAbout, standingOf, stockRows, type Standing } from "@/domain/beerStanding";
 import { addDays, businessDate, type ISODate } from "@/domain/dates";
 import { applyKegAction, distribrewtionId, isFull, isOurCode, kegOz, legacyCandidates, legacyKeys, newKegCode, parseScan, placeLabel, UNDO_SERVER_SECONDS, type ActionInput, type KegActionId, type KegState, type KegStatus } from "@/domain/kegs";
-import { calibrateYield, dollarsPerOz, ozBetween, ozByBeerDay, shareFromHours, splitItemName, tapEstimate, unmatchedDraftNames, type BeerMatcher, type TapEstimate } from "@/domain/kegPours";
+import { chooseFillBatch, type FillBatch } from "@/domain/beerLinks";
+import { calibrateYield, dollarsPerOz, matchSquareItem, ozBetween, ozByBeerDay, shareFromHours, tapEstimate, unmatchedDraftNames, type BeerMatcher, type TapEstimate } from "@/domain/kegPours";
+import { ML_PER_FL_OZ } from "@/domain/draftBeer";
 import { localMinutes } from "@/domain/timecards";
 import { db } from "../db";
 import { settingValue } from "./setting-read";
@@ -114,8 +116,10 @@ export async function findKegByScan(text: string): Promise<{ id: string; code: s
 
 // ---- Sales → ounces ------------------------------------------------------------------------------
 
-export async function beerMatchers(): Promise<(BeerMatcher & { color: string; minFull: number; house: boolean; active: boolean; core: boolean })[]> {
-  return db.beer.findMany({ select: { id: true, name: true, squareNames: true, color: true, minFull: true, house: true, active: true, core: true }, orderBy: { name: "asc" } });
+/** Every beer with what matches its Square sales: the Square items linked to it first, then its names. */
+export async function beerMatchers(): Promise<(BeerMatcher & { squareIds: string[]; color: string; minFull: number; house: boolean; active: boolean; core: boolean })[]> {
+  const rows = await db.beer.findMany({ select: { id: true, name: true, squareNames: true, color: true, minFull: true, house: true, active: true, core: true, squareItems: { select: { squareId: true } } }, orderBy: { name: "asc" } });
+  return rows.map(({ squareItems, ...b }) => ({ ...b, squareIds: squareItems.map((s) => s.squareId) }));
 }
 
 /** Fl oz per Square id from linked pour recipes (draft beer costing), when the recipe says so. */
@@ -133,11 +137,8 @@ async function recipeOzBySquareId(): Promise<Record<string, number>> {
 async function draftSaleRows(from: ISODate, beers: BeerMatcher[]) {
   // Only names that match a beer: find the distinct names once, then pull their rows.
   const names = await db.$queryRaw<{ squareId: string; name: string }[]>`SELECT DISTINCT "squareId", name FROM "DailySale" WHERE date >= ${new Date(`${from}T00:00:00Z`)}::date`;
-  const keep = names.filter((n) => {
-    const { base } = splitItemName(n.name);
-    const k = base.toLowerCase().replace(/[*™®]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-    return beers.some((b) => [b.name, ...b.squareNames].some((s) => s.toLowerCase().replace(/[*™®]/g, "").replace(/[^a-z0-9]+/g, " ").trim() === k));
-  });
+  // Square items linked to a beer, then names for the items that aren't linked.
+  const keep = names.filter((n) => matchSquareItem(n.squareId, n.name, beers) != null);
   if (!keep.length) return [];
   const ids = [...new Set(keep.map((k) => k.squareId))];
   const rows = await db.dailySale.findMany({ where: { squareId: { in: ids }, date: { gte: new Date(`${from}T00:00:00Z`) } }, select: { date: true, squareId: true, name: true, qty: true, netSales: true } });
@@ -424,6 +425,8 @@ export interface DoActionInput extends Omit<ActionInput, "tapArea"> {
   /** Phone-made id; a retry with the same id is applied once. */
   clientId?: string | null;
   groupId?: string | null;
+  /** The keg batch picked (a chip); a typed code finds one of the same beer or makes one. */
+  batchId?: string | null;
   batchCode?: string | null;
   filledOn?: ISODate | null;
   bestBy?: ISODate | null;
@@ -475,13 +478,29 @@ export async function doKegAction(user: { userId: string; name: string }, input:
       };
       let fillId = k.fillId;
       if (r.fill === "start") {
+        // The fill goes on a batch of the same beer, by id: never on another beer's batch, never a stray copy.
+        const asFill = (b: { id: string; code: string; beerId: string | null; brewBatch: { beerId: string | null } | null } | null): FillBatch | null => (b ? { id: b.id, code: b.code, beerId: b.brewBatch?.beerId ?? b.beerId } : null);
+        const sel = { id: true, code: true, beerId: true, brewBatch: { select: { beerId: true } } } as const;
+        const typed = input.batchCode?.trim() || null;
+        const picked = input.batchId ? asFill(await tx.kegBatch.findUnique({ where: { id: input.batchId }, select: sel })) : null;
+        const byCode = !picked && typed ? asFill(await tx.kegBatch.findFirst({ where: { code: { equals: typed, mode: "insensitive" } }, select: sel })) : null;
+        const names = new Map((await tx.beer.findMany({ where: { id: { in: [picked?.beerId, byCode?.beerId].filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((b) => [b.id, b.name]));
+        const choice = chooseFillBatch({ beerId: r.next.beerId, picked, typed, byCode, beerName: (id) => names.get(id) ?? "another beer" });
+        if ("error" in choice) return choice;
         let batchId: string | null = null;
-        if (input.batchCode?.trim()) {
-          const b = await tx.kegBatch.upsert({ where: { code: input.batchCode.trim() }, create: { code: input.batchCode.trim(), beerId: r.next.beerId }, update: {} });
+        let batchCode: string | null = null;
+        if ("use" in choice) {
+          if (choice.setBeer) await tx.kegBatch.update({ where: { id: choice.use }, data: { beerId: r.next.beerId } });
+          batchId = choice.use;
+          batchCode = choice.code;
+        } else if ("create" in choice) {
+          const b = await tx.kegBatch.create({ data: { code: choice.create, beerId: r.next.beerId } });
           batchId = b.id;
+          batchCode = b.code;
         }
         const f = await tx.kegFill.create({
-          data: { kegId: k.id, beerId: r.next.beerId, batchId, batchCode: input.batchCode?.trim() || null, filledOn: new Date(`${input.filledOn ?? businessDate(at, tz())}T00:00:00Z`), bestBy: input.bestBy ? new Date(`${input.bestBy}T00:00:00Z`) : null },
+          // batchCode is only a display copy of the batch's code (the batch is the link).
+          data: { kegId: k.id, beerId: r.next.beerId, batchId, batchCode, filledOn: new Date(`${input.filledOn ?? businessDate(at, tz())}T00:00:00Z`), bestBy: input.bestBy ? new Date(`${input.bestBy}T00:00:00Z`) : null },
         });
         fillId = f.id;
         before.createdFillId = f.id;
@@ -603,7 +622,7 @@ export async function beerDemand(): Promise<{ rows: BeerDemandRow[]; seasonal: b
     tapBoard(),
     db.keg.findMany({ where: { active: true, status: { in: ["COLD", "FILLED"] }, beerId: { not: null } }, select: { beerId: true, sizeId: true } }),
     db.keg.groupBy({ by: ["beerId", "sizeId"], where: { beerId: { not: null } }, _count: { _all: true } }),
-    db.$queryRaw<{ name: string; qty: number }[]>`SELECT name, SUM(qty)::float AS qty FROM "DailySale" WHERE date >= ${new Date(`${addDays(today, -90)}T00:00:00Z`)}::date GROUP BY name`,
+    db.$queryRaw<{ name: string; squareId: string; qty: number }[]>`SELECT name, "squareId", SUM(qty)::float AS qty FROM "DailySale" WHERE date >= ${new Date(`${addDays(today, -90)}T00:00:00Z`)}::date GROUP BY name, "squareId"`,
   ]);
   const total = new Map<ISODate, number>();
   for (const days of oz.values()) for (const [d, v] of days) total.set(d, (total.get(d) ?? 0) + v);
@@ -661,23 +680,36 @@ export const KEG_ACTIONS: KegActionId[] = ["KICK", "TAP", "MOVE", "STORE", "UNTA
 // ---- Cost per pint from the beer's recipe ------------------------------------------------------------
 
 /**
- * Cost per pint and per keg for each beer. Preferred source: the beer's live
- * brewing recipe (Brewery → Recipes) when every line has a price — batch cost
- * ÷ the beer that reaches the kegs. Otherwise, as before, the PREP recipe the
- * beer points at (the brewer's batch, yield in bbl or hl): batch cost ÷ batch
- * volume. Either way ÷ yield for foam and line loss. Beers with neither are left out.
+ * Cost per pint and per keg for each beer, from the same place the menu and
+ * P&L take it: the beer's keg ingredient (Beer.ingredientId), whose price is
+ * set from the latest packaged brew, the brewing recipe, or typed on Draft
+ * beer. A beer with no priced keg ingredient falls back to its live brewing
+ * recipe (when every line has a price), and only then to the old kitchen PREP
+ * recipe (Beer.recipeId, deprecated). Pints ÷ yield for foam and line loss.
  */
 export async function beerCosts(): Promise<Map<string, { perPint: number; perHalf: number; incomplete: boolean; recipe: string }>> {
-  const [beers, liveBrewRecipes] = await Promise.all([
-    db.beer.findMany({ where: { recipeId: { not: null } }, select: { id: true, recipeId: true } }),
+  const [allBeers, liveBrewRecipes] = await Promise.all([
+    db.beer.findMany({ where: { OR: [{ recipeId: { not: null } }, { ingredientId: { not: null } }] }, select: { id: true, recipeId: true, ingredientId: true, ingredient: { select: { name: true } } } }),
     db.brewRecipe.count({ where: { status: "live", beerId: { not: null } } }),
   ]);
   const out = new Map<string, { perPint: number; perHalf: number; incomplete: boolean; recipe: string }>();
-  if (!beers.length && !liveBrewRecipes) return out;
-  const { loadCostingSnapshot, buildContext, safeCost } = await import("./costing");
+  if (!allBeers.length && !liveBrewRecipes) return out;
+  const { loadCostingSnapshot, buildContext, safeCost, ingredientCostSource } = await import("./costing");
   const { toBase } = await import("@/domain/units");
   const [snap, yi] = await Promise.all([loadCostingSnapshot(), yieldInfo()]);
-  const ctx = buildContext(snap, businessToday());
+  const today = businessToday();
+  const ctx = buildContext(snap, today);
+  // 1. The keg ingredient's price: one cost for a keg, shared with menu costs and the P&L.
+  const fromKeg = new Map<string, { perPint: number; perHalf: number; incomplete: boolean; recipe: string }>();
+  for (const b of allBeers) {
+    const ing = b.ingredientId ? snap.ingredients.find((i) => i.id === b.ingredientId) : undefined;
+    const src = ing ? ingredientCostSource(snap, ing, today) : null;
+    if (!src || !(src.pack > 0)) continue;
+    const perMl = src.price / src.pack;
+    fromKeg.set(b.id, { perPint: (perMl * 16 * ML_PER_FL_OZ) / yi.yield, perHalf: perMl * kegOz("half") * ML_PER_FL_OZ, incomplete: false, recipe: `the keg cost (${b.ingredient?.name ?? "keg"})` });
+  }
+  // 3. Deprecated: the kitchen PREP recipe, only for beers with no keg ingredient price and no live brewing recipe.
+  const beers = allBeers.filter((b) => b.recipeId && !fromKeg.has(b.id));
   for (const b of beers) {
     const r = snap.recipes.find((x) => x.id === b.recipeId);
     if (!r) continue;
@@ -693,11 +725,15 @@ export async function beerCosts(): Promise<Map<string, { perPint: number; perHal
     const perMl = c.totalCost / ml / yi.yield;
     out.set(b.id, { perPint: perMl * 16 * 29.5735295625, perHalf: perMl * kegOz("half") * 29.5735295625 * yi.yield, incomplete: c.incomplete, recipe: r.name });
   }
-  if (!liveBrewRecipes) return out;
-  // A live, fully priced brewing recipe wins over the PREP recipe.
-  const [{ brewPourCosts }, { preferBrewCosts }] = await Promise.all([import("./brewCost"), import("@/domain/brewRecipes")]);
-  const brew = await brewPourCosts(yi.yield, kegOz("half"));
-  return preferBrewCosts(new Map([...brew].map(([id, c]) => [id, { ...c, incomplete: false }])), out);
+  // 2. A live, fully priced brewing recipe wins over the PREP recipe; the keg ingredient wins over both.
+  let merged: Map<string, { perPint: number; perHalf: number; incomplete: boolean; recipe: string }> = out;
+  if (liveBrewRecipes) {
+    const [{ brewPourCosts }, { preferBrewCosts }] = await Promise.all([import("./brewCost"), import("@/domain/brewRecipes")]);
+    const brew = await brewPourCosts(yi.yield, kegOz("half"));
+    merged = preferBrewCosts(new Map([...brew].map(([id, c]) => [id, { ...c, incomplete: false }])), out);
+  }
+  for (const [id, c] of fromKeg) merged.set(id, c);
+  return merged;
 }
 
 // ---- What the scan panel needs -----------------------------------------------------------------------
@@ -712,7 +748,13 @@ export async function panelContext() {
     db.beer.findMany({ where: { active: true }, orderBy: [{ core: "desc" }, { name: "asc" }], select: { id: true, name: true, color: true } }),
     db.keg.findMany({ where: { status: "ON_TAP", tapLine: { not: null } }, select: { id: true, tapLine: true, beer: { select: { name: true } } } }),
     // Keg batches packaged lately (the brewery makes one when a brew is packaged), newest first, to pick when filling.
-    db.kegBatch.findMany({ where: { beerId: { not: null }, packagedOn: { gte: new Date(`${addDays(businessToday(), -45)}T00:00:00Z`) } }, orderBy: [{ packagedOn: "desc" }, { code: "desc" }], take: 40, select: { code: true, beerId: true, packagedOn: true } }),
+    // A batch from a brew takes its beer and packaging day from the brew.
+    db.kegBatch.findMany({
+      where: { OR: [{ beerId: { not: null }, packagedOn: { gte: new Date(`${addDays(businessToday(), -45)}T00:00:00Z`) } }, { brewBatch: { beerId: { not: null }, packagedOn: { gte: new Date(`${addDays(businessToday(), -45)}T00:00:00Z`) } } }] },
+      orderBy: [{ packagedOn: "desc" }, { code: "desc" }],
+      take: 40,
+      select: { id: true, code: true, beerId: true, packagedOn: true, brewBatch: { select: { beerId: true, packagedOn: true } } },
+    }),
   ]);
   return {
     tapLines: cfg.tapLines,
@@ -723,7 +765,10 @@ export async function panelContext() {
     accounts,
     beers,
     busy: onTap.map((k) => ({ line: k.tapLine!, kegId: k.id, beer: k.beer?.name ?? null })),
-    batches: batches.map((b) => ({ code: b.code, beerId: b.beerId!, packagedOn: b.packagedOn?.toISOString().slice(0, 10) ?? null })),
+    batches: batches
+      .map((b) => ({ id: b.id, code: b.code, beerId: (b.brewBatch?.beerId ?? b.beerId)!, packagedOn: (b.brewBatch?.packagedOn ?? b.packagedOn)?.toISOString().slice(0, 10) ?? null }))
+      .filter((b) => !!b.beerId)
+      .sort((a, z) => (z.packagedOn ?? "").localeCompare(a.packagedOn ?? "") || z.code.localeCompare(a.code)),
   };
 }
 export type PanelContext = Awaited<ReturnType<typeof panelContext>>;

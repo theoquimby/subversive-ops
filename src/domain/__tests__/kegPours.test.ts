@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calibrateYield, matchBeer, ozBetween, ozByBeerDay, pourOz, shareFromHours, splitItemName, tapEstimate, unmatchedDraftNames } from "../kegPours";
+import { beersNamed, calibrateYield, matchBeer, matchSquareItem, ozBetween, ozByBeerDay, pourOz, shareFromHours, splitItemName, tapEstimate, unmatchedDraftNames } from "../kegPours";
 import { kegOz } from "../kegs";
 
 const beers = [
@@ -30,6 +30,22 @@ describe("Square item names", () => {
     expect(matchBeer("New York Nectar*", beers)).toBe("nectar");
     expect(matchBeer("golden  lager", beers)).toBe("lager");
     expect(matchBeer("Pilsner", beers)).toBeNull();
+  });
+  it("matches a linked Square item by its id first, names only for items not linked", () => {
+    const linked = [{ ...beers[0], squareIds: ["sq-pils"] }, beers[1]];
+    // Linked to Nectar although its name says lager.
+    expect(matchSquareItem("sq-pils", "Golden Lager · Full Pour", linked)).toBe("nectar");
+    expect(matchSquareItem("sq-other", "Golden Lager · Full Pour", linked)).toBe("lager");
+    expect(matchSquareItem(null, "Pilsner · Full Pour", linked)).toBeNull();
+    const m = ozByBeerDay([{ date: "2026-11-10", squareId: "sq-pils", name: "House Pils · Full Pour", qty: 2 }], linked);
+    expect(m.get("nectar")?.get("2026-11-10")).toBe(32);
+    expect(unmatchedDraftNames([{ name: "House Pils · Full Pour", qty: 5, squareId: "sq-pils" }], linked)).toEqual([]);
+  });
+  it("lists every beer a name could be, so only a clean match is linked", () => {
+    expect(beersNamed("New York Nectar* · Full Pour", beers)).toEqual(["nectar"]);
+    expect(beersNamed("Pilsner · Full Pour", beers)).toEqual([]);
+    const two = [...beers, { id: "nectar2", name: "Nectar", squareNames: ["new york nectar"] }];
+    expect(beersNamed("New York Nectar · Half Pour", two)).toEqual(["nectar", "nectar2"]);
   });
   it("adds up ounces per beer per day", () => {
     const m = ozByBeerDay([

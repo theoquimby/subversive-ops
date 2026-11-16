@@ -9,6 +9,7 @@ import { db, num } from "../db";
 import { asDate, iso, loadPlan, readExtra, type GravityReading } from "./brewery";
 import { markBrewed, packageBatch } from "./breweryWrite";
 import { recordBrewUsage } from "./brewStock";
+import { syncGravity } from "./brewGravity";
 import { businessToday } from "./sales";
 
 /**
@@ -257,13 +258,14 @@ export async function saveBrewLog(batchId: string, sent: unknown): Promise<{ log
     where: { id: batchId },
     data: {
       brewLog: asJson(keep),
-      ...(typeof p.fgSg === "number" ? { fg: D(p.fgSg, 4) } : {}),
       ...(kegs("halfKegs") != null ? { halfKegs: kegs("halfKegs") } : {}),
       ...(kegs("sixthKegs") != null ? { sixthKegs: kegs("sixthKegs") } : {}),
       ...(kegs("cases") != null ? { cases: kegs("cases") } : {}),
       ...(typeof p.co2Vols === "number" && p.co2Vols < 10 ? { co2Vols: D(p.co2Vols, 2) } : {}),
     },
   });
+  // OG/FG come from the readings, with the log's OG and FG when there's no reading.
+  await syncGravity(batchId);
   return { log: keep, kept: "sent" };
 }
 

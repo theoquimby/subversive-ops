@@ -6,8 +6,10 @@ import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { beerMatchers, kegAreas, kegConfig } from "@/server/services/kegs";
 import { businessToday } from "@/server/services/sales";
-import { matchBeer } from "@/domain/kegPours";
+import { matchSquareItem } from "@/domain/kegPours";
+import { needsALook } from "@/server/services/beerLinks";
 import { AccountsTable, BeersTable, PoursEditor, SpotsEditor, TapsConfig } from "./setup-client";
+import { NeedsALookList } from "./needs-look";
 import { publicOrigin } from "@/server/services/public-url";
 import { boardConfig, displayToken } from "@/server/services/taps";
 import { BoardLink } from "../taps/board-link";
@@ -20,7 +22,7 @@ export default async function KegSetupPage() {
   await requireUser("MANAGER");
   const since = addDays(businessToday(), -90);
   const [token, origin, board] = await Promise.all([displayToken(), publicOrigin(), boardConfig()]);
-  const [beers, kegCounts, recipes, spots, spotCounts, areas, config, accounts, outCounts, matchers, sales] = await Promise.all([
+  const [beers, kegCounts, recipes, spots, spotCounts, areas, config, accounts, outCounts, matchers, sales, squareItems, needs] = await Promise.all([
     db.beer.findMany({ orderBy: [{ active: "desc" }, { core: "desc" }, { name: "asc" }] }),
     db.keg.groupBy({ by: ["beerId"], _count: { _all: true } }),
     db.recipe.findMany({ where: { kind: "PREP", active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
@@ -31,13 +33,16 @@ export default async function KegSetupPage() {
     db.kegAccount.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }),
     db.keg.groupBy({ by: ["accountId"], where: { status: "OUT" }, _count: { _all: true } }),
     beerMatchers(),
-    db.$queryRaw<{ name: string; qty: number }[]>`SELECT name, SUM(qty)::float AS qty FROM "DailySale" WHERE date >= ${new Date(`${since}T00:00:00Z`)}::date GROUP BY name`,
+    db.$queryRaw<{ name: string; squareId: string; qty: number }[]>`SELECT name, "squareId", SUM(qty)::float AS qty FROM "DailySale" WHERE date >= ${new Date(`${since}T00:00:00Z`)}::date GROUP BY name, "squareId"`,
+    // Square items a beer can be linked to (its pours).
+    db.squareMapping.findMany({ where: { squareType: "ITEM_VARIATION", ignored: false }, select: { squareId: true, squareName: true, beerId: true }, orderBy: { squareName: "asc" } }),
+    needsALook(),
   ]);
   // Pour sizes in use: every variation of a beer's Square items, plus any saved one.
   const pours = new Map<string, { variation: string; oz: number; saved: boolean; sold: number }>();
   for (const s of sales) {
-    const { base, variation } = splitItemName(s.name);
-    if (!matchBeer(base, matchers)) continue;
+    const { variation } = splitItemName(s.name);
+    if (!matchSquareItem(s.squareId, s.name, matchers)) continue;
     const v = (variation ?? "Regular").trim();
     const k = v.toLowerCase();
     const cur = pours.get(k) ?? { variation: v, oz: pourOz(variation, { overrides: config.pours }), saved: config.pours[k] != null, sold: 0 };
@@ -53,8 +58,21 @@ export default async function KegSetupPage() {
 
       <CoreHelperSection />
 
-      <Section help="kegs.setup.beers" title={<span className="inline-flex items-center gap-1">Beers <HelpTip id="kegs.setup.beers" /></span>} description="Core beers are the ones you never want to run out of; only they get fill suggestions and alerts. Square item names are the part before the pour, e.g. “New York Nectar*” for “New York Nectar* · Full Pour”. Leave blank if it's the beer's own name.">
-        <BeersTable beers={beers.map((b) => ({ id: b.id, name: b.name, style: b.style, color: b.color, squareNames: b.squareNames, minFull: b.minFull, house: b.house, standing: standingOf(b), recipeId: b.recipeId, kegs: kc.get(b.id) ?? 0 }))} recipes={recipes} />
+      {needs.count > 0 && (
+        <>
+          <div id="needs-a-look" className="scroll-mt-20" />
+          <Section help="kegs.setup.needs" title={<span className="inline-flex items-center gap-1">Needs a look <HelpTip id="kegs.setup.needs" /></span>} description={`${needs.count} thing${needs.count === 1 ? "" : "s"} around your beers that don't link up on their own. Nothing here was changed for you.`}>
+            <NeedsALookList data={needs} />
+          </Section>
+        </>
+      )}
+
+      <Section help="kegs.setup.beers" title={<span className="inline-flex items-center gap-1">Beers <HelpTip id="kegs.setup.beers" /></span>} description="Core beers are the ones you never want to run out of; only they get fill suggestions and alerts. Open a beer to link its Square pours. Typed Square names (the part before the pour, like “New York Nectar*”) link the items they name, and match any item that isn't linked.">
+        <BeersTable
+          beers={beers.map((b) => ({ id: b.id, name: b.name, style: b.style, color: b.color, squareNames: b.squareNames, minFull: b.minFull, house: b.house, standing: standingOf(b), recipeId: b.recipeId, kegs: kc.get(b.id) ?? 0 }))}
+          recipes={recipes}
+          squareItems={squareItems.map((s) => ({ squareId: s.squareId, name: s.squareName, beerId: s.beerId }))}
+        />
       </Section>
 
       <div id="spots" className="scroll-mt-20" />

@@ -17,7 +17,7 @@ export const taps: HelpEntry[] = [
     area: "kegs",
     route: "/kegs/beers",
     title: "Beers on the board",
-    body: "Style, ABV, IBU, a one-line description, color or a small label image, and prices for each beer. Click a cell and type; it saves on Enter. These show on the TV board and the website.",
+    body: "Style, ABV, IBU, a one-line description, color or a small label image, and prices for each beer. Click a cell and type; it saves on Enter. These show on the TV board and the website. With no ABV typed, the board shows the ABV of the beer's latest packaged brew; a typed ABV more than 0.3% from it gets a note on the beer's page.",
     related: ["taps.prices", "taps.square", "taps.list"],
     keywords: ["abv", "ibu", "style", "description", "label", "logo", "image", "gluten", "beer details"],
   },

@@ -9,7 +9,7 @@
 import { classifyCategory, type ClassMap, type RevenueClass } from "./revenueClass";
 import { matchConfidence } from "./squareMenu";
 import { nameScore } from "./salesNameMatch";
-import { beerKey, matchBeer, pourOz, splitItemName, type BeerMatcher } from "./kegPours";
+import { beerKey, matchSquareItem, pourOz, splitItemName, type BeerMatcher } from "./kegPours";
 
 // ---- Shapes ---------------------------------------------------------------------------
 
@@ -180,7 +180,8 @@ export function classifyItem(item: LinkItem, beers: readonly BeerMatcher[] = [],
   const cls = item.category ? classifyCategory(item.category, classMap) : null;
   if (RETAIL.test(n) || cls === "retail") return { kind: "retail", beerId: null, beerName: null };
   const { base, variation } = splitItemName(n);
-  const beerId = matchBeer(base, [...beers]);
+  // A Square item linked to a beer is that beer; the rest match by name.
+  const beerId = matchSquareItem(item.squareId, n, [...beers]);
   if (PACKAGED.test(n)) return { kind: "packaged", beerId, beerName: beerId ? beers.find((b) => b.id === beerId)!.name : null };
   if (!item.modifier && (beerId || (variation && POUR.test(variation) && (cls === "beer" || /\bpour\b/i.test(variation))) || /\bflight\b/i.test(n))) {
     // Cocktails with a "glass" variation aren't beer.

@@ -59,6 +59,8 @@ export interface BeerMatcher {
   id: string;
   name: string;
   squareNames: string[];
+  /** Square items linked to this beer (SquareMapping.beerId): matched by id before any name. */
+  squareIds?: readonly string[];
 }
 
 /** The beer a Square item base name belongs to: an explicit Square name first, then the beer's own name. */
@@ -68,6 +70,22 @@ export function matchBeer(base: string, beers: BeerMatcher[]): string | null {
   for (const b of beers) if (b.squareNames.some((s) => beerKey(s) === k)) return b.id;
   for (const b of beers) if (beerKey(b.name) === k) return b.id;
   return null;
+}
+
+/** Every beer a Square item name could be, by its own name or a typed Square name. Exactly one = a clean match to link. */
+export function beersNamed(itemName: string, beers: BeerMatcher[]): string[] {
+  const k = beerKey(splitItemName(itemName).base);
+  if (!k) return [];
+  return beers.filter((b) => beerKey(b.name) === k || b.squareNames.some((s) => beerKey(s) === k)).map((b) => b.id);
+}
+
+/**
+ * The beer a Square item pours: the beer it's linked to, else by its name
+ * (`matchBeer`). An item linked to a beer is never matched to another one by name.
+ */
+export function matchSquareItem(squareId: string | null | undefined, name: string, beers: BeerMatcher[]): string | null {
+  if (squareId) for (const b of beers) if (b.squareIds?.includes(squareId)) return b.id;
+  return matchBeer(splitItemName(name).base, beers);
 }
 
 export interface SaleRow {
@@ -84,8 +102,8 @@ export function pourResolver(beers: BeerMatcher[], opts: { overrides?: Record<st
     const key = `${squareId}|${name}`;
     let hit = cache.get(key);
     if (!hit) {
-      const { base, variation } = splitItemName(name);
-      hit = { beer: matchBeer(base, beers), oz: pourOz(variation, { overrides: opts.overrides, recipeOz: opts.recipeOz?.[squareId] }) };
+      const { variation } = splitItemName(name);
+      hit = { beer: matchSquareItem(squareId, name, beers), oz: pourOz(variation, { overrides: opts.overrides, recipeOz: opts.recipeOz?.[squareId] }) };
       cache.set(key, hit);
     }
     return hit;
@@ -122,11 +140,11 @@ export function dollarsPerOz(rows: (SaleRow & { netSales: number })[], beers: Be
 }
 
 /** Square base names that look like draft beer and aren't matched yet, with how many sold — suggestions for the beer list. */
-export function unmatchedDraftNames(rows: { name: string; qty: number }[], beers: BeerMatcher[]): { base: string; qty: number }[] {
+export function unmatchedDraftNames(rows: { name: string; qty: number; squareId?: string | null }[], beers: BeerMatcher[]): { base: string; qty: number }[] {
   const by = new Map<string, { base: string; qty: number }>();
   for (const r of rows) {
     const { base, variation } = splitItemName(r.name);
-    if (!variation || !POUR_WORD.test(variation) || matchBeer(base, beers)) continue;
+    if (!variation || !POUR_WORD.test(variation) || matchSquareItem(r.squareId, r.name, beers)) continue;
     const k = beerKey(base);
     const cur = by.get(k) ?? { base, qty: 0 };
     cur.qty += r.qty;

@@ -1,6 +1,8 @@
 import "server-only";
 import { beerColor } from "@/domain/kegs";
-import { matchBeer, pourOz, splitItemName } from "@/domain/kegPours";
+import { matchBeer, matchSquareItem, pourOz, splitItemName } from "@/domain/kegPours";
+import { abvView } from "@/domain/beerLinks";
+import { measuredAbvByBeer } from "./beerLinks";
 import {
   boardPoursShown,
   comingSoon,
@@ -106,20 +108,22 @@ export interface BeerPricing {
 }
 
 /** Pours and prices per beer: typed on the Beers page, else Square's catalog, else draft beer pour recipes. */
-export async function beerPricing(beers: { id: string; name: string; squareNames: string[]; boardPours: string | null }[]): Promise<Map<string, BeerPricing>> {
+export async function beerPricing(beers: { id: string; name: string; squareNames: string[]; boardPours: string | null; ingredientId?: string | null }[]): Promise<Map<string, BeerPricing>> {
   const [maps, meta, recipes, cfg] = await Promise.all([
-    db.squareMapping.findMany({ where: { squareType: "ITEM_VARIATION", ignored: false }, select: { squareId: true, squareName: true, recipe: { select: { menuPrice: true, lines: { select: { qty: true, unit: true } } } } } }),
+    db.squareMapping.findMany({ where: { squareType: "ITEM_VARIATION", ignored: false }, select: { squareId: true, squareName: true, beerId: true, recipe: { select: { menuPrice: true, lines: { select: { qty: true, unit: true } } } } } }),
     squareCatalogMeta(),
-    db.recipe.findMany({ where: { kind: "MENU", active: true, category: "Beer", menuPrice: { not: null } }, select: { name: true, menuPrice: true, lines: { select: { qty: true, unit: true } } } }),
+    db.recipe.findMany({ where: { kind: "MENU", active: true, category: "Beer", menuPrice: { not: null } }, select: { name: true, menuPrice: true, lines: { select: { qty: true, unit: true, ingredientId: true } } } }),
     kegConfig(),
   ]);
   const ozOf = (lines: { qty: { toNumber(): number }; unit: string }[]) => lines.filter((l) => /^(fl ?oz|oz)$/i.test(l.unit.trim())).reduce((s, l) => s + l.qty.toNumber(), 0);
   const synced = Object.keys(meta).length > 0;
-  const matchers = beers.map((b) => ({ id: b.id, name: b.name, squareNames: b.squareNames }));
+  // Square items linked to a beer match it by id; the rest by name.
+  const matchers = beers.map((b) => ({ id: b.id, name: b.name, squareNames: b.squareNames, squareIds: maps.filter((m) => m.beerId === b.id).map((m) => m.squareId) }));
+  const byKeg = new Map(beers.filter((b) => b.ingredientId).map((b) => [b.ingredientId!, b.id]));
   const sq = new Map<string, (SquarePourLink & { oz: number })[]>();
   for (const m of maps) {
-    const { base, variation } = splitItemName(m.squareName);
-    const id = matchBeer(base, matchers);
+    const { variation } = splitItemName(m.squareName);
+    const id = matchSquareItem(m.squareId, m.squareName, matchers);
     if (!id) continue;
     const x = meta[m.squareId];
     const rOz = m.recipe ? ozOf(m.recipe.lines) : 0;
@@ -132,7 +136,9 @@ export async function beerPricing(beers: { id: string; name: string; squareNames
   const rec = new Map<string, PourCandidate[]>();
   for (const r of recipes) {
     const { base, variation } = splitItemName(r.name);
-    const id = matchBeer(base, matchers);
+    // A pour recipe belongs to the beer whose keg ingredient it uses; by name only when it uses none.
+    const keg = r.lines.map((l) => (l.ingredientId ? byKeg.get(l.ingredientId) : undefined)).find(Boolean);
+    const id = keg ?? matchBeer(base, matchers);
     if (!id || !variation) continue;
     const list = rec.get(id) ?? [];
     list.push({ variation, oz: ozOf(r.lines) || pourOz(variation, { overrides: cfg.pours }), price: num(r.menuPrice) });
@@ -200,13 +206,16 @@ export const labelUrl = (beerId: string, at: Date | null) => (at ? `/api/public/
 
 /** What's pouring now, in board order, with details, prices, badges and coming soon. */
 export async function tapList(): Promise<TapList> {
-  const [{ taps }, cfg, beers, full] = await Promise.all([
+  const [{ taps }, cfg, beers, full, measured] = await Promise.all([
     tapBoard(),
     boardConfig(),
-    db.beer.findMany({ select: { id: true, name: true, style: true, color: true, house: true, active: true, squareNames: true, abv: true, ibu: true, description: true, diet: true, boardPours: true, comingSoon: true, labelAt: true } }),
+    db.beer.findMany({ select: { id: true, name: true, style: true, color: true, house: true, active: true, squareNames: true, abv: true, ibu: true, description: true, diet: true, boardPours: true, comingSoon: true, labelAt: true, ingredientId: true } }),
     db.keg.groupBy({ by: ["beerId"], where: { active: true, status: { in: ["FILLED", "COLD"] }, beerId: { not: null } }, _count: { _all: true } }),
+    // ABV measured by the brewery (latest packaged brew): shown when none is typed.
+    measuredAbvByBeer().catch(() => new Map<string, { abv: number }>()),
   ]);
   const pricing = await beerPricing(beers);
+  const abvOf = (b: { id: string; abv: { toNumber(): number } | null } | undefined) => (b ? abvView(b.abv ? b.abv.toNumber() : null, measured.get(b.id)?.abv ?? null).shown : null);
   const byId = new Map(beers.map((b) => [b.id, b]));
   const now = new Date();
   const lines = taps.filter((t) => t.line > 0).map((t) => t.line);
@@ -226,7 +235,7 @@ export async function tapList(): Promise<TapList> {
       beerId: t.keg.beerId,
       beer: t.keg.beer ?? "Unknown beer",
       style: b?.style ?? null,
-      abv: num(b?.abv ?? null),
+      abv: abvOf(b),
       ibu: b?.ibu ?? null,
       description: b?.description ?? null,
       diet: b?.diet ?? null,
@@ -253,7 +262,7 @@ export async function tapList(): Promise<TapList> {
     { auto: cfg.autoComingSoon },
   ).map((s) => {
     const b = byId.get(s.id)!;
-    return { beerId: b.id, beer: b.name, style: b.style, abv: num(b.abv), color: b.color, fullKegs: s.fullKegs, pinned: b.comingSoon === true };
+    return { beerId: b.id, beer: b.name, style: b.style, abv: abvOf(b), color: b.color, fullKegs: s.fullKegs, pinned: b.comingSoon === true };
   });
   return { title: cfg.title, rows, free: order.filter((l) => !busy.has(l)), order, comingSoon: soon, autoComingSoon: cfg.autoComingSoon, updatedAt: now.toISOString() };
 }

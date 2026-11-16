@@ -1,12 +1,14 @@
 "use client";
 
 import { Button, Card, Field, Input, Select } from "@/components/ui";
-import { DEFAULT_POURS, KEG_SIZES, planDraftBeer } from "@/domain/draftBeer";
+import { kegPrice } from "@/domain/beerLinks";
+import { DEFAULT_POURS, KEG_SIZES, ML_PER_GAL, planDraftBeer } from "@/domain/draftBeer";
 import { money, pct } from "@/lib/format";
 import { Plus, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { createDraftBeer } from "./actions";
+import { applyBrewingKegCost, createDraftBeer } from "./actions";
 
 interface PourRow {
   label: string;
@@ -19,10 +21,30 @@ const NONE = "__none";
 const HOUSE = "__house";
 const toNum = (s: string) => (s.trim() === "" ? NaN : Number(s.replace(/[$,%\s]/g, "")));
 
-export function DraftBeerFormView({ suppliers, squareItems }: { suppliers: { id: string; name: string }[]; squareItems: { value: string; label: string; hint?: string }[] }) {
+/** "Use $52.40 from brew 26-031": record brewing's keg cost for a beer. */
+export function BrewingCostButton({ beerId, label }: { beerId: string; label: string }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<{ error?: string; ok?: string } | null>(null);
+  return (
+    <div className="mt-1">
+      <Button type="button" size="sm" variant="ghost" className="h-10 sm:h-8" disabled={pending} onClick={() => start(async () => { const r = await applyBrewingKegCost(beerId); setMsg(r); if (!r.error) router.refresh(); })}>{label}</Button>
+      {msg?.error && <div className="text-xs text-bad">{msg.error}</div>}
+    </div>
+  );
+}
+
+export function DraftBeerFormView({ suppliers, squareItems, brewing = [] }: { suppliers: { id: string; name: string }[]; squareItems: { value: string; label: string; hint?: string }[]; brewing?: { beer: string; perMl: number; label: string }[] }) {
   const [beer, setBeer] = useState("");
   const [size, setSize] = useState("half");
-  const [cost, setCost] = useState("");
+  const [typedCost, setCost] = useState("");
+  // A house beer's keg cost comes from brewing until someone types one.
+  const [costTyped, setCostTyped] = useState(false);
+  const fromBrewing = brewing.find((b) => b.beer.trim().toLowerCase() === beer.trim().toLowerCase()) ?? null;
+  const gallons = KEG_SIZES.find((k) => k.id === size)?.gallons ?? 0;
+  const suggested = fromBrewing && gallons > 0 ? kegPrice(fromBrewing.perMl, gallons * ML_PER_GAL) : null;
+  const usingBrewing = !costTyped && suggested != null;
+  const cost = usingBrewing ? suggested.toFixed(2) : typedCost;
   const [yieldPct, setYieldPct] = useState("95");
   const [supplier, setSupplier] = useState(suppliers.find((s) => s.name === "House brewery")?.id ?? HOUSE);
   const [pours, setPours] = useState<PourRow[]>(DEFAULT_POURS.map((p) => ({ label: p.label, oz: String(p.oz), price: p.price == null ? "" : String(p.price), squareId: NONE })));
@@ -49,6 +71,7 @@ export function DraftBeerFormView({ suppliers, squareItems }: { suppliers: { id:
         setResult({ ok: `${beer.trim()} is set up: keg plus ${res.recipes} pour${res.recipes === 1 ? "" : "s"}.` });
         setBeer("");
         setCost("");
+        setCostTyped(false);
       }
     });
 
@@ -61,8 +84,8 @@ export function DraftBeerFormView({ suppliers, squareItems }: { suppliers: { id:
         <Field label="Keg">
           <Select value={size} onChange={(e) => setSize(e.target.value)} options={KEG_SIZES.map((k) => ({ value: k.id, label: k.label }))} aria-label="Keg size" />
         </Field>
-        <Field label="Cost per keg" hint="What it costs you to brew or buy">
-          <Input value={cost} onChange={(e) => setCost(e.target.value)} inputMode="decimal" placeholder="$140" aria-label="Cost per keg" />
+        <Field label="Cost per keg" hint={usingBrewing ? fromBrewing!.label : "What it costs you to brew or buy"}>
+          <Input value={cost} onChange={(e) => { setCost(e.target.value); setCostTyped(true); }} inputMode="decimal" placeholder="$140" aria-label="Cost per keg" />
         </Field>
         <Field label="Usable %" hint="After foam and line loss">
           <Input value={yieldPct} onChange={(e) => setYieldPct(e.target.value)} inputMode="decimal" aria-label="Usable percent" />

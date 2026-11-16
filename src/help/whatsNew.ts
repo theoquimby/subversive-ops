@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.30 (beers linked up) ----
+  {
+    id: "2026-11-16.beer-links",
+    date: "2026-11-16",
+    title: "One keg cost, from the brewery",
+    line: "Packaging a brew sets its keg cost everywhere, Square pours link to their beer, and Setup lists loose ends.",
+    icon: "keg",
+    area: "floor",
+    href: "/kegs/setup",
+    help: "kegs.setup.needs",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.29 (one record each, linked) ----
   {
     id: "2026-11-16.one-record",

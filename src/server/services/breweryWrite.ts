@@ -23,6 +23,10 @@ import {
   type TimelineEntry,
 } from "./brewery";
 import { brewCostFor } from "./brewCost";
+import { brewBeer } from "@/domain/beerLinks";
+import { gravityFromReadings, removeReading, typedGravity, typedGravityDate, type Reading } from "@/domain/brewGravity";
+import { priceKegFromBrew } from "./beerLinks";
+import { extraWithReadings, gravityPatch, syncGravity } from "./brewGravity";
 import { businessToday } from "./sales";
 
 /**
@@ -236,12 +240,28 @@ async function frozenCost(recipeId: string | null, bbl: number | null) {
 
 const extraWith = (extra: unknown, patch: Record<string, unknown>) => ({ ...((extra && typeof extra === "object" ? extra : {}) as Record<string, unknown>), ...patch }) as Prisma.InputJsonObject;
 
-/** The extra with one more history line (and reading, when given). */
-function withHistory(extra: unknown, entry: TimelineEntry, reading?: GravityReading | null): Prisma.InputJsonObject {
+/** The extra with one more history line (and the readings, when given: from `gravityPatch`, so OG/FG match them). */
+function withHistory(extra: unknown, entry: TimelineEntry, readings?: Reading[]): Prisma.InputJsonObject {
   const x = readExtra(extra);
   return extraWith(extra, {
     timeline: [...x.timeline, entry] as unknown as Prisma.InputJsonArray,
-    ...(reading ? { readings: [...x.readings, reading].sort((a, b) => a.on.localeCompare(b.on)) as unknown as Prisma.InputJsonArray } : {}),
+    ...(readings ? { readings: readings as unknown as Prisma.InputJsonArray } : {}),
+  });
+}
+
+/** Add one reading to a brew's readings (with `gravityPatch`). */
+const plus = (reading: GravityReading | null) => (rs: Reading[]) => (reading ? [...rs, reading as Reading] : rs);
+
+/**
+ * A keg batch made from a brew reads its beer and dates from the brew: keep
+ * them in step whenever the brew's beer or dates change.
+ */
+async function syncKegBatch(brewId: string, tx: Prisma.TransactionClient | typeof db = db) {
+  const b = await tx.brewBatch.findUnique({ where: { id: brewId }, select: { kegBatchId: true, beerId: true, brewedOn: true, packagedOn: true } });
+  if (!b?.kegBatchId) return;
+  await tx.kegBatch.update({
+    where: { id: b.kegBatchId },
+    data: { ...(b.beerId ? { beerId: b.beerId } : {}), ...(b.brewedOn ? { brewedOn: b.brewedOn } : {}), ...(b.packagedOn ? { packagedOn: b.packagedOn } : {}) },
   });
 }
 
@@ -422,11 +442,16 @@ export async function brewIntoTank(i: { tankId: string; recipeId: string | null;
         status: "FERMENTING",
         brewedOn: asDate(i.brewedOn),
         bbl: i.bbl,
+        // The OG is a reading; the column is its cache.
         og: i.og ?? null,
         cost,
         dryHopOn: dateOrNull(t.dryHopOn),
         tapOn: asDate(t.tapOn),
-        extra: { ...(unpriced != null ? { unpricedLines: unpriced } : {}), ...(t.fvTransferOn ? { fvTransferOn: t.fvTransferOn } : {}) },
+        extra: {
+          ...(unpriced != null ? { unpricedLines: unpriced } : {}),
+          ...(t.fvTransferOn ? { fvTransferOn: t.fvTransferOn } : {}),
+          ...(i.og != null ? { readings: [{ on: i.brewedOn, sg: i.og, kind: "og", note: "Brew day" }] } : {}),
+        },
       },
     });
     await tx.tankStay.create({ data: { tankId: tank.id, batchId: b.id, start: asDate(i.brewedOn), end: asDate(t.transferOn), planned: false } });
@@ -461,6 +486,8 @@ export async function markBrewed(batchId: string, i: { brewedOn: ISODate; bbl?: 
   const delta = first ? daysBetween(iso(first.start)!, i.brewedOn) : b.plannedOn ? daysBetween(iso(b.plannedOn)!, i.brewedOn) : 0;
   const shift = (d: Date | null) => (d && delta ? asDate(addDays(iso(d)!, delta)) : d);
   const x = readExtra(b.extra);
+  // An OG given at the finish is the brew's OG reading.
+  const g = gravityPatch(b, i.og != null ? (rs) => typedGravity(rs, "og", i.og!, i.brewedOn) : undefined);
   await db.$transaction(async (tx) => {
     if (first) await tx.tankStay.update({ where: { id: first.id }, data: { tankId, start: asDate(i.brewedOn), end: first.end ? shift(first.end) : null, planned: false } });
     else await tx.tankStay.create({ data: { tankId, batchId, start: asDate(i.brewedOn), end: null, planned: false } });
@@ -474,11 +501,12 @@ export async function markBrewed(batchId: string, i: { brewedOn: ISODate; bbl?: 
         status: "FERMENTING",
         brewedOn: asDate(i.brewedOn),
         bbl,
-        og: i.og ?? b.og,
+        og: g.og,
+        fg: g.fg,
         cost,
         dryHopOn: shift(b.dryHopOn),
         tapOn: b.tapLocked ? b.tapOn : shift(b.tapOn),
-        extra: extraWith(b.extra, { ...(unpriced != null ? { unpricedLines: unpriced } : {}), ...(x.fvTransferOn && delta ? { fvTransferOn: addDays(x.fvTransferOn, delta) } : {}) }),
+        extra: extraWith(extraWithReadings(b.extra, g.readings), { ...(unpriced != null ? { unpricedLines: unpriced } : {}), ...(x.fvTransferOn && delta ? { fvTransferOn: addDays(x.fvTransferOn, delta) } : {}) }),
       },
     });
   });
@@ -541,6 +569,7 @@ export async function moveBatch(batchId: string, i: MoveInput): Promise<Res> {
   const reading: GravityReading | null = g.sg != null ? { on: i.on, sg: g.sg, kind: intoBrite ? "fg" : "reading", note: intoBrite ? "At brite transfer" : fvToFv ? "At FV transfer" : "At transfer" } : null;
   const note = i.note?.trim().slice(0, 300) || null;
   const entry: TimelineEntry = { on: i.on, kind: intoBrite || toKind === "BRITE" ? "brite" : "transfer", text: `${what}: ${current.tank.name} → ${tank.name}${g.sg != null ? ` · ${formatGravity(g.sg, unit)}` : ""}${busy ? ` · ${tank.name} still had ${busy.code} in it` : ""}${note ? ` · ${note}` : ""}` };
+  const grav = gravityPatch(b, plus(reading));
   await db.$transaction(async (tx) => {
     await tx.tankStay.update({ where: { id: current.id }, data: { end: asDate(i.on) } });
     // Moving between fermenters keeps the pencilled-in brite; anything else replaces the plan.
@@ -551,8 +580,9 @@ export async function moveBatch(batchId: string, i: MoveInput): Promise<Res> {
       where: { id: batchId },
       data: {
         status: toKind === "FERMENTER" ? (b.status === "CONDITIONING" ? "CONDITIONING" : "FERMENTING") : "CONDITIONING",
-        ...(reading?.kind === "fg" ? { fg: reading.sg } : {}),
-        extra: withHistory(b.extra, entry, reading),
+        og: grav.og,
+        fg: grav.fg,
+        extra: withHistory(b.extra, entry, grav.readings),
       },
     });
   });
@@ -574,9 +604,10 @@ export async function markConditioning(batchId: string, i: { on: ISODate; gravit
   if ("error" in g) return g;
   const note = i.note?.trim().slice(0, 300) || null;
   const reading: GravityReading | null = g.sg != null ? { on: i.on, sg: g.sg, kind: "reading", note: "Conditioning" } : null;
+  const grav = gravityPatch(x.b, plus(reading));
   await db.brewBatch.update({
     where: { id: batchId },
-    data: { status: "CONDITIONING", extra: withHistory(x.b.extra, { on: i.on, kind: "stage", text: `Conditioning in ${x.current.tank.name}${g.sg != null ? ` · ${formatGravity(g.sg, g.unit)}` : ""}${note ? ` · ${note}` : ""}` }, reading) },
+    data: { status: "CONDITIONING", og: grav.og, fg: grav.fg, extra: withHistory(x.b.extra, { on: i.on, kind: "stage", text: `Conditioning in ${x.current.tank.name}${g.sg != null ? ` · ${formatGravity(g.sg, g.unit)}` : ""}${note ? ` · ${note}` : ""}` }, grav.readings) },
   });
   return { ok: `${x.b.code} ${x.name} is conditioning in ${x.current.tank.name}. Next: transfer to a brite.` };
 }
@@ -609,16 +640,22 @@ export async function packageBatch(batchId: string, i: PackageInput): Promise<Re
   if ("error" in g) return g;
   const existing = b.kegBatchId ? await db.kegBatch.findUnique({ where: { id: b.kegBatchId }, include: { brewBatch: { select: { id: true } } } }) : await db.kegBatch.findUnique({ where: { code: b.code }, include: { brewBatch: { select: { id: true } } } });
   if (existing?.brewBatch && existing.brewBatch.id !== b.id) return { error: `Keg batch ${existing.code} already belongs to another brew. Change this brew's code first.` };
+  // A keg batch with this code that was made for another beer isn't this brew's: don't join them up.
+  if (existing && !b.kegBatchId && existing.beerId && b.beerId && existing.beerId !== b.beerId) return { error: `Keg batch ${existing.code} is for a different beer. Change this brew's code first.` };
   const note = i.note?.trim().slice(0, 1000) || null;
   const made = [i.halfKegs ? `${i.halfKegs} × ½ bbl` : null, i.sixthKegs ? `${i.sixthKegs} × ⅙ bbl` : null, i.cases ? `${i.cases} case${i.cases === 1 ? "" : "s"}` : null].filter(Boolean).join(", ");
   const entry: TimelineEntry = { on: i.on, kind: "package", text: `Packaged from ${current.tank.name}${made ? ` · ${made}` : ""}${i.co2Vols ? ` · ${i.co2Vols} vols CO₂` : ""}${g.sg != null ? ` · FG ${formatGravity(g.sg, g.unit)}` : ""}${note ? ` · ${note}` : ""}` };
   const reading: GravityReading | null = g.sg != null ? { on: i.on, sg: g.sg, kind: "fg", note: "Final FG" } : null;
+  // FG is now the latest reading at or after packaging (or marked FG).
+  const grav = gravityPatch(b, plus(reading), { packagedOn: i.on });
   await db.$transaction(async (tx) => {
     await tx.tankStay.update({ where: { id: current.id }, data: { end: asDate(i.on) } });
     await tx.tankStay.deleteMany({ where: { batchId, planned: true } });
+    // The keg batch reads its beer and dates from this brew (kept in step by syncKegBatch on later edits).
+    const fromBrew = { packagedOn: asDate(i.on), ...(b.brewedOn ? { brewedOn: b.brewedOn } : {}), ...(b.beerId ? { beerId: b.beerId } : {}) };
     const kb = existing
-      ? await tx.kegBatch.update({ where: { id: existing.id }, data: { packagedOn: asDate(i.on), brewedOn: existing.brewedOn ?? b.brewedOn, beerId: existing.beerId ?? b.beerId } })
-      : await tx.kegBatch.create({ data: { code: b.code, beerId: b.beerId, brewedOn: b.brewedOn, packagedOn: asDate(i.on) } });
+      ? await tx.kegBatch.update({ where: { id: existing.id }, data: fromBrew })
+      : await tx.kegBatch.create({ data: { code: b.code, ...fromBrew } });
     await tx.brewBatch.update({
       where: { id: batchId },
       data: {
@@ -629,13 +666,16 @@ export async function packageBatch(batchId: string, i: PackageInput): Promise<Re
         sixthKegs: i.sixthKegs ?? null,
         cases: i.cases ?? null,
         co2Vols: i.co2Vols ?? null,
-        ...(reading ? { fg: reading.sg } : {}),
-        extra: extraWith(withHistory(b.extra, entry, reading), note ? { packageNote: note } : {}),
+        og: grav.og,
+        fg: grav.fg,
+        extra: extraWith(withHistory(b.extra, entry, grav.readings), note ? { packageNote: note } : {}),
       },
     });
   });
+  // The beer's keg ingredient takes this brew's cost per keg (menu costs, P&L and demand all read it).
+  const kegPrice = await priceKegFromBrew(batchId);
   const kegs = (i.halfKegs ?? 0) + (i.sixthKegs ?? 0);
-  return { ok: `Packaged ${b.code} ${x.name}. ${current.tank.name} is free.${kegs ? ` Fill ${kegs} keg${kegs === 1 ? "" : "s"} with batch ${b.code}.` : ` When you fill kegs, pick batch ${b.code}.`}`, href: fillHref(b) };
+  return { ok: `Packaged ${b.code} ${x.name}. ${current.tank.name} is free.${kegs ? ` Fill ${kegs} keg${kegs === 1 ? "" : "s"} with batch ${b.code}.` : ` When you fill kegs, pick batch ${b.code}.`}${kegPrice != null ? ` Its keg cost, $${kegPrice.toFixed(2)} a keg, is recorded for the beer.` : ""}`, href: fillHref(b) };
 }
 
 export async function dumpBatch(batchId: string, i: { on: ISODate; reason: string }): Promise<Res> {
@@ -710,6 +750,11 @@ export async function splitBatch(parentId: string, i: SplitInput): Promise<Res> 
   const brite = await freeBrite(plan, today, i.bbl, t);
   const parentName = parent.beer?.name ?? parent.recipe?.name ?? parent.code;
   const status = planned ? "PLANNED" : tank.kind === "FERMENTER" ? (parent.status === "CONDITIONING" ? "CONDITIONING" : "FERMENTING") : "CONDITIONING";
+  // The split part shares the readings up to the split, and the parent's OG (from a reading or its brew-day log).
+  const parentGrav = gravityPatch(parent);
+  const childReadings: Reading[] = parentGrav.readings.filter((r) => r.on <= i.on);
+  if (parentGrav.og != null && !childReadings.some((r) => r.kind === "og")) childReadings.unshift({ on: brewOn, sg: parentGrav.og, kind: "og", note: `From ${parent.code}` });
+  const childGrav = gravityFromReadings(childReadings, { packagedOn: null });
   await db.$transaction(async (tx) => {
     const child = await tx.brewBatch.create({
       data: {
@@ -720,14 +765,15 @@ export async function splitBatch(parentId: string, i: SplitInput): Promise<Res> 
         plannedOn: parent.plannedOn,
         brewedOn: parent.brewedOn,
         bbl: i.bbl,
-        og: parent.og,
+        og: childGrav.og,
+        fg: childGrav.fg,
         cost: childCost,
         dryHopOn: dateOrNull(t.dryHopOn),
         tapOn: asDate(t.tapOn),
         splitFromId: parent.id,
         extra: {
           ...(t.fvTransferOn ? { fvTransferOn: t.fvTransferOn } : {}),
-          readings: readExtra(parent.extra).readings.filter((r) => r.on <= i.on) as unknown as Prisma.InputJsonArray,
+          readings: childReadings as unknown as Prisma.InputJsonArray,
           timeline: [{ on: i.on, kind: "split", text: `Split from ${parent.code} ${parentName}: ${bblText(i.bbl)} into ${tank.name}` }],
         },
       },
@@ -739,7 +785,9 @@ export async function splitBatch(parentId: string, i: SplitInput): Promise<Res> 
       data: {
         ...(parentBbl != null ? { bbl: Math.round((parentBbl - i.bbl) * 100) / 100 } : {}),
         ...(parentCost != null && childCost != null ? { cost: Math.round((parentCost - childCost) * 100) / 100 } : {}),
-        extra: withHistory(parent.extra, { on: i.on, kind: "split", text: `Split ${bblText(i.bbl)} into ${code} ${brew.name} in ${tank.name}` }),
+        og: parentGrav.og,
+        fg: parentGrav.fg,
+        extra: withHistory(parent.extra, { on: i.on, kind: "split", text: `Split ${bblText(i.bbl)} into ${code} ${brew.name} in ${tank.name}` }, parentGrav.readings),
       },
     });
   });
@@ -748,15 +796,14 @@ export async function splitBatch(parentId: string, i: SplitInput): Promise<Res> 
 
 // ---- Gravity -------------------------------------------------------------------------------------
 
-/** A gravity reading. "og" and "fg" also set the brew's OG and FG. */
+/** A gravity reading. The brew's OG and FG are worked out again from its readings. */
 export async function recordGravity(batchId: string, r: GravityReading): Promise<Res> {
   const b = await db.brewBatch.findUnique({ where: { id: batchId } });
   if (!b) return { error: "That brew is gone." };
-  const { readings } = readExtra(b.extra);
-  const list = [...readings, r].sort((a, c) => a.on.localeCompare(c.on));
+  const g = gravityPatch(b, plus(r));
   await db.brewBatch.update({
     where: { id: batchId },
-    data: { ...(r.kind === "og" ? { og: r.sg } : r.kind === "fg" ? { fg: r.sg } : {}), extra: extraWith(b.extra, { readings: list as unknown as Prisma.InputJsonArray }) },
+    data: { og: g.og, fg: g.fg, extra: extraWithReadings(b.extra, g.readings) },
   });
   return { ok: `${r.kind === "og" ? "OG" : r.kind === "fg" ? "FG" : "Reading"} ${formatGravity(r.sg, await gravityUnit())} saved for ${b.code}.` };
 }
@@ -777,10 +824,11 @@ export async function gravityFromText(text: string | null | undefined): Promise<
 export async function deleteReading(batchId: string, index: number): Promise<Res> {
   const b = await db.brewBatch.findUnique({ where: { id: batchId } });
   if (!b) return { error: "That brew is gone." };
-  const { readings } = readExtra(b.extra);
-  if (!readings[index]) return { error: "That reading is gone." };
-  readings.splice(index, 1);
-  await db.brewBatch.update({ where: { id: batchId }, data: { extra: extraWith(b.extra, { readings: readings as unknown as Prisma.InputJsonArray }) } });
+  const target = readExtra(b.extra).readings[index];
+  if (!target) return { error: "That reading is gone." };
+  // OG and FG follow: removing the OG reading clears the OG (or falls back to the brew-day log's).
+  const g = gravityPatch(b, (rs) => removeReading(rs, target as Reading));
+  await db.brewBatch.update({ where: { id: batchId }, data: { og: g.og, fg: g.fg, extra: extraWithReadings(b.extra, g.readings) } });
   return { ok: "Reading removed." };
 }
 
@@ -801,7 +849,12 @@ export async function editStay(stayId: string, i: { start: ISODate; end: ISODate
     if (isFirst && s.planned && b.status === "PLANNED") data.plannedOn = asDate(i.start);
     if (isFirst && !s.planned) data.brewedOn = asDate(i.start);
     if (isLast && b.status === "PACKAGED" && i.end) data.packagedOn = asDate(i.end);
-    if (Object.keys(data).length) await tx.brewBatch.update({ where: { id: b.id }, data });
+    if (Object.keys(data).length) {
+      await tx.brewBatch.update({ where: { id: b.id }, data });
+      // The packaging day decides which readings are the FG; the keg batch reads its dates from the brew.
+      await syncGravity(b.id, tx);
+      await syncKegBatch(b.id, tx);
+    }
   });
   return { ok: `${s.tank.name}: ${md(i.start)} to ${i.end ? md(i.end) : "still in"}.` };
 }
@@ -842,9 +895,14 @@ export async function setBatchField(id: string, field: BatchField, raw: string):
     }
     case "og":
     case "fg": {
+      // Typing OG or FG makes (or clears) the reading of that kind; the columns are worked out from the readings.
       const g = await readGravity(v);
       if ("error" in g) return g;
-      data[field] = g.sg;
+      const on = typedGravityDate(readExtra(b.extra).readings as Reading[], field, { brewedOn: iso(b.brewedOn), plannedOn: iso(b.plannedOn), packagedOn: iso(b.packagedOn), today: businessToday() });
+      const grav = gravityPatch(b, (rs) => typedGravity(rs, field, g.sg, on));
+      data.og = grav.og;
+      data.fg = grav.fg;
+      data.extra = extraWithReadings(b.extra, grav.readings);
       break;
     }
     case "cost": {
@@ -861,12 +919,21 @@ export async function setBatchField(id: string, field: BatchField, raw: string):
     case "lockedReason":
       data.lockedReason = v.slice(0, 120) || null;
       break;
-    case "beerId":
+    case "beerId": {
+      // A brew with a recipe that names a beer is that beer: change the recipe's beer instead.
+      const recipe = b.recipeId ? await db.brewRecipe.findUnique({ where: { id: b.recipeId }, select: { beerId: true, name: true } }) : null;
+      if (brewBeer({ recipeBeerId: recipe?.beerId ?? null, beerId: b.beerId }).locked && (v || null) !== recipe?.beerId) return { error: `It pours as ${recipe?.name}'s beer. Change the beer on the recipe, or take the recipe off this brew first.` };
       data.beerId = v || null;
       break;
-    case "recipeId":
+    }
+    case "recipeId": {
       data.recipeId = v || null;
+      // The brew takes the recipe's beer (when the recipe names one).
+      const recipe = v ? await db.brewRecipe.findUnique({ where: { id: v }, select: { beerId: true } }) : null;
+      if (v && !recipe) return { error: "That recipe is gone." };
+      if (recipe?.beerId) data.beerId = recipe.beerId;
       break;
+    }
     case "halfKegs":
     case "sixthKegs":
     case "cases": {
@@ -897,5 +964,45 @@ export async function setBatchField(id: string, field: BatchField, raw: string):
   await db.brewBatch.update({ where: { id }, data });
   // Keep the keg batch's code in step (fills point at it by id, so they follow).
   if (field === "code" && b.kegBatchId) await db.kegBatch.update({ where: { id: b.kegBatchId }, data: { code: data.code as string } }).catch(() => undefined);
+  // The packaging day decides which readings are the FG.
+  if (field === "packagedOn" || field === "brewedOn") await syncGravity(id);
+  // The keg batch reads its beer and dates from the brew.
+  if (field === "beerId" || field === "recipeId" || field === "brewedOn" || field === "packagedOn") await syncKegBatch(id);
   return { ok: "Saved" };
+}
+
+/**
+ * A recipe's beer changed: its planned brews follow (brews already brewed are
+ * left as they are; any that differ show under Kegs → Setup → Needs a look).
+ */
+export async function followRecipeBeer(recipeId: string): Promise<number> {
+  const r = await db.brewRecipe.findUnique({ where: { id: recipeId }, select: { beerId: true } });
+  if (!r?.beerId) return 0;
+  const res = await db.brewBatch.updateMany({ where: { recipeId, status: "PLANNED", OR: [{ beerId: null }, { beerId: { not: r.beerId } }] }, data: { beerId: r.beerId } });
+  return res.count;
+}
+
+/** Needs a look: a brew stored with a different beer from its recipe's takes the recipe's beer (and its keg batch follows). */
+export async function takeRecipeBeer(brewId: string): Promise<Res> {
+  const b = await db.brewBatch.findUnique({ where: { id: brewId }, select: { code: true, recipe: { select: { beerId: true, beer: { select: { name: true } } } } } });
+  if (!b) return { error: "That brew is gone." };
+  if (!b.recipe?.beerId) return { error: "Its recipe doesn't name a beer." };
+  await db.brewBatch.update({ where: { id: brewId }, data: { beerId: b.recipe.beerId } });
+  await syncKegBatch(brewId);
+  return { ok: `${b.code} is ${b.recipe.beer?.name ?? "the recipe's beer"} now.` };
+}
+
+/** Needs a look: join a keg batch to the brew with the same code (only when neither disagrees on the beer). */
+export async function linkKegBatchToBrew(kegBatchId: string, brewId: string): Promise<Res> {
+  const [kb, b] = await Promise.all([
+    db.kegBatch.findUnique({ where: { id: kegBatchId }, select: { code: true, beerId: true, brewBatch: { select: { id: true } } } }),
+    db.brewBatch.findUnique({ where: { id: brewId }, select: { code: true, beerId: true, kegBatchId: true } }),
+  ]);
+  if (!kb || !b) return { error: "That batch is gone." };
+  if (kb.brewBatch) return { error: "That keg batch is joined to a brew already." };
+  if (b.kegBatchId) return { error: `${b.code} has a keg batch already.` };
+  if (kb.beerId && b.beerId && kb.beerId !== b.beerId) return { error: "They're different beers. Check the codes." };
+  await db.brewBatch.update({ where: { id: brewId }, data: { kegBatchId } });
+  await syncKegBatch(brewId);
+  return { ok: `Keg batch ${kb.code} is joined to brew ${b.code}.` };
 }

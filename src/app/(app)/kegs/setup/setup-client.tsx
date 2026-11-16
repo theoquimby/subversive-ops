@@ -7,11 +7,11 @@ import { ShowMore } from "@/components/show-more";
 import { Button, EmptyState, Input, Select, Table, Td, Th, Tr } from "@/components/ui";
 import { STANDING_LABEL, STANDINGS, type Standing } from "@/domain/beerStanding";
 import { BEER_COLORS } from "@/domain/kegs";
-import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
+import { ArrowUpRight, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { addAccount, addBeer, addSpot, removeSpot, renameSpot, saveConfig, savePour, setAccountField, setBeerField } from "../actions";
+import { addAccount, addBeer, addSpot, removeSpot, renameSpot, saveConfig, savePour, setAccountField, setBeerField, setSquareItemBeerAction } from "../actions";
 import { BeerDot } from "../bits";
 
 /** "Add as a beer" next to a Square name that looks like draft beer. */
@@ -65,9 +65,45 @@ const field = (label: string, el: React.ReactNode, hint?: React.ReactNode) => (
   </div>
 );
 
+export interface SquareItemRow { squareId: string; name: string; beerId: string | null }
+
+/** The Square items linked to a beer, unlink one, or link another (its sales then count for this beer whatever it's called). */
+function SquareLinks({ beer, items }: { beer: BeerRow; items: SquareItemRow[] }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  const linked = items.filter((i) => i.beerId === beer.id);
+  const others = items.filter((i) => i.beerId !== beer.id).map((i) => ({ value: i.squareId, label: i.name, hint: i.beerId ? "linked to another beer" : undefined }));
+  const set = (squareId: string, beerId: string) => start(async () => {
+    setErr(null);
+    const r = await setSquareItemBeerAction(squareId, beerId);
+    if (r.error) setErr(r.error);
+    else router.refresh();
+  });
+  return (
+    <div className="space-y-2 px-2">
+      {linked.length === 0 ? (
+        <p className="text-sm text-muted">None linked. Sales are matched by name until you link them.</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {linked.map((i) => (
+            <span key={i.squareId} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-border bg-surface pl-2.5 text-sm sm:min-h-8">
+              {i.name}
+              <button type="button" disabled={pending} aria-label={`Unlink ${i.name}`} className="grid size-10 place-items-center rounded-lg text-muted hover:text-bad sm:size-8" onClick={() => set(i.squareId, "")}><X className="size-3.5" /></button>
+            </span>
+          ))}
+        </div>
+      )}
+      {others.length > 0 && <Select aria-label={`Link a Square item to ${beer.name}`} placeholder="Link a Square item" searchable options={others} value="" disabled={pending} onChange={(e) => e.target.value && set(e.target.value, beer.id)} />}
+      {err && <p className="text-xs text-bad">{err}</p>}
+    </div>
+  );
+}
+
 /** Every beer, edited in place. Retired beers sit under their own tab; search and the tabs never get in the way of typing. */
-export function BeersTable({ beers, recipes }: { beers: BeerRow[]; recipes: { id: string; name: string }[] }) {
+export function BeersTable({ beers, recipes, squareItems = [] }: { beers: BeerRow[]; recipes: { id: string; name: string }[]; squareItems?: SquareItemRow[] }) {
   const recipeOptions = useMemo(() => [{ value: "", label: "None" }, ...recipes.map((r) => ({ value: r.id, label: r.name }))], [recipes]);
+  const linkedCount = useMemo(() => squareItems.reduce((m, i) => (i.beerId ? m.set(i.beerId, (m.get(i.beerId) ?? 0) + 1) : m), new Map<string, number>()), [squareItems]);
   const columns = useMemo<Column<BeerRow>[]>(() => [
     {
       id: "name", header: "Beer", edit: true, width: 220, hideable: false, sort: (b) => b.name, csv: (b) => b.name,
@@ -81,17 +117,19 @@ export function BeersTable({ beers, recipes }: { beers: BeerRow[]; recipes: { id
     },
     { id: "color", header: "Color", edit: true, width: 150, sort: (b) => b.color, csv: (b) => b.color, cell: (b) => <GridSelect ariaLabel={`Board color of ${b.name}`} value={b.color} options={COLOR_OPTIONS} onSave={(v) => setBeerField(b.id, "color", v)} /> },
     { id: "square", header: "Square items that pour it", edit: true, width: 240, sort: (b) => b.squareNames.join(", "), csv: (b) => b.squareNames.join(", "), cell: (b) => <GridCell grid="beers" col="square" ariaLabel={`Square item names for ${b.name}, comma separated`} value={b.squareNames.join(", ")} placeholder="Same as the beer's name" onSave={(v) => setBeerField(b.id, "squareNames", v)} /> },
+    { id: "linked", header: "Linked items", align: "right", width: 110, firstDir: "desc", sort: (b) => linkedCount.get(b.id) ?? 0, csv: (b) => linkedCount.get(b.id) ?? 0, cell: (b) => <span className={(linkedCount.get(b.id) ?? 0) ? "num" : "num text-muted"} title="Square items linked to this beer (open the beer to change them)">{linkedCount.get(b.id) ?? 0}</span> },
     { id: "standing", header: "Standing", help: "kegs.standing", edit: true, width: 150, sort: (b) => STANDING_RANK[b.standing], csv: (b) => STANDING_LABEL[b.standing], cell: (b) => <GridSelect ariaLabel={`Standing of ${b.name}`} value={b.standing} options={STANDING_OPTIONS} onSave={(v) => setBeerField(b.id, "standing", v)} /> },
     { id: "min", header: "Alert under", align: "right", edit: true, width: 120, sort: (b) => (b.standing === "core" ? b.minFull : null), csv: (b) => (b.standing === "core" ? b.minFull : ""), cell: (b) => (b.standing === "core" ? <GridCell grid="beers" col="min" type="number" ariaLabel={`Alert when full kegs of ${b.name} drop under`} value={b.minFull} suffix="full" onSave={(v) => setBeerField(b.id, "minFull", v)} /> : <span className="px-2 text-xs text-muted" title="Only core beers are alerted about">—</span>) },
-    { id: "recipe", header: "Recipe (for cost)", edit: true, width: 220, sort: (b) => recipes.find((r) => r.id === b.recipeId)?.name, csv: (b) => recipes.find((r) => r.id === b.recipeId)?.name ?? "", cell: (b) => <GridSelect ariaLabel={`Recipe for ${b.name}`} value={b.recipeId ?? ""} options={recipeOptions} onSave={(v) => setBeerField(b.id, "recipeId", v)} /> },
+    // Deprecated costing path: only used for a beer with no keg cost and no live brewing recipe.
+    { id: "recipe", header: "Recipe (for cost)", defaultHidden: true, edit: true, width: 220, sort: (b) => recipes.find((r) => r.id === b.recipeId)?.name, csv: (b) => recipes.find((r) => r.id === b.recipeId)?.name ?? "", cell: (b) => <GridSelect ariaLabel={`Recipe for ${b.name}`} value={b.recipeId ?? ""} options={recipeOptions} onSave={(v) => setBeerField(b.id, "recipeId", v)} /> },
     { id: "kegs", header: "Kegs", align: "right", width: 70, defaultHidden: true, firstDir: "desc", sort: (b) => b.kegs, csv: (b) => b.kegs, cell: (b) => <span className="num text-muted">{b.kegs}</span> },
-  ], [recipes, recipeOptions]);
+  ], [recipes, recipeOptions, linkedCount]);
 
   const filters = useMemo<Filter<BeerRow>[]>(() => [
     { id: "standing", label: "Standing", kind: "facet", display: "segmented", single: true, allLabel: "All", values: (b) => (b.standing === "retired" ? ["retired"] : ["active", b.standing]), options: [{ value: "active", label: "In use" }, { value: "core", label: "Core" }, { value: "rotation", label: "In rotation" }, { value: "retired", label: "Retired" }] },
-    { id: "nosquare", label: "No Square items", kind: "toggle", test: (b) => b.squareNames.length === 0 },
+    { id: "nosquare", label: "No Square items", kind: "toggle", test: (b) => b.squareNames.length === 0 && !linkedCount.get(b.id) },
     { id: "norecipe", label: "No recipe", kind: "toggle", test: (b) => !b.recipeId },
-  ], []);
+  ], [linkedCount]);
 
   return (
     <DataTable
@@ -122,9 +160,10 @@ export function BeersTable({ beers, recipes }: { beers: BeerRow[]; recipes: { id
           {field("Name", <GridCell grid="beerd" col="name" ariaLabel="Name" value={b.name} onSave={(v) => setBeerField(b.id, "name", v)} />)}
           {field("Standing", <GridSelect ariaLabel="Standing" value={b.standing} options={STANDING_OPTIONS} onSave={(v) => setBeerField(b.id, "standing", v)} />)}
           {field("Board color", <GridSelect ariaLabel="Board color" value={b.color} options={COLOR_OPTIONS} onSave={(v) => setBeerField(b.id, "color", v)} />)}
-          {field("Square items that pour it", <GridCell grid="beerd" col="square" ariaLabel="Square item names, comma separated" value={b.squareNames.join(", ")} placeholder="Same as the beer's name" onSave={(v) => setBeerField(b.id, "squareNames", v)} />, "The part before the pour, comma separated.")}
+          {field("Square items linked", <SquareLinks beer={b} items={squareItems} />)}
+          {field("Square names that pour it", <GridCell grid="beerd" col="square" ariaLabel="Square item names, comma separated" value={b.squareNames.join(", ")} placeholder="Same as the beer's name" onSave={(v) => setBeerField(b.id, "squareNames", v)} />, "The part before the pour, comma separated. Links the items they name, and matches any item not linked.")}
           {b.standing === "core" && field("Alert when full kegs drop under", <GridCell grid="beerd" col="min" type="number" ariaLabel="Alert when full kegs drop under" value={b.minFull} suffix="full" onSave={(v) => setBeerField(b.id, "minFull", v)} />)}
-          {field("Recipe (for cost)", <GridSelect ariaLabel="Recipe" value={b.recipeId ?? ""} options={recipeOptions} onSave={(v) => setBeerField(b.id, "recipeId", v)} />)}
+          {field("Recipe (for cost)", <GridSelect ariaLabel="Recipe" value={b.recipeId ?? ""} options={recipeOptions} onSave={(v) => setBeerField(b.id, "recipeId", v)} />, "The old way to cost a pint, from a kitchen prep recipe. Only used when the beer has no keg cost (Menu → Draft beer) and no live brewing recipe.")}
         </div>
       )}
     />

@@ -140,6 +140,8 @@ export function BatchDetails({ batch: b, recipes, beers, unit }: { batch: Batch;
   const save = (f: Parameters<typeof setBatchFieldAction>[1]) => setBatchFieldAction.bind(null, b.id, f);
   const [notes, setNotes] = useState(b.notes ?? "");
   const [, run] = useTransition();
+  const recipeBeer = recipes.find((r) => r.id === b.recipeId)?.beerId ?? null;
+  const beerName = (id: string) => beers.find((x) => x.id === id)?.name ?? (id === b.beerId ? b.name : "its beer");
   const row = (label: string, node: React.ReactNode) => (
     <div className="grid grid-cols-[7.5rem_1fr] items-center gap-2 border-b border-border px-2 py-1 last:border-b-0 sm:grid-cols-[9rem_1fr]">
       <span className="px-2 text-sm text-muted">{label}</span>
@@ -151,7 +153,13 @@ export function BatchDetails({ batch: b, recipes, beers, unit }: { batch: Batch;
       <div className="grid md:grid-cols-2 md:divide-x md:divide-border">
         <div>
           {row("Batch code", <GridCell grid="brew" col="code" value={b.code} onSave={save("code")} ariaLabel="Batch code" />)}
-          {row("Beer", <GridSelect value={b.beerId ?? ""} options={[{ value: "", label: "None" }, ...beers.map((x) => ({ value: x.id, label: x.name }))]} onSave={save("beerId")} ariaLabel="Beer" />)}
+          {row("Beer", recipeBeer ? (
+            // A brew with a recipe pours as the recipe's beer: change it on the recipe.
+            <div className="px-2 py-1.5 text-sm">
+              {beerName(recipeBeer)} <span className="text-xs text-muted">· from the recipe</span>
+              {b.beerId !== recipeBeer && <div className="text-xs text-warn">Saved as {b.beerId ? beerName(b.beerId) : "no beer"}. Fix it on Kegs → Setup, under Needs a look.</div>}
+            </div>
+          ) : <GridSelect value={b.beerId ?? ""} options={[{ value: "", label: "None" }, ...beers.map((x) => ({ value: x.id, label: x.name }))]} onSave={save("beerId")} ariaLabel="Beer" />)}
           {row("Recipe", <GridSelect value={b.recipeId ?? ""} options={[{ value: "", label: "None" }, ...recipes.map((x) => ({ value: x.id, label: x.name }))]} onSave={save("recipeId")} ariaLabel="Recipe" />)}
           {row("Volume", <GridCell grid="brew" col="bbl" value={b.bbl} type="number" suffix="bbl" onSave={save("bbl")} ariaLabel="Volume in barrels" />)}
         </div>

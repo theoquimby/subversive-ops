@@ -579,7 +579,8 @@ export async function batchDetail(id: string): Promise<BatchDetail | null> {
       kegBatch = {
         id: kb.id,
         code: kb.code,
-        packagedOn: iso(kb.packagedOn),
+        // A keg batch from a brew reads its packaging day from the brew.
+        packagedOn: iso(row.packagedOn ?? kb.packagedOn),
         filled: kegs.length,
         bySize: count(kegs.map((k) => k.size)),
         now: count(kegs.filter((k) => k.holding).map((k) => k.status!)),
