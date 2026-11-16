@@ -24,6 +24,23 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.20",
+    date: "2026-11-16",
+    title: "The Brewery",
+    summary: "A new Brewery under Floor: what's in every tank, a tank schedule, brewing recipes costed live from ingredient prices, every brew from brew day to kegs, and an import from Brew Manager.",
+    entries: ["2026-11-16.brewery-tanks", "2026-11-16.brewery-recipes", "2026-11-16.brewery-import"],
+    fixed: [
+      "Tanks: each fermenter and brite tank with the beer in it, day N of M, and Ready to transfer? or Ready to package? when it's due. Brew, transfer, record gravity, package or dump from the tank's card.",
+      "Schedule: every tank across the next 12 weeks. Plan a brew and it finds the first free fermenter and brite tank, and says if two brews would clash.",
+      "Suggested brews: for core beers, the last day to brew so a full keg is ready before the last one runs out, from keg sales.",
+      "Recipes: grain bill, hops, yeast and process give OG, FG, ABV, IBU (Tinseth) and colour (Morey) as you type. Cost per batch, barrel, 1/2 and 1/6 keg and pint comes from the same prices as everything else; anything without a price is listed, never counted as free.",
+      "A beer whose brewing recipe is fully priced gets its keg pint cost from that recipe.",
+      "Brews: every brew with its path through the tanks, gravity readings, cost, and the kegs it filled. Packaging a brew makes a keg batch, offered as a one-tap choice when filling kegs.",
+      "Transfers and packaging that are due, tank clashes and brews to start soon show in Overview and the morning brief.",
+      "Import: upload Brew Manager's backup file (Settings → Backup → Export backup JSON there) to bring in its recipes and brews, and the tanks they used. Running it again updates rather than duplicates.",
+    ],
+  },
+  {
     version: "1.19",
     date: "2026-11-16",
     title: "Everything Google in one place",

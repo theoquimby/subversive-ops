@@ -69,6 +69,40 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.20 (the Brewery) ----
+  {
+    id: "2026-11-16.brewery-tanks",
+    date: "2026-11-16",
+    title: "The Brewery: tanks and schedule",
+    line: "What's in each tank, what's due, a 12-week tank plan, and when to brew so core beers never run out.",
+    icon: "keg",
+    area: "floor",
+    href: "/brewery",
+    help: "brewery.tanks",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-16.brewery-recipes",
+    date: "2026-11-16",
+    title: "Brewing recipes with live costs",
+    line: "Grain, hops and yeast give OG, ABV, IBU and colour, with cost per batch, keg and pint from your prices.",
+    icon: "draft",
+    area: "floor",
+    href: "/brewery/recipes",
+    help: "brewery.recipes",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-16.brewery-import",
+    date: "2026-11-16",
+    title: "Bring in Brew Manager",
+    line: "Upload Brew Manager's backup file to bring in its recipes and brews. Running it again updates them.",
+    icon: "start",
+    area: "floor",
+    href: "/brewery/import",
+    help: "brewery.import",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.19 (Google in one place) ----
   {
     id: "2026-11-16.google-hub",

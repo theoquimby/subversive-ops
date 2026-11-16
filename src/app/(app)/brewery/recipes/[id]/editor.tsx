@@ -231,7 +231,7 @@ export function BrewRecipeEditor({ initial, catalog, brews }: { initial: BrewRec
           <ul className="mt-2 space-y-1 text-xs text-muted">
             {cost.unpriced.length > 0 && (
               <li className="text-warn">
-                No price yet: {cost.unpriced.map((u) => u.name || "a line with no name").join(", ")}. The cost counts them as nothing, so it&apos;s the least this batch costs.{" "}
+                No price yet: {cost.unpriced.map((u) => u.name || "a line with no name").join("; ")}. The cost counts them as nothing, so it&apos;s the least this batch costs.{" "}
                 <Link href="/brewery/recipes#prices" className="underline underline-offset-2">Add prices</Link>
               </li>
             )}
