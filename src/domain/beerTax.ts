@@ -174,6 +174,132 @@ export function worksheet(moves: Move[], s: TaxSettings, ytdBeforeGal = 0): Work
   };
 }
 
+// ---- From the brewery ------------------------------------------------------------------
+
+/** One case: 24 cans or bottles of 12 fl oz = 288 fl oz = 2.25 US gallons. */
+export const CASE_GALLONS = (24 * 12) / 128;
+
+/** A brew as the beer tax worksheet reads it. */
+export interface BrewIn {
+  id: string;
+  code: string;
+  beerId: string | null;
+  beer: string | null;
+  status: string;
+  packagedOn: ISODate | null;
+  cases: number | null;
+  bbl: number | null;
+  /** The day it was dumped (from the brew's dump note), for DUMPED brews. */
+  dumpedOn: ISODate | null;
+}
+
+export interface BrewMove extends Move {
+  brewId: string;
+  code: string;
+}
+
+export interface FiledPeriod { start: ISODate; end: ISODate }
+
+/**
+ * Packaged cases (as gallons, on the packaging day) and dumped brews (their
+ * barrels as a loss, on the dump day) between `from` and `to`. Anything dated
+ * in a period already marked filed is held back, so a filed return's numbers
+ * never change.
+ */
+export function brewMoves(brews: readonly BrewIn[], from: ISODate, to: ISODate, filed: readonly FiledPeriod[] = []): { moves: BrewMove[]; heldBack: BrewMove[] } {
+  const moves: BrewMove[] = [];
+  const heldBack: BrewMove[] = [];
+  const inFiled = (d: ISODate) => filed.some((f) => d >= f.start && d <= f.end);
+  const add = (m: BrewMove) => {
+    if (m.date < from || m.date > to || !(m.gallons > 0)) return;
+    (inFiled(m.date) ? heldBack : moves).push(m);
+  };
+  for (const b of brews) {
+    const beer = b.beer ?? `Brew ${b.code}`;
+    if (b.status === "DUMPED") {
+      if (b.dumpedOn && b.bbl) add({ date: b.dumpedOn, kind: "loss", gallons: r2(b.bbl * GAL_PER_BBL), beerId: b.beerId, beer, brewId: b.id, code: b.code });
+      continue;
+    }
+    if (b.packagedOn && b.cases) add({ date: b.packagedOn, kind: "packaged", gallons: r2(b.cases * CASE_GALLONS), beerId: b.beerId, beer, brewId: b.id, code: b.code });
+  }
+  const order = (a: BrewMove, b: BrewMove) => a.date.localeCompare(b.date) || a.code.localeCompare(b.code);
+  return { moves: moves.sort(order), heldBack: heldBack.sort(order) };
+}
+
+/** A dumped brew's day from its saved note ({ dumped: { on } } in BrewBatch.extra). */
+export function dumpedOnOf(extra: unknown): ISODate | null {
+  const d = extra && typeof extra === "object" && !Array.isArray(extra) ? (extra as { dumped?: { on?: unknown } }).dumped : null;
+  return d && typeof d.on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.on) ? d.on : null;
+}
+
+// ---- Brew keg counts against scanned fills ------------------------------------------------
+
+export interface KegCheckBrew {
+  id: string;
+  code: string;
+  name: string;
+  packagedOn: ISODate | null;
+  halfKegs: number | null;
+  sixthKegs: number | null;
+  /** The keg batch its kegs were filled from; null = not linked. */
+  kegBatchId: string | null;
+}
+
+export interface KegCheckRow {
+  brewId: string;
+  code: string;
+  name: string;
+  packagedOn: ISODate | null;
+  brewHalf: number;
+  brewSixth: number;
+  scannedHalf: number;
+  scannedSixth: number;
+  /** Fills of other sizes (quarters, 50 L…). */
+  scannedOther: number;
+  linked: boolean;
+  differs: boolean;
+}
+
+/**
+ * Each brew's keg counts (as written at packaging) next to the kegs actually
+ * scanned as filled from its keg batch. Brews with no keg counts and nothing
+ * scanned are left out.
+ */
+export function kegCountCheck(brews: readonly KegCheckBrew[], fills: readonly { batchId: string | null; sizeId: string }[]): KegCheckRow[] {
+  const by = new Map<string, { half: number; sixth: number; other: number }>();
+  for (const f of fills) {
+    if (!f.batchId) continue;
+    const c = by.get(f.batchId) ?? { half: 0, sixth: 0, other: 0 };
+    if (f.sizeId === "half") c.half++;
+    else if (f.sizeId === "sixtel") c.sixth++;
+    else c.other++;
+    by.set(f.batchId, c);
+  }
+  const out: KegCheckRow[] = [];
+  for (const b of brews) {
+    const c = b.kegBatchId ? by.get(b.kegBatchId) : undefined;
+    const brewHalf = b.halfKegs ?? 0;
+    const brewSixth = b.sixthKegs ?? 0;
+    const s = c ?? { half: 0, sixth: 0, other: 0 };
+    if (!brewHalf && !brewSixth && !s.half && !s.sixth && !s.other) continue;
+    const linked = !!b.kegBatchId;
+    out.push({
+      brewId: b.id,
+      code: b.code,
+      name: b.name,
+      packagedOn: b.packagedOn,
+      brewHalf,
+      brewSixth,
+      scannedHalf: s.half,
+      scannedSixth: s.sixth,
+      scannedOther: s.other,
+      linked,
+      differs: linked && (brewHalf !== s.half || brewSixth !== s.sixth),
+    });
+  }
+  return out.sort((a, b) => Number(b.differs) - Number(a.differs) || (a.packagedOn ?? "").localeCompare(b.packagedOn ?? "") || a.code.localeCompare(b.code));
+}
+
 // ---- Returns due ---------------------------------------------------------------------
 
 export interface Filing { form: Form; periodStart: ISODate }

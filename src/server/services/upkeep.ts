@@ -34,7 +34,7 @@ export async function ensureUpkeepPresets() {
 export async function upkeepBoard(today: ISODate = businessToday()) {
   const yearAgo = addDays(today, -365);
   const [equipment, tasks, logs] = await Promise.all([
-    db.equipment.findMany({ orderBy: [{ area: "asc" }, { name: "asc" }] }),
+    db.equipment.findMany({ orderBy: [{ area: "asc" }, { name: "asc" }], include: { tank: { select: { name: true } } } }),
     db.upkeepTask.findMany({ orderBy: [{ sort: "asc" }, { createdAt: "asc" }], include: { equipment: { select: { name: true } } } }),
     db.upkeepLog.findMany({ orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: 400, include: { equipment: { select: { name: true } } } }),
   ]);
@@ -74,6 +74,8 @@ export async function upkeepBoard(today: ISODate = businessToday()) {
     warranty: warrantyState(today, iso(e.warrantyUntil)),
     notes: e.notes,
     active: e.active,
+    /** The brewery tank it is, when it's one (its upkeep record). */
+    tank: e.tank ? { id: e.tankId!, name: e.tank.name } : null,
     spend12: spend.byEquipment.get(e.id) ?? 0,
     lastLog: lastBy.get(e.id) ?? null,
     tasks: ranked.filter((t) => t.equipmentId === e.id).length,

@@ -1,7 +1,10 @@
 /**
- * Per-supplier ordering preferences that have no column: when and whom to
- * remind, and how the supplier takes orders. Stored as one JSON Setting
- * (`ordering.supplierPrefs`) keyed by supplier id. Pure: parsing and labels.
+ * Per-supplier ordering preferences: when and whom to remind, and how the
+ * supplier takes orders. Kept on the supplier itself (orderAlert, orderFirst,
+ * orderLastCallMins, orderRecipients, orderPeople, sendBy, orderPhone,
+ * portalName, portalUrl); they used to live in the JSON Setting
+ * `ordering.supplierPrefs`, which is no longer read. Pure: parsing, labels and
+ * the mapping to and from those columns.
  */
 
 import type { AlertMode } from "./orderNeed";
@@ -112,4 +115,62 @@ export function parseAllSupplierPrefs(raw: string | null | undefined): Record<st
 
 export function patchSupplierPrefs(cur: SupplierPrefs, patch: Partial<SupplierPrefs>): SupplierPrefs {
   return parseSupplierPrefs({ ...cur, ...patch });
+}
+
+// ---- The supplier's own columns -------------------------------------------------------------
+
+export interface SupplierPrefsColumns {
+  orderAlert: string | null;
+  orderFirst: string;
+  orderLastCallMins: number | null;
+  orderRecipients: string;
+  orderPeople: string[];
+  sendBy: string;
+  orderPhone: string | null;
+  portalName: string | null;
+  portalUrl: string | null;
+}
+
+/** The columns to select from Supplier to read its preferences. */
+export const PREFS_COLUMNS = {
+  orderAlert: true,
+  orderFirst: true,
+  orderLastCallMins: true,
+  orderRecipients: true,
+  orderPeople: true,
+  sendBy: true,
+  orderPhone: true,
+  portalName: true,
+  portalUrl: true,
+} as const;
+
+/** A supplier row's columns as preferences, checked the same way the old JSON was. */
+export function prefsFromColumns(c: SupplierPrefsColumns): SupplierPrefs {
+  return parseSupplierPrefs({
+    alert: c.orderAlert,
+    first: c.orderFirst,
+    lastCallMins: c.orderLastCallMins,
+    recipients: c.orderRecipients,
+    people: c.orderPeople ?? [],
+    sendBy: c.sendBy,
+    phone: c.orderPhone,
+    portal: c.portalName,
+    portalUrl: c.portalUrl,
+  });
+}
+
+/** Preferences as the supplier's columns, to write. */
+export function prefsToColumns(p: SupplierPrefs): SupplierPrefsColumns {
+  const v = parseSupplierPrefs(p);
+  return {
+    orderAlert: v.alert,
+    orderFirst: v.first,
+    orderLastCallMins: v.lastCallMins,
+    orderRecipients: v.recipients,
+    orderPeople: v.people,
+    sendBy: v.sendBy,
+    orderPhone: v.phone,
+    portalName: v.portal,
+    portalUrl: v.portalUrl,
+  };
 }

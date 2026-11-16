@@ -34,7 +34,8 @@ export interface GoogleHubFacts {
   };
   search: { siteUrl: string | null; syncedAt: string | null; error: string | null; hasData: boolean };
   listing: { location: string | null; title: string | null; syncedAt: string | null; error: string | null; hasData: boolean };
-  reviews: { keySaved: boolean; placeId: string | null; placeName: string | null; test: { ok: boolean; message: string; at: string } | null };
+  /** fromListing: the business is the picked Business Profile listing (by its place id), not a separate search. */
+  reviews: { keySaved: boolean; placeId: string | null; placeName: string | null; fromListing?: boolean; test: { ok: boolean; message: string; at: string } | null };
 }
 
 export interface HubPiece {
@@ -169,6 +170,7 @@ function reviews(r: GoogleHubFacts["reviews"]): Draft {
   if (!r.keySaved) return { status: "off", line: "Not set up. Reviews can still be pasted in on the Reviews page.", next: "Make a Google key and paste it below. About 5 minutes." };
   if (!r.placeId) return { status: "off", line: "The key is saved. No business is picked yet.", next: "Find your business below." };
   if (r.test && !r.test.ok) return { status: "fix", line: r.test.message, next: "Paste a new key below if Google stopped accepting this one." };
+  if (r.fromListing) return { status: "working", line: `Follows your Google listing, ${r.placeName ?? "your business"}. New reviews come in every morning; Google only shares the five most relevant at a time.`, next: null, syncedAt: null };
   return { status: "working", line: `Linked to ${r.placeName ?? "your business"}. New reviews come in every morning; Google only shares the five most relevant at a time.`, next: null, syncedAt: null };
 }
 

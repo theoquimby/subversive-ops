@@ -28,6 +28,8 @@ import { db, num } from "../db";
 import { env } from "../env";
 import { claudeReady, claudeJSON } from "../integrations/claude";
 import { fetchGoogleReviews, GOOGLE_NOT_SET_UP, googlePlacesReady } from "../integrations/google-places";
+import { reviewsPlace } from "@/domain/googleData";
+import { pickedListing } from "./googleSearch";
 import { buildContext, loadCostingSnapshot, safeCost } from "./costing";
 import { dailySalesHistory } from "./forecasting";
 import { targetFoodCost } from "./insights";
@@ -41,10 +43,20 @@ const HINT_PREFIX = "reviews.hint.";
 const tz = () => env.BUSINESS_TIMEZONE;
 export const reviewDate = (d: Date) => businessDate(d, tz());
 
+/**
+ * Which Google business reviews come from: the Business Profile listing picked
+ * under the Google sign-in when Google gave its place id (one business, not
+ * two); otherwise the one found with the reviews key's search
+ * (`reviews.googlePlaceId`).
+ */
 export async function reviewSettings() {
-  const rows = await db.setting.findMany({ where: { key: { in: [SETTING_PLACE_ID, SETTING_TONE, "reviews.googlePlaceName"] } } });
+  const [rows, listing] = await Promise.all([
+    db.setting.findMany({ where: { key: { in: [SETTING_PLACE_ID, SETTING_TONE, "reviews.googlePlaceName"] } } }),
+    pickedListing().catch(() => ({ location: null, title: null, placeId: null })),
+  ]);
   const get = (k: string) => rows.find((r) => r.key === k)?.value ?? "";
-  return { placeId: get(SETTING_PLACE_ID), placeName: get("reviews.googlePlaceName"), toneNotes: get(SETTING_TONE), googleConfigured: await googlePlacesReady(), claude: await claudeReady() };
+  const place = reviewsPlace(listing, { id: get(SETTING_PLACE_ID), name: get("reviews.googlePlaceName") });
+  return { placeId: place.id ?? "", placeName: place.name ?? "", placeFromListing: place.fromListing, toneNotes: get(SETTING_TONE), googleConfigured: await googlePlacesReady(), claude: await claudeReady() };
 }
 
 export async function saveReviewSetting(key: typeof SETTING_PLACE_ID | typeof SETTING_TONE, value: string) {

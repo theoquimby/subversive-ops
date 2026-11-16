@@ -39,7 +39,7 @@ We start you with the usual jobs for a taproom with a kitchen. The intervals are
     area: "upkeep",
     route: "/upkeep",
     title: "Equipment",
-    body: "Make, model, serial, the service company and its phone, and the warranty date. Type in any cell; it saves as you go. On a phone, tap the company to call.",
+    body: "Make, model, serial, the service company and its phone, and the warranty date. Type in any cell; it saves as you go. On a phone, tap the company to call. Brewery tanks get theirs from Upkeep on Brewery setup; a repair that marks one down shows on the Brewery.",
     related: ["upkeep.page"],
   },
   {

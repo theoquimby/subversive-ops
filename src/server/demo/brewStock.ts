@@ -15,7 +15,6 @@ import { addDays, parseISODate } from "../../domain/dates";
 
 const D = (n: number, places = 4) => new Prisma.Decimal(n.toFixed(places));
 const LB = 453.59237;
-const LEAD_REFS_KEY = "brewery.supplierLeadRefs";
 
 export const BREW_SUPPLIERS: { name: string; leadDays: number; ref: "brew" | "dryHop" | "pkg"; deliveryDays?: number[]; notes?: string }[] = [
   { name: "Hudson Valley Malt", leadDays: 14, ref: "brew" },
@@ -43,16 +42,11 @@ export async function seedBrewStock(db: PrismaClient, today: string): Promise<vo
   for (const s of BREW_SUPPLIERS) {
     const row = await db.supplier.upsert({
       where: { name: s.name },
-      create: { name: s.name, kind: "LOCAL", department: "brewery", orderCadence: "as_needed", leadTimeDays: s.leadDays, deliveryDays: s.deliveryDays ?? [], notes: s.notes ?? null },
-      update: { department: "brewery", leadTimeDays: s.leadDays, deliveryDays: s.deliveryDays ?? [] },
+      create: { name: s.name, kind: "LOCAL", department: "brewery", orderCadence: "as_needed", brewLeadDays: s.leadDays, brewLeadRef: s.ref, deliveryDays: s.deliveryDays ?? [], notes: s.notes ?? null },
+      update: { department: "brewery", brewLeadDays: s.leadDays, brewLeadRef: s.ref, deliveryDays: s.deliveryDays ?? [] },
     });
     ids.set(s.name, row.id);
   }
-  const existing = await db.setting.findUnique({ where: { key: LEAD_REFS_KEY } });
-  let refs: Record<string, string> = {};
-  try { refs = JSON.parse(existing?.value ?? "{}") as Record<string, string>; } catch { refs = {}; }
-  for (const s of BREW_SUPPLIERS) refs[ids.get(s.name)!] = s.ref;
-  await db.setting.upsert({ where: { key: LEAD_REFS_KEY }, create: { key: LEAD_REFS_KEY, value: JSON.stringify(refs) }, update: { value: JSON.stringify(refs) } });
 
   // Brewing ingredients belong to the brewery side.
   await db.ingredient.updateMany({ where: { category: { in: ["Malt", "Hops", "Yeast", "Brewing"] } }, data: { department: "brewery" } });
@@ -87,7 +81,7 @@ export async function seedBrewStock(db: PrismaClient, today: string): Promise<vo
   }
   // The first planned brew's malt is already ordered.
   const first = await db.brewBatch.findFirst({ where: { status: "PLANNED", recipeId: { not: null } }, orderBy: { plannedOn: "asc" }, select: { id: true } });
-  if (first) await db.brewBatch.update({ where: { id: first.id }, data: { ordered: { "Hudson Valley Malt": addDays(today, -3) } } });
+  if (first) await db.brewBatch.update({ where: { id: first.id }, data: { ordered: { [ids.get("Hudson Valley Malt")!]: addDays(today, -3) } } });
 
   // A count twelve days ago and a malt delivery five days ago.
   if (await db.brewStockMove.count()) return;

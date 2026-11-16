@@ -31,6 +31,8 @@ interface Stored extends GoogleTokens {
   siteUrl: string | null;
   location: string | null;
   locationTitle: string | null;
+  /** The picked listing's Google place id (reviews follow it). */
+  locationPlaceId?: string | null;
   needsReconnect?: string | null;
 }
 
@@ -92,6 +94,7 @@ export interface GoogleStatus {
   siteUrl: string | null;
   location: string | null;
   locationTitle: string | null;
+  locationPlaceId: string | null;
   connectedAt: string | null;
   connectedBy: string | null;
   needsReconnect: string | null;
@@ -109,6 +112,7 @@ export async function googleStatus(): Promise<GoogleStatus> {
     siteUrl: s?.siteUrl ?? null,
     location: s?.location ?? null,
     locationTitle: s?.locationTitle ?? null,
+    locationPlaceId: s?.locationPlaceId ?? null,
     connectedAt: s?.connectedAt ?? null,
     connectedBy: s?.connectedBy ?? null,
     needsReconnect: s?.needsReconnect ?? null,
@@ -127,7 +131,7 @@ export async function connectGoogle(args: { code: string; redirectUri: string; b
   const old = await readStored();
   const t = googleTokensFrom(await exchangeCode(app, args.code, args.redirectUri), new Date(), old?.refreshToken ?? null);
   if (!t.refreshToken) throw new GoogleError("Google didn't send a long-lived sign-in. Remove the app's access at myaccount.google.com/permissions, then press Connect Google again.", 400);
-  const stored: Stored = { v: 1, ...t, connectedAt: new Date().toISOString(), connectedBy: args.by, siteUrl: old?.siteUrl ?? null, location: old?.location ?? null, locationTitle: old?.locationTitle ?? null, needsReconnect: null };
+  const stored: Stored = { v: 1, ...t, connectedAt: new Date().toISOString(), connectedBy: args.by, siteUrl: old?.siteUrl ?? null, location: old?.location ?? null, locationTitle: old?.locationTitle ?? null, locationPlaceId: old?.locationPlaceId ?? null, needsReconnect: null };
   await writeStored(stored);
   const found = await discover().catch((e) => ({ error: (e as Error).message }));
   return found;
@@ -153,6 +157,7 @@ export async function discover(): Promise<{ sites: GscSite[]; siteUrl: string | 
   let locations: GbpLocation[] = [];
   let location = s.location;
   let locationTitle = s.locationTitle;
+  let locationPlaceId = s.locationPlaceId ?? null;
   if (grant.business) {
     try {
       const accounts = await withToken((t) => listAccounts(t));
@@ -163,20 +168,27 @@ export async function discover(): Promise<{ sites: GscSite[]; siteUrl: string | 
         location = pick?.name ?? null;
         locationTitle = pick?.title ?? null;
       }
+      locationPlaceId = locations.find((l) => l.name === location)?.placeId ?? null;
       if (!location) notes.push(locations.length ? "Pick which Business Profile listing is Subversive." : "No Business Profile listing found for this Google account.");
     } catch (e) {
       notes.push((e as Error).message);
     }
   }
   const cur = await readStored();
-  if (cur) await writeStored({ ...cur, siteUrl, location, locationTitle });
+  if (cur) await writeStored({ ...cur, siteUrl, location, locationTitle, locationPlaceId });
   return { sites, siteUrl, locations, location, notes };
 }
 
-export async function chooseGoogleTargets(p: { siteUrl?: string | null; location?: string | null; locationTitle?: string | null }) {
+export async function chooseGoogleTargets(p: { siteUrl?: string | null; location?: string | null; locationTitle?: string | null; locationPlaceId?: string | null }) {
   const s = await readStored();
   if (!s) throw new GoogleNotConnectedError();
-  await writeStored({ ...s, ...(p.siteUrl !== undefined ? { siteUrl: p.siteUrl } : {}), ...(p.location !== undefined ? { location: p.location, locationTitle: p.locationTitle ?? null } : {}) });
+  await writeStored({ ...s, ...(p.siteUrl !== undefined ? { siteUrl: p.siteUrl } : {}), ...(p.location !== undefined ? { location: p.location, locationTitle: p.locationTitle ?? null, locationPlaceId: p.location ? (p.locationPlaceId ?? null) : null } : {}) });
+}
+
+/** The picked Business Profile listing and its place id (null when not connected or none is picked). */
+export async function pickedListing(): Promise<{ location: string | null; title: string | null; placeId: string | null }> {
+  const s = await readStored();
+  return { location: s?.location ?? null, title: s?.locationTitle ?? null, placeId: s?.locationPlaceId ?? null };
 }
 
 let refreshing: Promise<string> | null = null;

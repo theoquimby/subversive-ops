@@ -3,7 +3,7 @@ import { CostingContext, explodeUsage } from "@/domain/costing";
 import { addDays, dateRange, daysBetween, ISODate, nextWeekdayOnOrAfter, parseISODate, toISODate, todayIn, zonedMidnightUTC } from "@/domain/dates";
 import { DayForecast, forecastSeries } from "@/domain/forecast";
 import type { BaseUnit } from "@/domain/units";
-import { CutoffRule, cutoffRule, defaultPack, estimateOnHand, hoursUntil, nextCutoff, OrderSuggestion, packOptions, shouldAutoDraft, suggestLine } from "@/domain/ordering";
+import { CutoffRule, cutoffColumnsPatch, cutoffRule, defaultPack, estimateOnHand, hoursUntil, MIN_ON_HAND_KEY, nextCutoff, OrderSuggestion, packOptions, savedCutoff, shouldAutoDraft, suggestLine } from "@/domain/ordering";
 import { itemNeed, supplierNeed, type ItemNeed, type SupplierNeed } from "@/domain/orderNeed";
 import { dayDate } from "@/lib/format";
 import { Prisma } from "@prisma/client";
@@ -403,7 +403,7 @@ export async function estimatedOnHandAll(): Promise<Map<string, StockEstimate>> 
 
 // ---- Par levels (min on hand for items no recipe uses) ------------------------------
 
-const PAR_KEY = "ordering.minOnHand";
+const PAR_KEY = MIN_ON_HAND_KEY;
 
 /** Minimum on hand per ingredient, in base units. */
 export async function loadPars(): Promise<Record<string, number>> {
@@ -427,23 +427,27 @@ export async function setPar(ingredientId: string, qtyBase: number | null) {
 
 // ---- Order cutoffs and auto-drafts ----------------------------------------------------
 
-const CUTOFF_KEY = "ordering.cutoffs";
-
+/** What each supplier has set for its order deadline (its cutoff columns), by supplier id; suppliers with nothing set are left out. */
 export async function loadCutoffRules(): Promise<Record<string, Partial<CutoffRule>>> {
-  const s = await settingValue(CUTOFF_KEY);
-  if (!s) return {};
-  try {
-    return JSON.parse(s) as Record<string, Partial<CutoffRule>>;
-  } catch {
-    return {};
+  const rows = await db.supplier.findMany({ select: { id: true, cutoffTime: true, cutoffDaysBefore: true, autoDraft: true, cutoffPerDay: true } });
+  const out: Record<string, Partial<CutoffRule>> = {};
+  for (const r of rows) {
+    const saved = savedCutoff(r);
+    if (saved) out[r.id] = saved;
   }
+  return out;
 }
 
+/** Change a supplier's deadline. Days before delivery that match its lead time follow the lead time. */
 export async function saveCutoffRule(supplierId: string, patch: Partial<CutoffRule>) {
-  const all = await loadCutoffRules();
-  all[supplierId] = { ...all[supplierId], ...patch };
-  const value = JSON.stringify(all);
-  await db.setting.upsert({ where: { key: CUTOFF_KEY }, create: { key: CUTOFF_KEY, value }, update: { value } });
+  const s = await db.supplier.findUnique({ where: { id: supplierId }, select: { leadTimeDays: true } });
+  if (!s) return;
+  const c = cutoffColumnsPatch(patch, s.leadTimeDays);
+  const { cutoffPerDay, ...rest } = c;
+  await db.supplier.update({
+    where: { id: supplierId },
+    data: { ...rest, ...(cutoffPerDay !== undefined ? { cutoffPerDay: cutoffPerDay === null ? Prisma.DbNull : (cutoffPerDay as Prisma.InputJsonValue) } : {}) },
+  });
 }
 
 const clock = (t: string) => {

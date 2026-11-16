@@ -29,7 +29,7 @@ export default async function GooglePage({ searchParams }: { searchParams: Promi
   const signIn = piece("signin");
   const reviews = piece("reviews");
   const appReady = secrets.clientId.set && secrets.clientSecret.set;
-  const r: ReviewsSetup = { key: secrets.places, placeId: data.place.id, placeName: data.place.name, businessName: profile.name, test: data.reviewsTest };
+  const r: ReviewsSetup = { key: secrets.places, placeId: data.place.id, placeName: data.place.name, fromListing: data.place.fromListing, businessName: profile.name, test: data.reviewsTest };
 
   return (
     <>
@@ -68,7 +68,7 @@ export default async function GooglePage({ searchParams }: { searchParams: Promi
                   {status.connected && status.grant.search ? <SearchConsolePicker siteUrl={status.siteUrl} /> : null}
                 </Piece>
                 <Piece p={piece("listing")} level={3} setup={<ListingSteps />}>
-                  {status.connected && status.grant.business ? <ListingPicker location={status.location} locationTitle={status.locationTitle} /> : null}
+                  {status.connected && status.grant.business ? <ListingPicker location={status.location} locationTitle={status.locationTitle} reviewsFollow={data.place.fromListing} /> : null}
                 </Piece>
                 <Piece p={piece("analytics")} level={3} setupTitle="How to get ready" setup={<AnalyticsSteps />} />
               </div>

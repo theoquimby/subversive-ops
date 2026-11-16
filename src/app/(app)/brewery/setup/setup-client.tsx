@@ -3,21 +3,26 @@
 import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
 import { useToast } from "@/components/toast";
-import { Button, Card, cx, Field, Input, Select, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, Button, Card, cx, Field, Input, Select, Table, Td, Th, Tr } from "@/components/ui";
 import { weekdaysText } from "@/domain/brewProfiles";
 import { WEEKDAYS } from "@/domain/dates";
 import { STARTER_TANKS, type TankKind } from "@/domain/tankPlan";
+import { equipmentHref } from "@/domain/tankUpkeep";
 import type { TankView } from "@/server/services/brewery";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, Wrench, X } from "lucide-react";
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { KIND_LABEL } from "../bits";
-import { addStarterTanksAction, addTankAction, deleteTankAction, setDefaultDaysAction, setSnapDaysAction, setTankFieldAction } from "./actions";
+import { addStarterTanksAction, addTankAction, deleteTankAction, openTankUpkeepAction, setDefaultDaysAction, setSnapDaysAction, setTankFieldAction } from "./actions";
+
+/** Each tank's Upkeep record, by tank id: its equipment and whether a repair has it down. */
+export type TankUpkeep = Record<string, { equipmentId: string; down: boolean }>;
 
 const KINDS = (["FERMENTER", "BRITE", "OTHER"] as TankKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }));
 const ACTIVE = [{ value: "yes", label: "In use" }, { value: "no", label: "Not in use" }];
 
 /** Every tank, editable in place, with a row to add one. Tanks not in use wait behind a link; with no tanks yet, Brew Manager's tanks to start from. */
-export function TankGrid({ tanks }: { tanks: TankView[] }) {
+export function TankGrid({ tanks, upkeep = {} }: { tanks: TankView[]; upkeep?: TankUpkeep }) {
   const [showOld, setShowOld] = useState(false);
   const idle = tanks.filter((t) => !t.active).length;
   const shown = showOld ? tanks : tanks.filter((t) => t.active);
@@ -35,11 +40,12 @@ export function TankGrid({ tanks }: { tanks: TankView[] }) {
               <Th align="right" className="hidden md:table-cell">Column</Th>
               <Th align="right" className="hidden lg:table-cell">Order</Th>
               <Th className="hidden sm:table-cell">In use</Th>
+              <Th><span className="sr-only">Upkeep</span></Th>
               <Th />
             </tr>
           </thead>
           <tbody>
-            {shown.map((t) => <Row key={t.id} t={t} />)}
+            {shown.map((t) => <Row key={t.id} t={t} upkeep={upkeep[t.id] ?? null} />)}
           </tbody>
         </Table>
       ) : (
@@ -55,7 +61,7 @@ export function TankGrid({ tanks }: { tanks: TankView[] }) {
   );
 }
 
-function Row({ t }: { t: TankView }) {
+function Row({ t, upkeep }: { t: TankView; upkeep: TankUpkeep[string] | null }) {
   const confirm = useConfirm();
   const [pending, start] = useTransition();
   const [toast, show] = useToast();
@@ -82,6 +88,26 @@ function Row({ t }: { t: TankView }) {
       <Td className="hidden w-20 px-2 py-1.5 md:table-cell"><GridCell grid="tank" col="col" value={t.layoutCol} type="number" placeholder="—" onSave={save("layoutCol")} ariaLabel={`${t.name} column on the floor plan`} /></Td>
       <Td className="hidden w-20 px-2 py-1.5 lg:table-cell"><GridCell grid="tank" col="sort" value={t.sort} type="number" onSave={save("sort")} ariaLabel={`${t.name} order`} /></Td>
       <Td className="hidden w-36 px-2 py-1.5 sm:table-cell"><GridSelect value={t.active ? "yes" : "no"} options={ACTIVE} onSave={save("active")} ariaLabel={`${t.name} in use`} /></Td>
+      <Td className="w-12 px-1 sm:w-32">
+        <div className="flex items-center justify-end gap-1.5">
+          {upkeep?.down && <Badge tone="bad">Down</Badge>}
+          {upkeep ? (
+            <Link href={equipmentHref(upkeep.equipmentId)} aria-label={`${t.name} upkeep`} className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink sm:min-h-8">
+              <Wrench className="size-3.5" /><span className="hidden sm:inline">Upkeep</span>
+            </Link>
+          ) : (
+            <button
+              type="button"
+              disabled={pending}
+              aria-label={`${t.name} upkeep`}
+              onClick={() => start(async () => { const r = await openTankUpkeepAction(t.id); if (r?.error) show(r.error, "bad"); })}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-sm text-muted hover:bg-surface-2 hover:text-ink sm:min-h-8"
+            >
+              <Wrench className="size-3.5" /><span className="hidden sm:inline">Upkeep</span>
+            </button>
+          )}
+        </div>
+      </Td>
       <Td className="w-10 px-1">
         <button
           type="button"

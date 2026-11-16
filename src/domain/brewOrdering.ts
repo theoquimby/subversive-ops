@@ -20,7 +20,12 @@ import { addDays, daysBetween, WEEKDAYS, weekday, type ISODate } from "./dates";
 export type LeadRef = "brew" | "dryHop" | "pkg";
 export const LEAD_REFS: LeadRef[] = ["brew", "dryHop", "pkg"];
 export const LEAD_REF_LABEL: Record<LeadRef, string> = { brew: "Brew day", dryHop: "Dry-hop day", pkg: "Packaging day" };
-/** Setting holding each brewery supplier's reference day, JSON by supplier id (the Brew Manager import writes it too). */
+/**
+ * The old Setting that held each brewery supplier's reference day, JSON by
+ * supplier id. Ops now keeps it on the supplier (Supplier.brewLeadRef) and no
+ * longer reads this; the name stays for the Brew Manager import until it
+ * writes the column.
+ */
 export const LEAD_REFS_KEY = "brewery.supplierLeadRefs";
 /** Lead time assumed for an ingredient with no brewery supplier yet. */
 export const DEFAULT_LEAD_DAYS = 14;
@@ -31,6 +36,16 @@ export const ORDER_HORIZON_DAYS = 84;
 export const NO_SUPPLIER = "No supplier set";
 
 export const isLeadRef = (s: unknown): s is LeadRef => s === "brew" || s === "dryHop" || s === "pkg";
+
+/**
+ * A brewery supplier's lead time and what it counts back from, from its own
+ * columns: brewLeadDays (falling back to leadTimeDays, where the brewery kept
+ * it before, and where the Brew Manager import still writes it) and brewLeadRef
+ * (brew day when unset).
+ */
+export function brewLead(s: { brewLeadDays: number | null; brewLeadRef: string | null; leadTimeDays: number }): { leadDays: number; ref: LeadRef } {
+  return { leadDays: s.brewLeadDays ?? s.leadTimeDays, ref: isLeadRef(s.brewLeadRef) ? s.brewLeadRef : "brew" };
+}
 
 export function parseLeadRefs(raw: string | null | undefined): Record<string, LeadRef> {
   if (!raw) return {};
@@ -43,10 +58,26 @@ export function parseLeadRefs(raw: string | null | undefined): Record<string, Le
   }
 }
 
-/** Placed orders on a brew: { "<supplier name>": "YYYY-MM-DD" }. */
+/**
+ * Placed orders on a brew: { "<supplier id>": "YYYY-MM-DD" }. Entries from
+ * before suppliers were linked by id, whose name matched no supplier, are still
+ * under the name.
+ */
 export function parseOrdered(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   return Object.fromEntries(Object.entries(raw).filter(([k, v]) => k && typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v))) as Record<string, string>;
+}
+
+/** When a supplier's order for a brew was placed: by its id, else an older entry under its name. */
+export const placedOnFor = (ordered: Readonly<Record<string, string>>, s: { id: string; name: string }): string | null => ordered[s.id] ?? ordered[s.name] ?? null;
+
+/** Mark a supplier's order placed on `on` (or not placed, with null): kept by supplier id; any older entry under its name goes. */
+export function withPlaced(ordered: Readonly<Record<string, string>>, s: { id: string; name: string }, on: string | null): Record<string, string> {
+  const out = { ...ordered };
+  delete out[s.name];
+  if (on) out[s.id] = on;
+  else delete out[s.id];
+  return out;
 }
 
 export function orderByDate(ref: ISODate, leadDays: number, deliveryDays: readonly number[]): ISODate {
@@ -202,7 +233,7 @@ export function planBrewOrders(i: { today: ISODate; brews: PlannedBrew[]; suppli
       const labelsOnly = ref === "pkg" && lines.length === 0;
       const needsOrder = labelsOnly || short.length > 0;
       const orderBy = orderByDate(refOn, s?.leadDays ?? DEFAULT_LEAD_DAYS, s?.deliveryDays ?? []);
-      const placedOn = s ? (b.ordered[s.name] ?? null) : null;
+      const placedOn = s ? placedOnFor(b.ordered, s) : null;
       out.push({
         key: `${b.id}|${supplierId ?? "-"}`,
         supplierId,

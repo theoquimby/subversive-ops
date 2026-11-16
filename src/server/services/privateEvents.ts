@@ -10,6 +10,7 @@ import {
   EVENT_TYPE_LABEL,
   forecastImpact,
   isBarKind,
+  isBuyout,
   isEventType,
   isQuoteToken,
   isStage,
@@ -423,6 +424,17 @@ export async function deletePrivateEvent(id: string) {
   if (!e) return;
   if (e.calendarEventId) await db.event.deleteMany({ where: { id: e.calendarEventId } });
   await db.privateEvent.delete({ where: { id } });
+  if (e.calendarEventId) await pingSiteEvents();
+}
+
+/** A buyout shows on the website as a closure: tell the website when one changes. Never fails the save. */
+async function pingSiteEvents() {
+  try {
+    const { pingWebsite } = await import("./website");
+    pingWebsite("events");
+  } catch {
+    // Outside a request (a script, the seed): the website picks it up on its next refresh.
+  }
 }
 
 // ---- Calendar ------------------------------------------------------------------------
@@ -455,12 +467,12 @@ export async function syncCalendar(id: string) {
     if (e.calendarEventId) {
       await db.event.deleteMany({ where: { id: e.calendarEventId } });
       await db.privateEvent.update({ where: { id }, data: { calendarEventId: null } });
+      await pingSiteEvents();
     }
     return;
   }
   const date = toISODate(e.date!);
-  const space = cfg.spaces.find((s) => s.name === e.space);
-  const buyout = space?.buyout ?? e.type === "BUYOUT";
+  const buyout = isBuyout(e, cfg.spaces);
   const impact = forecastImpact({ eventSales: q.food + q.bar, headcount: e.headcount, buyout, baseline: await weekdayBaseline(date) });
   const data = {
     date: e.date!,
@@ -477,6 +489,8 @@ export async function syncCalendar(id: string) {
     const ev = await db.event.create({ data });
     await db.privateEvent.update({ where: { id }, data: { calendarEventId: ev.id } });
   }
+  // Only a buyout reaches the website; a change of space can also take one off it.
+  if (buyout || existing) await pingSiteEvents();
 }
 
 // ---- Feeds for other pages -------------------------------------------------------------

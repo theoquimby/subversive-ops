@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.29 (one record each, linked) ----
+  {
+    id: "2026-11-16.one-record",
+    date: "2026-11-16",
+    title: "One record for each thing",
+    line: "Supplier settings, buyouts, tank repairs and brewery cases now come from one linked record, never a copy.",
+    icon: "settings",
+    area: "setup",
+    href: "/settings/suppliers",
+    help: "settings.suppliers",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.25 (kitchen ordering) ----
   {
     id: "2026-11-16.order-cadence",

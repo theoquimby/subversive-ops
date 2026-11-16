@@ -69,7 +69,7 @@ The tank is freed and a keg batch with the brew's code is made. **Fill kegs** (i
 - **Hazy IPA**: dry hop day 7, brite 20, package 23, on tap 30.
 - **Sour**: brite 38, package 42, on tap 49.
 - **Lager**: fermenter-to-fermenter move 21, brite 49, package 52, on tap 60.
-- **Pale / clear IPA**: brite 32, package 35, on tap 42.
+- **Pale / Clear IPA**: brite 32, package 35, on tap 42.
 
 A recipe's own dry-hop and release days win over its profile. A recipe with no profile uses its fermenting and conditioning days, and its release is a week after packaging.
 

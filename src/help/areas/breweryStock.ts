@@ -125,7 +125,7 @@ An ingredient's supplier is the brewing supplier it's bought as (its preferred p
     area: "brewery",
     route: "/brewery/ordering",
     title: "Lead time",
-    body: "Days before the brew day, dry-hop day or packaging day to order by.",
+    body: "Days before the brew day, dry-hop day or packaging day to order by. It's the brewery's own number, kept apart from the kitchen's lead time (days before delivery) on Settings → Suppliers.",
     related: ["brewery.ordering.suppliers"],
   },
   {

@@ -38,11 +38,11 @@ export const BREW_PROFILES: Record<ProfileKey, TimingProfile> = {
   hazy: { key: "hazy", label: "Hazy IPA", hint: "Dry hop day 7, brite day 20, package 23, on tap 30", dryHop: 7, fvTransfer: null, brite: 20, pkg: 23, tap: 30 },
   sour: { key: "sour", label: "Sour", hint: "About six weeks: brite day 38, package 42, on tap 49", dryHop: null, fvTransfer: null, brite: 38, pkg: 42, tap: 49 },
   lager: { key: "lager", label: "Lager", hint: "About eight weeks: fermenter move day 21, brite 49, package 52, on tap 60", dryHop: null, fvTransfer: 21, brite: 49, pkg: 52, tap: 60 },
-  pale: { key: "pale", label: "Pale / clear IPA", hint: "About five weeks: brite day 32, package 35, on tap 42", dryHop: null, fvTransfer: null, brite: 32, pkg: 35, tap: 42 },
+  pale: { key: "pale", label: "Pale / Clear IPA", hint: "About five weeks: brite day 32, package 35, on tap 42", dryHop: null, fvTransfer: null, brite: 32, pkg: 35, tap: 42 },
 };
 
 export const PROFILE_KEYS = Object.keys(BREW_PROFILES) as ProfileKey[];
-export const isProfileKey = (s: string | null | undefined): s is ProfileKey => !!s && s in BREW_PROFILES;
+export const isProfileKey = (s: unknown): s is ProfileKey => typeof s === "string" && Object.prototype.hasOwnProperty.call(BREW_PROFILES, s);
 
 /** A brew's own choice to use the recipe's fermenting and conditioning days, whatever the recipe's profile. */
 export const RECIPE_DAYS = "days";

@@ -42,7 +42,7 @@ function Placed({ o, today }: { o: OrderView; today: string }) {
   if (!o.supplierId) return <span className="text-xs text-muted">Set a supplier</span>;
   const run = (placed: boolean) => start(async () => {
     setError(null);
-    const r = await setPlacedAction(o.brewId, o.supplier, placed, today);
+    const r = await setPlacedAction(o.brewId, o.supplierId!, placed, today);
     if (r.error) setError(r.error);
     else router.refresh();
   });

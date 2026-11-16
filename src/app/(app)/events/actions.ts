@@ -53,8 +53,13 @@ export async function addEvents(input: z.input<typeof addSchema>): R {
   return { message: n === dates.length ? `Added ${n} event${n === 1 ? "" : "s"}.` : `Added ${n}; ${dates.length - n} were already on the list.` };
 }
 
+/** A private event booking's calendar entry is kept by the booking: it's changed there, not here. */
+const BOOKED = "This comes from a private event booking. Change it in Private events.";
+const fromBooking = async (id: string) => !!(await db.privateEvent.findFirst({ where: { calendarEventId: id }, select: { id: true } }));
+
 export async function setEventField(id: string, field: "title" | "kind" | "startTime" | "endTime" | "impact" | "notes" | "date", raw: string): Promise<{ error?: string } | void> {
   await requireUser("MANAGER");
+  if (await fromBooking(id)) return { error: BOOKED };
   const value = raw.trim();
   let data: Prisma.EventUpdateInput;
   switch (field) {
@@ -105,6 +110,7 @@ export async function setEventField(id: string, field: "title" | "kind" | "start
 
 export async function deleteEvent(id: string): R {
   await requireUser("MANAGER");
+  if (await fromBooking(id)) return { error: BOOKED };
   await db.event.deleteMany({ where: { id } });
   refresh();
   return {};

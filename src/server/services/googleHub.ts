@@ -1,4 +1,5 @@
 import "server-only";
+import { reviewsPlace } from "@/domain/googleData";
 import { googleHub, type GoogleHub, type GoogleHubFacts } from "@/domain/googleHub";
 import type { SecretStatus } from "@/domain/secrets";
 import { db } from "../db";
@@ -10,7 +11,8 @@ export interface GoogleHubData {
   hub: GoogleHub;
   status: GoogleStatus;
   secrets: { clientId: SecretStatus; clientSecret: SecretStatus; places: SecretStatus };
-  place: { id: string | null; name: string | null };
+  /** Where reviews come from: the picked listing when it has a place id, else the business found by search. */
+  place: { id: string | null; name: string | null; fromListing: boolean };
   /** The last Google reviews test (the Find my business search), as Settings → Connections stores it. */
   reviewsTest: { ok: boolean; message: string; at: string } | null;
 }
@@ -30,7 +32,7 @@ export async function googleHubData(): Promise<GoogleHubData> {
   } catch {
     reviewsTest = null;
   }
-  const place = { id: get(SETTING_PLACE_ID), name: get("reviews.googlePlaceName") };
+  const place = reviewsPlace({ location: status.location, title: status.locationTitle, placeId: status.locationPlaceId }, { id: get(SETTING_PLACE_ID), name: get("reviews.googlePlaceName") });
   const facts: GoogleHubFacts = {
     signIn: {
       clientIdSaved: clientId.set,
@@ -44,7 +46,7 @@ export async function googleHubData(): Promise<GoogleHubData> {
     },
     search: { siteUrl: status.siteUrl, syncedAt: status.state.search.at, error: status.state.search.error, hasData: status.hasSearchData },
     listing: { location: status.location, title: status.locationTitle, syncedAt: status.state.profile.at, error: status.state.profile.error, hasData: status.hasProfileData },
-    reviews: { keySaved: places.set, placeId: place.id, placeName: place.name, test: reviewsTest },
+    reviews: { keySaved: places.set, placeId: place.id, placeName: place.name, fromListing: place.fromListing, test: reviewsTest },
   };
   return { hub: googleHub(facts), status, secrets: { clientId, clientSecret, places }, place, reviewsTest };
 }

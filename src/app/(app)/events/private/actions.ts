@@ -143,7 +143,7 @@ export async function setPrivateEventField(id: string, field: PrivateEventField,
     }
     case "ownerId":
       if (value && !(await db.user.findUnique({ where: { id: value }, select: { id: true } }))) return { error: "Pick someone" };
-      data = { ownerId: value || null };
+      data = { owner: value ? { connect: { id: value } } : { disconnect: true } };
       break;
     case "date":
     case "followUpOn":

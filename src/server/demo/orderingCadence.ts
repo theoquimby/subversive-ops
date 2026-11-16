@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { parseSupplierPrefs, prefsToColumns } from "../../domain/supplierPrefs";
 
 /**
  * Ordering cadence demo: a mix of suppliers ordered every delivery and ones
@@ -35,7 +36,6 @@ export async function seedOrderingCadence(db: PrismaClient): Promise<void> {
     await db.ingredient.updateMany({ where: { products: { some: { supplierId: { in: brewing.map((s) => s.id) } } } }, data: { department: "brewery" } });
   }
 
-  const value = JSON.stringify(prefs);
-  await db.setting.upsert({ where: { key: "ordering.supplierPrefs" }, create: { key: "ordering.supplierPrefs", value }, update: { value } });
+  for (const [id, p] of Object.entries(prefs)) await db.supplier.update({ where: { id }, data: prefsToColumns(parseSupplierPrefs(p)) });
   await db.setting.upsert({ where: { key: "ordering.cadenceNotice" }, create: { key: "ordering.cadenceNotice", value: "show" }, update: { value: "show" } });
 }

@@ -289,7 +289,7 @@ function AppPreview({ p, opts, pending, onChange, onRun, onReset }: { p: AppImpo
           <ul className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
             {p.suppliers.map((s) => (
               <li key={s.name}>
-                <span className="font-medium">{s.name}</span> <span className="text-muted">· {plural(s.leadDays, "day")} before the {LEAD_REF_LABEL[s.ref]}{s.exists ? "" : " · new brewery supplier"}</span>
+                <span className="font-medium">{s.name}</span> <span className="text-muted">· {plural(s.leadDays, "day")} before the {LEAD_REF_LABEL[s.ref].toLowerCase()}{s.exists ? "" : " · new brewery supplier"}</span>
               </li>
             ))}
           </ul>
