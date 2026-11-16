@@ -100,8 +100,10 @@ When a recipe is **Live**, linked to a beer, and every line has a price, the keg
 
 **Scale to** shows every amount for another batch size without changing the recipe. **Make this the batch size** rescales it for real (then Save).
 
-**Duplicate** makes an in-development copy to try changes on. **Delete** removes a recipe no brew uses; one that brews use is archived instead, so their history keeps it.`,
-    related: ["brewery.recipes.numbers", "brewery.recipes.grain", "brewery.recipes.hops"],
+**Duplicate** makes an in-development copy to try changes on. **Delete** removes a recipe no brew uses; one that brews use is archived instead, so their history keeps it.
+
+**Brew-day targets** and **Timing** hold what the brew day checks against and when the beer moves, dry hops and goes on tap. **Brew this** opens a brew day for the recipe (or carries on the one already going).`,
+    related: ["brewery.recipes.numbers", "brewery.recipes.grain", "brewery.recipes.hops", "brewery.recipes.targets", "brewery.recipes.timing", "brewery.brewday"],
     keywords: ["new recipe", "edit recipe", "scale", "duplicate", "batch size"],
   },
   {
@@ -165,8 +167,57 @@ When a recipe is **Live**, linked to a beer, and every line has a price, the keg
     area: "brewery",
     route: "/brewery/recipes",
     title: "Process",
-    body: "Batch size in barrels, brewhouse efficiency, boil length and the usual days fermenting and conditioning (the tank schedule uses these). Targets are what you aim for; the numbers above are worked out.",
-    keywords: ["batch size", "efficiency", "boil", "ferment", "condition", "target"],
+    body: "Batch size in barrels, brewhouse efficiency and boil length, and the OG and FG you aim for. The numbers at the top are worked out from the recipe and show how far they are from the targets.",
+    keywords: ["batch size", "efficiency", "boil", "target", "og", "fg"],
+  },
+  {
+    id: "brewery.recipes.targets",
+    area: "brewery",
+    route: "/brewery/recipes",
+    title: "Brew-day targets",
+    body: "Strike and mash temperatures, the mash rest, and the gravity you expect in the mash tun (MT), boil kettle (BK) and at knock-out (KO). The brew day shows each beside its reading.",
+    article: `These are Brew Manager's targets, kept on the recipe:
+
+- **Strike** and **Mash**, in °F, and how long the mash rests (the brew day's mash timer counts down from it).
+- **MT**, **BK** and **KO gravity**: first runnings in the mash tun, the kettle before the boil, and knock-out.
+
+Gravity is shown and typed in the brewery's unit, °Plato unless SG was chosen (the °P / SG switch at the top). Either can be typed: 15.5P is always Plato, 1.063 always SG. It's kept as specific gravity, so switching changes nothing stored.`,
+    related: ["brewery.recipes.timing", "brewery.brewday", "brewery.gravity"],
+    keywords: ["strike", "mash", "temperature", "mt", "bk", "ko", "knock-out", "plato", "target"],
+  },
+  {
+    id: "brewery.recipes.timing",
+    area: "brewery",
+    route: "/brewery/recipes",
+    title: "Timing",
+    body: "Pick a profile (Hazy IPA, Sour, Lager, Pale / Clear IPA) to fill in the dry-hop day, days fermenting and conditioning, and the day it goes on tap. Change any day to make it your own.",
+    article: `The profiles are Brew Manager's:
+
+- **Hazy IPA**: dry hop on day 7, to a brite on day 20, packaged day 23, on tap day 30.
+- **Sour**: to a brite on day 38, packaged day 42, on tap day 49.
+- **Lager**: a transfer on day 21, to a brite on day 49, packaged day 52, on tap day 60.
+- **Pale / Clear IPA**: to a brite on day 32, packaged day 35, on tap day 42.
+
+**Days fermenting** run from brew day to the move into a brite, **days conditioning** from there to packaging. The tank schedule plans tanks from these two. Changing a day turns the profile to **Custom**.`,
+    related: ["brewery.recipes.targets", "brewery.schedule"],
+    keywords: ["profile", "hazy", "sour", "lager", "pale", "dry hop", "tap day", "release", "ferment days", "condition days"],
+  },
+  {
+    id: "brewery.recipes.dev",
+    area: "brewery",
+    route: "/brewery/recipes",
+    title: "Beers in development",
+    body: "What a development beer still needs before it's brewed for real: a supplier for every ingredient, gravity targets, a batch size and label artwork.",
+    article: `Brew Manager's development notes say things like "Needs suppliers + gravity targets". The checklist on an in-development recipe shows the same, worked out from the recipe:
+
+- **A supplier for every ingredient**: each line matched to an ingredient that has a price from a supplier. Lines without one are named.
+- **Gravity targets**: an OG and an FG.
+- **A batch size**.
+- **Label artwork done**: tick it when the label is ready.
+
+Set the status to **Live** when it's ready.`,
+    related: ["brewery.recipes.details", "brewery.import"],
+    keywords: ["development", "dev", "artwork", "label", "suppliers", "checklist", "missing"],
   },
   {
     id: "brewery.recipes.prices",
@@ -239,26 +290,34 @@ Batch codes run by year: 26-001, 26-002 and so on, unless you type your own.`,
     area: "brewery",
     route: "/brewery/import",
     title: "Import brewing data",
-    body: "Bring in recipes and brews from the Brew Manager app: press Export backup JSON there, then upload the file here.",
-    article: `1. In Brew Manager, open **Settings → Backup → Export backup JSON**. It saves a file like subversive-backup-2026-11-16.json.
-2. Upload that file here. You see what's in it before anything changes: recipes, brews, tanks, which recipes match a beer.
+    body: "Bring in everything from the Brew Manager app: its app data file for recipes, the schedule, development beers and tanks, and its backup file for brews.",
+    article: `Brew Manager keeps its data in two files. Either can go first, and each can be imported again later.
+
+- **brewmanager-app-data.json** (made from Brew Manager's own page): recipes, the 2026 schedule, development beers, tanks with where they stand, and suppliers' lead times.
+- **The backup** (in Brew Manager, **Settings → Backup → Export backup JSON**, a file like subversive-backup-2026-11-16.json): recipes and every brew, with its tanks, readings and brew-day log.
+
+1. Upload a file. You see what's in it before anything changes.
+2. For the app data, pick a recipe for any schedule name it couldn't match, and choose whether past planned brews come too.
 3. Press **Import**.
 
-Importing again (a newer backup) **updates** what came in last time instead of adding copies. What you add here afterwards (ingredient matches, extract, colour and alpha) is kept, and an In development status isn't undone.
+Importing again **updates** what came in last time instead of adding copies. What you add here afterwards (ingredient matches, extract, colour and alpha, a Live or In development status, artwork done) is kept.
 
-### What comes across
+### From the app data
 
-- **Recipes**, with their grain, hops and yeast. Brew Manager writes gravity in °Plato; it's turned into specific gravity. Amounts like "400-700lb" use the middle; ones it can't read ("4bbl pitch") come in as 0 to fill in.
-- **Brews**, with their stage: fermenting and conditioning are in a fermenter, brite is in a brite tank, packaged is done.
-- **Time in each tank**, from each brew's tank path and its dated moves.
-- **Tanks** a brew sat in that aren't set up yet are added (FV… a fermenter, BBT… or brite a brite tank), sized from the brews. Check their sizes in [Setup](/brewery/setup).
+- **Recipes**, with grain, hops, yeast and Brew Manager's targets: strike, mash temperature and rest, and MT, BK, KO, OG and FG gravity (°Plato there; kept as specific gravity here). Archived ones come in archived.
+- **Development beers** become recipes **In development**, with their artwork tick and their yeast as a yeast line.
+- **The schedule**: each planned brew on its brew day, matched to its recipe and beer by name (capitals and accents don't matter). Short names match too: Marzen is Mountain Marzen, Golden Lime is Golden Lime Lager, Saison is Saison / Farmhouse, Verdant is Verdant Voyage. Each gets its dry-hop and release days from its profile (transfers on a Monday or Tuesday, packaging on a Wednesday, as Brew Manager does), keeps a locked release date and its reason, and goes on the tank schedule where a fermenter and brite are free. Past brews are left out unless you tick **Include past brews**: they show what was planned, not what was brewed. A planned brew that has since been brewed in Ops is never changed.
+- **Tanks**, with their sizes and their spot on Brew Manager's floor plan (back wall, front, separate room). A size set in Ops stays; a size the backup import guessed is put right.
+- **Suppliers' lead times** as brewery suppliers, with the day each counts back from (brew day, dry-hop day or packaging day).
 
-Recipes are linked to the beer of the same name (capitals and spaces don't matter).
+### From the backup
 
-### What doesn't
+- **Recipes**, as above. Amounts like "400-700lb" use the middle; ones it can't read ("4bbl pitch") come in as 0 to fill in.
+- **Brews**, with their stage: fermenting and conditioning are in a fermenter, brite is in a brite tank, packaged is done. Keg and case counts, and the brew-day log (unless one was written in Ops).
+- **Time in each tank**, from each brew's tank path and its dated moves. Tanks not set up yet are added, sized from the brews.
 
-The backup holds recipes and batches only. Brew Manager's schedule, development beers and stock aren't in it. It has no alpha acids, extract or colour either, so add those on each recipe for IBU and colour.`,
-    related: ["brewery.recipes", "brewery.setup"],
-    keywords: ["import", "brew manager", "backup", "json", "plato"],
+Neither file has alpha acids, extract or colour, so add those on each recipe for IBU and colour.`,
+    related: ["brewery.recipes", "brewery.setup", "brewery.schedule", "brewery.recipes.dev"],
+    keywords: ["import", "brew manager", "backup", "json", "plato", "schedule", "development", "app data", "tanks", "lead time"],
   },
 ];

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { recipeStats, type BrewLineKind, type HopUse } from "@/domain/brewMath";
 import { costBrewRecipe, type PricedIngredient } from "@/domain/brewRecipes";
-import { INGREDIENTS, RECIPES } from "../brewRecipes";
+import { hopAdditions, readBrewLog, whatsMissing } from "@/domain/brewDay";
+import { demoBrewLog, INGREDIENTS, RECIPES } from "../brewRecipes";
 
 // Today's price per base unit for each demo ingredient: the latest price ÷ the pack.
 const priced = new Map<string, PricedIngredient>(
@@ -38,5 +39,32 @@ describe("brewing recipes demo", () => {
         expect(c.unpriced.map((u) => u.name)).toEqual(["Lactose", "Gypsum"]);
       }
     }
+  });
+});
+
+describe("brew-day demo", () => {
+  it("has targets on every recipe and one development beer with its artwork done", () => {
+    for (const r of RECIPES) expect(r.process.og, r.name).toBeGreaterThan(r.process.fg);
+    const dev = RECIPES.filter((r) => r.status === "dev");
+    expect(dev).toHaveLength(1);
+    expect(dev[0].process.artwork).toBe(true);
+    const missing = whatsMissing({
+      lines: linesOf(dev[0]).map((l) => ({ name: l.name, kind: l.kind, hasSupplier: !!l.ingredientId && priced.get(l.ingredientId)?.costPerBase != null })),
+      targetOg: dev[0].process.og,
+      targetFg: dev[0].process.fg,
+      batchBbl: dev[0].bbl,
+      artworkDone: true,
+    });
+    expect(missing.map((m) => [m.id, m.done])).toEqual([["suppliers", false], ["gravity", true], ["batch", true], ["artwork", true]]);
+  });
+
+  it("is a readable log partway through the boil, with the bittering hops ticked", () => {
+    const log = readBrewLog(JSON.parse(JSON.stringify(demoBrewLog(new Date("2026-11-16T15:00:00Z")))))!;
+    expect(log.stage).toBe("boil");
+    expect(log.values.mash.mtSg).toBe(1.0815);
+    const ipa = RECIPES.find((r) => r.key === "demo:ipa")!;
+    const hops = hopAdditions(linesOf(ipa), 60);
+    expect(Object.keys(log.hops)).toEqual([hops[0].key]);
+    expect(hops[0].name).toBe("Magnum");
   });
 });

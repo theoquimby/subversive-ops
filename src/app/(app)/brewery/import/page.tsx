@@ -8,7 +8,7 @@ export default async function Page() {
   await requireUser("MANAGER");
   return (
     <>
-      <PageHeader help="brewery.import" title="Import" description="Bring in recipes and brews from the Brew Manager app's backup file. Importing again updates them instead of adding copies." />
+      <PageHeader help="brewery.import" title="Import" description="Bring in Brew Manager's recipes, schedule, development beers, tanks and brews. Importing again updates them instead of adding copies." />
       <BrewImportFlow />
     </>
   );
