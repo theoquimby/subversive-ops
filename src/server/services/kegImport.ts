@@ -155,6 +155,29 @@ export async function reviewCounts(plan: ImportPlan) {
   };
 }
 
+/**
+ * An imported keg has been in its state since its last scan in the old app,
+ * not since the moment of the import: set "since" from the imported history.
+ * Kegs that have been scanned or edited here since are left alone. Safe to
+ * run again; returns how many kegs changed.
+ */
+export async function restoreImportedSince(kegIds?: string[]): Promise<number> {
+  const kegs = await db.keg.findMany({ where: { legacyCode: { not: null }, ...(kegIds ? { id: { in: kegIds } } : {}), events: { none: { importKey: null } } }, select: { id: true, statusAt: true } });
+  if (!kegs.length) return 0;
+  const last = await db.kegEvent.groupBy({
+    by: ["kegId"],
+    where: { kegId: { in: kegs.map((k) => k.id) }, undoneAt: null, toStatus: { not: null }, NOT: { importKey: { startsWith: "imp:created:" } } },
+    _max: { at: true },
+  });
+  const at = new Map(last.map((r) => [r.kegId, r._max.at]));
+  const changes = kegs.flatMap((k) => {
+    const when = at.get(k.id);
+    return when && when.getTime() !== k.statusAt.getTime() ? [db.keg.update({ where: { id: k.id }, data: { statusAt: when } })] : [];
+  });
+  for (let i = 0; i < changes.length; i += 100) await db.$transaction(changes.slice(i, i + 100));
+  return changes.length;
+}
+
 export interface ImportResult {
   kegsCreated: number;
   kegsUpdated: number;
@@ -329,6 +352,8 @@ export async function applyKegImport(uploadId: string, choices: SpecChoice[], us
       }
     }
   }
+
+  await restoreImportedSince(touched);
 
   // Remember each file's mapping for next time (same columns → same choices).
   const sources = await loadSources(uploadId);

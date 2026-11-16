@@ -3,7 +3,7 @@
 import type { ImportPlan } from "@/domain/kegImport";
 import { parsePastedTable } from "@/domain/bulkImport";
 import { requireUser } from "@/server/auth";
-import { applyKegImport, discardUpload, jsonSources, parkSources, planFromUpload, readSourcesFromFile, reviewCounts, type ImportResult, type SourceInfo, type SpecChoice } from "@/server/services/kegImport";
+import { applyKegImport, discardUpload, jsonSources, parkSources, planFromUpload, readSourcesFromFile, restoreImportedSince, reviewCounts, type ImportResult, type SourceInfo, type SpecChoice } from "@/server/services/kegImport";
 import { revalidatePath } from "next/cache";
 
 /** Add one file (or pasted cells / JSON) to an upload. Called once per file so each request stays small. */
@@ -40,6 +40,14 @@ export async function runKegImport(uploadId: string, choices: SpecChoice[]): Pro
   const r = await applyKegImport(uploadId, choices, { userId: me.userId, name: me.name });
   revalidatePath("/kegs", "layout");
   return r;
+}
+
+/** Imported kegs that show "since" the day of the import go back to their last scan in the old app. */
+export async function fixImportedSince(): Promise<{ fixed: number }> {
+  await requireUser("MANAGER");
+  const fixed = await restoreImportedSince();
+  revalidatePath("/kegs", "layout");
+  return { fixed };
 }
 
 export async function cancelImport(uploadId: string) {
