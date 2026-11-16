@@ -625,14 +625,19 @@ export const KEG_ACTIONS: KegActionId[] = ["KICK", "TAP", "MOVE", "STORE", "UNTA
 // ---- Cost per pint from the beer's recipe ------------------------------------------------------------
 
 /**
- * Cost per pint and per keg for beers linked to a PREP recipe (the brewer's
- * batch, yield in bbl or hl): batch cost ÷ batch volume, then ÷ yield for
- * foam and line loss. Beers without a recipe are left out.
+ * Cost per pint and per keg for each beer. Preferred source: the beer's live
+ * brewing recipe (Brewery → Recipes) when every line has a price — batch cost
+ * ÷ the beer that reaches the kegs. Otherwise, as before, the PREP recipe the
+ * beer points at (the brewer's batch, yield in bbl or hl): batch cost ÷ batch
+ * volume. Either way ÷ yield for foam and line loss. Beers with neither are left out.
  */
 export async function beerCosts(): Promise<Map<string, { perPint: number; perHalf: number; incomplete: boolean; recipe: string }>> {
-  const beers = await db.beer.findMany({ where: { recipeId: { not: null } }, select: { id: true, recipeId: true } });
+  const [beers, liveBrewRecipes] = await Promise.all([
+    db.beer.findMany({ where: { recipeId: { not: null } }, select: { id: true, recipeId: true } }),
+    db.brewRecipe.count({ where: { status: "live", beerId: { not: null } } }),
+  ]);
   const out = new Map<string, { perPint: number; perHalf: number; incomplete: boolean; recipe: string }>();
-  if (!beers.length) return out;
+  if (!beers.length && !liveBrewRecipes) return out;
   const { loadCostingSnapshot, buildContext, safeCost } = await import("./costing");
   const { toBase } = await import("@/domain/units");
   const [snap, yi] = await Promise.all([loadCostingSnapshot(), yieldInfo()]);
@@ -652,7 +657,11 @@ export async function beerCosts(): Promise<Map<string, { perPint: number; perHal
     const perMl = c.totalCost / ml / yi.yield;
     out.set(b.id, { perPint: perMl * 16 * 29.5735295625, perHalf: perMl * kegOz("half") * 29.5735295625 * yi.yield, incomplete: c.incomplete, recipe: r.name });
   }
-  return out;
+  if (!liveBrewRecipes) return out;
+  // A live, fully priced brewing recipe wins over the PREP recipe.
+  const [{ brewPourCosts }, { preferBrewCosts }] = await Promise.all([import("./brewCost"), import("@/domain/brewRecipes")]);
+  const brew = await brewPourCosts(yi.yield, kegOz("half"));
+  return preferBrewCosts(new Map([...brew].map(([id, c]) => [id, { ...c, incomplete: false }])), out);
 }
 
 // ---- What the scan panel needs -----------------------------------------------------------------------
