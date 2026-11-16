@@ -61,7 +61,7 @@ export function prepAvailable(): boolean {
 
 export interface TonightItem {
   key: string;
-  kind: "deadline" | "draft" | "checkin" | "invoices" | "kegs" | "requests" | "schedule" | "certs" | "reviews" | "other";
+  kind: "deadline" | "draft" | "checkin" | "invoices" | "kegs" | "brewery" | "requests" | "schedule" | "certs" | "reviews" | "other";
   title: string;
   detail: string;
   href: string;
@@ -193,7 +193,7 @@ export async function morningBrief(now = new Date()) {
   for (const a of attention) {
     if (a.key.startsWith("order")) continue; // covered above, per supplier
     if (a.standing) continue; // long-standing with nothing new today (the keg fleet's lists): Mondays only
-    tonight.push({ key: a.key, kind: (KINDS.has(a.key) ? a.key : a.key.startsWith("kegs.") ? "kegs" : "other") as TonightItem["kind"], title: a.title, detail: a.detail, href: a.href, tone: a.tone });
+    tonight.push({ key: a.key, kind: (KINDS.has(a.key) ? a.key : a.key.startsWith("kegs.") ? "kegs" : a.key.startsWith("brewery.") ? "brewery" : "other") as TonightItem["kind"], title: a.title, detail: a.detail, href: a.href, tone: a.tone });
   }
   // Kegs nearly out on tap: change them before service, and say when nothing full is behind.
   const kegAlerts = attention.filter((a) => a.key === "kegs").map((a) => a.title);
@@ -212,7 +212,7 @@ export async function morningBrief(now = new Date()) {
     });
   }
   const toneRank = { bad: 0, warn: 1, neutral: 2 } as const;
-  const kindRank: Record<TonightItem["kind"], number> = { deadline: 0, draft: 1, checkin: 2, invoices: 3, kegs: 4, schedule: 5, requests: 6, certs: 7, reviews: 8, other: 9 };
+  const kindRank: Record<TonightItem["kind"], number> = { deadline: 0, draft: 1, checkin: 2, invoices: 3, kegs: 4, brewery: 4, schedule: 5, requests: 6, certs: 7, reviews: 8, other: 9 };
   tonight.sort((a, b) => toneRank[a.tone] - toneRank[b.tone] || kindRank[a.kind] - kindRank[b.kind]);
 
   return {

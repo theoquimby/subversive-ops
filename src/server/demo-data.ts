@@ -236,6 +236,11 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
     const { seedTaps } = await import("./demo/taps");
     await seedTaps(db);
   }
+  // Brewery tanks and brews (after the kegs, so its brews use the keg demo's beers).
+  if ((await db.tank.count()) === 0) {
+    const { seedBrewery } = await import("./demo/brewery");
+    await seedBrewery(db, today);
+  }
   if ((await db.squareDayMoney.count()) === 0) {
     const { seedFees } = await import("./demo/fees");
     await seedFees(db);

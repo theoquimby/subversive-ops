@@ -8,6 +8,7 @@ import { Check, Keyboard, RotateCcw, TriangleAlert, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { scanMany, undoKegAction, type ScanManyForm, type ScanManyResult } from "./actions";
 import { buzz, CameraFrame, useKegCamera } from "./camera";
+import { BatchChips } from "./keg-panel";
 import { newClientId } from "./queue";
 
 /**
@@ -130,6 +131,7 @@ export function ScanMany({ ctx, role, switcher }: { ctx: PanelContext; role: "MA
           {m?.id === "FILL" && (
             <div className="mt-4 grid gap-3">
               <Field label="Beer"><Select aria-label="Beer" value={beerId} onChange={(e) => setBeerId(e.target.value)} placeholder="Pick the beer" options={ctx.beers.map((b) => ({ value: b.id, label: b.name }))} searchable /></Field>
+              <BatchChips batches={ctx.batches.filter((b) => b.beerId === beerId)} value={batchCode} onPick={setBatchCode} />
               <Field label="Batch" hint="Optional"><Input value={batchCode} onChange={(e) => setBatchCode(e.target.value)} placeholder="e.g. 2-2026" aria-label="Batch" autoComplete="off" maxLength={40} /></Field>
             </div>
           )}

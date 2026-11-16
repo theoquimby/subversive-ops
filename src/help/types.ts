@@ -31,6 +31,7 @@ export type HelpAreaId =
   | "training"
   | "insights"
   | "kegs"
+  | "brewery"
   | "prep"
   | "notes"
   | "website"

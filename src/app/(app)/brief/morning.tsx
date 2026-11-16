@@ -11,6 +11,7 @@ import {
   CloudFog,
   CloudLightning,
   CloudRain,
+  Cylinder,
   FileCheck,
   GraduationCap,
   History,
@@ -43,7 +44,7 @@ const whole = (n: number) => money(n, { whole: true });
 const signedWhole = (n: number) => `${n < 0 ? "−" : ""}${whole(Math.abs(n))}`;
 
 const WEATHER_ICON: Record<string, LucideIcon> = { sun: Sun, cloud: Cloud, rain: CloudRain, snow: Snowflake, storm: CloudLightning, fog: CloudFog };
-const TONIGHT_ICON: Record<TonightItem["kind"], LucideIcon> = { deadline: ShoppingCart, draft: Send, checkin: PackageCheck, invoices: FileCheck, kegs: Beer, requests: Users, schedule: CalendarCheck, certs: GraduationCap, reviews: MessageSquareText, other: CircleCheck };
+const TONIGHT_ICON: Record<TonightItem["kind"], LucideIcon> = { deadline: ShoppingCart, draft: Send, checkin: PackageCheck, invoices: FileCheck, kegs: Beer, brewery: Cylinder, requests: Users, schedule: CalendarCheck, certs: GraduationCap, reviews: MessageSquareText, other: CircleCheck };
 const CHIP = { bad: "bg-bad-bg text-bad", warn: "bg-warn-bg text-warn", neutral: "bg-surface-2 text-ink-2", good: "bg-good-bg text-good" } as const;
 const TEXT = { bad: "text-bad", warn: "text-warn", neutral: "text-ink-2", good: "text-good" } as const;
 
@@ -327,7 +328,7 @@ function TonightCard({ b }: { b: MorningBrief }) {
         {items.length === 0 ? (
           <div className="flex items-center gap-3 border-t border-border px-5 py-4 text-sm text-ink-2 sm:px-6">
             <span className="grid size-8 place-items-center rounded-lg bg-good-bg text-good"><CircleCheck aria-hidden className="size-4" /></span>
-            Nothing needs you. Orders, deliveries, invoices and kegs are all clear.
+            Nothing needs you. Orders, deliveries, invoices, kegs and tanks are all clear.
           </div>
         ) : (
           <div className="divide-y divide-border border-t border-border">

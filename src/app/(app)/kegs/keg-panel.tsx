@@ -288,6 +288,7 @@ function Step({ mode, card, ctx, pending, onCancel, onRun }: { mode: Exclude<Mod
           ) : (
             <p className="text-sm text-muted">No beers yet. A manager adds them on Kegs → Setup.</p>
           )}
+          <BatchChips batches={ctx.batches.filter((b) => b.beerId === beerId)} value={batch} onPick={setBatch} />
           <div className="grid grid-cols-2 gap-2">
             <Input value={batch} onChange={(e) => setBatch(e.target.value)} placeholder="Batch (optional)" aria-label="Batch" />
             <DatePicker value={bestBy} onChange={(e) => setBestBy(e.target.value)} aria-label="Best by (optional)" />
@@ -309,6 +310,24 @@ function Chips({ options, value, onChange }: { options: { value: string; label: 
           {o.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Keg batches this beer was packaged as lately (the brewery makes one per packaged brew): one tap fills in the batch. */
+export function BatchChips({ batches, value, onPick }: { batches: PanelContext["batches"]; value: string; onPick: (code: string) => void }) {
+  if (!batches.length) return null;
+  return (
+    <div>
+      <div className="mb-1.5 text-xs font-medium text-muted">Batch from the brewery</div>
+      <div className="flex flex-wrap gap-2">
+        {batches.slice(0, 4).map((b) => (
+          <button key={b.code} type="button" aria-pressed={value === b.code} onClick={() => onPick(value === b.code ? "" : b.code)} className={cx("inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm transition-colors duration-120 active:scale-[0.98]", value === b.code ? "border-ink bg-ink text-bg" : "border-border-strong bg-surface text-ink hover:bg-surface-2")}>
+            <span className="num font-medium">{b.code}</span>
+            {b.packagedOn && <span className={cx("text-xs", value === b.code ? "opacity-70" : "text-muted")}>packaged {shortDate(b.packagedOn)}</span>}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

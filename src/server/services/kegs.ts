@@ -694,7 +694,7 @@ export async function beerCosts(): Promise<Map<string, { perPint: number; perHal
 // ---- What the scan panel needs -----------------------------------------------------------------------
 
 export async function panelContext() {
-  const [cfg, areas, spots, accounts, beers, onTap] = await Promise.all([
+  const [cfg, areas, spots, accounts, beers, onTap, batches] = await Promise.all([
     kegConfig(),
     kegAreas(),
     db.kegSpot.findMany({ orderBy: [{ area: "asc" }, { sort: "asc" }, { name: "asc" }], select: { id: true, area: true, name: true } }),
@@ -702,6 +702,8 @@ export async function panelContext() {
     // Beers to fill with: active ones, core first. Retired beers aren't offered.
     db.beer.findMany({ where: { active: true }, orderBy: [{ core: "desc" }, { name: "asc" }], select: { id: true, name: true, color: true } }),
     db.keg.findMany({ where: { status: "ON_TAP", tapLine: { not: null } }, select: { id: true, tapLine: true, beer: { select: { name: true } } } }),
+    // Keg batches packaged lately (the brewery makes one when a brew is packaged), newest first, to pick when filling.
+    db.kegBatch.findMany({ where: { beerId: { not: null }, packagedOn: { gte: new Date(`${addDays(businessToday(), -45)}T00:00:00Z`) } }, orderBy: [{ packagedOn: "desc" }, { code: "desc" }], take: 40, select: { code: true, beerId: true, packagedOn: true } }),
   ]);
   return {
     tapLines: cfg.tapLines,
@@ -712,6 +714,7 @@ export async function panelContext() {
     accounts,
     beers,
     busy: onTap.map((k) => ({ line: k.tapLine!, kegId: k.id, beer: k.beer?.name ?? null })),
+    batches: batches.map((b) => ({ code: b.code, beerId: b.beerId!, packagedOn: b.packagedOn?.toISOString().slice(0, 10) ?? null })),
   };
 }
 export type PanelContext = Awaited<ReturnType<typeof panelContext>>;
