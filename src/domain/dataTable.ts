@@ -269,12 +269,17 @@ export const serializeView = (v: ViewState) => JSON.stringify(v);
 /** Which filter ids live in the URL, and under what parameter name (e.g. prices' supplier → `supplier`). */
 export type UrlParams = Record<string, string>;
 
-/** Filters + query → URL params (other params are kept). Toggles are `name=1`; facets `name=a,b`. */
-export function viewToParams(view: Pick<ViewState, "q" | "filters">, params: UrlParams, base: URLSearchParams = new URLSearchParams()): URLSearchParams {
+/**
+ * Filters + query → URL params (other params are kept). Toggles are `name=1`; facets `name=a,b`.
+ * With `q` undefined the table doesn't own `q`, so whatever the page put there stays.
+ */
+export function viewToParams(view: { q?: string; filters: FilterState }, params: UrlParams, base: URLSearchParams = new URLSearchParams()): URLSearchParams {
   const out = new URLSearchParams(base);
-  out.delete("q");
   for (const name of Object.values(params)) out.delete(name);
-  if (view.q.trim()) out.set("q", view.q.trim());
+  if (view.q !== undefined) {
+    out.delete("q");
+    if (view.q.trim()) out.set("q", view.q.trim());
+  }
   for (const [id, name] of Object.entries(params)) {
     const vals = view.filters[id];
     if (vals?.length) out.set(name, vals.join(","));
@@ -282,8 +287,11 @@ export function viewToParams(view: Pick<ViewState, "q" | "filters">, params: Url
   return out;
 }
 
-/** URL params → query + filters, or null when the URL says nothing about this table. */
-export function paramsToView(search: URLSearchParams, params: UrlParams): Pick<ViewState, "q" | "filters"> | null {
+/**
+ * URL params → query + filters, or null when the URL says nothing about this table.
+ * `ownsQ` false: `q` belongs to the page, not the table, so it neither sets the search nor counts.
+ */
+export function paramsToView(search: URLSearchParams, params: UrlParams, ownsQ = true): Pick<ViewState, "q" | "filters"> | null {
   let any = false;
   const filters: FilterState = {};
   for (const [id, name] of Object.entries(params)) {
@@ -293,7 +301,7 @@ export function paramsToView(search: URLSearchParams, params: UrlParams): Pick<V
     const vals = raw.split(",").map((s) => s.trim()).filter(Boolean);
     if (vals.length) filters[id] = vals;
   }
-  const q = search.get("q");
+  const q = ownsQ ? search.get("q") : null;
   if (q != null) any = true;
   return any ? { q: q ?? "", filters } : null;
 }

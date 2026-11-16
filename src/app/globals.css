@@ -477,6 +477,8 @@ th:last-child > .col-resizer { right: 0; }
 .dt-row[data-active]:focus > td:first-child { box-shadow: inset 2px 0 0 var(--ink); }
 .dt-row:last-child > td { border-bottom-color: transparent; }
 .dt-group > td { background: var(--surface-2); }
+.dt-foot > td { position: sticky; bottom: 0; z-index: 3; background: var(--surface-2); border-top: 1px solid var(--border); }
+.dt-foot > td.dt-sticky { z-index: 4; }
 td.dt-sticky, th.dt-sticky { position: sticky; z-index: 2; }
 .dt-group > td.dt-sticky { z-index: 2; }
 .dt-scrolled-x .dt-sticky-last { box-shadow: 1px 0 0 var(--border), 8px 0 10px -8px rgb(0 0 0 / 0.18); }

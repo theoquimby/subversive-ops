@@ -15,6 +15,9 @@
  *  - Keys: / search · j/k or ↑/↓ move · Enter open · x select · Esc back out.
  *  - A row opens a side panel (`drawer`) or its page (`rowHref`).
  *  - Phones get compact cards and a Filters sheet; no sideways page scroll.
+ *  - `totals`: a pinned totals row from each column's `total`.
+ *  - `remote`: the rows are one page of a longer server list (history); search
+ *    and URL filters reload through the server, counts and CSV come from it.
  *
  * Pure logic lives in @/domain/dataTable (tested). Cells may hold GridCell /
  * GridSelect: clicks on inputs, buttons and links never open the row.
@@ -124,6 +127,22 @@ export interface CardView {
   sub?: ReactNode;
 }
 
+/**
+ * Server-paged lists (history, logs): the page loads the newest rows that match the
+ * URL and pages further itself (e.g. a "Load older" `footer`). The URL search (`q`)
+ * and every filter with a `param` are applied by the server: changing one reloads
+ * the page's rows through the router. Loaded rows still filter instantly on the
+ * client, but the search isn't re-applied (the server's match wins).
+ */
+export interface RemoteRows {
+  /** Rows matching on the server across every page (the loaded ones are some of them). */
+  total: number;
+  /** Server facet counts, filter id → value → rows. Used instead of counting the loaded rows. */
+  counts?: Record<string, Record<string, number>>;
+  /** Download every matching row, not only the loaded ones. */
+  exportCsv?: () => void;
+}
+
 export interface DataTableProps<T> {
   /** Storage key for the remembered view, e.g. "prices". */
   id: string;
@@ -156,6 +175,10 @@ export interface DataTableProps<T> {
   maxHeight?: string;
   /** Optional row under the table (e.g. an add row). */
   footer?: ReactNode;
+  /** A totals row pinned under the rows: this label, then each column's `total` over the filtered rows. */
+  totals?: ReactNode;
+  /** The rows are one page of a longer list on the server (see RemoteRows). */
+  remote?: RemoteRows;
 }
 
 // ---- Small parts --------------------------------------------------------------
@@ -295,7 +318,7 @@ const interactive = "input, textarea, button, a, select, label, [role=checkbox],
 // ---- DataTable ----------------------------------------------------------------
 
 export function DataTable<T>(props: DataTableProps<T>) {
-  const { id, rows, rowKey, columns, filters = NONE as Filter<T>[], groups = NONE as GroupBy<T>[], noun = ["row", "rows"], card, urlSearch } = props;
+  const { id, rows, rowKey, columns, filters = NONE as Filter<T>[], groups = NONE as GroupBy<T>[], noun = ["row", "rows"], card, urlSearch, remote } = props;
   const router = useRouter();
   const searchParams = useSearchParams();
   const phone = useIsPhone();
@@ -304,10 +327,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
   const defaults = useMemo(() => emptyView({ hidden: columns.filter((c) => c.defaultHidden).map((c) => c.id), ...props.defaultView }), [columns, props.defaultView]);
 
   // URL filters are known on the server too, so the first render already matches them.
-  const fromUrl = useMemo(() => {
-    const v = paramsToView(new URLSearchParams(searchParams.toString()), urlParams);
-    return v && urlSearch === false ? { ...v, q: "" } : v;
-  }, [searchParams, urlParams, urlSearch]);
+  const fromUrl = useMemo(() => paramsToView(new URLSearchParams(searchParams.toString()), urlParams, urlSearch !== false), [searchParams, urlParams, urlSearch]);
   const [view, setView] = useState<ViewState>(() => (fromUrl ? { ...defaults, ...fromUrl, filters: fromUrl.filters } : defaults));
   const [loaded, setLoaded] = useState(false);
   const [qInput, setQInput] = useState(view.q);
@@ -328,6 +348,11 @@ export function DataTable<T>(props: DataTableProps<T>) {
     setLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Server-paged lists reload their rows when the URL's search or filters change.
+  const [remoteLoading, startRemote] = useTransition();
+  const remoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isRemote = !!remote;
+  useEffect(() => () => { if (remoteTimer.current) clearTimeout(remoteTimer.current); }, []);
   useEffect(() => {
     if (!loaded) return;
     try {
@@ -335,11 +360,14 @@ export function DataTable<T>(props: DataTableProps<T>) {
     } catch {
       /* storage blocked: the view just isn't remembered */
     }
-    const next = viewToParams(props.urlSearch === false ? { q: "", filters: view.filters } : view, urlParams, new URLSearchParams(window.location.search));
+    const next = viewToParams(urlSearch === false ? { filters: view.filters } : view, urlParams, new URLSearchParams(window.location.search));
     const qs = next.toString();
     const url = `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`;
-    if (url !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(window.history.state, "", url);
-  }, [view, loaded, storageKey, urlParams, props.urlSearch]);
+    if (remoteTimer.current) clearTimeout(remoteTimer.current);
+    if (url === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
+    if (!isRemote) window.history.replaceState(window.history.state, "", url);
+    else remoteTimer.current = setTimeout(() => startRemote(() => router.replace(url, { scroll: false })), 250);
+  }, [view, loaded, storageKey, urlParams, urlSearch, isRemote, router]);
 
   // Debounced search.
   useEffect(() => {
@@ -358,13 +386,15 @@ export function DataTable<T>(props: DataTableProps<T>) {
   const searchTextRef = useRef(props.searchText);
   searchTextRef.current = props.searchText;
   const items = useMemo(() => rows.map((row) => ({ row, text: normalize(searchTextRef.current ? searchTextRef.current(row) : "") })), [rows]);
-  const matched = useMemo(() => filterRows(items, view.q, specs, activeFilters), [items, view.q, specs, activeFilters]);
+  // Server-paged rows already match the search on the server; only filters re-apply here.
+  const localQ = isRemote ? "" : view.q;
+  const matched = useMemo(() => filterRows(items, localQ, specs, activeFilters), [items, localQ, specs, activeFilters]);
   const colById = useMemo(() => new Map(columns.map((c) => [c.id, c])), [columns]);
   const sorted = useMemo(() => {
     if (view.sort.some((s) => colById.get(s.id)?.sort)) return sortRows(matched.map((m) => m.row), view.sort, (r, c) => colById.get(c)?.sort?.(r), (c) => !!colById.get(c)?.sort);
-    if (view.q.trim()) return [...matched].sort((a, b) => b.score - a.score).map((m) => m.row);
+    if (localQ.trim()) return [...matched].sort((a, b) => b.score - a.score).map((m) => m.row);
     return matched.map((m) => m.row);
-  }, [matched, view.sort, view.q, colById]);
+  }, [matched, view.sort, localQ, colById]);
   const group = groups.find((g) => g.id === view.group) ?? null;
   const grouped = useMemo(() => (group ? groupRows(sorted, group.key, group.order) : null), [group, sorted]);
   const collapsed = useMemo(() => new Set(view.collapsed), [view.collapsed]);
@@ -566,7 +596,11 @@ export function DataTable<T>(props: DataTableProps<T>) {
   const isFiltered = !!view.q.trim() || activeFilterCount(narrowing) > 0;
   // Clear all leaves the tabs (segmented filters) where they are.
   const clearAll = () => { setQInput(""); patch({ q: "", filters: Object.fromEntries(Object.entries(activeFilters).filter(([k]) => filters.some((f) => f.id === k && f.kind === "facet" && f.display === "segmented"))) }); };
-  const countsFor = (fid: string) => facetCounts(items, view.q, specs, activeFilters, fid);
+  const countsFor = (fid: string) => {
+    const server = remote?.counts?.[fid];
+    if (server) return new Map(Object.entries(server));
+    return facetCounts(items, localQ, specs, activeFilters, fid);
+  };
   const optionsFor = (f: Extract<Filter<T>, { kind: "facet" }>) => {
     if (f.options) return f.options;
     const seen = new Set<string>();
@@ -575,6 +609,8 @@ export function DataTable<T>(props: DataTableProps<T>) {
   };
   const setFilter = (fid: string, value: string, single?: boolean) => patch({ filters: toggleFilterValue(activeFilters, fid, value, single) });
   const exportCsv = (list: T[]) => downloadText(`${props.csvName ?? id}-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(list, csvColumns(visibleCols)));
+  /** Server-paged: every row that matches on the server; otherwise this many in view. */
+  const totalCount = remote ? remote.total : rows.length;
   const sortable = columns.filter((c) => c.sort);
   const segmented = filters.filter((f): f is Extract<Filter<T>, { kind: "facet" }> => f.kind === "facet" && f.display === "segmented");
   const menuFilters = filters.filter((f) => !(f.kind === "facet" && f.display === "segmented"));
@@ -749,7 +785,8 @@ export function DataTable<T>(props: DataTableProps<T>) {
     }
   }
 
-  const noRows = rows.length === 0;
+  // Server-paged: no rows under a search or filter is "no match" (with the way out), not "nothing yet".
+  const noRows = rows.length === 0 && !(remote && isFiltered);
   const noMatch = !noRows && sorted.length === 0;
 
   const toolbar = (
@@ -778,7 +815,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
           className="h-10 w-full rounded-lg border border-border-strong bg-surface pr-24 pl-9 text-base text-ink transition-[border-color,box-shadow] duration-120 ease-motion placeholder:text-muted/70 hover:border-ink-2/40 focus:border-ink-2 focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--ink)_7%,transparent)] focus:outline-none sm:h-9 sm:text-sm [&::-webkit-search-cancel-button]:hidden"
         />
         <span className="pointer-events-none absolute top-1/2 right-2.5 flex -translate-y-1/2 items-center gap-1.5 text-xs text-muted" aria-live="polite">
-          <span className="num">{isFiltered ? `${filteredCount} of ${rows.length}` : rows.length}</span>
+          <span className="num">{remote ? (remoteLoading ? "…" : totalCount.toLocaleString("en-US")) : isFiltered ? `${filteredCount} of ${rows.length}` : rows.length}</span>
           {!qInput && <kbd className="hidden rounded border border-border px-1 font-sans text-[10px] leading-4 text-muted sm:inline">/</kbd>}
         </span>
         {qInput && (
@@ -857,7 +894,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
             </div>
           )}
         </Popover>
-        <button type="button" className={toolButton} onClick={() => exportCsv(sorted)} title={`Download ${filteredCount} ${filteredCount === 1 ? nSingular : nPlural} as a spreadsheet (CSV)`} aria-label="Export CSV">
+        <button type="button" className={toolButton} onClick={() => (remote?.exportCsv ? remote.exportCsv() : exportCsv(sorted))} title={remote?.exportCsv ? `Download all ${totalCount} matching ${totalCount === 1 ? nSingular : nPlural} as a spreadsheet (CSV)` : `Download ${filteredCount} ${filteredCount === 1 ? nSingular : nPlural} as a spreadsheet (CSV)`} aria-label="Export CSV">
           <Download className="size-4" /><span className="hidden lg:inline">CSV</span>
         </button>
         {props.toolbar}
@@ -984,6 +1021,18 @@ export function DataTable<T>(props: DataTableProps<T>) {
                     </tr>
                   )}
                 </tbody>
+                {props.totals != null && (
+                  <tfoot>
+                    <tr className="dt-foot">
+                      {selectable && <td className="dt-sticky w-11 pr-0 pl-3" style={{ left: 0 }} />}
+                      {visibleCols.map((c, i) => (
+                        <td key={c.id} className={cn("px-3 py-2 font-medium", c.align === "right" ? "num text-right" : c.align === "center" ? "text-center" : "text-left", i === 0 && "dt-sticky dt-sticky-last")} style={i === 0 ? { left: stickyLeft } : undefined}>
+                          {i === 0 ? props.totals : c.total?.(sorted)}
+                        </td>
+                      ))}
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
             {props.footer}
@@ -1021,7 +1070,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
         {openRow && props.drawer?.(openRow, () => setOpenKey(null))}
       </Drawer>
 
-      <FiltersSheet open={sheet} onClose={() => setSheet(false)} title={`${filteredCount} of ${rows.length} ${nPlural}`} onClear={isFiltered ? clearAll : undefined}>
+      <FiltersSheet open={sheet} onClose={() => setSheet(false)} title={remote ? `${totalCount.toLocaleString("en-US")} ${totalCount === 1 ? nSingular : nPlural}` : `${filteredCount} of ${rows.length} ${nPlural}`} onClear={isFiltered ? clearAll : undefined}>
         {menuFilters.map((f) => {
           if (f.kind === "toggle") return null;
           const chosen = activeFilters[f.id] ?? [];

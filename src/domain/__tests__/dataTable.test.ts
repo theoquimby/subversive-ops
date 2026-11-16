@@ -132,6 +132,12 @@ describe("saved views", () => {
     expect(paramsToView(p, { supplier: "supplier", link: "filter" })).toEqual({ q: "beef", filters: { supplier: ["a", "b"], link: ["unlinked"] } });
     expect(paramsToView(new URLSearchParams("tour=x"), { supplier: "supplier" })).toBeNull();
   });
+  it("leaves the page's own q alone when the table doesn't search in the address", () => {
+    const p = viewToParams({ filters: { supplier: ["a"] } }, { supplier: "supplier" }, new URLSearchParams("q=K7Q3M&keg=abc"));
+    expect(p.toString()).toBe("q=K7Q3M&keg=abc&supplier=a");
+    expect(paramsToView(new URLSearchParams("q=K7Q3M"), { supplier: "supplier" }, false)).toBeNull();
+    expect(paramsToView(new URLSearchParams("q=K7Q3M&supplier=a"), { supplier: "supplier" }, false)).toEqual({ q: "", filters: { supplier: ["a"] } });
+  });
 });
 
 describe("csv", () => {
