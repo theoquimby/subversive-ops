@@ -22,7 +22,7 @@ export async function loadTeam() {
   const [positions, employees, users] = await Promise.all([
     db.position.findMany({ orderBy: [{ sort: "asc" }, { name: "asc" }] }),
     db.employee.findMany({ include: { positions: true }, orderBy: [{ active: "desc" }, { name: "asc" }] }),
-    db.user.findMany({ where: { active: true }, select: { id: true, name: true, role: true }, orderBy: { name: "asc" } }),
+    db.user.findMany({ where: { active: true }, select: { id: true, name: true, role: true, focus: true }, orderBy: { name: "asc" } }),
   ]);
   return { positions, employees, users };
 }

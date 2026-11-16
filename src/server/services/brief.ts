@@ -3,6 +3,7 @@ import { NEEDS_MANAGER } from "@/domain/swaps";
 import { busiestDays, weekStartOf } from "@/domain/budgets";
 import { addDays, businessDate, dateRange, daysBetween, ISODate, parseISODate, weekday } from "@/domain/dates";
 import { INVOICE_ISSUE_STATUSES } from "@/domain/alerts";
+import type { AttentionItem } from "@/domain/attention";
 import { decisions, weekRecap, worstRag } from "@/domain/weekRecap";
 import { db } from "../db";
 import { env } from "../env";
@@ -10,6 +11,8 @@ import { laborByDay, loadTargets } from "./budgets";
 import { loadCostingSnapshot } from "./costing";
 import { dailySalesForecast } from "./forecasting";
 import { insightFeed } from "./analytics";
+import { brewOrderingNeedsYou } from "./brewOrdering";
+import { breweryNeedsYou } from "./brewery";
 import { costTargets, menuCosts, recentPriceMoves } from "./insights";
 import { kegSignals, type KegSignals } from "./kegSignals";
 import { periodKpis } from "./kpis";
@@ -241,3 +244,19 @@ export async function weeklyBrief() {
 }
 
 export type WeeklyBrief = Awaited<ReturnType<typeof weeklyBrief>>;
+
+/**
+ * The brewery's to-dos for the weekly brief of someone who looks after the
+ * brewery (domain/focus): transfers and packaging due, tank clashes, brews to
+ * plan and brewery orders, as on the Overview. Each source fails on its own.
+ */
+export async function weeklyBreweryItems(): Promise<AttentionItem[]> {
+  const today = businessToday();
+  const soft = (label: string, p: Promise<AttentionItem[]>) =>
+    p.catch((e) => {
+      console.error(`brief: ${label} failed`, e);
+      return [] as AttentionItem[];
+    });
+  const [tanks, orders] = await Promise.all([soft("brewery", breweryNeedsYou(today)), soft("brewery orders", brewOrderingNeedsYou(today))]);
+  return [...tanks, ...orders].sort((a, b) => b.urgency - a.urgency);
+}

@@ -129,6 +129,32 @@ Subversive · Catskill, NY",
 }
 `;
 
+exports[`email templates > morning-brief-brewery > matches the snapshot 1`] = `
+{
+  "subject": "Monday: 3 before tonight",
+  "text": "Good morning, Zane. Mon, Nov 16.
+Led by what you look after: Brewery. Anything urgent elsewhere is in too.
+
+BEFORE TONIGHT
+- FV3: Hazy IPA ready to transfer: Day 12 of 10 · a brite is free (https://ops.example.com/brewery)
+- Order Country Malt by Tue for Pale Ale: Brews Fri, Nov 20 · 2 days lead time (https://ops.example.com/brewery/ordering)
+- Glycol chiller is down: Compressor · since today (https://ops.example.com/upkeep)
+
+ELSEWHERE
+- Business: Today: $3,150 forecast · busiest 5–8pm
+- Kegs (1): Hazy IPA: no full keg behind it
+- Kitchen (2): Order from Sysco Albany, and 1 more
+- People: 6 on today. Short one person 6–8pm.
+- Online: Nothing waiting
+
+Full brief: https://ops.example.com/brief
+
+—
+Subversive morning brief
+Subversive · Catskill, NY",
+}
+`;
+
 exports[`email templates > price-spikes > matches the snapshot 1`] = `
 {
   "subject": "2 prices jumped",

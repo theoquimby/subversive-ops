@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 16 Nov · 1.27 (what each person looks after) ----
+  {
+    id: "2026-11-16.focus",
+    date: "2026-11-16",
+    title: "Overview leads with your areas",
+    line: "Pick what you look after; the Overview and briefs lead with it and fold the rest into Elsewhere.",
+    icon: "brief",
+    area: "today",
+    href: "/settings/notifications#focus",
+    help: "settings.focus",
+    audience: "manager",
+  },
   // ---- 16 Nov · 1.25 (kitchen ordering) ----
   {
     id: "2026-11-16.order-cadence",

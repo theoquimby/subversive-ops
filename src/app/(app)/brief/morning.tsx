@@ -11,6 +11,7 @@ import {
   CloudFog,
   CloudLightning,
   CloudRain,
+  Compass,
   Cylinder,
   FileCheck,
   GraduationCap,
@@ -32,7 +33,9 @@ import {
 } from "lucide-react";
 import { HelpTip, HelpZone } from "@/components/help";
 import { Badge, Card, cx, LinkButton } from "@/components/ui";
+import { focusLabels, showSection, type BriefSection, type ElsewhereGroup, type Focus } from "@/domain/focus";
 import { activeSpan, hourLabel, joinList } from "@/domain/morningBrief";
+import { morningForFocus } from "@/server/email/morning-digest";
 import { dayDate, money, pct, shortDate, signedPct } from "@/lib/format";
 import { CompactHero } from "@/app/(app)/insights/deck";
 import { toDeck } from "@/app/(app)/insights/deck-data";
@@ -63,10 +66,17 @@ const clock = (hhmm: string | null) => {
 };
 
 /** The daily brief (default view of /brief). */
-export async function MorningView({ name, viewer }: { name: string; viewer: { userId: string; role: "MANAGER" | "STAFF" } }) {
-  const [b, feed, usual, feedback] = await Promise.all([morningBrief(), insightFeed({ limit: 6 }).catch(() => ({ items: [] })), usual86().catch(() => []), viewer.role === "MANAGER" ? newFeedbackCount().catch(() => 0) : 0]);
+export async function MorningView({ name, viewer, focus = [] }: { name: string; viewer: { userId: string; role: "MANAGER" | "STAFF" }; focus?: Focus[] }) {
+  const show = (s: BriefSection) => showSection(s, focus);
+  const [b, feed, usual, feedback] = await Promise.all([
+    morningBrief(),
+    show("insight") ? insightFeed({ limit: 6 }).catch(() => ({ items: [] })) : { items: [] },
+    show("notes") ? usual86().catch(() => []) : [],
+    viewer.role === "MANAGER" ? newFeedbackCount().catch(() => 0) : 0,
+  ]);
   const feedbackLine = newFeedbackLine(feedback);
-  const lead = leadSentence(b);
+  const mine = morningForFocus(b, focus);
+  const lead = leadSentence(b, mine.tonight.length, show("yesterday"), show("today"));
 
   return (
     <div>
@@ -80,14 +90,20 @@ export async function MorningView({ name, viewer }: { name: string; viewer: { us
             {greeting()}, {name}.
           </h1>
           <p className="mt-3 max-w-2xl text-[1.05rem] leading-relaxed text-ink-2">{lead}</p>
+          {focus.length > 0 && (
+            <p className="mt-2 text-sm text-muted">
+              Led by what you look after: {focusLabels(focus).join(", ")}. Anything urgent elsewhere is in too. <Link href="/settings/notifications#focus" className="underline decoration-border-strong underline-offset-2 hover:text-ink">Change</Link>
+            </p>
+          )}
         </header>
       </HelpZone>
 
       <div className="space-y-6">
-        <YesterdayCard b={b} />
-        <TodayCard b={b} />
-        <TeamCard />
-        <TonightCard b={b} />
+        {show("yesterday") && <YesterdayCard b={b} />}
+        {show("today") && <TodayCard b={b} />}
+        {show("team") && <TeamCard />}
+        <TonightCard b={b} items={mine.tonight} focused={focus.length > 0} prep={b.prep && (focus.length === 0 || focus.includes("kitchen"))} />
+        {mine.elsewhere.length > 0 && <ElsewhereCard groups={mine.elsewhere} />}
         {feedbackLine && (
           <Link href="/settings/feedback?status=new" className="-mt-2 flex min-h-10 items-center gap-2 px-1 text-sm text-muted transition-colors duration-120 hover:text-ink">
             <MessageSquarePlus aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
@@ -103,8 +119,8 @@ export async function MorningView({ name, viewer }: { name: string; viewer: { us
             </section>
           </HelpZone>
         )}
-        <NotesCard b={b} viewer={viewer} usual={usual} />
-        {b.wrap && <WrapCard w={b.wrap} />}
+        {show("notes") && <NotesCard b={b} viewer={viewer} usual={usual} />}
+        {b.wrap && show("wrap") && <WrapCard w={b.wrap} />}
       </div>
 
       <p className="mt-10 text-center text-xs text-muted">
@@ -114,15 +130,14 @@ export async function MorningView({ name, viewer }: { name: string; viewer: { us
   );
 }
 
-function leadSentence(b: MorningBrief): string {
+function leadSentence(b: MorningBrief, n: number, yesterday: boolean, today: boolean): string {
   const parts: string[] = [];
-  if (b.y && !b.y.closed) {
+  if (yesterday && b.y && !b.y.closed) {
     const vs = b.y.vsForecast;
     parts.push(`Yesterday did ${whole(b.y.sales)}${vs != null && Math.abs(vs) >= 0.03 ? `, ${pct(Math.abs(vs), 0)} ${vs > 0 ? "over" : "under"} forecast` : vs != null ? ", right on forecast" : ""}.`);
   }
   if (b.day.closed) parts.push("We're closed today.");
-  else if (b.day.forecast && b.day.forecast > 0) parts.push(`Today looks like ${whole(b.day.forecast)}${b.day.busy ? `, busiest ${b.day.busy.label}` : ""}.`);
-  const n = b.tonight.length;
+  else if (today && b.day.forecast && b.day.forecast > 0) parts.push(`Today looks like ${whole(b.day.forecast)}${b.day.busy ? `, busiest ${b.day.busy.label}` : ""}.`);
   parts.push(n === 0 ? "Nothing needs you before tonight." : `${n} thing${n === 1 ? "" : "s"} to get done before tonight.`);
   return parts.join(" ");
 }
@@ -330,8 +345,7 @@ function HourStrip({ b }: { b: MorningBrief }) {
 
 // ---- Before tonight -----------------------------------------------------------------------
 
-function TonightCard({ b }: { b: MorningBrief }) {
-  const items = b.tonight;
+function TonightCard({ b, items, focused, prep }: { b: MorningBrief; items: TonightItem[]; focused: boolean; prep: boolean }) {
   return (
     <HelpZone id="brief.tonight" tour="brief.tonight">
       <Card className="overflow-hidden">
@@ -339,7 +353,7 @@ function TonightCard({ b }: { b: MorningBrief }) {
         {items.length === 0 ? (
           <div className="flex items-center gap-3 border-t border-border px-5 py-4 text-sm text-ink-2 sm:px-6">
             <span className="grid size-8 place-items-center rounded-lg bg-good-bg text-good"><CircleCheck aria-hidden className="size-4" /></span>
-            Nothing needs you. Orders, deliveries, invoices, kegs and tanks are all clear.
+            {focused ? "Nothing in your areas needs you before tonight." : "Nothing needs you. Orders, deliveries, invoices, kegs and tanks are all clear."}
           </div>
         ) : (
           <div className="divide-y divide-border border-t border-border">
@@ -359,7 +373,7 @@ function TonightCard({ b }: { b: MorningBrief }) {
             {items.length > 8 && <div className="px-5 py-2.5 text-xs text-muted sm:px-6">and {items.length - 8} more on the <Link href="/" className="underline underline-offset-2 hover:text-ink">Overview</Link></div>}
           </div>
         )}
-        {b.prep && (
+        {prep && (
           <Link href="/prep" className="flex min-h-12 items-center gap-3 border-t border-border bg-surface-2/40 px-5 py-2.5 text-sm transition-colors hover:bg-surface-2 sm:px-6">
             <UtensilsCrossed aria-hidden className="size-4 shrink-0 text-ink-2" strokeWidth={1.75} />
             <span className="min-w-0 flex-1">
@@ -375,6 +389,53 @@ function TonightCard({ b }: { b: MorningBrief }) {
             <ChevronRight aria-hidden className="size-4 shrink-0 text-muted" />
           </Link>
         )}
+      </Card>
+    </HelpZone>
+  );
+}
+
+// ---- Elsewhere (with a focus) -------------------------------------------------------------
+
+/** The areas this person doesn't look after: a line each, tap to open what's waiting there. */
+function ElsewhereCard({ groups }: { groups: ElsewhereGroup<TonightItem>[] }) {
+  return (
+    <HelpZone id="brief.elsewhere">
+      <Card className="overflow-hidden">
+        <CardTitle icon={Compass} label="Elsewhere" help="brief.elsewhere" action={<Link href="/settings/notifications#focus" className="relative text-xs text-muted hover:text-ink after:absolute after:-inset-2 after:content-['']">Change →</Link>} />
+        <div className="divide-y divide-border border-t border-border">
+          {groups.map((g) =>
+            g.items.length ? (
+              <details key={g.area} className="group">
+                <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-5 py-2.5 text-sm hover:bg-surface-2/60 sm:px-6 [&::-webkit-details-marker]:hidden">
+                  <span className="w-20 shrink-0 font-medium text-ink">{g.label}</span>
+                  <span className="min-w-0 flex-1 truncate text-ink-2">{g.line}</span>
+                  <span className="num shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-xs font-medium text-ink-2">{g.items.length}</span>
+                  <ChevronRight aria-hidden className="size-4 shrink-0 text-muted transition-transform group-open:rotate-90" />
+                </summary>
+                <div className="divide-y divide-border border-t border-border bg-surface-2/30">
+                  {g.items.map((t) => {
+                    const Icon = TONIGHT_ICON[t.kind];
+                    return (
+                      <Link key={t.key} href={t.href} className="flex min-h-12 items-center gap-3 px-5 py-2.5 transition-colors duration-120 hover:bg-surface-2/60 sm:px-6">
+                        <span aria-hidden className={cx("grid size-7 shrink-0 place-items-center rounded-lg", CHIP[t.tone])}><Icon className="size-3.5" /></span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm text-ink">{t.title}</span>
+                          <span className="block truncate text-xs text-muted">{t.detail}</span>
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </details>
+            ) : (
+              <Link key={g.area} href={g.href} className="flex min-h-12 items-center gap-3 px-5 py-2.5 text-sm hover:bg-surface-2/60 sm:px-6">
+                <span className="w-20 shrink-0 font-medium text-ink">{g.label}</span>
+                <span className="min-w-0 flex-1 truncate text-muted">{g.line}</span>
+                <ChevronRight aria-hidden className="size-4 shrink-0 text-muted" />
+              </Link>
+            ),
+          )}
+        </div>
       </Card>
     </HelpZone>
   );

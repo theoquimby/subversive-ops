@@ -23,6 +23,8 @@ import {
 } from "./actions";
 import type { CertStatus } from "@/domain/certs";
 import { CertChip } from "./training/cert-chip";
+import { parseFocus } from "@/domain/focus";
+import { FocusPicker } from "../_overview/focus-picker";
 
 type Result = void | { error?: string } | undefined;
 
@@ -143,7 +145,7 @@ const DISPLAY_DAYS = [1, 2, 3, 4, 5, 6, 0];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 
-export function EmployeeGrid({ employees, positions, users, openingHours }: { employees: EmployeeRow[]; positions: PositionOption[]; users: { id: string; name: string }[]; openingHours: Record<number, [number, number]> }) {
+export function EmployeeGrid({ employees, positions, users, openingHours }: { employees: EmployeeRow[]; positions: PositionOption[]; users: { id: string; name: string; role?: string; focus?: string[] }[]; openingHours: Record<number, [number, number]> }) {
   const userOptions = useMemo(() => [{ value: "", label: "None" }, ...users.map((u) => ({ value: u.id, label: u.name }))], [users]);
   const posName = useMemo(() => new Map(positions.map((p) => [p.id, p.name])), [positions]);
   const columns = useMemo<Column<EmployeeRow>[]>(() => [
@@ -247,6 +249,7 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
           <div className="md:hidden"><PositionChips employeeId={e.id} assigned={e.positionIds} positions={positions} /></div>
           {!e.userId && <InviteBox employee={e} />}
           <AvailabilityEditor employee={e} openingHours={openingHours} users={userOptions} />
+          <ManagerFocus employee={e} users={users} />
         </div>
       )}
       bulkActions={(api) => (
@@ -379,6 +382,22 @@ function AvailabilityEditor({ employee: e, openingHours, users }: { employee: Em
         {e.squareTeamMemberId && <span className="2xl:hidden">Square ID <span className="font-mono">{e.squareTeamMemberId}</span></span>}
         {e.sickAvailable != null && <span className="xl:hidden">Sick leave <span className="num">{e.sickAvailable.toFixed(1)}h</span> available</span>}
       </div>
+    </div>
+  );
+}
+
+/** A manager's "What they look after" (what their Overview and briefs lead with). Only for a linked manager login. */
+function ManagerFocus({ employee: e, users }: { employee: EmployeeRow; users: { id: string; name: string; role?: string; focus?: string[] }[] }) {
+  const u = e.userId ? users.find((x) => x.id === e.userId) : undefined;
+  if (!u || u.role !== "MANAGER") return null;
+  const first = e.name.split(" ")[0] ?? e.name;
+  return (
+    <div className="border-t border-border pt-4">
+      <div className="mb-2 text-sm">
+        <span className="font-medium">What {first} looks after</span>
+        <span className="ml-2 text-muted">Their Overview and briefs lead with these. It doesn&apos;t change what they can do.</span>
+      </div>
+      <FocusPicker initial={parseFocus(u.focus)} userId={u.id} name={e.name} />
     </div>
   );
 }

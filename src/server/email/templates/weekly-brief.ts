@@ -1,7 +1,7 @@
 import type { ISODate } from "@/domain/dates";
 import { addDays } from "@/domain/dates";
 import { dayDate, money, pct, shortDate } from "@/lib/format";
-import { BRAND, button, C, esc, footerText, h1, h2, link, list, manageFooter, p, RenderedEmail, shell, textLines } from "../layout";
+import { BRAND, button, C, esc, footerText, h1, h2, link, list, manageFooter, p, RenderedEmail, shell, small, textLines } from "../layout";
 
 export interface BriefDigestItem {
   title: string;
@@ -25,6 +25,10 @@ export interface BriefDigest {
   lastWeek?: { from: ISODate; to: ISODate; rows: { label: string; actual: string; target: string | null; tone: "good" | "warn" | "bad" | "neutral" }[] } | null;
   /** The week in kegs, a sentence a line (see `kegWeekLines` in domain/kegSignals); left out with no keg history. */
   kegs?: { from: ISODate; to: ISODate; lines: string[] } | null;
+  /** What this person looks after ("Brewery", "Kegs"), when they've picked; absent = everything. */
+  focus?: string[];
+  /** The areas they don't look after, a line each (only with a focus). */
+  elsewhere?: { label: string; count: number; line: string; path: string }[];
 }
 
 export interface WeeklyBriefEmail {
@@ -54,12 +58,15 @@ export function weeklyBriefEmail(e: WeeklyBriefEmail): RenderedEmail {
   const kegs = d.kegs && d.kegs.lines.length ? d.kegs : null;
   const kegsRange = kegs ? `${shortDate(kegs.from)} – ${shortDate(kegs.to)}` : "";
   const fleetUrl = link(e.baseUrl, "/kegs/fleet#look");
+  const focusLine = d.focus?.length ? `Led by what you look after: ${d.focus.join(", ")}. Anything urgent elsewhere is in too.` : null;
+  const elsewhere = d.elsewhere ?? [];
 
   const html = shell({
     preheader: `${n ? `${n} to do` : "Nothing urgent"}${d.forecastTotal > 0 ? ` · ${money(d.forecastTotal, { whole: true })} forecast` : ""}`,
     body: [
       h1(`Week of ${range}`),
-      p(`Hi ${esc(first(e.name))}. ${esc(forecast.join(" "))} ${n === 0 ? "Everything else is in hand." : `${n} thing${n === 1 ? " needs" : "s need"} you before the week starts.`}`),
+      p([`Hi ${esc(first(e.name))}.`, esc(forecast.join(" ")), n === 0 ? "Everything else is in hand." : `${n} thing${n === 1 ? " needs" : "s need"} you before the week starts.`].filter(Boolean).join(" ")),
+      focusLine ? small(esc(focusLine)) : "",
       d.lastWeek && d.lastWeek.rows.length
         ? h2(`Last week (${shortDate(d.lastWeek.from)} – ${shortDate(d.lastWeek.to)})`) +
           list(d.lastWeek.rows.map((r) => ({ title: r.label, detail: r.target ? `Target ${r.target}` : "No target", value: `<span style="color:${r.tone === "bad" ? "#b42318" : r.tone === "warn" ? "#b54708" : r.tone === "good" ? "#067647" : "inherit"};">${esc(r.actual)}</span>` })))
@@ -67,6 +74,7 @@ export function weeklyBriefEmail(e: WeeklyBriefEmail): RenderedEmail {
       kegs ? h2(`Kegs (${kegsRange})`) + p(`${esc(kegs.lines.join(" "))} <a href="${esc(fleetUrl)}" style="color:${C.ink};">Fleet &amp; trends</a>`) : "",
       n ? h2("Needs you") + list(d.todo.map((i) => ({ title: i.title, detail: i.status, href: i.path ? link(e.baseUrl, i.path) : undefined }))) : "",
       d.clear.length ? h2("In hand") + list(d.clear.map((i) => ({ title: i.title, detail: i.status }))) : "",
+      elsewhere.length ? h2("Elsewhere") + list(elsewhere.map((x) => ({ title: x.count ? `${x.label} · ${x.count}` : x.label, detail: x.line, href: link(e.baseUrl, x.path) }))) : "",
       button(briefUrl, "Open the brief"),
     ].join("\n"),
     footer: manageFooter(e.baseUrl),
@@ -76,6 +84,7 @@ export function weeklyBriefEmail(e: WeeklyBriefEmail): RenderedEmail {
     `Hi ${first(e.name)},`,
     "",
     `Week of ${range}. ${forecast.join(" ")}`,
+    focusLine,
     "",
     d.lastWeek ? `LAST WEEK (${shortDate(d.lastWeek.from)} – ${shortDate(d.lastWeek.to)})` : null,
     ...(d.lastWeek?.rows ?? []).map((r) => `- ${r.label}: ${r.actual}${r.target ? ` (target ${r.target})` : ""}`),
@@ -89,6 +98,9 @@ export function weeklyBriefEmail(e: WeeklyBriefEmail): RenderedEmail {
     n ? "" : null,
     d.clear.length ? "IN HAND" : null,
     ...d.clear.map((i) => `- ${i.title}: ${i.status}`),
+    elsewhere.length && d.clear.length ? "" : null,
+    elsewhere.length ? "ELSEWHERE" : null,
+    ...elsewhere.map((x) => `- ${x.label}${x.count ? ` (${x.count})` : ""}: ${x.line}`),
     "",
     `Full brief: ${briefUrl}`,
     footerText(`${BRAND} weekly brief`),

@@ -8,6 +8,8 @@ import { SAMPLES, TEMPLATE_KEYS } from "@/server/email/templates";
 import { emailFromAddress } from "@/server/integrations/email";
 import { loadPrefs } from "@/server/services/notify";
 import { listSubscriptions } from "@/server/services/push";
+import { userFocus } from "@/server/services/focus";
+import { FocusPicker } from "../../_overview/focus-picker";
 import Link from "next/link";
 import { pushConfig } from "./actions";
 import { EmailField, EventPrefs } from "./settings-client";
@@ -16,11 +18,12 @@ export const metadata = { title: "Notifications" };
 
 export default async function NotificationsPage() {
   const s = await requireUser("MANAGER");
-  const [config, devices, emp, prefs] = await Promise.all([
+  const [config, devices, emp, prefs, focus] = await Promise.all([
     pushConfig(),
     listSubscriptions(s.userId),
     db.employee.findUnique({ where: { userId: s.userId }, select: { email: true } }),
     loadPrefs(s.userId),
+    userFocus(s.userId),
   ]);
   const from = await emailFromAddress();
 
@@ -41,6 +44,12 @@ export default async function NotificationsPage() {
             {config.pushReady ? "Phones and computers can get alerts once someone turns them on below or on My shifts." : <>Phone notifications aren&apos;t turned on yet. <Link href="/settings/connections?open=push" className="text-ink underline underline-offset-2">Turn them on</Link> — one tap, no account needed.</>}
           </p>
         </Card></HelpZone>
+      </div>
+
+      <div id="focus" className="scroll-mt-20">
+        <Section help="settings.focus" title="What I look after" description="The Overview and your morning and weekly briefs lead with these, in the order you pick them. The rest folds into Elsewhere; anything urgent always shows. It doesn't change what you can open or do.">
+          <FocusPicker initial={focus} />
+        </Section>
       </div>
 
       <Section help="settings.notify.device" title="This device">

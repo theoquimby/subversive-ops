@@ -96,6 +96,7 @@ export const ITEMS: SettingsItem[] = [
 
   // Notifications
   { id: "notify.all", section: "notifications", label: "Your alerts", what: "Turn each alert on or off for email and your phone.", href: "/settings/notifications", help: "settings.notifications", keywords: "email push phone alerts brief" },
+  { id: "notify.focus", section: "notifications", label: "What I look after", what: "The areas your Overview and briefs lead with.", href: "/settings/notifications#focus", help: "settings.focus", keywords: "focus role areas brewery kitchen business overview brief lead" },
 
   // Data & help
   { id: "data.import", section: "data", label: "Import sheets", what: "Bring in ingredients, prices and recipes from a spreadsheet.", href: "/settings/data#import", help: "settings.data.import", keywords: "import excel csv spreadsheet" },

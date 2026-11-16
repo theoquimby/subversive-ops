@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cx } from "@/components/ui";
 import { requireUser } from "@/server/auth";
+import { userFocus } from "@/server/services/focus";
 import { getMorningHour } from "@/server/services/morningBrief";
 import { refreshIfStale } from "@/server/services/square-sync";
 import { MorningView } from "./morning";
@@ -13,7 +14,7 @@ export const metadata = { title: "Brief" };
 export default async function BriefPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const session = await requireUser("MANAGER");
   const view = (await searchParams).view === "week" ? "week" : "today";
-  const [, hour] = await Promise.all([refreshIfStale(), view === "today" ? getMorningHour().catch(() => 9) : null]);
+  const [, hour, focus] = await Promise.all([refreshIfStale(), view === "today" ? getMorningHour().catch(() => 9) : null, userFocus(session.userId)]);
 
   const tab = (v: "today" | "week", label: string) => (
     <Link
@@ -35,7 +36,7 @@ export default async function BriefPage({ searchParams }: { searchParams: Promis
         </div>
         {hour != null && <SendTime hour={hour} />}
       </div>
-      {view === "week" ? <WeeklyView name={session.name} /> : <MorningView name={session.name} viewer={{ userId: session.userId, role: session.role }} />}
+      {view === "week" ? <WeeklyView name={session.name} focus={focus} /> : <MorningView name={session.name} viewer={{ userId: session.userId, role: session.role }} focus={focus} />}
     </div>
   );
 }

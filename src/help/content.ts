@@ -41,6 +41,7 @@ import { breweryBrewDay } from "./areas/breweryBrewDay";
 import { breweryPlan } from "./areas/breweryPlan";
 import { beerTax } from "./areas/beerTax";
 import { dailyUse } from "./areas/dailyUse";
+import { focus } from "./areas/focus";
 import { getTour } from "./tours";
 import type { HelpArea, HelpAreaId, HelpEntry } from "./types";
 
@@ -128,6 +129,7 @@ export const HELP: HelpEntry[] = [
   ...breweryPlan,
   ...beerTax,
   ...dailyUse,
+  ...focus,
   ...workforce,
   ...feedback,
 ];

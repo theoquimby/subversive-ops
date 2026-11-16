@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.27",
+    date: "2026-11-16",
+    title: "Overview and briefs lead with what you look after",
+    summary: "Each manager can pick what they look after (business, brewery, kegs, kitchen, people, online). The Overview and the morning and weekly briefs lead with those areas; the rest folds into a short Elsewhere list, and anything urgent always shows.",
+    entries: ["2026-11-16.focus"],
+    fixed: [
+      "Pick yours in Settings → Notifications or from the prompt on the Overview; managers can set it for each other from Team. Nothing picked means everything, as before.",
+      "Brewery on the Overview: what's in each tank, what's due to transfer or package, brewery orders and the next brew, for anyone who looks after the brewery.",
+      "The morning brief (page, email and phone) and the weekly brief (page and email) are built for each person's areas, with the brewery's to-dos in the weekly brief for whoever looks after the brewery.",
+      "It changes what shows first, never what anyone can open or do.",
+    ],
+  },
+  {
     version: "1.25",
     date: "2026-11-16",
     title: "Ordering speaks up only when it should",
