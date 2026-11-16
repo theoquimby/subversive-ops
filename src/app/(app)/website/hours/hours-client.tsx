@@ -2,8 +2,9 @@
 
 import { GridCell } from "@/components/grid";
 import { HelpTip, HelpZone } from "@/components/help";
-import { Badge, Button, Card, DatePicker, Field, LinkButton, Section, Table, Td, Textarea, Th, Tr, cx } from "@/components/ui";
-import { DOW_OF_WEEKDAY, dayRangeLabel, hhmmLabel, NOTICE_MAX, type ExactHours, type SiteNotice } from "@/domain/websiteHours";
+import { Button, Card, DatePicker, Dot, Field, LinkButton, Section, Table, Td, Textarea, Th, Tr, cx } from "@/components/ui";
+import { dayLabel, dayWindowLabel, type ShowState } from "@/domain/showWindow";
+import { DOW_OF_WEEKDAY, dayRangeLabel, hhmmLabel, NOTICE_MAX, type ExactHours, type StoredNotice } from "@/domain/websiteHours";
 import { rangeLabel, type WeekHours } from "@/domain/openingHours";
 import { LINK_LABEL, parseAddress, parsePhone, type WebLinks } from "@/domain/websiteContact";
 import { LINK_KEYS, WEEKDAYS, type SiteFeed, type Weekday } from "@/domain/websiteSchema";
@@ -20,14 +21,14 @@ export function HoursTab(p: {
   stale: Partial<Record<Weekday, ("open" | "close" | "kitchenClose")[]>>;
   regular: WeekHours;
   seasons: { label: string; from: string; to: string }[];
-  settings: { notice: SiteNotice | null; exactHours: ExactHours; links: WebLinks; phoneNote: string };
+  settings: { notice: StoredNotice | null; exactHours: ExactHours; links: WebLinks; phoneNote: string };
   contact: { name: string; address: string; phone: string; email: string; website: string };
   today: string;
 }) {
   return (
     <>
       <HelpZone id="website.notice" tour="website.notice">
-        <Section title="Notice" description="One line at the top of the website for anything guests should know: a closure, a change of hours, a special night. It comes down by itself after its last day.">
+        <Section title="Notice" description="One line at the top of the website for anything guests should know: a closure, a change of hours, a special night. Write it ahead and pick the day it starts; it comes down by itself after its last day.">
           <NoticeEditor initial={p.settings.notice} today={p.today} />
         </Section>
       </HelpZone>
@@ -128,46 +129,68 @@ function ContactCard({ contact, feed, phoneNote }: { contact: { name: string; ad
   );
 }
 
-function NoticeEditor({ initial, today }: { initial: SiteNotice | null; today: string }) {
+const STATE_TONE: Record<ShowState, "good" | "neutral" | "warn"> = { showing: "good", scheduled: "neutral", ended: "warn" };
+
+function NoticeEditor({ initial, today }: { initial: StoredNotice | null; today: string }) {
   const router = useRouter();
   const [text, setText] = useState(initial?.text ?? "");
+  // A start day that has come is the same as no start: it's showing.
+  const savedFrom = initial?.from && initial.from > today ? initial.from : "";
+  const [from, setFrom] = useState(savedFrom);
   const [until, setUntil] = useState(initial?.until ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const dirty = text.trim() !== (initial?.text ?? "") || until !== (initial?.until ?? "");
-  const expired = !!initial?.until && initial.until < today;
-  const save = (t: string, u: string) =>
+  const dirty = text.trim() !== (initial?.text ?? "") || from !== savedFrom || until !== (initial?.until ?? "");
+  const status = initial ? dayWindowLabel(initial.from, initial.until, today) : null;
+  const later = !!from && from > today;
+  const backwards = !!from && !!until && from > until;
+  const edit = (f: () => void) => { f(); setSaved(null); setError(null); };
+  const save = (t: string, f: string, u: string) =>
     start(async () => {
       setError(null);
-      const r = await saveNotice({ text: t, until: u || null });
+      const r = await saveNotice({ text: t, from: f || null, until: u || null });
       if (r.error) setError(r.error);
       else {
-        setSaved(t.trim() ? "Saved. The website shows it within a minute." : "Removed from the website.");
+        if (f && f <= today) setFrom(""); // saved as "right away"
+        setSaved(!t.trim() ? "Removed from the website." : f && f > today ? `Scheduled. The website shows it from ${dayLabel(f, today)}.` : "Saved. The website shows it within a minute.");
         router.refresh();
       }
     });
   return (
     <Card className="p-4">
-      <div className="grid gap-4 md:grid-cols-[1fr_14rem]">
-        <Field label="What guests should know" hint={<span className={cx("num", text.length > NOTICE_MAX && "text-bad")}>{text.length}/{NOTICE_MAX}</span>}>
-          <Textarea value={text} onChange={(e) => { setText(e.target.value); setSaved(null); }} rows={2} maxLength={NOTICE_MAX + 40} placeholder="Closed Thursday for Thanksgiving. Back Friday at 4:30." data-tour="website.notice-text" />
-        </Field>
+      <Field label="What guests should know" hint={<span className={cx("num", text.length > NOTICE_MAX && "text-bad")}>{text.length}/{NOTICE_MAX}</span>}>
+        <Textarea value={text} onChange={(e) => edit(() => setText(e.target.value))} rows={2} maxLength={NOTICE_MAX + 40} placeholder="Closed Thursday for Thanksgiving. Back Friday at 4:30." data-tour="website.notice-text" />
+      </Field>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 md:max-w-xl">
+        <div>
+          <span className="mb-1.5 block text-[0.8rem] font-medium text-ink-2">Start showing</span>
+          <DatePicker value={from} onChange={(e) => edit(() => setFrom(e.target.value))} min={today} max={until || undefined} today={today} aria-label="First day the notice shows" />
+          <div className="mt-1 flex items-center gap-2 text-xs text-muted">
+            {from ? <button type="button" className="min-h-6 underline underline-offset-2" onClick={() => edit(() => setFrom(""))}>Show it right away</button> : "Leave empty to show it as soon as you publish"}
+          </div>
+        </div>
         <div>
           <span className="mb-1.5 block text-[0.8rem] font-medium text-ink-2">Last day it shows</span>
-          <DatePicker value={until} onChange={(e) => { setUntil(e.target.value); setSaved(null); }} min={today} today={today} aria-label="Last day the notice shows" />
+          <DatePicker value={until} onChange={(e) => edit(() => setUntil(e.target.value))} min={from && from > today ? from : today} today={today} aria-label="Last day the notice shows" />
           <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-            {until ? <button type="button" className="underline underline-offset-2" onClick={() => setUntil("")}>No end date</button> : "Leave empty to keep it up until you remove it"}
+            {until ? <button type="button" className="min-h-6 underline underline-offset-2" onClick={() => edit(() => setUntil(""))}>No end date</button> : "Leave empty to keep it up until you remove it"}
           </div>
         </div>
       </div>
-      {expired && <p className="mt-3 text-sm text-warn">This notice ended {initial!.until} and isn&apos;t showing.</p>}
+      {status && (
+        <p className="mt-4 flex flex-wrap items-center gap-2 text-sm" aria-live="polite">
+          <Dot tone={STATE_TONE[status.state]} />
+          <span className={cx(status.state === "ended" ? "text-warn" : "text-ink")}>{status.label}</span>
+          {status.state === "ended" && initial?.until && <span className="text-muted">· last day was {dayLabel(initial.until, today)}, so it isn&apos;t showing</span>}
+        </p>
+      )}
+      {backwards && <p className="mt-3 text-sm text-bad">It would start after its last day. Pick a start on or before the last day.</p>}
       {error && <p className="mt-3 text-sm text-bad">{error}</p>}
       {saved && !dirty && <p className="mt-3 text-sm text-good">{saved}</p>}
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Button variant="primary" disabled={pending || !dirty || !text.trim()} onClick={() => save(text, until)}>{pending ? "Saving…" : initial ? "Save notice" : "Publish notice"}</Button>
-        {initial && <Button variant="ghost" disabled={pending} onClick={() => { setText(""); setUntil(""); save("", ""); }}>Take it down</Button>}
-        {initial && !expired && <Badge tone="good">Live</Badge>}
+        <Button variant="primary" disabled={pending || !dirty || !text.trim() || backwards} onClick={() => save(text, from, until)}>{pending ? "Saving…" : later ? "Schedule notice" : "Publish notice"}</Button>
+        {initial && <Button variant="ghost" disabled={pending} onClick={() => { setText(""); setFrom(""); setUntil(""); save("", "", ""); }}>Take it down</Button>}
       </div>
     </Card>
   );

@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.26",
+    date: "2026-11-16",
+    title: "Notices you can write ahead",
+    summary: "The website notice and team announcements can be written now and set to start later, so they don't have to go up the moment they're written.",
+    entries: ["2026-11-16.schedule-notices"],
+    fixed: [
+      "Website → Hours & notice has a Start showing day beside the last day. Until that day the website doesn't see the notice; the editor says Scheduled, Showing now or Ended, and the button says Schedule notice.",
+      "Each morning Ops tells the website when a scheduled notice has started or ended, so it changes over within minutes instead of waiting for the next save.",
+      "Team announcements take a Show from day and time. Staff don't see them until then; managers find them under Scheduled on Team and Schedule, where they can edit one or show it now.",
+      "A start after the last day is turned down with a plain message.",
+    ],
+  },
+  {
     version: "1.25",
     date: "2026-11-16",
     title: "Ordering speaks up only when it should",

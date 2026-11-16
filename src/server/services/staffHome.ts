@@ -181,7 +181,8 @@ export async function staffHome(employee: { id: string; name: string; positions:
     todos: sortTodos(todos),
     waiting,
     actions: quickActionOrder(employee.positions.map((p) => p.position.name)),
-    announcements: notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.createdAt.toISOString() })),
+    // Scheduled notes are left out until they start; then they're dated from the start.
+    announcements: notes.map((n) => ({ id: n.id, body: n.body, author: n.author, pinned: n.pinned, createdAt: n.shownAt.toISOString() })),
     kudos: kudos ? { body: kudos.body, author: kudos.author?.name ?? null, createdAt: kudos.createdAt.toISOString() } : null,
     onboarding: onboarding && onboarding.status === "ACTIVE" ? { done: onboarding.progress.done, total: onboarding.progress.total, requiredLeft: onboarding.progress.requiredTotal - onboarding.progress.requiredDone, seen: !!onboarding.seenAt, dueOn: onboarding.dueOn } : null,
   };

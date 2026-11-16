@@ -28,6 +28,8 @@ export function OverviewTab(p: {
   secretSet: boolean;
   health: FeedHealth[];
   inquiries: InquiryRow[];
+  /** A notice written ahead that isn't showing yet. */
+  scheduledNotice: { text: string; label: string } | null;
 }) {
   const today = businessToday();
   const wd = WEEKDAY_OF_DOW[weekday(today)];
@@ -53,6 +55,12 @@ export function OverviewTab(p: {
                 <span>
                   {p.site.notice.text}
                   <span className="text-muted">{p.site.notice.until ? ` · until ${shortDate(p.site.notice.until)}` : " · until you remove it"}</span>
+                </span>
+              ) : p.scheduledNotice ? (
+                <span>
+                  <span className="text-muted">None today. </span>
+                  {p.scheduledNotice.text}
+                  <span className="text-muted"> · {p.scheduledNotice.label}</span>
                 </span>
               ) : (
                 <span className="text-muted">None — add one for a closure or a change</span>

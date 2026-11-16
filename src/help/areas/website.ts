@@ -28,9 +28,15 @@ If Ops can't be reached, the website keeps showing its own copy, so nothing brea
     area: "website",
     route: "/website/hours",
     title: "Notice",
-    body: "One line at the top of every page of the website, for a closure, changed hours or a special night. Pick the last day it shows and it comes down by itself the day after. Take it down any time.",
-    related: ["website.hours", "website.page"],
-    keywords: ["banner", "announcement", "closed", "message", "alert"],
+    body: "One line at the top of every page of the website, for a closure, changed hours or a special night. Write it ahead and pick the day it starts showing; pick the last day and it comes down by itself the day after.",
+    article: `One line at the top of every page of the website, for a closure, changed hours or a special night.
+
+- **Start showing** — write it ahead and pick the day it goes up. Until then the website doesn't see it, and the button says Schedule notice. Leave it empty to show it as soon as you publish.
+- **Last day it shows** — it comes down by itself the day after. Leave it empty to keep it up until you take it down.
+
+Under the dates it says where it stands: Scheduled (with its days), Showing now, or Ended. Days are New York days, from midnight. Each morning Ops tells the website when a notice has started or ended, so it changes over within minutes. Take it down any time.`,
+    related: ["website.hours", "website.page", "website.announcements"],
+    keywords: ["banner", "announcement", "closed", "message", "alert", "schedule", "later", "start", "ahead"],
   },
   {
     id: "website.hours",

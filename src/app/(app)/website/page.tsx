@@ -1,6 +1,8 @@
 import { requireUser } from "@/server/auth";
 import { publicOrigin } from "@/server/services/public-url";
-import { eventsFeed, feedsHealth, lastPing, menuFeed, siteFeed, websiteConnection } from "@/server/services/website";
+import { dayWindowLabel } from "@/domain/showWindow";
+import { businessToday } from "@/server/services/sales";
+import { eventsFeed, feedsHealth, lastPing, menuFeed, siteFeed, websiteConnection, websiteSettings } from "@/server/services/website";
 import { listInquiries } from "@/server/services/websiteInquiries";
 import { OverviewTab } from "./overview";
 
@@ -9,7 +11,7 @@ export const metadata = { title: "Website" };
 export default async function WebsiteOverviewPage() {
   await requireUser("MANAGER");
   const origin = await publicOrigin();
-  const [site, menu, events, ping, conn, health, inquiries] = await Promise.all([
+  const [site, menu, events, ping, conn, health, inquiries, settings] = await Promise.all([
     siteFeed().catch(() => null),
     menuFeed().catch(() => null),
     eventsFeed({ days: 60, pastDays: 0, origin }).catch(() => null),
@@ -17,7 +19,10 @@ export default async function WebsiteOverviewPage() {
     websiteConnection(),
     feedsHealth(origin),
     listInquiries(5),
+    websiteSettings(),
   ]);
+  const n = settings.notice;
+  const when = n ? dayWindowLabel(n.from, n.until, businessToday()) : null;
   return (
     <OverviewTab
       origin={origin}
@@ -31,6 +36,7 @@ export default async function WebsiteOverviewPage() {
       secretSet={!!conn.secret}
       health={health}
       inquiries={inquiries}
+      scheduledNotice={n && when?.state === "scheduled" ? { text: n.text, label: when.label } : null}
     />
   );
 }

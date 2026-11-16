@@ -1,9 +1,12 @@
 "use server";
 
 import { addDays } from "@/domain/dates";
+import { checkStart, startInstant } from "@/domain/showWindow";
 import { parseWindows } from "@/domain/timecards";
+import { isIsoDate } from "@/domain/websiteSchema";
 import { hashPin, requireUser } from "@/server/auth";
 import { db } from "@/server/db";
+import { env } from "@/server/env";
 import { syncLabor } from "@/server/services/labor";
 import { friendlySquareError } from "@/server/integrations/square-http";
 import { businessToday } from "@/server/services/sales";
@@ -191,16 +194,56 @@ export async function syncTeamFromSquare(): Promise<{ error?: string; message?: 
 
 // ---- Announcements ----------------------------------------------------------------
 
-export async function postAnnouncement(body: string): Promise<{ error?: string }> {
-  const me = await requireUser("MANAGER");
-  const text = body.trim();
+const announcementStart = z.object({ date: z.string().refine(isIsoDate), minutes: z.number().int().min(0).max(1439) }).nullable().optional();
+
+/** The checked text and start of an announcement, or a plain message. A start that has passed means now. */
+function announcementInput(body: string, start: unknown, expiresAt: Date | null, now: Date): { text: string; startsAt: Date | null } | { error: string } {
+  const text = String(body ?? "").trim();
   if (!text) return { error: "Write something first." };
   if (text.length > 1000) return { error: "Keep it under 1,000 characters." };
-  await db.announcement.create({ data: { body: text, author: me.name } });
+  const s = announcementStart.safeParse(start);
+  if (!s.success) return { error: "Pick a day and time for it to show." };
+  const r = checkStart(s.data ? startInstant(s.data.date, s.data.minutes, env.BUSINESS_TIMEZONE) : null, expiresAt, now);
+  return "error" in r ? r : { text, startsAt: r.startsAt };
+}
+
+function refreshAnnouncements() {
   revalidatePath("/team");
   revalidatePath("/schedule");
   revalidatePath("/my");
+}
+
+/** Post a note now, or (with `start`, a business day and minutes after midnight) schedule it for later. */
+export async function postAnnouncement(body: string, start?: { date: string; minutes: number } | null): Promise<{ error?: string }> {
+  const me = await requireUser("MANAGER");
+  const v = announcementInput(body, start, null, new Date());
+  if ("error" in v) return { error: v.error };
+  await db.announcement.create({ data: { body: v.text, author: me.name, startsAt: v.startsAt } });
+  refreshAnnouncements();
   return {};
+}
+
+/** Change a scheduled note's words or start. A start in the past publishes it now. */
+export async function editAnnouncement(id: string, body: string, start: { date: string; minutes: number } | null): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const now = new Date();
+  const cur = await db.announcement.findUnique({ where: { id: String(id) }, select: { expiresAt: true, startsAt: true } });
+  if (!cur) return { error: "That announcement is gone." };
+  const v = announcementInput(body, start, cur.expiresAt, now);
+  if ("error" in v) return { error: v.error };
+  // Brought forward to now: it counts as posted now, so it lands at the top for staff.
+  const startsAt = v.startsAt ?? (cur.startsAt && cur.startsAt > now ? now : cur.startsAt);
+  await db.announcement.update({ where: { id: String(id) }, data: { body: v.text, startsAt } });
+  refreshAnnouncements();
+  return {};
+}
+
+/** Show a scheduled note to staff right away. */
+export async function publishAnnouncementNow(id: string): R {
+  await requireUser("MANAGER");
+  const now = new Date();
+  await db.announcement.updateMany({ where: { id: String(id), startsAt: { gt: now } }, data: { startsAt: now } });
+  refreshAnnouncements();
 }
 
 export async function pinAnnouncement(id: string, pinned: boolean): R {

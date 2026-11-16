@@ -14,6 +14,7 @@
  */
 
 import type { SeasonalHours, WeekHours } from "./openingHours";
+import { dayState } from "./showWindow";
 import { WEEKDAYS, isHHmm, type WebDayHours, type WebWeekHours, type Weekday } from "./websiteSchema";
 
 export interface ExactDay {
@@ -144,22 +145,28 @@ export interface SiteNotice {
   until: string | null;
 }
 
+/** The notice as Ops keeps it: what the website gets, plus the day it starts showing. */
+export interface StoredNotice extends SiteNotice {
+  /** First day it shows, "YYYY-MM-DD"; null = as soon as it's saved. Never sent to the website. */
+  from: string | null;
+}
+
 export const NOTICE_MAX = 280;
 
-/** The notice to publish today: null when there's none or it has expired. */
-export function liveNotice(n: SiteNotice | null | undefined, today: string): SiteNotice | null {
+/** The notice to publish today: null when there's none, its start day hasn't come, or it has ended. */
+export function liveNotice(n: StoredNotice | SiteNotice | null | undefined, today: string): SiteNotice | null {
   if (!n || !n.text.trim()) return null;
-  if (n.until && n.until < today) return null;
+  if (dayState("from" in n ? n.from : null, n.until, today) !== "showing") return null;
   return { text: n.text.trim().slice(0, NOTICE_MAX), until: n.until };
 }
 
-export function parseNotice(raw: unknown): SiteNotice | null {
+export function parseNotice(raw: unknown): StoredNotice | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const text = typeof o.text === "string" ? o.text.trim() : "";
   if (!text) return null;
-  const until = typeof o.until === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.until) ? o.until : null;
-  return { text: text.slice(0, NOTICE_MAX), until };
+  const day = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  return { text: text.slice(0, NOTICE_MAX), from: day(o.from), until: day(o.until) };
 }
 
 /** "4:30pm–8pm", or "Closed". */
