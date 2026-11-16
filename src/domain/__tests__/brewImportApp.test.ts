@@ -151,6 +151,12 @@ describe("matching schedule names", () => {
     expect(matchName("Xmas Beer", items)).toBeNull();
     expect(matchName("", items)).toBeNull();
   });
+
+  it("reads NY as New York, so NY Nectar is New York Nectar and not a variant of it", () => {
+    const beers = [{ name: "Ny nectar with mandarin" }, { name: "New York Nectar" }, { name: "Double Nectar" }];
+    expect(matchName("NY Nectar", beers)).toEqual({ item: beers[1], how: "exact" });
+    expect(matchName("New York Nectar", [{ name: "NY Nectar" }])!.how).toBe("exact");
+  });
 });
 
 describe("previewing the app data", () => {

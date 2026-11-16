@@ -46,7 +46,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         description={sub || undefined}
         actions={
           inTank ? <LinkButton href={`/brewery#tank-${inTank.tankId}`}>Open {inTank.tankName}</LinkButton>
-          : b.status === "PLANNED" ? <LinkButton href={`/brewery/brew/new?batch=${b.id}`} variant="primary">Start brew day</LinkButton>
+          : b.status === "PLANNED" ? <LinkButton href={`/brewery/brew?batch=${b.id}`} variant="primary">Start brew day</LinkButton>
           : undefined
         }
       />

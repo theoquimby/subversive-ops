@@ -351,7 +351,7 @@ export async function createBrewIngredient(name: string, kind: BrewLineKind, uni
   const baseUnit = baseUnitForBrewUnit(unit);
   const category = categoryForKind(kind);
   const created = await db.ingredient.create({
-    data: { name: clean, category, baseUnit, storageArea: "Brewery", countUnit: baseUnit === "g" ? "lb" : baseUnit === "ml" ? "gal" : "each", safetyPct: new Prisma.Decimal(0) },
+    data: { name: clean, category, baseUnit, department: "brewery", storageArea: "Brewery", countUnit: baseUnit === "g" ? "lb" : baseUnit === "ml" ? "gal" : "each", safetyPct: new Prisma.Decimal(0) },
   });
   return { id: created.id, name: created.name, category, baseUnit, costPerBase: null, conversions: [], source: null };
 }

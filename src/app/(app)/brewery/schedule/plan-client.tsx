@@ -164,7 +164,7 @@ export function PlanArea({ today, recipes, beers, tanks, suggestions }: { today:
             <div className="flex flex-wrap items-end gap-2">
               <Field label="Batch code" hint="Blank: next number" className="w-36"><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Auto" aria-label="Batch code" autoComplete="off" /></Field>
               <Button type="submit" variant="primary" disabled={!ok || saving} className="h-11 flex-1 sm:h-9 sm:flex-none">{saving ? "Saving…" : "Put it on the schedule"}</Button>
-              {recipe && brewOn === today && <Link href={`/brewery/brew/new?recipe=${recipe.id}`} className="inline-flex h-11 items-center text-sm font-medium text-ink-2 underline-offset-2 hover:text-ink hover:underline sm:h-9">Or start its brew day now</Link>}
+              {recipe && brewOn === today && <Link href={`/brewery/brew?recipe=${recipe.id}`} className="inline-flex h-11 items-center text-sm font-medium text-ink-2 underline-offset-2 hover:text-ink hover:underline sm:h-9">Or start its brew day now</Link>}
             </div>
             {error && <p role="alert" className="text-sm text-bad">{error}</p>}
           </form>
@@ -253,7 +253,7 @@ function PlannedRow({ b, path, today, open, onOpen, tanks, onDone }: { b: BatchV
           </span>
         </Link>
         <div className="flex gap-1.5">
-          <Link href={`/brewery/brew/new?batch=${b.id}`} className="inline-flex h-10 items-center rounded-lg px-2.5 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink sm:h-8">Brew now</Link>
+          <Link href={`/brewery/brew?batch=${b.id}`} className="inline-flex h-10 items-center rounded-lg px-2.5 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink sm:h-8">Brew now</Link>
           <Button size="sm" variant={open ? "secondary" : "ghost"} className="h-10 sm:h-8" onClick={onOpen}>{open ? "Close" : "Move"}</Button>
           <Button
             size="sm"

@@ -861,19 +861,21 @@ const GENERIC_WORDS = new Set(["ipa", "ale", "lager", "beer", "stout", "pale", "
  * the other way round), when exactly one does and the words say which beer.
  */
 export function matchName<T extends { name: string }>(name: string, items: T[]): { item: T; how: "exact" | "alias" | "close" } | null {
-  const f = foldName(name);
+  // "NY Nectar" is "New York Nectar": spell NY out on both sides before comparing.
+  const fold = (x: string) => foldName(x).replace(/\bny\b/g, "new york");
+  const f = fold(name);
   if (!f) return null;
-  const exact = items.find((i) => foldName(i.name) === f);
+  const exact = items.find((i) => fold(i.name) === f);
   if (exact) return { item: exact, how: "exact" };
   for (const [a, b] of NAME_ALIASES) {
-    const [fa, fb] = [foldName(a), foldName(b)];
+    const [fa, fb] = [fold(a), fold(b)];
     const other = f === fa ? fb : f === fb ? fa : null;
-    const hit = other ? items.find((i) => foldName(i.name) === other) : undefined;
+    const hit = other ? items.find((i) => fold(i.name) === other) : undefined;
     if (hit) return { item: hit, how: "alias" };
   }
   const words = new Set(f.split(" "));
   const close = items.filter((i) => {
-    const iw = new Set(foldName(i.name).split(" ").filter(Boolean));
+    const iw = new Set(fold(i.name).split(" ").filter(Boolean));
     const [small, big] = words.size <= iw.size ? [words, iw] : [iw, words];
     return small.size > 0 && [...small].every((w) => big.has(w)) && [...small].some((w) => !GENERIC_WORDS.has(w) && w.length > 2);
   });

@@ -210,7 +210,7 @@ function BrewHouseTile({ f }: { f: FloorView }) {
             <span className="mt-auto inline-flex items-center gap-0.5 text-xs font-medium text-ink">Resume<ChevronRight className="size-3.5" /></span>
           </Link>
         ) : h.next ? (
-          <Link href={`/brewery/brew/new?batch=${h.next.id}`} className="flex min-h-[5.75rem] flex-col rounded-xl border border-border-strong bg-surface px-3 py-2 transition-transform duration-120 hover:bg-surface-2 active:scale-[0.98]">
+          <Link href={`/brewery/brew?batch=${h.next.id}`} className="flex min-h-[5.75rem] flex-col rounded-xl border border-border-strong bg-surface px-3 py-2 transition-transform duration-120 hover:bg-surface-2 active:scale-[0.98]">
             <span className="text-[0.7rem] font-semibold text-ink-2">Next brew · {h.next.on === f.today ? "today" : shortDate(h.next.on)}</span>
             <span className="mt-1 truncate text-sm font-medium">{h.next.name}</span>
             <span className="num text-[0.7rem] text-muted">{h.next.code}{h.next.on < f.today ? " · day passed" : ""}</span>
@@ -219,7 +219,7 @@ function BrewHouseTile({ f }: { f: FloorView }) {
         ) : (
           <div className="flex min-h-[5.75rem] flex-col justify-center rounded-xl border border-dashed border-border-strong px-3 py-2 text-sm text-muted">Nothing planned.</div>
         )}
-        <Link href="/brewery/brew/new" className="inline-flex min-h-10 items-center text-xs font-medium text-ink-2 underline-offset-2 hover:text-ink hover:underline">Start a brew day</Link>
+        <Link href="/brewery/brew" className="inline-flex min-h-10 items-center text-xs font-medium text-ink-2 underline-offset-2 hover:text-ink hover:underline">Start a brew day</Link>
       </div>
     </section>
   );

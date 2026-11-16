@@ -27,6 +27,7 @@ import {
   CalendarRange,
   Cylinder,
   Factory,
+  Flame,
   FlaskConical,
   Layers,
   Camera,
@@ -112,6 +113,7 @@ const STAFF_KEG_SECTIONS: SubItem[] = KEG_SECTIONS.slice(0, 3);
 // Brewery: what's in each tank now, the tank schedule, recipes with live costs, every brew, brewing stock with what to order when and costs, and setup.
 export const BREWERY_SECTIONS: SubItem[] = [
   { href: "/brewery", label: "Tanks", icon: Cylinder },
+  { href: "/brewery/brew", label: "Brew day", icon: Flame },
   { href: "/brewery/schedule", label: "Schedule", icon: CalendarClock },
   { href: "/brewery/recipes", label: "Recipes", icon: FlaskConical },
   { href: "/brewery/batches", label: "Brews", icon: Layers },

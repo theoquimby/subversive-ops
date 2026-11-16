@@ -269,7 +269,7 @@ function BrewedForm({ batch, tankId, today, unit, onDone, onCancel }: FormProps 
         <Field label="Volume, bbl"><Input value={bbl} onChange={(e) => setBbl(e.target.value)} inputMode="decimal" aria-label="Volume in barrels" /></Field>
         <Field label="OG" hint="Optional" className="col-span-2 sm:col-span-1"><Input value={og} onChange={(e) => setOg(e.target.value)} inputMode="decimal" placeholder={gravityExample(unit, 1.05)} aria-label="Original gravity" /></Field>
       </div>
-      <p className="text-xs text-muted">The cost is worked out from today&apos;s ingredient prices and kept with the brew. For the full brew-day log, use <Link href={`/brewery/brew/new?batch=${batch.id}`} className="underline underline-offset-2">Start brew day</Link>.</p>
+      <p className="text-xs text-muted">The cost is worked out from today&apos;s ingredient prices and kept with the brew. For the full brew-day log, use <Link href={`/brewery/brew?batch=${batch.id}`} className="underline underline-offset-2">Start brew day</Link>.</p>
     </FormFrame>
   );
 }

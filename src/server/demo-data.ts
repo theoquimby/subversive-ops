@@ -266,6 +266,9 @@ export async function seedDemo(db: PrismaClient, opts: { managerPin?: string; st
   if ((await db.brewRecipe.count({ where: { OR: [{ sourceKey: null }, { NOT: { sourceKey: { startsWith: "demo:" } } }] } })) === 0) {
     const { seedBrewRecipes } = await import("./demo/brewRecipes");
     await seedBrewRecipes(db);
+    // Brewing stock, brewery suppliers with lead times, and planned brews linked to their recipes.
+    const { seedBrewStock } = await import("./demo/brewStock");
+    await seedBrewStock(db, today);
   }
   // Ordering cadence: every delivery vs when stock runs low, how each supplier takes orders, brewing suppliers on the Brewery side.
   {
