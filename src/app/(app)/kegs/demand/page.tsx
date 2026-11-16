@@ -1,4 +1,3 @@
-import { HelpTip } from "@/components/help";
 import { Badge, Card, EmptyState, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
 import { shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
@@ -7,6 +6,8 @@ import Link from "next/link";
 import { BeerDot, sizeShort } from "../bits";
 import { CoreHelperSection } from "../core-helper";
 import { AddBeerFromSquare } from "../setup/setup-client";
+import { ShowMore } from "@/components/show-more";
+import { DemandBrowser, type DemandItem } from "./browser";
 import { MonthBars, WeeklyPints } from "./chart";
 
 export const metadata = { title: "Demand per beer" };
@@ -51,48 +52,35 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
       {rows.length === 0 ? (
         <EmptyState title="No beers yet" action={<LinkButton href="/kegs/setup" variant="primary">Add beers</LinkButton>}>Add your beers on Setup and say which Square items pour them. Demand comes from Square sales.</EmptyState>
       ) : (
-        <>
-          <Section help="kegs.demand.beers" title={<span className="inline-flex items-center gap-1">Core beers <HelpTip id="kegs.demand.beers" /></span>} description="The ones you never want to run out of. Most urgent first. Ranges are how far this method has been off for each beer before.">
-            {core.length === 0 ? (
-              <p className="text-sm text-muted">No core beers yet. Pick them above, or set a beer to Core on <Link href="/kegs/setup" className="underline hover:text-ink">Setup</Link> or on its own page.</p>
-            ) : (
-              <div className="grid gap-3 lg:grid-cols-2">
-                {core.map((r) => <DemandCard key={r.beerId} r={r} cost={costs.get(r.beerId)} />)}
-              </div>
-            )}
-          </Section>
-
-          {rotation.length > 0 && (
-            <Section help="kegs.standing" title="In rotation" description="Brewed sometimes. Their pace is here for information; they're never flagged to fill.">
-              <div className="grid gap-3 lg:grid-cols-2">
-                {rotation.map((r) => <DemandCard key={r.beerId} r={r} cost={costs.get(r.beerId)} />)}
-              </div>
-            </Section>
-          )}
-
-          {retired.length > 0 && (showRetired ? (
-            <Section title="Retired" description="Not brewed any more. Kept for their history." actions={<LinkButton href="/kegs/demand" scroll={false} size="sm" className="h-10 sm:h-8">Hide retired</LinkButton>}>
-              <div className="grid gap-3 lg:grid-cols-2">
-                {retired.map((r) => <DemandCard key={r.beerId} r={r} cost={costs.get(r.beerId)} />)}
-              </div>
-            </Section>
-          ) : (
-            <p className="-mt-4 mb-10 text-sm text-muted">
-              <Link href="/kegs/demand?retired=1" scroll={false} className="underline decoration-border-strong underline-offset-2 hover:text-ink">Show retired</Link> · {retired.length} beer{retired.length === 1 ? "" : "s"} not brewed any more
-            </p>
-          ))}
-        </>
+        <DemandBrowser
+          showRetired={showRetired}
+          groups={[
+            {
+              key: "core",
+              title: "Core beers",
+              help: "kegs.demand.beers",
+              description: "The ones you never want to run out of. Most urgent first. Ranges are how far this method has been off for each beer before.",
+              limit: 12,
+              items: core.map((r) => item(r, costs.get(r.beerId))),
+              empty: <p className="text-sm text-muted">No core beers yet. Pick them above, or set a beer to Core on <Link href="/kegs/setup" className="underline hover:text-ink">Setup</Link> or on its own page.</p>,
+            },
+            { key: "rotation", title: "In rotation", help: "kegs.standing", description: "Brewed sometimes, what's pouring or full first. Their pace is here for information; they're never flagged to fill.", limit: 6, items: rotation.map((r) => item(r, costs.get(r.beerId))) },
+            { key: "retired", title: "Retired", description: "Not brewed any more. Kept for their history.", limit: 6, items: retired.map((r) => item(r, costs.get(r.beerId))) },
+          ]}
+        />
       )}
 
       {unmatched.length > 0 && (
         <Section title="Square items that look like draft beer" description="Not linked to a beer yet, so their pours aren't counted. Add them as a beer, or add the name to a beer on Setup.">
-          <Card className="divide-y divide-border">
-            {unmatched.map((u) => (
-              <div key={u.base} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                <span className="min-w-0 truncate">{u.base} <span className="num text-xs text-muted">· {Math.round(u.qty)} sold in 90 days</span></span>
-                <AddBeerFromSquare base={u.base} />
-              </div>
-            ))}
+          <Card>
+            <ShowMore limit={8} noun={["item", "items"]} className="divide-y divide-border" buttonClassName="mx-2 mb-1.5">
+              {unmatched.map((u) => (
+                <div key={u.base} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                  <span className="min-w-0 truncate">{u.base} <span className="num text-xs text-muted">· {Math.round(u.qty)} sold in 90 days</span></span>
+                  <AddBeerFromSquare base={u.base} />
+                </div>
+              ))}
+            </ShowMore>
           </Card>
         </Section>
       )}
@@ -114,6 +102,17 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
       )}
     </>
   );
+}
+
+/** A beer's card with what the page's search and filters need to know about it. */
+function item(r: BeerDemandRow, cost: Cost | undefined): DemandItem {
+  return {
+    id: r.beerId,
+    name: r.name,
+    inStock: r.full > 0 || r.onTap > 0,
+    soldLately: r.weekly.slice(-4).some((w) => w.pints > 0),
+    card: <DemandCard r={r} cost={cost} />,
+  };
 }
 
 /** One beer: the plan and "Fill N" for a core beer; for the others the same pace and history, in neutral words. */

@@ -1,5 +1,6 @@
 "use client";
 
+import { ShowMore } from "@/components/show-more";
 import { cx, Select } from "@/components/ui";
 import { beerColor, displayCode, isFull, kegSizeInfo, STATUS_META, type KegStatus } from "@/domain/kegs";
 import type { BoardKeg } from "@/server/services/kegs";
@@ -63,6 +64,8 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
     for (const k of kegs) if (k.beerId && isFull(k.status)) m.set(k.beerId, (m.get(k.beerId) ?? 0) + 1);
     return m;
   }, [kegs]);
+  // The beer a link picked goes first, so it's never under "Show more".
+  const chipBeers = useMemo(() => (initialBeer ? [...beers.filter((b) => b.id === initialBeer), ...beers.filter((b) => b.id !== initialBeer)] : beers), [beers, initialBeer]);
   const empties = kegs.filter((k) => k.status === "EMPTY").length;
   const dirty = kegs.filter((k) => k.status === "CLEANING" || k.status === "KICKED").length;
 
@@ -83,11 +86,14 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
         )}
       </div>
 
-      <div className="flex flex-wrap gap-1.5" aria-label="Filter by beer">
-        <FilterChip on={!beer} onClick={() => setBeer("")}>All beers</FilterChip>
-        {beers.map((b) => (
-          <FilterChip key={b.id} on={beer === b.id} onClick={() => setBeer(beer === b.id ? "" : b.id)} color={b.color}>{b.name} <span className="num opacity-70">{counts.get(b.id) ?? 0}</span>{b.retired && <span className="text-[11px] opacity-70">retired</span>}</FilterChip>
-        ))}
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
+        {/* Many beers: the first dozen, then "Show N more beers"; a beer picked from a link stays in the first row. */}
+        <ShowMore inline limit={12} noun={["beer", "beers"]} className="flex min-w-0 flex-1 flex-wrap gap-1.5" buttonClassName="sm:min-h-8">
+          <FilterChip key="all" on={!beer} onClick={() => setBeer("")}>All beers</FilterChip>
+          {chipBeers.map((b) => (
+            <FilterChip key={b.id} on={beer === b.id} onClick={() => setBeer(beer === b.id ? "" : b.id)} color={b.color}>{b.name} <span className="num opacity-70">{counts.get(b.id) ?? 0}</span>{b.retired && <span className="text-[11px] opacity-70">retired</span>}</FilterChip>
+          ))}
+        </ShowMore>
         <span className="ml-auto self-center text-xs text-muted">{empties} empty · {dirty} to clean</span>
       </div>
 
@@ -131,9 +137,9 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
         {columns.filter((c) => c.kegs.some(visible) || (!beer && c.kegs.length)).map((c) => (
           <section key={c.key}>
             <h3 className="mb-1.5 flex items-center justify-between px-1 text-xs font-semibold text-ink-2">{c.name}<span className="num font-normal text-muted">{c.kegs.filter(visible).length}</span></h3>
-            <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-              {c.kegs.filter(visible).map((k) => <KegRow key={k.id} k={k} highlight={k.id === nextId} />)}
-            </div>
+            <ShowMore limit={10} noun={["keg", "kegs"]} className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+              {nextFirst(c.kegs.filter(visible), nextId).map((k) => <KegRow key={k.id} k={k} highlight={k.id === nextId} />)}
+            </ShowMore>
           </section>
         ))}
         {columns.every((c) => !c.kegs.some(visible)) && <p className="py-6 text-center text-sm text-muted">No kegs here{beer ? " for that beer" : ""}.</p>}
@@ -141,16 +147,19 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
 
       {elsewhere.filter(visible).length > 0 && (
         <section>
-          <h3 className="mb-1.5 px-1 text-xs font-semibold text-ink-2">Elsewhere</h3>
-          <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-            {elsewhere.filter(visible).map((k) => <KegRow key={k.id} k={k} highlight={k.id === nextId} showArea />)}
-          </div>
+          <h3 className="mb-1.5 flex items-center justify-between px-1 text-xs font-semibold text-ink-2">Elsewhere<span className="num font-normal text-muted">{elsewhere.filter(visible).length}</span></h3>
+          <ShowMore limit={10} noun={["keg", "kegs"]} className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+            {nextFirst(elsewhere.filter(visible), nextId).map((k) => <KegRow key={k.id} k={k} highlight={k.id === nextId} showArea />)}
+          </ShowMore>
         </section>
       )}
       {manager && <p className="text-xs text-muted">Spots are set on <Link className="underline" href="/kegs/setup#spots">Kegs → Setup</Link>.</p>}
     </div>
   );
 }
+
+/** The keg to take next leads its list, so a long list never hides it. */
+const nextFirst = (list: BoardKeg[], nextId: string | null) => (nextId && list.some((k) => k.id === nextId) ? [...list.filter((k) => k.id === nextId), ...list.filter((k) => k.id !== nextId)] : list);
 
 function FilterChip({ on, onClick, color, children }: { on: boolean; onClick: () => void; color?: string; children: React.ReactNode }) {
   return (

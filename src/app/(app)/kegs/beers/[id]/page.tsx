@@ -1,3 +1,4 @@
+import { ShowMore } from "@/components/show-more";
 import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { STANDING_LABEL } from "@/domain/beerStanding";
 import { daysBetween } from "@/domain/dates";
@@ -101,13 +102,13 @@ export default async function BeerPage({ params }: { params: Promise<{ id: strin
       ) : (
         <>
           <div className="grid gap-x-8 lg:grid-cols-2">
-            <Section title="Where the full ones are" description={p.full.length ? "Oldest fill first: that's the one to use next." : undefined}>
+            <Section title="Where the full ones are" description={p.full.length ? `${kegsWord(p.full.length)}, the oldest fill first: that's the one to use next.` : undefined} actions={p.full.length > 1 ? <LinkButton href={`/kegs/all?retired=0&beer=${b.id}&status=FILLED,COLD`} size="sm" variant="ghost" className="h-10 sm:h-8">In All kegs</LinkButton> : undefined}>
               {p.full.length === 0 ? (
                 <p className={cx("text-sm", core ? "text-bad" : "text-muted")}>No full kegs of it in storage.</p>
               ) : (
                 <Table>
                   <thead><tr><Th>Keg</Th><Th>Where</Th><Th className="hidden sm:table-cell">Filled</Th><Th align="right">Age</Th></tr></thead>
-                  <tbody>
+                  <ShowMore as="tbody" limit={8} noun={["keg", "kegs"]}>
                     {p.full.map((k, i) => (
                       <Tr key={k.id}>
                         <Td className="py-0">
@@ -121,7 +122,7 @@ export default async function BeerPage({ params }: { params: Promise<{ id: strin
                         <Td align="right" className="num whitespace-nowrap">{daysWord(k.days)}</Td>
                       </Tr>
                     ))}
-                  </tbody>
+                  </ShowMore>
                 </Table>
               )}
             </Section>
@@ -132,7 +133,7 @@ export default async function BeerPage({ params }: { params: Promise<{ id: strin
               ) : (
                 <Table>
                   <thead><tr><Th>Account</Th><Th align="right">Kegs</Th><Th className="hidden sm:table-cell">Sizes</Th><Th align="right">Longest</Th></tr></thead>
-                  <tbody>
+                  <ShowMore as="tbody" limit={8} noun={["account", "accounts"]}>
                     {p.out.map((g) => (
                       <Tr key={g.accountId ?? "none"}>
                         <Td>{g.accountId ? <Link href={`/kegs/accounts/${g.accountId}`} className="hover:underline">{g.account}</Link> : <span className="text-muted">{g.account}</span>}</Td>
@@ -141,7 +142,7 @@ export default async function BeerPage({ params }: { params: Promise<{ id: strin
                         <Td align="right" className="num whitespace-nowrap">{daysWord(g.longest)}</Td>
                       </Tr>
                     ))}
-                  </tbody>
+                  </ShowMore>
                 </Table>
               )}
             </Section>

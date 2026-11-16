@@ -183,7 +183,7 @@ export function KegPanel({ card: initial, ctx, role, onDone, compact }: { card: 
         }
       })} />}
 
-      {!compact && <History card={card} />}
+      {!compact && <History card={card} manager={role === "MANAGER"} />}
       {onDone && (
         <div className="pt-1">
           <Button variant="ghost" className="h-11 w-full" onClick={onDone}>Scan another keg</Button>
@@ -355,7 +355,7 @@ function UndoBar({ undo, onUndo, onExpire }: { undo: UndoState; onUndo: () => vo
   );
 }
 
-function History({ card }: { card: KegCard }) {
+function History({ card, manager }: { card: KegCard; manager: boolean }) {
   if (!card.events.length) return null;
   return (
     <details className="group rounded-xl border border-border bg-surface">
@@ -371,7 +371,10 @@ function History({ card }: { card: KegCard }) {
           </li>
         ))}
       </ul>
-      <div className="border-t border-border px-4 py-2 text-xs text-muted"><Link href="/kegs" className="hover:underline">All kegs</Link></div>
+      <div className="border-t border-border px-4 py-2 text-xs text-muted">
+        {/* The card holds the latest 25; managers can page through every entry for this keg. */}
+        {manager ? <Link href={`/kegs/history?keg=${card.id}`} className="hover:underline">Every entry for this keg</Link> : <Link href="/kegs" className="hover:underline">All kegs</Link>}
+      </div>
     </details>
   );
 }

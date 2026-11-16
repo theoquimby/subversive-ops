@@ -1,4 +1,5 @@
 import { HelpTip, HelpZone } from "@/components/help";
+import { ShowMore } from "@/components/show-more";
 import { Card, cx, EmptyState, LinkButton, PageHeader, Section } from "@/components/ui";
 import { progressLabel } from "@/domain/kegOrders";
 import { displayCode, sinceLabel } from "@/domain/kegs";
@@ -137,7 +138,8 @@ export default async function KegsPage() {
           description="Tap an order, then scan each keg as it leaves."
           actions={manager ? <LinkButton href="/kegs/orders" size="sm" className="h-10 sm:h-8"><Truck className="size-4" /> All orders</LinkButton> : undefined}
         >
-          <Card className="divide-y divide-border">
+          <Card>
+            <ShowMore limit={6} noun={["order", "orders"]} className="divide-y divide-border" buttonClassName="mx-2 mb-1.5">
             {orders.rows.map((o) => (
               <Link key={o.id} href={`/kegs/orders/${o.id}/scan`} className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors duration-120 first:rounded-t-xl last:rounded-b-xl hover:bg-surface-2/60 active:bg-surface-2">
                 <span className="min-w-0 flex-1">
@@ -150,6 +152,7 @@ export default async function KegsPage() {
                 </span>
               </Link>
             ))}
+            </ShowMore>
           </Card>
         </Section>
       )}
@@ -204,8 +207,9 @@ export default async function KegsPage() {
               { key: "other", title: "Also in stock", rows: stock.beers.filter((b) => b.standing !== "core") },
             ].filter((g) => g.rows.length).map((g, _i, groups) => (
               <div key={g.key}>
-                {groups.length > 1 && <h3 className="mb-1.5 text-xs font-medium text-muted">{g.title}</h3>}
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {groups.length > 1 && <h3 className="mb-1.5 text-xs font-medium text-muted">{g.title} <span className="num font-normal">{g.rows.length}</span></h3>}
+                {/* Core beers always show; a long "also in stock" shows the first two rows' worth. */}
+                <ShowMore limit={g.key === "core" ? 1000 : 8} noun={["beer", "beers"]} className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                   {g.rows.map((b) => {
                     const short = b.standing === "core" && b.full < b.minFull;
                     return (
@@ -218,7 +222,7 @@ export default async function KegsPage() {
                       </Link>
                     );
                   })}
-                </div>
+                </ShowMore>
               </div>
             ))}
           </div>

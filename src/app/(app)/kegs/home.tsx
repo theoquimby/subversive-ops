@@ -1,3 +1,4 @@
+import { ShowMore } from "@/components/show-more";
 import { cx, Dot, type Tone } from "@/components/ui";
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
@@ -51,10 +52,10 @@ export interface NeedsItem {
   href: string;
 }
 
-/** What needs someone, most urgent first: one line each, the whole row a link. */
-export function NeedsList({ items }: { items: NeedsItem[] }) {
+/** What needs someone, most urgent first: one line each, the whole row a link. A long list shows the first few. */
+export function NeedsList({ items, limit = 6 }: { items: NeedsItem[]; limit?: number }) {
   return (
-    <ul className="divide-y divide-border rounded-xl border border-border bg-surface">
+    <ShowMore as="ul" limit={limit} noun={["thing", "things"]} className="divide-y divide-border rounded-xl border border-border bg-surface">
       {items.map((i) => (
         <li key={i.key}>
           <Link href={i.href} className="flex min-h-14 items-center gap-3 px-4 py-2.5 transition-colors duration-120 hover:bg-surface-2/60 active:bg-surface-2">
@@ -67,6 +68,6 @@ export function NeedsList({ items }: { items: NeedsItem[] }) {
           </Link>
         </li>
       ))}
-    </ul>
+    </ShowMore>
   );
 }
