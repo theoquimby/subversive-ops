@@ -28,6 +28,19 @@ export interface SignalSeries {
   through?: ISODate;
 }
 
+/**
+ * The stretch of days a source has really finished reporting. Google fills a
+ * day in piece by piece (Maps views can be there a day before Search views),
+ * so a day only counts once every part has a number, and the newest `margin`
+ * of those days are held back as possibly still short.
+ */
+export function settledSpan(parts: readonly ReadonlyMap<ISODate, number>[], margin = 0): { from?: ISODate; through?: ISODate } {
+  if (!parts.length) return {};
+  const complete = [...parts[0].keys()].filter((d) => parts.every((p) => (p.get(d) ?? 0) > 0)).sort();
+  if (!complete.length) return {};
+  return { from: complete[0], through: addDays(complete[complete.length - 1], -margin) };
+}
+
 export interface SignalDay {
   date: ISODate;
   actual: number;
@@ -269,8 +282,16 @@ export function combinedLevelNow(members: readonly SignalSeries[], today: ISODat
   );
 }
 
+/**
+ * Bumped whenever the way the reading is worked out changes. A stored reading from older rules is ignored
+ * (and learned again on the next visit), so a fix reaches the live forecast the same day.
+ * 2: only days Google has finished filling in are counted.
+ */
+export const SIGNAL_RULES = 2;
+
 /** What's kept between nightly runs for the live forecast. */
 export interface StoredSignal {
+  rules: number;
   learnedOn: ISODate;
   /** The labels of the numbers that make up the reading. */
   members: string[];
@@ -287,7 +308,7 @@ export const SIGNAL_WEEK_DAYS = 9;
 
 export function toStoredSignal(i: { learnedOn: ISODate; members: readonly string[]; level: number | null; near: CombinedFit | null; week: CombinedFit | null }): StoredSignal {
   const part = (f: CombinedFit | null) => ({ slope: Math.round((f?.slope ?? 0) * 10000) / 10000, meanX: Math.round((f?.meanX ?? 0) * 10000) / 10000, used: f?.result.verdict === "helps" });
-  return { learnedOn: i.learnedOn, members: [...i.members], level: i.level == null ? null : Math.round(i.level * 10000) / 10000, near: part(i.near), week: part(i.week) };
+  return { rules: SIGNAL_RULES, learnedOn: i.learnedOn, members: [...i.members], level: i.level == null ? null : Math.round(i.level * 10000) / 10000, near: part(i.near), week: part(i.week) };
 }
 
 export function parseStoredSignal(json: string | null | undefined): StoredSignal | null {
@@ -298,8 +319,8 @@ export function parseStoredSignal(json: string | null | undefined): StoredSignal
       const x = (p ?? {}) as { slope?: unknown; meanX?: unknown; used?: unknown };
       return typeof x.slope === "number" && Number.isFinite(x.slope) && typeof x.meanX === "number" && Number.isFinite(x.meanX) ? { slope: x.slope, meanX: x.meanX, used: x.used === true } : { slope: 0, meanX: 0, used: false };
     };
-    if (typeof v?.learnedOn !== "string") return null;
-    return { learnedOn: v.learnedOn, members: Array.isArray(v.members) ? v.members.filter((m) => typeof m === "string") : [], level: typeof v.level === "number" && Number.isFinite(v.level) ? v.level : null, near: part(v.near), week: part(v.week) };
+    if (typeof v?.learnedOn !== "string" || v.rules !== SIGNAL_RULES) return null;
+    return { rules: SIGNAL_RULES, learnedOn: v.learnedOn, members: Array.isArray(v.members) ? v.members.filter((m) => typeof m === "string") : [], level: typeof v.level === "number" && Number.isFinite(v.level) ? v.level : null, near: part(v.near), week: part(v.week) };
   } catch {
     return null;
   }

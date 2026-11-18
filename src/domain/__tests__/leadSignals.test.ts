@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "../dates";
-import { aheadLevel, combinedLevelNow, linkWord, onlineFactor, parseStoredSignal, sameDayLevel, testCombined, testSignal, testSignals, toStoredSignal, type SignalDay } from "../leadSignals";
+import { aheadLevel, combinedLevelNow, linkWord, onlineFactor, parseStoredSignal, sameDayLevel, settledSpan, testCombined, testSignal, testSignals, toStoredSignal, type SignalDay } from "../leadSignals";
 
 const START = "2025-06-01";
 const N = 300;
@@ -144,6 +144,21 @@ describe("the combined reading", () => {
     expect(onlineFactor({ ...busyNow, level: null }, 0)).toBe(1);
     expect(onlineFactor(null, 0)).toBe(1);
     expect(parseStoredSignal("junk")).toBeNull();
+    // Learned under older rules: thrown away, so it's learned again.
+    expect(parseStoredSignal(JSON.stringify({ ...stored, rules: 1 }))).toBeNull();
+  });
+});
+
+describe("settledSpan", () => {
+  it("counts a day only when every part has a number, and holds back the newest", () => {
+    const maps = new Map([["2026-11-12", 119], ["2026-11-13", 160], ["2026-11-14", 261], ["2026-11-15", 188], ["2026-11-16", 0]]);
+    const search = new Map([["2026-11-12", 169], ["2026-11-13", 267], ["2026-11-14", 350], ["2026-11-15", 0]]);
+    // The 15th has Maps views but no Search views yet: not finished.
+    expect(settledSpan([maps, search])).toEqual({ from: "2026-11-12", through: "2026-11-14" });
+    expect(settledSpan([maps, search], 1)).toEqual({ from: "2026-11-12", through: "2026-11-13" });
+    expect(settledSpan([maps])).toEqual({ from: "2026-11-12", through: "2026-11-15" });
+    expect(settledSpan([new Map(), search])).toEqual({});
+    expect(settledSpan([])).toEqual({});
   });
 });
 

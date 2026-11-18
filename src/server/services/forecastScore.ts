@@ -1,7 +1,7 @@
 import "server-only";
 import { addDays, dateRange, daysBetween, parseISODate, toISODate, type ISODate } from "@/domain/dates";
 import { groupScore, score, scoreDays, scoreLogged, summarize, type GroupScore, type Score, type ScoreDay, type ScoreSummary } from "@/domain/forecastScore";
-import { combinedLevelNow, testCombined, testSignals, toStoredSignal, type SignalResult, type SignalSeries, type StoredSignal } from "@/domain/leadSignals";
+import { combinedLevelNow, settledSpan, testCombined, testSignals, toStoredSignal, type SignalResult, type SignalSeries, type StoredSignal } from "@/domain/leadSignals";
 import { learnWeatherEffects, toStored, type WeatherEffects } from "@/domain/weatherEffect";
 import { ARCHIVE_LAG_DAYS, backfillSpans, NOAA_DAILY_TYPES, NOAA_STATION, parseNceiDaily } from "@/domain/weatherHistory";
 import { Prisma } from "@prisma/client";
@@ -163,11 +163,16 @@ async function onlineSeries(first: ISODate, today: ISODate): Promise<SignalSerie
   ]);
   const add = (m: Map<ISODate, number>, d: Date, v: number) => m.set(toISODate(d), (m.get(toISODate(d)) ?? 0) + v);
   const views = new Map<ISODate, number>();
+  const mapsViews = new Map<ISODate, number>();
+  const searchViews = new Map<ISODate, number>();
   const directions = new Map<ISODate, number>();
   const calls = new Map<ISODate, number>();
   const siteClicks = new Map<ISODate, number>();
   for (const r of profile) {
-    if (r.metric.startsWith("BUSINESS_IMPRESSIONS_")) add(views, r.day, r.value);
+    if (r.metric.startsWith("BUSINESS_IMPRESSIONS_")) {
+      add(views, r.day, r.value);
+      add(r.metric.endsWith("_MAPS") ? mapsViews : searchViews, r.day, r.value);
+    }
     else if (r.metric === "BUSINESS_DIRECTION_REQUESTS") add(directions, r.day, r.value);
     else if (r.metric === "CALL_CLICKS") add(calls, r.day, r.value);
     else if (r.metric === "WEBSITE_CLICKS") add(siteClicks, r.day, r.value);
@@ -184,15 +189,12 @@ async function onlineSeries(first: ISODate, today: ISODate): Promise<SignalSerie
     add(visitors, r.day, r.visitors);
     add(actions, r.day, r.converted);
   }
-  // How far each source really reaches: its busiest number's first and last day above zero. Google files
-  // empty rows for the latest days and fills them in later, so the last row isn't the last real day.
-  const span = (m: Map<ISODate, number>) => {
-    const real = [...m].filter(([, v]) => v > 0).map(([d]) => d).sort();
-    return real.length ? { from: real[0], through: real[real.length - 1] } : {};
-  };
-  const listing = span(views);
-  const searched = span(shown);
-  const site = span(visitors);
+  // How far each source has really finished reporting. Google files empty rows for the latest days and fills
+  // them in piece by piece, so the listing only counts a day once Maps and Search views are both in, and holds
+  // back the newest of those as possibly still short. Search Console only hands over finished days.
+  const listing = settledSpan([mapsViews, searchViews], 1);
+  const searched = settledSpan([shown]);
+  const site = settledSpan([visitors]);
   return [
     { key: "gbp.directions", label: "Direction requests", source: "Google listing", values: directions, ...listing },
     { key: "gbp.views", label: "Listing views", source: "Google listing", values: views, ...listing },
