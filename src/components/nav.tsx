@@ -152,14 +152,16 @@ function SidebarScroll({ children, pathname, layoutKey }: { children: React.Reac
     if (!a) { p.style.opacity = "0"; return; }
     // First placement (and coming back from "no active item") jumps; after that it slides.
     const slide = placed.current && p.style.opacity === "1";
+    // Measured against the list itself: each row sits in its own positioned box, so offsetTop is always 0.
+    const top = a.getBoundingClientRect().top - nav.getBoundingClientRect().top + nav.scrollTop;
     p.style.transition = slide ? "" : "none";
-    p.style.transform = `translateY(${a.offsetTop}px)`;
+    p.style.transform = `translateY(${top}px)`;
     p.style.height = `${a.offsetHeight}px`;
-    p.style.setProperty("--area", a.style.getPropertyValue("--area"));
+    p.style.setProperty("--area", a.style.getPropertyValue("--area") || a.closest<HTMLElement>("[style*='--area']")?.style.getPropertyValue("--area") || "");
     p.style.opacity = "1";
     if (!placed.current) {
       // Land with the active page in view (it can sit below the fold, e.g. P&L).
-      const top = a.offsetTop, bottom = top + a.offsetHeight;
+      const bottom = top + a.offsetHeight;
       if (bottom > nav.scrollTop + nav.clientHeight - 40 || top < nav.scrollTop) nav.scrollTop = top - nav.clientHeight / 2;
     }
     placed.current = true;
