@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 18 Nov · 1.35 (weather by kind in the forecast) ----
+  {
+    id: "2026-11-18.weather-effects",
+    date: "2026-11-18",
+    title: "The forecast knows rain from snow",
+    line: "Rain, heavy rain, snow, heat and cold each get their own measured effect on the forecast.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/sales/scorecard",
+    help: "sales.scorecard.weather",
+    audience: "manager",
+  },
   // ---- 18 Nov · 1.34 (the scorecard says what to do) ----
   {
     id: "2026-11-18.scorecard-story",

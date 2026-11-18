@@ -5,9 +5,11 @@ import { forecastStory, type StoryTone } from "@/domain/forecastStory";
 import { WEATHER_KIND_HINT, WEATHER_KIND_LABEL, WEATHER_KINDS } from "@/domain/weatherHistory";
 import { money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
-import { forecastScorecard } from "@/server/services/forecastScore";
+import { forecastScorecard, saveWeatherEffects } from "@/server/services/forecastScore";
+import { storedWeatherEffects } from "@/server/services/forecasting";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
+import { after } from "next/server";
 import { ScoreDaysTable, type DayRow } from "./days-table";
 import { LoadWeather } from "./load-weather";
 
@@ -94,6 +96,9 @@ export default async function ScorecardPage() {
   await requireUser("MANAGER");
   const s = await forecastScorecard();
   const back = { href: "/sales", label: "Sales & forecast" };
+  // The live forecast reads the factors learned here; keep them current if the nightly run hasn't yet today.
+  const kept = await storedWeatherEffects();
+  if (s.firstSale && kept?.learnedOn !== s.today) after(() => saveWeatherEffects(s.weatherEffects, s.today).catch(() => undefined));
   const story = forecastStory(s);
 
   if (!s.all.f1 || !story) {
@@ -113,6 +118,9 @@ export default async function ScorecardPage() {
   const bestDay = solid[0];
   const worstDay = solid[solid.length - 1];
   const ev = find(s.byEvent, "event");
+  const fx = s.weatherEffects;
+  const fxOn = fx.kinds.filter((k) => k.used);
+  const plans = (f: number) => `${pct(Math.abs(f - 1), 0)} ${f < 1 ? "less" : "more"}`;
   const normal = find(s.byEvent, "normal");
 
   return (
@@ -190,7 +198,7 @@ export default async function ScorecardPage() {
             </ScoreTable>
           </Fold>
 
-          <Fold title="By weather" gist={`Weather on file for ${qty(weatherDays, 0)} of ${qty(s.days.length, 0)} days`}>
+          <Fold title="By weather" gist={fxOn.length ? `In the forecast: ${fxOn.map((k) => `${WEATHER_KIND_LABEL[k.kind].toLowerCase()} ${plans(k.factor)}`).join(", ")}` : `Weather on file for ${qty(weatherDays, 0)} of ${qty(s.days.length, 0)} days`}>
             <p className="mb-3 text-sm text-ink-2">Past forecasts are replayed without weather, so “Sales ran” shows what that weather does to sales here.</p>
             <ScoreTable first="The day was" lift>
               {WEATHER_KINDS.map((k) => {
@@ -200,6 +208,36 @@ export default async function ScorecardPage() {
             </ScoreTable>
             <p className="mt-2 text-xs text-muted">
               Past weather is NOAA&apos;s record at {s.weather.station}, about 35 miles north (US government data, free to use). It runs about five days behind and has the whole day&apos;s rain, not the hours it fell. Groups with fewer than {THIN} days are greyed.
+            </p>
+            <h4 className="mt-7 mb-1 text-sm font-medium text-ink">What the forecast does about it</h4>
+            <p className="mb-3 text-sm text-ink-2">
+              Each kind of weather is replayed day by day, using only the days before it. A kind is switched on only where that landed closer than the forecast without it.
+              {s.withWeather.without && s.withWeather.with && fxOn.length > 0 && ` Over all ${qty(s.withWeather.with.days, 0)} scored days, that takes the typical miss from ${pct(s.withWeather.without.wape, 1)} to ${pct(s.withWeather.with.wape, 1)}.`}
+            </p>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Weather</Th>
+                  <Th align="right" className="hidden sm:table-cell">Days learned from</Th>
+                  <Th align="right">Forecast plans for</Th>
+                  <Th align="right" className="hidden sm:table-cell">Miss without → with</Th>
+                  <Th align="right">In the forecast</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {fx.kinds.map((k) => (
+                  <Tr key={k.kind}>
+                    <Td><span className="font-medium text-ink">{WEATHER_KIND_LABEL[k.kind]}</span></Td>
+                    <Td align="right" className="num hidden text-ink-2 sm:table-cell">{qty(k.days, 0)}</Td>
+                    <Td align="right" className={`num whitespace-nowrap ${k.used ? "font-medium text-ink" : "text-muted"}`}>{Math.abs(k.factor - 1) < 0.005 ? "No change" : plans(k.factor)}</Td>
+                    <Td align="right" className="num hidden whitespace-nowrap text-ink-2 sm:table-cell">{k.missWithout != null && k.missWith != null ? `${pct(k.missWithout, 0)} → ${pct(k.missWith, 0)}` : "—"}</Td>
+                    <Td align="right">{k.used ? <Badge tone="good">On</Badge> : <Badge>Off</Badge>}</Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+            <p className="mt-2 text-xs text-muted">
+              This replay uses the weather that actually happened. A real forecast only has the weather forecast, so the true gain is a little smaller; “Forecasts as they were made” below is the real test. Four or more days out, only part of the effect is applied.
             </p>
             {s.weather.onFile < s.weather.wanted && (
               <div className="mt-3">

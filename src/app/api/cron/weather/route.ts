@@ -1,6 +1,6 @@
 import { env } from "@/server/env";
 import { refreshWeather } from "@/server/services/forecasting";
-import { backfillWeather, logForecasts } from "@/server/services/forecastScore";
+import { backfillWeather, learnWeatherEffectsNow, logForecasts } from "@/server/services/forecastScore";
 
 export const maxDuration = 60;
 
@@ -14,13 +14,21 @@ export async function GET(req: Request) {
     console.error("weather refresh failed", r.error);
     return Response.json(r, { status: 502 });
   }
-  // Then: what the weather actually was, from NOAA's record (only the days not loaded yet), and keep
-  // tonight's forecast so it can be scored later. Neither may fail the weather refresh.
+  // Then: what the weather actually was, from NOAA's record (only the days not loaded yet); learn again
+  // what each kind of weather does to sales; and keep tonight's forecast so it can be scored later.
+  // None of these may fail the weather refresh.
   const history = await backfillWeather();
   if ("error" in history) console.error("weather history failed", history.error);
+  const effects = await learnWeatherEffectsNow().then(
+    (e) => e.kinds.filter((k) => k.used).map((k) => k.kind),
+    (e) => {
+      console.error("weather effects failed", e);
+      return null;
+    },
+  );
   const logged = await logForecasts().catch((e) => {
     console.error("forecast log failed", e);
     return 0;
   });
-  return Response.json({ ...r, history, logged });
+  return Response.json({ ...r, history, effects, logged });
 }

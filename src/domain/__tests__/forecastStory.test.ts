@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GroupScore, Score, ScoreDay, ScoreSummary } from "../forecastScore";
 import { forecastStory } from "../forecastStory";
+import type { KindEffect, WeatherEffects } from "../weatherEffect";
 
 const sc = (over: Partial<Score> = {}): Score => ({ days: 400, wape: 0.12, medianApe: 0.1, bias: 0, within15: 0.7, ...over });
 const sum = (f1: Score | null, over: Partial<ScoreSummary> = {}): ScoreSummary => ({ from: "2024-01-01", to: "2026-11-16", f1, f7: f1, f14: f1, naive: sc({ wape: 0.2 }), skill: 0.2, ...over });
@@ -47,6 +48,22 @@ describe("forecastStory", () => {
     expect(w.action).toMatch(/snow.*24% less/);
     expect(s.points.some((p) => p.key === "hot")).toBe(false);
     expect(s.next).toMatch(/rain, snow and cold/);
+  });
+
+  it("says which weather the forecast already allows for, and stops telling the owner to shade for it", () => {
+    const k = (kind: KindEffect["kind"], factor: number, days: number, used: boolean): KindEffect => ({ kind, factor, days, scored: days - 10, missWithout: 0.5, missWith: 0.42, used });
+    const weatherEffects: WeatherEffects = { kinds: [k("rain", 0.9, 178, true), k("heavyRain", 0.8, 104, true), k("snow", 0.81, 53, true), k("hot", 1, 160, false), k("cold", 0.93, 122, false)], fairDays: 1300, scored: 300, missWithout: 0.47, missWith: 0.41, through: "2026-11-12" };
+    const s = forecastStory({ ...base, all: sum(sc()), recent: sum(sc({ days: 80 })), weatherEffects, byWeather: [g("rain", 178, 0.45, -0.1), g("heavyRain", 104, 0.47, -0.22), g("snow", 53, 0.55, -0.24), g("cold", 122, 0.39, -0.08)] })!;
+    const built = s.points.find((p) => p.key === "weatherBuiltIn")!;
+    expect(built.title).toBe("Bad weather is now built into the forecast");
+    expect(built.detail).toContain("10% less on rain days, 20% less on heavy rain days and 19% less on snow days");
+    expect(built.detail).toContain("from 47% to 41%");
+    expect(built.action).toMatch(/Don't shade/);
+    // Freezing days aren't switched on, so that one is still the owner's to allow for.
+    const open = s.points.find((p) => p.key === "weather")!;
+    expect(open.title).toBe("Some weather still isn't in the forecast");
+    expect(open.detail).toBe("On 122 past days: freezing 8% under.");
+    expect(s.next).toMatch(/^Next, the forecast learns holidays/);
   });
 
   it("ignores weather groups with too few days or too small an effect", () => {

@@ -2,6 +2,7 @@
 
 import { Badge, Button, cx, Input } from "@/components/ui";
 import { displayTime, EVENT_KIND_LABEL } from "@/domain/events";
+import { WEATHER_KIND_LABEL, type WeatherKind } from "@/domain/weatherHistory";
 import { dayDate, money } from "@/lib/format";
 import { ChevronLeft, ChevronRight, Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, Sun, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -27,7 +28,11 @@ export interface CalDay {
   reason: string | null;
   eventFactor: number;
   weatherFactor: number;
-  rain: { factor: number; wetSamples: number };
+  /** The kind of day the weather makes it, and how many past days like it the effect was learned from. */
+  weatherKind: WeatherKind | null;
+  weatherDays: number;
+  /** Four or more days out: the effect is scaled back while it's still only a chance. */
+  weatherFar: boolean;
   events: {
     id: string;
     title: string;
@@ -308,9 +313,7 @@ function DayPanel({ day, onClose, onPrev, onNext }: { day: CalDay; onClose: () =
                         !day.weather
                           ? "No weather forecast this far out yet."
                           : day.weatherFactor !== 1
-                            ? day.rain.wetSamples >= 3
-                              ? `Rain day. Learned from ${day.rain.wetSamples} rainy days: we sell ${Math.round((1 - day.rain.factor) * 100)}% less.`
-                              : "Rain day. Using a mild default until we've seen a few rainy days."
+                            ? `${WEATHER_KIND_LABEL[day.weatherKind ?? "fair"]} ${day.weatherFar ? "likely" : "expected"}. Learned from ${day.weatherDays} days like it here${day.weatherFar ? "; this far out it's a chance, so only part of the usual effect is applied." : `: we sell about ${Math.round(Math.abs(1 - day.weatherFactor) * 100)}% ${day.weatherFactor < 1 ? "less" : "more"}.`}`
                             : `${day.weather.label}, high ${day.weather.highF}°F — no effect.`
                       }
                       value={signed(day.weatherFactor)}

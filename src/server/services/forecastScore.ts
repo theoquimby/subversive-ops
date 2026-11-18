@@ -1,10 +1,11 @@
 import "server-only";
 import { addDays, dateRange, daysBetween, parseISODate, toISODate, type ISODate } from "@/domain/dates";
-import { groupScore, scoreDays, scoreLogged, summarize, type GroupScore, type Score, type ScoreDay, type ScoreSummary } from "@/domain/forecastScore";
+import { groupScore, score, scoreDays, scoreLogged, summarize, type GroupScore, type Score, type ScoreDay, type ScoreSummary } from "@/domain/forecastScore";
+import { learnWeatherEffects, toStored, type WeatherEffects } from "@/domain/weatherEffect";
 import { ARCHIVE_LAG_DAYS, backfillSpans, NOAA_DAILY_TYPES, NOAA_STATION, parseNceiDaily } from "@/domain/weatherHistory";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
-import { dailySalesForecast, eventsBetween, pastEventDays, saveWeatherRows, weatherMap } from "./forecasting";
+import { dailySalesForecast, eventsBetween, pastEventDays, saveWeatherRows, storedWeatherEffects, WEATHER_EFFECTS_KEY, weatherMap } from "./forecasting";
 import { getAdjustments } from "./planning";
 import { businessToday } from "./sales";
 
@@ -96,7 +97,8 @@ export async function backfillWeather(maxSpans = 10): Promise<{ days: number; sp
 
 // ---- Forecasts kept as they were made -------------------------------------------------
 
-export const FORECAST_MODEL = "v1";
+/** v2: weather by kind (rain, heavy rain, snow, heat, cold) in place of one rain factor. */
+export const FORECAST_MODEL = "v2";
 const LOG_DAYS_AHEAD = 14;
 
 /** Keep tonight's forecast for today and the next two weeks, so it can be scored against what then sells. */
@@ -160,6 +162,10 @@ export interface Scorecard {
   byWeather: GroupScore[];
   byEvent: GroupScore[];
   weather: WeatherCoverage;
+  /** What each kind of weather does to sales, learned day by day from the replay, and which kinds are switched on. */
+  weatherEffects: WeatherEffects;
+  /** Every scored day, the day-before forecast without weather against the same forecast with the switched-on kinds. */
+  withWeather: { without: Score | null; with: Score | null };
   /** Forecasts as they were really made each night (with weather in them), once there are some to score. */
   logged: { since: ISODate | null; dayBefore: Score | null; weekAhead: Score | null };
 }
@@ -169,7 +175,7 @@ export async function forecastScorecard(): Promise<Scorecard> {
   const first = await firstSaleDate();
   const coverage = await weatherCoverage();
   const none = summarize([]);
-  if (!first) return { today, firstSale: null, days: [], openDays: 0, dailyOnly: 0, all: none, recent: none, byWeekday: [], byMonth: [], byWeather: [], byEvent: [], weather: coverage, logged: { since: null, dayBefore: null, weekAhead: null } };
+  if (!first) return { today, firstSale: null, days: [], openDays: 0, dailyOnly: 0, all: none, recent: none, byWeekday: [], byMonth: [], byWeather: [], byEvent: [], weather: coverage, weatherEffects: learnWeatherEffects([]).effects, withWeather: { without: null, with: null }, logged: { since: null, dayBefore: null, weekAhead: null } };
 
   const [history, eventDays, events, manual, weather, logged] = await Promise.all([
     fullSalesHistory(first, today),
@@ -193,6 +199,8 @@ export async function forecastScorecard(): Promise<Scorecard> {
 
   const days = scoreDays({ history: history.sales, openDays: history.openDays, eventDays, adjustments, weather, dates: dateRange(first, today) });
   const cutoff = addDays(today, -90);
+  const learned = learnWeatherEffects(days);
+  const scoredDays = days.filter((d) => d.f1 != null);
   const since = logged.length ? toISODate(logged.reduce((a, b) => (a.madeOn < b.madeOn ? a : b)).madeOn) : null;
   const log = logged.map((l) => ({ date: toISODate(l.date), horizon: l.horizon, sales: l.sales.toNumber() }));
 
@@ -209,6 +217,37 @@ export async function forecastScorecard(): Promise<Scorecard> {
     byWeather: groupScore(days, "f1", (d) => d.weather),
     byEvent: groupScore(days, "f1", (d) => (d.event ? "event" : "normal")),
     weather: coverage,
+    weatherEffects: learned.effects,
+    withWeather: {
+      without: score(scoredDays.map((d) => ({ forecast: d.f1!, actual: d.actual }))),
+      with: score(scoredDays.map((d) => ({ forecast: learned.withWeather.get(d.date) ?? d.f1!, actual: d.actual }))),
+    },
     logged: { since, dayBefore: scoreLogged(log, history.sales, 1), weekAhead: scoreLogged(log, history.sales, 7) },
   };
+}
+
+// ---- Weather effects for the live forecast ------------------------------------------------
+
+/** Keep the learned factors where the live forecast reads them. */
+export async function saveWeatherEffects(effects: WeatherEffects, today: ISODate) {
+  const value = JSON.stringify(toStored(effects, today));
+  await db.setting.upsert({ where: { key: WEATHER_EFFECTS_KEY }, create: { key: WEATHER_EFFECTS_KEY, value }, update: { value } });
+}
+
+/** Replay every past day, learn what each kind of weather does, and keep it for the live forecast. Runs nightly. */
+export async function learnWeatherEffectsNow(): Promise<WeatherEffects> {
+  const s = await forecastScorecard();
+  await saveWeatherEffects(s.weatherEffects, s.today);
+  return s.weatherEffects;
+}
+
+/** Learn today if the nightly run hasn't (first run, or a missed night). Cheap when it's up to date. Never throws. */
+export async function ensureWeatherEffects(): Promise<void> {
+  try {
+    const stored = await storedWeatherEffects();
+    if (stored?.learnedOn === businessToday()) return;
+    await learnWeatherEffectsNow();
+  } catch (e) {
+    console.error("weather effects failed", e);
+  }
 }

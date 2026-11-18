@@ -1,7 +1,8 @@
 import { HelpZone } from "@/components/help";
 import { ForecastRanges } from "@/app/(app)/insights/forecast-ranges";
 import { Card, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
-import { addDays, dateRange, weekday } from "@/domain/dates";
+import { addDays, dateRange, daysBetween, weekday } from "@/domain/dates";
+import { EFFECT_FAR_DAYS } from "@/domain/weatherEffect";
 import { dayDate, money, qty, relativeTime, shortDate, signedPct } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { isSquareConnected } from "@/server/services/square";
@@ -12,6 +13,7 @@ import { businessToday, lastSquareSync } from "@/server/services/sales";
 import { Suspense } from "react";
 import { SquareItemsSection, SquareItemsSkeleton } from "./square-items-section";
 import { dailySalesHistory, demandDrivers, forecastAccuracy, hourlySalesForecast, location, refreshWeather, weatherLabel, weatherMap, weatherStatus } from "@/server/services/forecasting";
+import { ensureWeatherEffects } from "@/server/services/forecastScore";
 import { after } from "next/server";
 import { CalDay, ForecastCalendar } from "./forecast-calendar";
 import { DemandOutlook } from "./demand-outlook";
@@ -36,6 +38,8 @@ export default async function SalesPage() {
   const haveToday = todayWeather.size > 0;
   if (!haveToday) await refreshWeather();
   else after(() => refreshWeather().then(() => undefined, () => undefined));
+  // What each kind of weather does to sales is learned nightly; this catches a first run or a missed night.
+  after(() => ensureWeatherEffects());
 
   const [connected, lastSync, forecast, hourly, actuals, pastDrivers, accuracy, weather, wStatus, loc] = await Promise.all([
     isSquareConnected(),
@@ -79,7 +83,9 @@ export default async function SalesPage() {
       reason: drivers.reason,
       eventFactor: drivers.eventFactor,
       weatherFactor: drivers.weatherFactor,
-      rain: drivers.rain,
+      weatherKind: drivers.weatherKind,
+      weatherDays: drivers.weatherDays,
+      weatherFar: daysBetween(today, date) >= EFFECT_FAR_DAYS,
       events: drivers.events,
       weather: w ? { ...weatherLabel(w.code), highF: toF(w.tempMaxC), lowF: toF(w.tempMinC), precipMm: Math.round(w.precipMm) } : null,
       hours: f?.hours ?? [],
@@ -91,7 +97,7 @@ export default async function SalesPage() {
     ? `Weather unavailable${wStatus.error ? ` (${wStatus.error.toLowerCase()})` : ""} — forecasts assume a normal day.`
     : wStatus.error
       ? `Weather couldn't update just now; showing the last forecast we have for ${loc.label}.`
-      : `Weather for ${loc.label} from the National Weather Service${wStatus.lastOk ? `, updated ${relativeTime(new Date(wStatus.lastOk))}` : ""}. Rain is factored in by how much it has slowed sales here before.`;
+      : `Weather for ${loc.label} from the National Weather Service${wStatus.lastOk ? `, updated ${relativeTime(new Date(wStatus.lastOk))}` : ""}. Rain, snow, heat and cold are factored in where they've measurably moved sales here.`;
 
   const next7 = hourly.filter((h) => h.date < addDays(today, 7)).reduce((s, h) => s + h.qty, 0);
   const next28 = hourly.filter((h) => h.date < addDays(today, 28)).reduce((s, h) => s + h.qty, 0);

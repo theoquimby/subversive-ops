@@ -50,7 +50,7 @@ describe("timezone helpers", () => {
   });
 });
 
-import { hourlyShares, learnRainFactor } from "../forecast";
+import { hourlyShares } from "../forecast";
 describe("hourlyShares", () => {
   it("averages each weekday's hourly shape", () => {
     const rows = ["2026-11-07", "2026-10-31"].flatMap((d) => [{ date: d, hour: 12, netSales: 100 }, { date: d, hour: 18, netSales: 300 }]);
@@ -58,17 +58,6 @@ describe("hourlyShares", () => {
     expect(s[12]).toBeCloseTo(0.25);
     expect(s[18]).toBeCloseTo(0.75);
     expect(s.reduce((a, b) => a + b, 0)).toBeCloseTo(1);
-  });
-});
-describe("learnRainFactor", () => {
-  it("learns that rainy days are slower", () => {
-    const days = dateRange("2026-08-01", "2026-11-01");
-    const wet = new Set(days.filter((_, i) => i % 6 === 0));
-    const sales = new Map(days.map((d) => [d, wet.has(d) ? 700 : 1000]));
-    const weather = new Map(days.map((d) => [d, { date: d, precipMm: wet.has(d) ? 12 : 0, tempMaxC: 20 }]));
-    const { factor } = learnRainFactor(sales, weather, new Set(days));
-    expect(factor).toBeGreaterThan(0.65);
-    expect(factor).toBeLessThan(0.8);
   });
 });
 

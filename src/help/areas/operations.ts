@@ -949,7 +949,7 @@ An unlinked item still uses product but doesn't count as a sale, which shows up 
     body: "Sales expected for each of the next five weeks, day by day, built from history and adjusted for weather, events and your own changes.",
     article: `The forecast looks five weeks out so ordering, scheduling and budgets all work from the same numbers.
 
-Each day shows what moved it: the season (once there's a year of history), the weather forecast (rainy days learn their own effect from your history), events on the [events calendar](/events), and any manual change you made. Tap a day to see the breakdown, the expected number of orders and the hourly shape, or to override it.`,
+Each day shows what moved it: the season (once there's a year of history), the weather forecast (rain, heavy rain, snow, heat and cold each learn their own effect from your history), events on the [events calendar](/events), and any manual change you made. Tap a day to see the breakdown, the expected number of orders and the hourly shape, or to override it.`,
     related: ["sales.weather", "sales.events", "sales.accuracy", "events.page"],
   },
   {
@@ -957,7 +957,7 @@ Each day shows what moved it: the season (once there's a year of history), the w
     area: "sales",
     route: "/sales",
     title: "Weather",
-    body: "The National Weather Service forecast for the next week feeds the sales forecast. How much rain changes your sales is learned from your own history. Past weather comes from NOAA's record at Albany International Airport. Both are free US government data.",
+    body: "The National Weather Service forecast for the next week feeds the sales forecast. What rain, heavy rain, snow, heat and cold do to your sales is learned from your own history, and only used where it has made the forecast closer. Past weather is NOAA's record at Albany International Airport. Both are free US government data.",
     related: ["sales.forecast5w"],
   },
   {
@@ -1063,7 +1063,9 @@ Any change to how Ops forecasts has to beat the current method on this page befo
 
 Past weather is NOAA's daily record at Albany International Airport, about 35 miles north, which runs about five days behind. It has each day's total rain, not the hours it fell, and a shower in Albany can miss Catskill, so read these as the broad effect of a wet or snowy day. The forecast for the coming week is the National Weather Service's for Catskill itself, and there rain counts from 11am to 9pm.
 
-Groups with only a handful of days are greyed, because a few days can't tell you much.`,
+Groups with only a handful of days are greyed, because a few days can't tell you much.
+
+**What the forecast does about it.** For each kind of weather, Ops works out how far sales ran from the forecast on those days compared with fair days. A kind with few days is pulled toward no effect, so a handful of snow days can't swing a forecast. Then every past day is replayed using only the days before it. A kind is switched **On** only if that replay landed closer than the forecast without it; otherwise it stays **Off** and changes nothing. This is learned again every night. Four or more days out the weather forecast is a chance of rain, not an amount, so only part of the effect is applied.`,
     related: ["sales.scorecard", "sales.weather"],
   },
   {

@@ -24,6 +24,20 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.35",
+    date: "2026-11-18",
+    title: "The forecast knows rain from snow",
+    summary: "The sales forecast now allows for rain, heavy rain, snow, heat and cold separately, each by what it has measurably done to sales here, and only where that has made the forecast closer.",
+    entries: ["2026-11-18.weather-effects"],
+    fixed: [
+      "Each kind of weather gets its own effect, learned from every day on file against NOAA's weather record. It replaces the single rain adjustment.",
+      "A kind is only switched on if replaying every past day with it lands closer than without it. The scorecard shows each one, On or Off, under By weather.",
+      "It learns again every night. Four or more days out, only part of the effect is applied, because the weather forecast is only a chance by then.",
+      "The scorecard's advice follows: where the forecast now allows for the weather, it says so and no longer tells you to shade for it yourself.",
+      "Tap a day on Sales & forecast to see what weather is expected and how much the forecast moved for it.",
+    ],
+  },
+  {
     version: "1.34",
     date: "2026-11-18",
     title: "The scorecard says what to do",

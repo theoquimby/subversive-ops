@@ -6,6 +6,7 @@
  */
 
 import type { GroupScore, ScoreDay, ScoreSummary } from "./forecastScore";
+import type { WeatherEffects } from "./weatherEffect";
 import { WEATHER_KIND_LABEL, type WeatherKind } from "./weatherHistory";
 
 export type StoryTone = "good" | "warn" | "bad" | "neutral";
@@ -41,6 +42,7 @@ export interface ForecastStory {
   next: string;
 }
 
+const KIND_DAYS: Record<string, string> = { rain: "rain days", heavyRain: "heavy rain days", snow: "snow days", hot: "hot days", cold: "freezing days" };
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const pct = (n: number) => `${Math.round(Math.abs(n) * 100)}%`;
 const dollars = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
@@ -63,6 +65,8 @@ export function forecastStory(i: {
   days: readonly ScoreDay[];
   /** Today, so a seasonal note only shows when its month is here or next. */
   today?: string;
+  /** The weather the forecast already allows for; those kinds aren't something to shade for by hand. */
+  weatherEffects?: WeatherEffects;
 }): ForecastStory | null {
   const all = i.all.f1;
   if (!all) return null;
@@ -102,25 +106,43 @@ export function forecastStory(i: {
     });
   }
 
-  // Bad weather: the days sales run well under a forecast that didn't know about it.
+  // Weather the forecast now allows for: say so, so nobody shades for it twice.
+  const builtIn = (i.weatherEffects?.kinds ?? []).filter((k) => k.used);
+  const isBuiltIn = (k: string) => builtIn.some((b) => b.kind === k);
+  if (builtIn.length) {
+    const e = i.weatherEffects!;
+    const learnedDays = builtIn.reduce((s, k) => s + k.days, 0);
+    points.push({
+      key: "weatherBuiltIn",
+      tone: "good",
+      title: builtIn.every((k) => k.factor < 1) ? "Bad weather is now built into the forecast" : "Weather is now built into the forecast",
+      detail:
+        `It plans for ${list(builtIn.map((k) => `${pct(k.factor - 1)} ${k.factor < 1 ? "less" : "more"} on ${KIND_DAYS[k.kind]}`))}, learned from ${learnedDays.toLocaleString("en-US")} past days.` +
+        (e.missWithout != null && e.missWith != null ? ` On those days that takes the typical miss from ${pct(e.missWithout)} to ${pct(e.missWith)}.` : ""),
+      action: "Don't shade for that weather yourself; plan from the number the forecast shows.",
+      link: { href: "/sales", label: "This week's forecast" },
+    });
+  }
+
+  // Bad weather it doesn't allow for: the days sales run well under a forecast that didn't know about it.
   const weather = (k: WeatherKind) => i.byWeather.find((g) => g.key === k);
   const hurt = (["heavyRain", "snow", "rain", "cold"] as WeatherKind[])
     .map((k) => ({ k, g: weather(k) }))
-    .filter((x) => x.g && (x.g.score?.days ?? 0) >= STORY_MIN_DAYS && x.g.lift != null && x.g.lift <= -WEATHER_EFFECT);
+    .filter((x) => !isBuiltIn(x.k) && x.g && (x.g.score?.days ?? 0) >= STORY_MIN_DAYS && x.g.lift != null && x.g.lift <= -WEATHER_EFFECT);
   if (hurt.length) {
     const worst = hurt.reduce((a, b) => (a.g!.lift! <= b.g!.lift! ? a : b));
     const days = hurt.reduce((s, x) => s + (x.g!.score?.days ?? 0), 0);
     points.push({
       key: "weather",
       tone: "warn",
-      title: "Bad weather costs sales the forecast doesn't fully count",
+      title: builtIn.length ? "Some weather still isn't in the forecast" : "Bad weather costs sales the forecast doesn't fully count",
       detail: `On ${days.toLocaleString("en-US")} past days: ${list(hurt.map((x) => `${WEATHER_KIND_LABEL[x.k].toLowerCase()} ${pct(x.g!.lift!)} under`))}.`,
       action: `When ${worst.k === "snow" ? "snow" : worst.k === "cold" ? "a freezing day" : "heavy rain"} is in the week's weather, staff and prep for about ${pct(worst.g!.lift!)} less than the forecast shows.`,
       link: { href: "/sales", label: "This week's weather" },
     });
   }
   const hot = weather("hot");
-  if (hot && (hot.score?.days ?? 0) >= STORY_MIN_DAYS && hot.lift != null && Math.abs(hot.lift) >= WEATHER_EFFECT) {
+  if (hot && !isBuiltIn("hot") && (hot.score?.days ?? 0) >= STORY_MIN_DAYS && hot.lift != null && Math.abs(hot.lift) >= WEATHER_EFFECT) {
     points.push({
       key: "hot",
       tone: hot.lift > 0 ? "good" : "warn",
@@ -210,7 +232,7 @@ export function forecastStory(i: {
   }
 
   const next = [
-    hurt.length ? "Next, the forecast learns what rain, snow and cold do here, then holidays and school breaks." : "Next, the forecast learns holidays and school breaks.",
+    hurt.length && !builtIn.length ? "Next, the forecast learns what rain, snow and cold do here, then holidays and school breaks." : "Next, the forecast learns holidays and school breaks.",
     "Every change has to beat today's numbers on this page before it replaces the current method.",
   ].join(" ");
 

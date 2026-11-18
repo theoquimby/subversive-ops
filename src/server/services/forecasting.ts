@@ -1,8 +1,9 @@
 import "server-only";
-import { addDays, dateRange, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
-import { DayForecast, defaultHourlyShape, forecastSeries, hasYearOfHistory, hourlyShares, isWet, learnRainFactor, seasonalIndex, WeatherObs, YEAR_LAG } from "@/domain/forecast";
+import { addDays, dateRange, daysBetween, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
+import { DayForecast, defaultHourlyShape, forecastSeries, hasYearOfHistory, hourlyShares, seasonalIndex, WeatherObs, YEAR_LAG } from "@/domain/forecast";
 import { backtest, bias, mape } from "@/domain/forecastAccuracy";
-import { parseNwsGrid, type WeatherRow } from "@/domain/weatherHistory";
+import { parseStored, weatherFactor as learnedWeatherFactor, type StoredEffects } from "@/domain/weatherEffect";
+import { parseNwsGrid, weatherKind, type WeatherKind, type WeatherRow } from "@/domain/weatherHistory";
 import { Prisma } from "@prisma/client";
 import { cache } from "react";
 import { db } from "../db";
@@ -12,7 +13,6 @@ import { getAdjustments, setAdjustment } from "./planning";
 import { businessToday } from "./sales";
 import { settingValue } from "./setting-read";
 
-const HISTORY_DAYS = 120;
 /** Enough for "same week last year" plus the four weeks before it. */
 const SEASONAL_HISTORY_DAYS = YEAR_LAG + 63;
 
@@ -134,6 +134,14 @@ export const weatherMap = cache(async (from: ISODate, to: ISODate) => {
   return new Map(rows.map((w) => [toISODate(w.date), { date: toISODate(w.date), precipMm: w.precipMm.toNumber(), tempMaxC: w.tempMaxC.toNumber(), tempMinC: w.tempMinC.toNumber(), code: w.code, snowCm: w.snowCm?.toNumber() ?? null, precipDayMm: w.precipDayMm?.toNumber() ?? null }]));
 });
 
+export const WEATHER_EFFECTS_KEY = "forecast.weatherEffects";
+
+/**
+ * What each kind of weather does to sales here, as last learned from the
+ * scorecard's replay (see `learnWeatherEffectsNow`). Null until it has run.
+ */
+export const storedWeatherEffects = cache(async (): Promise<StoredEffects | null> => parseStored(await settingValue(WEATHER_EFFECTS_KEY)));
+
 /** WMO weather code → short label + emoji-free icon key. */
 export function weatherLabel(code: number): { label: string; icon: "sun" | "cloud" | "rain" | "snow" | "storm" | "fog" } {
   if (code === 0 || code === 1) return { label: "Clear", icon: "sun" };
@@ -190,7 +198,10 @@ export interface DayDrivers {
   eventFactor: number;
   weather: (WeatherObs & { tempMinC: number; code: number }) | null;
   weatherFactor: number;
-  rain: { factor: number; wetSamples: number };
+  /** The kind of day the weather makes it (null with no weather on file). */
+  weatherKind: WeatherKind | null;
+  /** Past days of that weather the factor was learned from; 0 when no factor applies. */
+  weatherDays: number;
   total: number;
 }
 
@@ -207,23 +218,25 @@ const demandDriversFor = cache(async (key: string): Promise<Map<ISODate, DayDriv
   const today = businessToday();
 
   const to = addDays(dates[dates.length - 1], 1);
-  const [manual, reasons, events, weather, history] = await Promise.all([
+  const [manual, reasons, events, weather, effects] = await Promise.all([
     getAdjustments(),
     getReasons(),
     db.event.findMany({ where: { date: { gte: parseISODate(dates[0]), lt: parseISODate(to) } }, orderBy: { startTime: "asc" } }),
-    weatherMap(addDays(today, -HISTORY_DAYS), to),
-    baselineHistory(addDays(today, -HISTORY_DAYS), today),
+    weatherMap(dates[0], to),
+    storedWeatherEffects(),
   ]);
-  const rain = learnRainFactor(history.sales, weather, history.cleanOpenDays);
   const out = new Map<ISODate, DayDrivers>();
   for (const date of dates) {
     const ev = events.filter((e) => toISODate(e.date) === date).map((e) => ({ id: e.id, title: e.title, kind: e.kind, impact: e.impact.toNumber(), startTime: e.startTime }));
     const closed = ev.some((e) => e.kind === "CLOSURE");
     const eventFactor = closed ? 0 : ev.reduce((p, e) => p * e.impact, 1);
     const w = weather.get(date) ?? null;
-    const weatherFactor = w && date >= today && isWet(w) ? rain.factor : 1;
+    const kind = w ? weatherKind(w) : null;
+    // Only days still to come: past days are never re-forecast with hindsight weather.
+    const learned = date >= today ? learnedWeatherFactor(effects, kind, daysBetween(today, date)) : { factor: 1, days: 0 };
+    const weatherFactor = learned.factor;
     const m = manual.get(date) ?? 1;
-    out.set(date, { date, manual: m, reason: reasons[date] ?? null, events: ev, eventFactor, weather: w, weatherFactor, rain, total: m * eventFactor * weatherFactor });
+    out.set(date, { date, manual: m, reason: reasons[date] ?? null, events: ev, eventFactor, weather: w, weatherFactor, weatherKind: kind, weatherDays: learned.days, total: m * eventFactor * weatherFactor });
   }
   return out;
 });
