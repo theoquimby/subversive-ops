@@ -17,6 +17,7 @@ import {
   mergePostNumbers,
   META_MAX_HISTORY_DAYS,
   META_REREAD_DAYS,
+  metaReconnectBy,
   metaTokenFrom,
   missingScopes,
   missingScopesMessage,
@@ -30,10 +31,13 @@ import {
   recentWindow,
   runSteps,
   tokenPlan,
+  tryOtherIgToken,
   type ChannelPost,
+  type IgToken,
   type MetaScope,
   type MetricValue,
   type PostNumbers,
+  type ReconnectBy,
   type StepOutcome,
 } from "@/domain/metaData";
 import type { MetaFacts, PostRow, SocialChannel } from "@/domain/onlineChannels";
@@ -77,8 +81,10 @@ interface Stored {
   pageToken: string | null;
   igId: string | null;
   igUsername: string | null;
-  /** Which token Instagram last answered to. */
-  igWith: "page" | "user";
+  /** Which token to try first for Instagram. */
+  igWith: IgToken;
+  /** Which token Instagram last actually answered to; null until it has (or after a new sign-in). */
+  igWorkedWith?: IgToken | null;
   needsReconnect?: string | null;
 }
 
@@ -167,14 +173,20 @@ export interface MetaStatus {
   igUsername: string | null;
   /** Permissions that weren't ticked at sign-in. */
   missing: MetaScope[];
-  /** The day the owner's sign-in runs out. The nightly sync carries on after it; looking for Pages again doesn't. */
+  /** The day the owner's sign-in runs out. Looking for Pages again stops then; so does Instagram when igToken is "user". */
   userExpiresOn: ISODate | null;
+  /** Which token Instagram last answered to; null until the first sync has asked. */
+  igToken: IgToken | null;
+  /** Set when Instagram depends on the owner's sign-in: the day to connect again by. */
+  reconnectBy: ReconnectBy | null;
   state: MetaSyncState;
   hasData: Record<SocialChannel, boolean>;
 }
 
 export async function metaStatus(): Promise<MetaStatus> {
   const [app, s, state, ig, fb] = await Promise.all([metaApp(), readStored(), metaSyncState(), db.onlineChannelDaily.count({ where: { channel: "instagram" }, take: 1 }), db.onlineChannelDaily.count({ where: { channel: "facebook" }, take: 1 })]);
+  const userExpiresOn = s ? tokenPlan({ pageToken: s.pageToken, userToken: s.userToken, userExpiresAt: s.userExpiresAt }, new Date()).userExpiresOn : null;
+  const igToken = s?.igId ? s.igWorkedWith ?? null : null;
   return {
     appReady: !!app,
     connected: !!s && !s.needsReconnect,
@@ -186,7 +198,9 @@ export async function metaStatus(): Promise<MetaStatus> {
     igId: s?.igId ?? null,
     igUsername: s?.igUsername ?? null,
     missing: s ? missingScopes(s.scopes) : [],
-    userExpiresOn: s ? tokenPlan({ pageToken: s.pageToken, userToken: s.userToken, userExpiresAt: s.userExpiresAt }, new Date()).userExpiresOn : null,
+    userExpiresOn,
+    igToken,
+    reconnectBy: s && !s.needsReconnect ? metaReconnectBy({ igToken, userExpiresOn, today: businessToday() }) : null,
     state,
     hasData: { instagram: ig > 0, facebook: fb > 0 },
   };
@@ -239,6 +253,8 @@ export async function connectMeta(args: { code: string; redirectUri: string; by:
     igId: old?.igId ?? null,
     igUsername: old?.igUsername ?? null,
     igWith: "page",
+    // A new sign-in: which token Instagram answers to is found out again by the next sync.
+    igWorkedWith: null,
     needsReconnect: null,
   });
   return discoverMeta().catch((e) => ({ error: (e as Error).message }));
@@ -267,7 +283,9 @@ export async function discoverMeta(choose?: string): Promise<Discovery> {
     if (!pick.canAnalyze) notes.push("This sign-in isn't allowed to see the Page's numbers. Someone with full control of the Page should press Connect again.");
   }
   const changed = !!s.pageId && !!pick && pick.id !== s.pageId;
-  await patchStored({ pageId: pick?.id ?? null, pageName: pick?.name ?? null, pageToken: pick?.token ?? null, igId: pick?.instagram?.id ?? null, igUsername: pick?.instagram?.username ?? null, igWith: "page" });
+  // Same Page and Instagram account: keep what was learned about which token Instagram answers to.
+  const sameIg = !!pick && pick.id === s.pageId && (pick.instagram?.id ?? null) === s.igId;
+  await patchStored({ pageId: pick?.id ?? null, pageName: pick?.name ?? null, pageToken: pick?.token ?? null, igId: pick?.instagram?.id ?? null, igUsername: pick?.instagram?.username ?? null, ...(sameIg ? {} : { igWith: "page" as const, igWorkedWith: null }) });
   // A different Page is a different business: its numbers must not mix with the last one's.
   if (changed) await clearChannelData();
   return { pages: pages.map((p) => ({ id: p.id, name: p.name, instagram: p.instagram?.username ?? null, canAnalyze: p.canAnalyze })), pageId: pick?.id ?? null, notes };
@@ -340,21 +358,43 @@ async function replaceRows(channel: SocialChannel, from: ISODate, to: ISODate, n
 
 /**
  * Instagram calls: the Page's token first (it has no end date); if Instagram
- * refuses it, the owner's own sign-in, remembered for next time.
+ * refuses it (see tryOtherIgToken), the owner's own sign-in. Whichever
+ * answered is remembered, both to try it first next time and so the status can
+ * say when Instagram depends on the owner's 60-day sign-in.
  */
 async function withIg<T>(c: Ctx, fn: (token: string) => Promise<T>): Promise<T> {
   const plan = tokenPlan({ pageToken: null, userToken: c.s.userToken, userExpiresAt: c.s.userExpiresAt }, new Date());
-  const user = plan.use === "user" ? c.s.userToken : null;
-  const order = (c.s.igWith === "user" ? [user, c.s.pageToken] : [c.s.pageToken, user]).filter((t): t is string => !!t);
+  const tokens: Record<IgToken, string | null> = { page: c.s.pageToken, user: plan.use === "user" ? c.s.userToken : null };
+  const first: IgToken = c.s.igWith === "user" ? "user" : "page";
+  const order = ([first, first === "user" ? "page" : "user"] as IgToken[]).filter((k) => !!tokens[k]);
   if (!order.length) throw new MetaNotConnectedError(plan.reconnect ?? "Press Connect again.");
+  const answered = async (k: IgToken) => {
+    if (c.s.igWith === k && c.s.igWorkedWith === k) return;
+    c.s.igWith = k;
+    c.s.igWorkedWith = k;
+    await patchStored({ igWith: k, igWorkedWith: k });
+  };
   try {
-    return await fn(order[0]);
+    const r = await fn(tokens[order[0]]!);
+    await answered(order[0]);
+    return r;
   } catch (e) {
     const kind = kindOfError(e);
-    if (order.length < 2 || !(kind === "auth" || kind === "permission" || kind === "role")) throw e;
-    const r = await fn(order[1]);
-    c.s.igWith = c.s.igWith === "user" ? "page" : "user";
-    await patchStored({ igWith: c.s.igWith });
+    if (!tryOtherIgToken(kind)) throw e;
+    if (order.length < 2) {
+      // Instagram only ever answered to the owner's sign-in, and that has run out.
+      if (c.s.igWorkedWith === "user" && !tokens.user && kind !== "gone")
+        throw new MetaError("Instagram only answers to your own Facebook sign-in, and that has run out. Press Connect again and Instagram picks up where it left off. The Facebook Page carries on meanwhile.", e instanceof MetaError ? e.info : { status: 0, code: null, subcode: null, type: "", message: "" }, "permission");
+      throw e;
+    }
+    let r: T;
+    try {
+      r = await fn(tokens[order[1]]!);
+    } catch (e2) {
+      // A deleted post fails with both: keep the first answer, and don't change tokens.
+      throw kind === "gone" ? e : e2;
+    }
+    await answered(order[1]);
     return r;
   }
 }

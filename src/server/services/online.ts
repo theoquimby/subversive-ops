@@ -42,7 +42,7 @@ import {
   type TrendPoint,
   type Windows,
 } from "@/domain/online";
-import { bestAndWorst, dailyAverage, followerSummary, META_SETUP_HREF, postCallout, postsForPage, SOCIAL, SOCIAL_CHANNELS, socialLook, socialState, TAP_LABEL, type BestWorst, type FollowerSummary, type MetaFacts, type PostRow, type SocialChannel } from "@/domain/onlineChannels";
+import { bestAndWorst, dailyAverage, followerSummary, META_SETUP_HREF, metaReconnectSoonState, postCallout, postsForPage, SOCIAL, SOCIAL_CHANNELS, socialLook, socialState, TAP_LABEL, type BestWorst, type FollowerSummary, type MetaFacts, type PostRow, type SocialChannel } from "@/domain/onlineChannels";
 import { rollingRating } from "@/domain/reviews";
 import { db } from "../db";
 import { googleStatus, profileRows, searchRows, type GoogleStatus } from "./googleSearch";
@@ -561,6 +561,8 @@ export async function onlineOverview(range: OnlineRangeId): Promise<OnlineOvervi
       ...(facts ? [{ key: "google", state: signInState(facts) }] : []),
       // An expired Facebook sign-in is worth raising even while older numbers still show.
       ...(meta.ok && meta.value.needsReconnect ? [{ key: "meta", state: socialState("instagram", metaFacts(meta.value), false) }] : []),
+      // Instagram that answers only to the owner's 60-day sign-in: from ten days before it runs out.
+      ...(meta.ok ? [{ key: "meta-soon", state: metaReconnectSoonState(meta.value.reconnectBy) }] : []),
       { key: "search", state: search.state },
       { key: "listing", state: listing.state },
       { key: "website", state: website.state },
@@ -627,7 +629,7 @@ export async function socialReport(channel: SocialChannel, range: OnlineRangeId)
       name: channel === "instagram" ? (s.igUsername ? `@${s.igUsername}` : null) : s.pageName,
       connectedBy: s.connectedBy,
       lastSyncAt: sync?.at ?? null,
-      error: s.needsReconnect ?? sync?.error ?? s.state.posts.error,
+      error: s.needsReconnect ?? sync?.error ?? s.state.posts.error ?? (channel === "instagram" && s.reconnectBy?.soon ? metaReconnectSoonState(s.reconnectBy).title : null),
       skipped: sync?.skipped ?? [],
       manageHref: META_SETUP_HREF,
     },

@@ -1,4 +1,5 @@
 import { addDays, daysBetween, type ISODate } from "./dates";
+import type { ReconnectBy } from "./metaData";
 import type { DayValue, LookItem, SourceState, Span, Windows } from "./online";
 
 /**
@@ -263,6 +264,18 @@ const WILL_SHOW: Record<SocialChannel, string> = {
   instagram: "how many accounts your posts and reels reach, how followers change, and what people tap on the profile",
   facebook: "how often the Page and its posts are seen, how followers change, and what people tap on the Page",
 };
+
+/**
+ * Instagram answers only to the owner's own Facebook sign-in, which runs out
+ * after about 60 days: from ten days before, say so where the app raises
+ * connections that need attention.
+ */
+export function metaReconnectSoonState(r: ReconnectBy | null): SourceState {
+  if (!r?.soon) return READY;
+  if (r.daysLeft < 0)
+    return { kind: "reconnect", title: `Instagram stopped on ${sayDay(r.on)}: connect again`, body: "Instagram only answers to the owner's own Facebook sign-in, and that ran out. The Facebook Page carries on. Connect again and Instagram picks up where it left off.", href: META_SETUP_HREF, action: "Connect again" };
+  return { kind: "reconnect", title: `Connect Instagram again by ${sayDay(r.on)}`, body: "Instagram only answers to the owner's own Facebook sign-in, which runs out then. Connecting again takes a minute and nothing is lost.", href: META_SETUP_HREF, action: "Connect again" };
+}
 
 /**
  * Instagram or the Facebook Page. One Facebook sign-in connects both, so the

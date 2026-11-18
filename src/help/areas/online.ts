@@ -301,20 +301,41 @@ It has a page of its own, rather than a section under Instagram, because it is a
     area: "online",
     route: "/online/meta",
     title: "Connect Instagram and Facebook",
-    body: "One sign-in with Facebook connects both, because Instagram shares its numbers through the Facebook Page it is linked to. Make a small Meta app, paste its App ID and App secret, press Connect and pick the Page. Read-only.",
-    article: `1. At developers.facebook.com, create an app (**Manage everything on your Page**) and add five read-only permissions: \`pages_show_list\`, \`pages_read_engagement\`, \`read_insights\`, \`instagram_basic\` and \`instagram_manage_insights\`.
-2. Under **Facebook Login → Settings**, paste the redirect address the page shows into **Valid OAuth Redirect URIs**.
-3. Paste the **App ID** and **App secret** from **App settings → Basic**.
-4. Press **Connect**, signed in to Facebook as someone with full control of the Page. Tick the Page and its Instagram account, and leave every permission on.
-5. If there is more than one Page, pick the business's.
+    body: "One sign-in with Facebook connects both, because Instagram shares its numbers through the Facebook Page it is linked to. Check the four things in Before you start, make a small Meta app with two use cases, paste its App ID and App secret, press Connect and pick the Page. Read-only.",
+    article: `### Before you start
+
+- Instagram is a **Business or Creator** account (Instagram app → profile → menu → **Settings and activity** → **Account type and tools**).
+- It is **linked to the Facebook Page** (on the Page: **Settings → Linked accounts → Instagram**).
+- You have **full control of the Page on your own Facebook profile**, not only through a business portfolio in Meta Business Suite.
+- Facebook only gives Page numbers for Pages with 100 or more likes; Instagram only gives follow and unfollow counts for accounts with 100 or more followers.
+
+### The steps
+
+1. At developers.facebook.com, create an app and tick **two use cases**: **Manage everything on your Page** and **Manage messaging and content on Instagram**. Use cases can't be removed later, so pick just these two.
+2. Customize the Instagram use case and choose **API setup with Facebook Login**. Don't press **Add all required permissions**: it adds \`instagram_content_publishing\`, which can post.
+3. Under each use case's **Permissions and features**, add \`instagram_basic\` and \`instagram_manage_insights\` (Instagram use case) and \`pages_read_engagement\` and \`read_insights\` (Page use case). \`pages_show_list\` and \`business_management\` are built in.
+4. Under **Facebook Login for Business → Settings → Client OAuth settings**, paste the redirect address the page shows into **Valid OAuth Redirect URIs** and save.
+5. Paste the **App ID** and **App secret** from **App settings → Basic**.
+6. Press **Connect**, signed in to Facebook as someone with full control of the Page. Tick the Page and its Instagram account, and leave every permission on.
+7. If there is more than one Page, pick the business's.
+
+These steps were checked against Meta's instructions in November 2026. If a screen looks different, send feedback from the page.
 
 ### No review needed
 
-Leave the Meta app in **Development mode**. Meta's review is for apps other businesses sign in to. The one catch: whoever presses Connect must have a role on the Meta app (**App roles → Roles**).
+Leave the Meta app in **Development mode** and skip App Review. Meta's review is for apps other businesses sign in to. The one catch: whoever presses Connect must have a role on the Meta app (**App roles → Roles**).
+
+### If your Page doesn't show up or Instagram says it lacks permission
+
+Most often the Page belongs to a business portfolio and you reach it only through that. Meta then also wants an advertising permission, which this app leaves out on purpose. Give your own profile full control: on the Page, **Settings → Page access**, add yourself with full control, then press Connect again.
 
 ### If Instagram doesn't show up
 
-Instagram only shares numbers for a **professional account** (business or creator, free to switch) that is **linked to the Facebook Page**. Part 3 of the page has both steps.
+Instagram only shares numbers for a **professional account** (business or creator, free to switch) that is **linked to the Facebook Page**. Before you start on the page has both steps.
+
+### Connect again by a date
+
+Instagram's numbers come through the Page's own token, which has no end date, when Instagram accepts it. If it doesn't, the app uses the owner's Facebook sign-in, which lasts about 60 days. The status then says **Connect again by** a date, and from ten days before, Online and Settings → Connections remind you.
 
 ### What it says when something is wrong
 
@@ -325,6 +346,6 @@ Instagram only shares numbers for a **professional account** (business or creato
 
 The app reads nightly. It never posts, replies or messages, and it stores totals and your own posts only: no follower lists, no commenters' names.`,
     related: ["online.instagram", "online.facebook", "settings.connections"],
-    keywords: ["instagram", "facebook", "meta", "connect", "oauth", "app id", "app secret", "permissions", "professional account", "development mode"],
+    keywords: ["instagram", "facebook", "meta", "connect", "oauth", "app id", "app secret", "permissions", "professional account", "development mode", "use case", "business portfolio", "page access", "facebook login for business"],
   },
 ];

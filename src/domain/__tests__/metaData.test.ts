@@ -11,8 +11,11 @@ import {
   isFatalKind,
   mergePostNumbers,
   META_API_VERSION,
+  META_REQUIRED_SCOPES,
   META_SCOPES,
   metaAuthorizeUrl,
+  metaReconnectBy,
+  metaSignInNote,
   metaTokenFrom,
   missingMetrics,
   missingScopes,
@@ -33,6 +36,7 @@ import {
   recentWindow,
   runSteps,
   tokenPlan,
+  tryOtherIgToken,
   type MetaErrorInfo,
 } from "../metaData";
 
@@ -435,5 +439,52 @@ describe("a run, step by step", () => {
     const r = await runSteps([{ name: "a", run: async () => { throw fail("rate", "slow down"); } }, { name: "b", run: async () => undefined }], kindOf, say);
     expect(r.stopped?.kind).toBe("rate");
     expect(r.outcomes[1].status).toBe("skipped");
+  });
+});
+
+describe("business-owned Pages", () => {
+  it("asks for business_management so Pages held in a business portfolio are listed, but doesn't nag when it is left out", () => {
+    expect(META_SCOPES).toContain("business_management");
+    expect(META_REQUIRED_SCOPES).not.toContain("business_management");
+    expect(missingScopes(META_REQUIRED_SCOPES.filter((s) => s !== "read_insights"))).toEqual(["read_insights"]);
+    // Nothing that can post, and no ads permission.
+    expect(META_SCOPES.some((s) => /publish|ads_/.test(s))).toBe(false);
+  });
+});
+
+describe("which token Instagram answers to", () => {
+  it("tries the other token when Instagram refuses one for a sign-in, a role or a permission", () => {
+    for (const k of ["auth", "permission", "role", "gone"] as const) expect(tryOtherIgToken(k)).toBe(true);
+    for (const k of ["rate", "transient", "invalid-metric", "no-insights", "range", "app", "not-professional", "other"] as const) expect(tryOtherIgToken(k)).toBe(false);
+  });
+  it("treats Meta's 'missing permissions' answer as worth trying the other token for", () => {
+    const e = err({ code: 100, subcode: 33, message: "Unsupported get request. Object with ID '1784' does not exist, cannot be loaded due to missing permissions, or does not support this operation." });
+    expect(classifyMetaError(e)).toBe("gone");
+    expect(tryOtherIgToken(classifyMetaError(e))).toBe(true);
+  });
+});
+
+describe("connect again by a date", () => {
+  it("only applies when Instagram answers to the owner's own sign-in", () => {
+    expect(metaReconnectBy({ igToken: "page", userExpiresOn: "2027-01-15", today: "2027-01-10" })).toBeNull();
+    expect(metaReconnectBy({ igToken: null, userExpiresOn: "2027-01-15", today: "2027-01-10" })).toBeNull();
+    expect(metaReconnectBy({ igToken: "user", userExpiresOn: null, today: "2027-01-10" })).toBeNull();
+  });
+  it("gives the date, and is a reminder from ten days before", () => {
+    expect(metaReconnectBy({ igToken: "user", userExpiresOn: "2027-01-15", today: "2026-11-16" })).toEqual({ on: "2027-01-15", daysLeft: 60, soon: false });
+    expect(metaReconnectBy({ igToken: "user", userExpiresOn: "2027-01-15", today: "2027-01-04" })!.soon).toBe(false);
+    expect(metaReconnectBy({ igToken: "user", userExpiresOn: "2027-01-15", today: "2027-01-05" })).toEqual({ on: "2027-01-15", daysLeft: 10, soon: true });
+    expect(metaReconnectBy({ igToken: "user", userExpiresOn: "2027-01-15", today: "2027-01-20" })).toMatchObject({ daysLeft: -5, soon: true });
+  });
+  it("only says the nightly sync carries on when it does", () => {
+    const say = (d: string) => `<${d}>`;
+    expect(metaSignInNote({ igToken: "page", userExpiresOn: "2027-01-15", igLinked: true }, say)).toMatch(/carries on after that/);
+    const user = metaSignInNote({ igToken: "user", userExpiresOn: "2027-01-15", igLinked: true }, say)!;
+    expect(user).not.toMatch(/carries on after that/);
+    expect(user).toMatch(/Connect again.*<2027-01-15>/);
+    expect(metaSignInNote({ igToken: null, userExpiresOn: "2027-01-15", igLinked: true }, say)).not.toMatch(/carries on after that/);
+    // No Instagram: only the Page, which runs on its own token.
+    expect(metaSignInNote({ igToken: null, userExpiresOn: "2027-01-15", igLinked: false }, say)).toMatch(/carries on after that/);
+    expect(metaSignInNote({ igToken: "user", userExpiresOn: null, igLinked: true }, say)).toBeNull();
   });
 });

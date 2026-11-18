@@ -11,6 +11,7 @@ import {
   postsForPage,
   SOCIAL,
   SOCIAL_CHANNELS,
+  metaReconnectSoonState,
   socialLook,
   socialState,
   sortPosts,
@@ -248,5 +249,21 @@ describe("a Page post's reactions, comments and shares together", () => {
     expect(countInteractions(41, 5, 3)).toBe(49);
     expect(countInteractions(41, null, null)).toBe(41);
     expect(countInteractions(null, null, null)).toBeNull();
+  });
+});
+
+describe("a reminder to connect again before Instagram stops", () => {
+  it("is raised from ten days before, with the date, and only then", () => {
+    const st = metaReconnectSoonState({ on: "2027-01-15", daysLeft: 9, soon: true });
+    expect(st).toMatchObject({ kind: "reconnect", href: META_SETUP_HREF, action: "Connect again" });
+    expect(st.title).toMatch(/Jan 15/);
+    expect(metaReconnectSoonState({ on: "2027-01-15", daysLeft: 30, soon: false }).kind).toBe("ready");
+    expect(metaReconnectSoonState(null).kind).toBe("ready");
+    expect(metaReconnectSoonState({ on: "2027-01-15", daysLeft: -2, soon: true }).title).toMatch(/stopped/);
+  });
+  it("shows in Worth a look", () => {
+    const look = worthALook({ period: "28 days", metrics: [], states: [{ key: "meta-soon", state: metaReconnectSoonState({ on: "2027-01-15", daysLeft: 4, soon: true }) }], stale: [], rating: { cur: null, prev: null }, needReply: 0 } as LookInput);
+    expect(look[0]).toMatchObject({ tone: "warn", href: META_SETUP_HREF });
+    expect(look[0].title).toMatch(/Jan 15/);
   });
 });

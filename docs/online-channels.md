@@ -102,8 +102,36 @@ leave Meta.
   and a Page's own token has no end date. Unified Login would be the one to
   move to if Meta retires the others; the docs call them "existing"
   integrations but give no end date.
-- **Permissions.** `pages_show_list`, `pages_read_engagement`, `read_insights`,
-  `instagram_basic`, `instagram_manage_insights`. All read-only.
+- **Permissions.** `pages_show_list`, `business_management`,
+  `pages_read_engagement`, `read_insights`, `instagram_basic`,
+  `instagram_manage_insights`. The app only reads with them.
+  `business_management` is asked for so a Page held in a business portfolio
+  is listed; it isn't counted as missing if left out.
+- **Use cases (checked 2026-11-18).** "Manage everything on your Page" only
+  brings `business_management`, `pages_show_list`, `public_profile`. The
+  Instagram permissions come from "Manage messaging and content on Instagram"
+  with "API setup with Facebook Login". The guide has the owner tick both at
+  app creation (use cases can't be removed; only compatible ones can be added
+  later), then add `instagram_basic` and `instagram_manage_insights` (Instagram
+  use case) and `pages_read_engagement` and `read_insights` (Page use case)
+  under **Permissions and features**. It warns not to press "Add all required
+  permissions" on the Instagram use case, because that adds
+  `instagram_content_publishing`.
+- **Redirect address.** The Instagram use case signs in with Facebook Login
+  for Business: **Facebook Login for Business → Settings → Client OAuth
+  settings → Valid OAuth Redirect URIs**. Facebook Login for Business
+  recommends a `config_id` over `scope` for user tokens but says `scope` "can
+  still be included"; the Instagram Facebook Login guide's own example uses
+  `scope`, so the app keeps `scope`.
+- **Business portfolio Pages.** The Instagram insights and media references
+  say that when the person's Page role was granted "via the Business Manager"
+  the app also needs `ads_management` or `ads_read`. The app does not ask for
+  either: the guide asks the owner to have full control of the Page on their
+  own profile (Page settings → Page access), and has a troubleshooting entry
+  for it.
+- **Thresholds.** Page insights: "only available on Pages with 100 or more
+  likes". Instagram `follows_and_unfollows`: "Not returned if the IG User has
+  less than 100 followers."
 - **No App Review.** "Standard Access is all your app needs" when it serves
   only accounts you own or manage. An app in Development mode "can only
   request permissions from role users", so whoever connects must have a role
@@ -160,10 +188,32 @@ leave Meta.
 - Whether `profile_links_taps` includes the website link (the reference lists
   address, call, email and text only).
 - Whether a Page token works for every Instagram call. Meta's overview says
-  "Facebook User or Page access token"; if Instagram refuses it the sync falls
-  back to the user token and remembers.
-- The exact wording of the App Dashboard's screens. The guide names the
-  use case and settings Meta's docs name; a label may differ.
+  "Facebook User or Page access token"; the account-insights reference lists
+  only a Facebook User access token for this setup. The sync tries the Page
+  token first, and falls back to the user token on an auth, role or permission
+  error, or Meta's "cannot be loaded due to missing permissions" answer
+  (classed `gone`; see `tryOtherIgToken`). Which token worked is stored as
+  `igWorkedWith` in the connection. When it is the user token, the status says
+  Instagram needs Connect again by the sign-in's end date, and from ten days
+  before (`RECONNECT_WARN_DAYS`) Online's Worth a look, the Instagram page and
+  the Settings → Connections tile say so.
+- **The 90-day data access expiry** (`data_access_expiration_time`). Meta's
+  "Authentication versus data access" page says data access lapses 90 days
+  after the user was last active and can be read from `debug_token`. It says
+  nothing about Development mode, app-role users or Page tokens, and Meta's
+  2018 note said business APIs (Pages) keep working without it. The app
+  doesn't call `debug_token`, so it can't know this date; nothing is built for
+  it. If Instagram stops after about 90 days while depending on the user token,
+  this is the first suspect.
+- Whether `business_management` is what makes `/me/accounts` list Pages held
+  through a business portfolio. Developer-forum answers quoting Meta say so;
+  the official `user/accounts` reference doesn't mention it.
+- The exact wording of the App Dashboard's screens, and the Facebook Page's
+  **Settings → Page access** and **Linked accounts** paths. The guide names
+  the use cases and settings Meta's docs name; a label may differ. The guide
+  says so at the top and points to Feedback until the first sync succeeds.
+- Nothing here has been run against Meta yet: no call to Meta has been made
+  from this app.
 
 ### Links
 
@@ -179,6 +229,13 @@ leave Meta.
 - https://developers.facebook.com/docs/facebook-login/guides/access-tokens/get-long-lived
 - https://developers.facebook.com/docs/development/build-and-test/app-modes
 - https://developers.facebook.com/docs/development/create-an-app/
+- https://developers.facebook.com/documentation/development/create-an-app/pages-use-case.md
+- https://developers.facebook.com/documentation/development/create-an-app/instagram-use-case.md
+- https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login/business-login-for-instagram
+- https://developers.facebook.com/docs/facebook-login/facebook-login-for-business/
+- https://developers.facebook.com/docs/instagram-platform/reference/instagram-media
+- https://developers.facebook.com/docs/facebook-login/auth-vs-data/
+- https://developers.facebook.com/docs/permissions/
 - https://developers.facebook.com/docs/graph-api/overview/rate-limiting
 - https://developers.facebook.com/docs/graph-api/guides/error-handling
 - https://developers.facebook.com/docs/graph-api/changelog

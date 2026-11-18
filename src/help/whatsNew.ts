@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 18 Nov · 1.33 (Instagram and Facebook guide) ----
+  {
+    id: "2026-11-18.meta-guide",
+    date: "2026-11-18",
+    title: "Instagram setup steps corrected",
+    line: "The Instagram and Facebook guide now matches Meta's screens, with a check list before you start.",
+    icon: "learn",
+    area: "online",
+    href: "/online/meta",
+    help: "online.meta",
+    audience: "manager",
+  },
   // ---- 18 Nov · 1.32 (weather from NWS and NOAA) ----
   {
     id: "2026-11-18.weather-noaa",
