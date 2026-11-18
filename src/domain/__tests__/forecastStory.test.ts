@@ -83,7 +83,7 @@ describe("forecastStory", () => {
 
   it("says when interest on Google is built in, where it stands now, and that there's nothing to do", () => {
     const r = (over: Partial<SignalResult> = {}): SignalResult => ({ key: "combined", label: "Online interest", source: "Combined", from: "2025-05-27", to: "2026-11-15", delay: 3, sameDay: { days: 400, r: 0.5 }, ahead: { days: 390, r: 0.22, per20: 0.07 }, scored: 330, missWithout: 0.32, missWith: 0.3, verdict: "helps", ...over });
-    const stored: StoredSignal = { rules: 2, learnedOn: "2026-11-18", members: ["Search clicks", "Listing views"], level: 0.15, near: { slope: 0.35, meanX: 0.01, used: true }, week: { slope: 0.2, meanX: 0.01, used: false } };
+    const stored: StoredSignal = { rules: 3, learnedOn: "2026-11-18", members: ["Search clicks", "Listing views"], level: 0.15, near: { slope: 0.35, meanX: 0.01, used: true }, week: { slope: 0.2, meanX: 0.01, used: false } };
     const online = { members: stored.members, near: r(), week: r({ verdict: "noHelp" }), stored };
     const s = forecastStory({ ...base, all: sum(sc()), recent: sum(sc({ days: 80 })), online, signals: [r({ key: "gsc.clicks", label: "Search clicks", source: "Google Search" })] })!;
     const p = s.points.find((x) => x.key === "online")!;

@@ -285,9 +285,9 @@ export function combinedLevelNow(members: readonly SignalSeries[], today: ISODat
 /**
  * Bumped whenever the way the reading is worked out changes. A stored reading from older rules is ignored
  * (and learned again on the next visit), so a fix reaches the live forecast the same day.
- * 2: only days Google has finished filling in are counted.
+ * 2: only days Google has finished filling in are counted. 3: the newest Search day is held back too.
  */
-export const SIGNAL_RULES = 2;
+export const SIGNAL_RULES = 3;
 
 /** What's kept between nightly runs for the live forecast. */
 export interface StoredSignal {

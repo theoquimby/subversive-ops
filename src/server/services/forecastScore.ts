@@ -191,9 +191,9 @@ async function onlineSeries(first: ISODate, today: ISODate): Promise<SignalSerie
   }
   // How far each source has really finished reporting. Google files empty rows for the latest days and fills
   // them in piece by piece, so the listing only counts a day once Maps and Search views are both in, and holds
-  // back the newest of those as possibly still short. Search Console only hands over finished days.
+  // back the newest of those as possibly still short. The newest Search Console day runs short too, so it is held back as well.
   const listing = settledSpan([mapsViews, searchViews], 1);
-  const searched = settledSpan([shown]);
+  const searched = settledSpan([shown], 1);
   const site = settledSpan([visitors]);
   return [
     { key: "gbp.directions", label: "Direction requests", source: "Google listing", values: directions, ...listing },
