@@ -24,6 +24,20 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.32",
+    date: "2026-11-18",
+    title: "Instagram and Facebook guide corrected",
+    summary: "The steps for connecting Instagram and the Facebook Page now match Meta's current screens: two use cases, the right permissions, and the right place for the redirect address.",
+    entries: ["2026-11-18.meta-guide"],
+    fixed: [
+      "A Before you start list: a Business or Creator Instagram account linked to the Page, and full control of the Page on your own Facebook profile.",
+      "A warning not to press Add all required permissions on the Instagram use case, because it adds posting.",
+      "If your Page doesn't show up or Instagram says it lacks permission: what to do when the Page sits in a business portfolio.",
+      "If Instagram only answers to your own Facebook sign-in, the status says which day to connect again by, and Online and Settings remind you ten days before.",
+      "Pages held in a business portfolio are now asked for at sign-in, so they show up in the list.",
+    ],
+  },
+  {
     version: "1.31",
     date: "2026-11-18",
     title: "A scorecard for the forecast",

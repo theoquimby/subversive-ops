@@ -1,4 +1,4 @@
-import { addDays, todayIn, zonedMidnightUTC, type ISODate } from "./dates";
+import { addDays, daysBetween, todayIn, zonedMidnightUTC, type ISODate } from "./dates";
 
 /**
  * Instagram and the Facebook Page, read through Meta's Graph API: the sign-in
@@ -28,13 +28,30 @@ export const META_TOKEN_URL = `${META_GRAPH_URL}/oauth/access_token`;
 
 // ---- Sign-in ------------------------------------------------------------------------------------
 
-/** Read-only: nothing here can post, reply, message or run ads. */
-export const META_SCOPES = ["pages_show_list", "pages_read_engagement", "read_insights", "instagram_basic", "instagram_manage_insights"] as const;
+/**
+ * The app only reads with these: nothing here can post, reply, message or run ads.
+ *
+ * business_management comes built into both use cases the guide picks
+ * ("Manage everything on your Page", and "Manage messaging and content on
+ * Instagram" with Facebook Login). It is asked for so that a Page held in a
+ * business portfolio (Meta Business Suite) is listed by /me/accounts; the app
+ * never uses it to change anything. It isn't counted as missing when it is
+ * left out, because a Page on the owner's own profile doesn't need it.
+ *
+ * No ads permission: Meta's Instagram insights and media references say a
+ * Page role granted "via the Business Manager" also needs ads_read or
+ * ads_management. The guide asks the owner to have full control of the Page on
+ * their own profile instead, which avoids that.
+ */
+export const META_SCOPES = ["pages_show_list", "business_management", "pages_read_engagement", "read_insights", "instagram_basic", "instagram_manage_insights"] as const;
 export type MetaScope = (typeof META_SCOPES)[number];
+/** The ones whose absence the status warns about. */
+export const META_REQUIRED_SCOPES: readonly MetaScope[] = META_SCOPES.filter((s) => s !== "business_management");
 
 /** What each permission lets the app read, in the words the guide uses. */
 export const SCOPE_LABEL: Record<MetaScope, string> = {
   pages_show_list: "the list of your Pages",
+  business_management: "Pages your business portfolio holds (the app only reads)",
   pages_read_engagement: "the Page's posts and followers",
   read_insights: "the Facebook Page's numbers",
   instagram_basic: "the Instagram account and its posts",
@@ -75,7 +92,7 @@ export function parseGrantedScopes(j: unknown): string[] {
   return list.filter((p) => typeof p?.permission === "string" && p.status === "granted").map((p) => p.permission!);
 }
 
-export const missingScopes = (granted: readonly string[]): MetaScope[] => META_SCOPES.filter((s) => !granted.includes(s));
+export const missingScopes = (granted: readonly string[]): MetaScope[] => META_REQUIRED_SCOPES.filter((s) => !granted.includes(s));
 
 export function missingScopesMessage(missing: readonly string[]): string | null {
   const names = missing.map((s) => SCOPE_LABEL[s as MetaScope] ?? s);
@@ -119,6 +136,51 @@ export function tokenPlan(c: { pageToken: string | null; userToken: string | nul
   if (c.pageToken) return { use: "page", refreshUser, reconnect: null, userExpiresOn };
   if (userAlive) return { use: "user", refreshUser, reconnect: null, userExpiresOn };
   return { use: null, refreshUser: false, reconnect: c.userToken ? "The Facebook sign-in ran out (it lasts about 60 days). Press Connect again and the numbers pick up where they left off." : "Press Connect to sign in with Facebook.", userExpiresOn };
+}
+
+// ---- Which token Instagram answers to ----------------------------------------------------------
+
+/**
+ * The two tokens an Instagram call can use. Meta's account-insights reference
+ * lists a Facebook User access token for this setup; its overview says "User
+ * or Page access token". So the Page's token is tried first (it has no end
+ * date), and the owner's own 60-day sign-in when Instagram refuses it.
+ */
+export type IgToken = "page" | "user";
+
+/**
+ * Instagram refused a call with one token: is it worth trying the other?
+ * "gone" is in here because Meta answers a token without the right access with
+ * "does not exist, cannot be loaded due to missing permissions" (code 100,
+ * subcode 33), the same words it uses for a deleted post.
+ */
+export const tryOtherIgToken = (k: MetaErrorKind): boolean => k === "auth" || k === "permission" || k === "role" || k === "gone";
+
+/** Remind the owner to connect again this many days before Instagram would stop. */
+export const RECONNECT_WARN_DAYS = 10;
+
+export interface ReconnectBy {
+  on: ISODate;
+  /** Negative once the day has passed. */
+  daysLeft: number;
+  /** Within RECONNECT_WARN_DAYS (or past): say it on the Online pages and in Settings. */
+  soon: boolean;
+}
+
+/** When Instagram only answers to the owner's own sign-in, it stops when that sign-in runs out. */
+export function metaReconnectBy(a: { igToken: IgToken | null; userExpiresOn: ISODate | null; today: ISODate }, warnDays = RECONNECT_WARN_DAYS): ReconnectBy | null {
+  if (a.igToken !== "user" || !a.userExpiresOn) return null;
+  const daysLeft = daysBetween(a.today, a.userExpiresOn);
+  return { on: a.userExpiresOn, daysLeft, soon: daysLeft <= warnDays };
+}
+
+/** The line under "Facebook sign-in" on the connect page. `say` formats a date. */
+export function metaSignInNote(a: { igToken: IgToken | null; userExpiresOn: ISODate | null; igLinked: boolean }, say: (d: ISODate) => string): string | null {
+  if (!a.userExpiresOn) return null;
+  const d = say(a.userExpiresOn);
+  if (a.igToken === "user") return `Instagram only answers to this sign-in, so Instagram will need Connect again by ${d}. The Facebook Page carries on by itself.`;
+  if (a.igToken === "page" || !a.igLinked) return `Good for finding Pages until ${d}. The nightly sync carries on after that.`;
+  return `Good for finding Pages until ${d}. The first sync shows whether Instagram needs it after that too.`;
 }
 
 // ---- Errors -------------------------------------------------------------------------------------
@@ -197,16 +259,16 @@ export const needsReconnectKind = (k: MetaErrorKind): boolean => k === "auth" ||
 const FRIENDLY: Record<Exclude<MetaErrorKind, "other">, string> = {
   auth: "Facebook says the sign-in has expired or was removed (changing the Facebook password does this too). Press Connect again and the numbers pick up where they left off.",
   role: "The person who connected no longer has access to the Facebook Page. Someone with full control of the Page should press Connect again.",
-  permission: "Facebook didn't allow that, because a permission wasn't ticked at sign-in. Press Connect again and leave every box ticked.",
+  permission: "Facebook didn't allow that. Either a permission wasn't ticked at sign-in, or the Page is only reachable through a business portfolio. Press Connect again and leave every box ticked; if that doesn't fix it, see \"If your Page doesn't show up\" in the guide.",
   "not-tester": "The Meta app is in development mode, so only people added to it can connect. In the Meta app, open App roles → Roles, add this person as an Administrator or Tester, have them accept the invitation, then press Connect again.",
   "not-professional": "This Instagram account is a personal one, and Instagram only shares numbers for professional accounts. In the Instagram app: Settings → Account type and tools → Switch to professional account (it's free). Then press Find again.",
   "invalid-metric": "Instagram no longer gives one of the numbers the app asked for. Everything else was brought in.",
   range: "That is further back than Facebook keeps numbers.",
   "no-insights": "No numbers for that post yet.",
-  gone: "That post isn't there any more.",
+  gone: "Facebook says that isn't there any more, or that this sign-in isn't allowed to see it. If it's the Instagram account, see \"If your Page doesn't show up\" in the guide.",
   rate: "Facebook asked us to slow down. The next nightly sync tries again.",
   app: "Meta didn't accept the App ID or App secret. Copy them again from App settings → Basic.",
-  redirect: "The redirect address isn't on the Meta app yet. Copy it from the guide into Valid OAuth Redirect URIs, save, and try again.",
+  redirect: "The redirect address isn't on the Meta app yet. In the Meta app, open Facebook Login for Business → Settings, paste it from the guide into Valid OAuth Redirect URIs, save, and try again.",
   code: "That sign-in took too long or was already used. Press Connect again.",
   transient: "Facebook's service had a problem. The next nightly sync tries again.",
 };

@@ -6,6 +6,7 @@ import { Check } from "lucide-react";
 import { Button, Card, Input } from "@/components/ui";
 import { Select } from "@/components/select";
 import { useConfirm } from "@/components/dialog";
+import { openFeedback } from "@/components/feedback";
 import { chooseMetaPage, disconnectMetaAction, findMetaPages, removeMetaKey, saveMetaKey, syncMetaNow } from "./actions";
 
 export function MetaKeyField({ name, label, placeholder, set, hint, sensitive }: { name: "META_APP_ID" | "META_APP_SECRET"; label: string; placeholder: string; set: boolean; hint: string | null; sensitive?: boolean }) {
@@ -113,12 +114,21 @@ export function MetaPages({ pageId, pageName, igUsername }: { pageId: string | n
       {!pages && pageName && (
         <p className="text-sm text-ink-2">
           Using the Page <b className="font-semibold">{pageName}</b>
-          {igUsername ? <> and the Instagram account <b className="font-semibold">@{igUsername}</b>.</> : <>. No Instagram account is linked to it yet (see Part 3).</>}
+          {igUsername ? <> and the Instagram account <b className="font-semibold">@{igUsername}</b>.</> : <>. No Instagram account is linked to it yet (see Before you start).</>}
         </p>
       )}
       {notes.map((n) => <p key={n} className="text-sm text-pretty text-warn">{n}</p>)}
       {error && <p className="text-sm text-pretty text-bad">{error}</p>}
     </Card>
+  );
+}
+
+/** Opens the app's Feedback sheet, which notes this page by itself. */
+export function MetaFeedbackButton() {
+  return (
+    <Button variant="ghost" size="sm" className="h-10 shrink-0 sm:h-9" onClick={() => openFeedback()}>
+      Feedback
+    </Button>
   );
 }
 

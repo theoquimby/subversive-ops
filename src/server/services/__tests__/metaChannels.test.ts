@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The sync is tested with Meta and the database both faked: no network, no keys, no Postgres.
 vi.mock("server-only", () => ({}));
 vi.mock("../../env", () => ({ env: { BUSINESS_TIMEZONE: "America/New_York", SESSION_SECRET: "a-session-secret-that-is-long-enough-000" } }));
-vi.mock("../sales", () => ({ businessToday: () => "2026-11-16" }));
+vi.mock("../sales", () => ({ businessToday: vi.fn(() => "2026-11-16") }));
 vi.mock("../secrets", () => ({ getSecrets: async () => ({ META_APP_ID: "1".repeat(16), META_APP_SECRET: "ab".repeat(16) }) }));
 
 type Daily = { channel: string; day: Date; metric: string; value: number };
@@ -318,5 +318,96 @@ describe("the sync", () => {
     meta.exchangeLongLived.mockResolvedValueOnce({ access_token: "renewed", expires_in: 5_183_944 });
     expect((await svc.syncMeta()).ok).toBe(true);
     expect((await svc.metaStatus()).userExpiresOn! > "2026-12-31").toBe(true);
+  });
+});
+
+describe("which token Instagram answers to", () => {
+  // A fixed clock, so the sign-in's end date doesn't depend on today.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-16T12:00:00Z"));
+    meta.exchangeLongLived.mockResolvedValue({ access_token: USER, expires_in: 60 * 86_400 });
+  });
+  afterEach(async () => {
+    vi.useRealTimers();
+    vi.mocked((await import("../sales")).businessToday).mockReturnValue(TODAY);
+  });
+
+  const refused = (message = "Facebook says that isn't there any more, or that this sign-in isn't allowed to see it.") => fail("gone", message);
+
+  it("isn't known until Instagram has answered, then remembers the Page's token", async () => {
+    await connect();
+    expect((await svc.metaStatus()).igToken).toBeNull();
+    await svc.syncMeta();
+    const s = await svc.metaStatus();
+    expect(s.igToken).toBe("page");
+    expect(s.userExpiresOn).toBe("2027-01-15");
+    expect(s.reconnectBy).toBeNull();
+  });
+
+  it("tries the owner's sign-in when Instagram answers the Page's token with 'missing permissions', and says when to connect again", async () => {
+    await connect();
+    const base = meta.igDayTotals.getMockImplementation()!;
+    meta.igDayTotals.mockImplementation(async (t, id, day, tz, metrics, breakdown) => {
+      if (t === PAGE) throw refused();
+      return base(t, id, day, tz, metrics, breakdown);
+    });
+    meta.igAccount.mockImplementation(async (t) => {
+      if (t === PAGE) throw refused();
+      return { id: "1784", username: "drinksubversive", followers: 2140, mediaCount: 3 };
+    });
+    const r = await svc.syncMeta();
+    expect(r.steps.slice(0, 2)).toEqual([{ name: "Instagram numbers", status: "ok" }, { name: "Instagram followers", status: "ok" }]);
+    expect(rows("instagram", "reach").length).toBeGreaterThan(20);
+    const s = await svc.metaStatus();
+    expect(s.igToken).toBe("user");
+    expect(s.reconnectBy).toEqual({ on: "2027-01-15", daysLeft: 60, soon: false });
+    // The Facebook Page still runs on its own token.
+    expect(meta.pageDayInsights.mock.calls.every((c) => c[0] === PAGE)).toBe(true);
+    // The flag is kept with the connection, encrypted like the rest.
+    expect(store.settings.get("meta.connection")).not.toContain("igWorkedWith");
+  });
+
+  it("keeps the Page's token for a post that was deleted, when neither token can see it", async () => {
+    await connect();
+    meta.igMediaInsights.mockImplementation(async (_t, id) => {
+      if (id === "m2") throw refused("Facebook says that isn't there any more.");
+      return { ...NONE, reach: 2100, any: true };
+    });
+    const r = await svc.syncMeta();
+    expect(r.ok).toBe(true);
+    expect(meta.igMediaInsights.mock.calls.filter((c) => c[1] === "m2").map((c) => c[0])).toEqual([PAGE, USER]);
+    expect((await svc.metaStatus()).igToken).toBe("page");
+  });
+
+  it("says plainly that Instagram stopped once the owner's sign-in it depends on runs out, and leaves the Page alone", async () => {
+    await connect();
+    const no = () => fail("permission", "Facebook didn't allow that.");
+    meta.igDayTotals.mockImplementation(async (t, _id, _day, _tz, metrics) => {
+      if (t === USER) return { rows: [{ metric: "reach", value: 1 }], seen: [...metrics] };
+      throw no();
+    });
+    meta.igAccount.mockImplementation(async (t) => {
+      if (t === USER) return { id: "1784", username: "drinksubversive", followers: 2140, mediaCount: 3 };
+      throw no();
+    });
+    meta.igMedia.mockImplementation(async (t) => {
+      if (t === USER) return [];
+      throw no();
+    });
+    await svc.syncMeta();
+    expect((await svc.metaStatus()).igToken).toBe("user");
+    // Past the end date, and the renewal fails.
+    vi.setSystemTime(new Date("2027-01-20T12:00:00Z"));
+    vi.mocked((await import("../sales")).businessToday).mockReturnValue("2027-01-20");
+    meta.exchangeLongLived.mockRejectedValue(fail("auth", "expired"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const r = await svc.syncMeta();
+    warn.mockRestore();
+    expect(r.errors.join(" ")).toMatch(/Instagram only answers to your own Facebook sign-in.*Connect again/);
+    const s = await svc.metaStatus();
+    expect(s.needsReconnect).toBeNull();
+    expect(s.reconnectBy).toMatchObject({ on: "2027-01-15", soon: true });
+    expect(r.steps.find((x) => x.name === "Facebook Page numbers")?.status).toBe("ok");
   });
 });
