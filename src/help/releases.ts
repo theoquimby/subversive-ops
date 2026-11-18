@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.37",
+    date: "2026-11-18",
+    title: "The forecast follows interest on Google",
+    summary: "Searches and activity on your Google listing now feed the sales forecast for the coming week, as one combined reading, wherever that has made the forecast closer.",
+    entries: ["2026-11-18.online-in-forecast"],
+    fixed: [
+      "The numbers that passed the test are combined into one reading: the last week on file against the four weeks before.",
+      "It's replayed for the next few days and for a week ahead, and each part is only switched on where it beat the forecast without it. The scorecard shows both, On or Off, under Online signals.",
+      "It can move a day by a fifth at most, and it's learned again every night.",
+      "Tap a day on Sales & forecast: when it's moving that day, the breakdown shows Interest on Google.",
+    ],
+  },
+  {
     version: "1.36",
     date: "2026-11-18",
     title: "Online numbers tested against sales",

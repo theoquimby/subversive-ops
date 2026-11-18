@@ -2,6 +2,7 @@ import "server-only";
 import { addDays, dateRange, daysBetween, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
 import { DayForecast, defaultHourlyShape, forecastSeries, hasYearOfHistory, hourlyShares, seasonalIndex, WeatherObs, YEAR_LAG } from "@/domain/forecast";
 import { backtest, bias, mape } from "@/domain/forecastAccuracy";
+import { onlineFactor as learnedOnlineFactor, parseStoredSignal, type StoredSignal } from "@/domain/leadSignals";
 import { parseStored, weatherFactor as learnedWeatherFactor, type StoredEffects } from "@/domain/weatherEffect";
 import { parseNwsGrid, weatherKind, type WeatherKind, type WeatherRow } from "@/domain/weatherHistory";
 import { Prisma } from "@prisma/client";
@@ -142,6 +143,11 @@ export const WEATHER_EFFECTS_KEY = "forecast.weatherEffects";
  */
 export const storedWeatherEffects = cache(async (): Promise<StoredEffects | null> => parseStored(await settingValue(WEATHER_EFFECTS_KEY)));
 
+export const ONLINE_SIGNAL_KEY = "forecast.onlineSignal";
+
+/** Where online interest stands and what it has meant for sales, as last learned (see `saveLearned`). Null until it has run. */
+export const storedOnlineSignal = cache(async (): Promise<StoredSignal | null> => parseStoredSignal(await settingValue(ONLINE_SIGNAL_KEY)));
+
 /** WMO weather code → short label + emoji-free icon key. */
 export function weatherLabel(code: number): { label: string; icon: "sun" | "cloud" | "rain" | "snow" | "storm" | "fog" } {
   if (code === 0 || code === 1) return { label: "Clear", icon: "sun" };
@@ -202,6 +208,8 @@ export interface DayDrivers {
   weatherKind: WeatherKind | null;
   /** Past days of that weather the factor was learned from; 0 when no factor applies. */
   weatherDays: number;
+  /** Online interest (Google searches and listing activity) against its usual level; 1 when not in use or too far out. */
+  onlineFactor: number;
   total: number;
 }
 
@@ -218,12 +226,13 @@ const demandDriversFor = cache(async (key: string): Promise<Map<ISODate, DayDriv
   const today = businessToday();
 
   const to = addDays(dates[dates.length - 1], 1);
-  const [manual, reasons, events, weather, effects] = await Promise.all([
+  const [manual, reasons, events, weather, effects, signal] = await Promise.all([
     getAdjustments(),
     getReasons(),
     db.event.findMany({ where: { date: { gte: parseISODate(dates[0]), lt: parseISODate(to) } }, orderBy: { startTime: "asc" } }),
     weatherMap(dates[0], to),
     storedWeatherEffects(),
+    storedOnlineSignal(),
   ]);
   const out = new Map<ISODate, DayDrivers>();
   for (const date of dates) {
@@ -235,8 +244,9 @@ const demandDriversFor = cache(async (key: string): Promise<Map<ISODate, DayDriv
     // Only days still to come: past days are never re-forecast with hindsight weather.
     const learned = date >= today ? learnedWeatherFactor(effects, kind, daysBetween(today, date)) : { factor: 1, days: 0 };
     const weatherFactor = learned.factor;
+    const onlineFactor = date >= today ? learnedOnlineFactor(signal, daysBetween(today, date)) : 1;
     const m = manual.get(date) ?? 1;
-    out.set(date, { date, manual: m, reason: reasons[date] ?? null, events: ev, eventFactor, weather: w, weatherFactor, weatherKind: kind, weatherDays: learned.days, total: m * eventFactor * weatherFactor });
+    out.set(date, { date, manual: m, reason: reasons[date] ?? null, events: ev, eventFactor, weather: w, weatherFactor, weatherKind: kind, weatherDays: learned.days, onlineFactor, total: m * eventFactor * weatherFactor * onlineFactor });
   }
   return out;
 });

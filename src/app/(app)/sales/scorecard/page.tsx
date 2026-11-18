@@ -2,12 +2,11 @@ import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from 
 import { WEEKDAYS } from "@/domain/dates";
 import { HORIZONS, type GroupScore, type Score } from "@/domain/forecastScore";
 import { forecastStory, type StoryTone } from "@/domain/forecastStory";
-import { linkWord, SIGNAL_MIN_SCORED, SIGNAL_WARMUP } from "@/domain/leadSignals";
+import { linkWord, onlineFactor, SIGNAL_MIN_SCORED, SIGNAL_NEAR_DAYS, SIGNAL_WARMUP, SIGNAL_WEEK_DAYS, type SignalResult } from "@/domain/leadSignals";
 import { WEATHER_KIND_HINT, WEATHER_KIND_LABEL, WEATHER_KINDS } from "@/domain/weatherHistory";
 import { money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
-import { forecastScorecard, saveWeatherEffects } from "@/server/services/forecastScore";
-import { storedWeatherEffects } from "@/server/services/forecasting";
+import { forecastScorecard, learnedIsStale, saveLearned } from "@/server/services/forecastScore";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { after } from "next/server";
@@ -97,9 +96,8 @@ export default async function ScorecardPage() {
   await requireUser("MANAGER");
   const s = await forecastScorecard();
   const back = { href: "/sales", label: "Sales & forecast" };
-  // The live forecast reads the factors learned here; keep them current if the nightly run hasn't yet today.
-  const kept = await storedWeatherEffects();
-  if (s.firstSale && kept?.learnedOn !== s.today) after(() => saveWeatherEffects(s.weatherEffects, s.today).catch(() => undefined));
+  // The live forecast reads what's learned here; keep it current if the nightly run hasn't yet today.
+  if (s.firstSale && (await learnedIsStale(s.today))) after(() => saveLearned(s).catch(() => undefined));
   const story = forecastStory(s);
 
   if (!s.all.f1 || !story) {
@@ -122,13 +120,20 @@ export default async function ScorecardPage() {
   const fx = s.weatherEffects;
   const helping = s.signals.filter((x) => x.verdict === "helps");
   const judged = s.signals.filter((x) => x.verdict !== "thin");
-  const signalGist = !s.signals.length
-    ? "Nothing on file yet from Google or the website"
-    : helping.length
-      ? `${helping.map((x) => x.label).join(", ")} would make the forecast closer`
-      : judged.length
-        ? `${judged.length} tested against sales; none makes the forecast closer yet`
-        : "Not enough history yet to say";
+  const live = s.online.stored;
+  const inForecast = live.near.used || live.week.used;
+  const nearMove = onlineFactor(live, 0) - 1;
+  const weekMove = onlineFactor(live, SIGNAL_NEAR_DAYS + 1) - 1;
+  const moved = (m: number) => (Math.abs(m) < 0.005 ? "no change" : `${pct(Math.abs(m), 0)} ${m > 0 ? "more" : "less"}`);
+  const signalGist = inForecast
+    ? `In the forecast: ${s.online.members.join(", ")}, as one reading`
+    : !s.signals.length
+      ? "Nothing on file yet from Google or the website"
+      : helping.length
+        ? `${helping.map((x) => x.label).join(", ")} would make the forecast closer`
+        : judged.length
+          ? `${judged.length} tested against sales; none makes the forecast closer yet`
+          : "Not enough history yet to say";
   const fxOn = fx.kinds.filter((k) => k.used);
   const plans = (f: number) => `${pct(Math.abs(f - 1), 0)} ${f < 1 ? "less" : "more"}`;
   const normal = find(s.byEvent, "normal");
@@ -317,8 +322,40 @@ export default async function ScorecardPage() {
               <p className="text-sm text-muted">Connect Google under Settings › Connections, or wait for the website to collect a few weeks of visits.</p>
             )}
             <p className="mt-2 text-xs text-muted">
-              The small figure is the correlation, from −1 to 1. The ahead test compares the last week on file with the four weeks before it, starts after {SIGNAL_WARMUP} days of history, and needs {SIGNAL_MIN_SCORED} replayed days for a verdict. “Helps” means the replay cut the typical miss by at least 1%. Nothing here changes the forecast yet.
+              The small figure is the correlation, from −1 to 1. The ahead test compares the last week on file with the four weeks before it, starts after {SIGNAL_WARMUP} days of history, and needs {SIGNAL_MIN_SCORED} replayed days for a verdict. “Helps” means the replay cut the typical miss by at least 1%.
             </p>
+            <h4 className="mt-7 mb-1 text-sm font-medium text-ink">What the forecast does with them</h4>
+            {s.online.members.length ? (
+              <>
+                <p className="mb-3 text-sm text-ink-2">
+                  The numbers that help rise and fall together, so they go in as one reading: {s.online.members.join(", ")}, the last week on file against the four weeks before. It was replayed twice, once for the next few days and once for a forecast made a week ahead, and each part is only used where it beat the forecast without it.
+                  {inForecast && live.level != null && ` Right now the reading is ${Math.abs(live.level) < 0.005 ? "level with" : `${pct(Math.abs(live.level), 0)} ${live.level > 0 ? "above" : "below"}`} the month before: ${moved(nearMove)} for today and the next ${SIGNAL_NEAR_DAYS} days, ${moved(weekMove)} for the rest of the coming week.`}
+                </p>
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th>Used for</Th>
+                      <Th align="right" className="hidden sm:table-cell">Days replayed</Th>
+                      <Th align="right">Miss without → with</Th>
+                      <Th align="right">In the forecast</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {([["near", `Today and the next ${SIGNAL_NEAR_DAYS} days`, s.online.near], ["week", `The rest of the coming week (to ${SIGNAL_WEEK_DAYS} days out)`, s.online.week]] as [("near" | "week"), string, SignalResult | null][]).map(([k, label, r]) => (
+                      <Tr key={k}>
+                        <Td><span className="font-medium text-ink">{label}</span></Td>
+                        <Td align="right" className="num hidden text-ink-2 sm:table-cell">{r ? qty(r.scored, 0) : "—"}</Td>
+                        <Td align="right" className="num whitespace-nowrap text-ink-2">{r && r.verdict !== "thin" && r.missWithout != null && r.missWith != null ? `${pct(r.missWithout, 1)} → ${pct(r.missWith, 1)}` : "—"}</Td>
+                        <Td align="right">{live[k].used ? <Badge tone="good">On</Badge> : <Badge>{r?.verdict === "thin" ? "Too soon" : "Off"}</Badge>}</Td>
+                      </Tr>
+                    ))}
+                  </tbody>
+                </Table>
+                <p className="mt-2 text-xs text-muted">It can move a day by a fifth at most, and it&apos;s learned again every night. The numbers going in were picked using all the history, so the replay flatters it a little; “Forecasts as they were made” below is the real test.</p>
+              </>
+            ) : (
+              <p className="text-sm text-muted">Nothing goes into the forecast until a number above earns “Helps”.</p>
+            )}
           </Fold>
 
           <Fold title="Forecasts as they were made" gist={s.logged.since ? `Each night's forecast, kept since ${dated(s.logged.since)}` : "Each night's forecast is kept from tonight"}>

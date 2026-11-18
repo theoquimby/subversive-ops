@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GroupScore, Score, ScoreDay, ScoreSummary } from "../forecastScore";
 import { forecastStory } from "../forecastStory";
-import type { SignalResult } from "../leadSignals";
+import type { SignalResult, StoredSignal } from "../leadSignals";
 import type { KindEffect, WeatherEffects } from "../weatherEffect";
 
 const sc = (over: Partial<Score> = {}): Score => ({ days: 400, wape: 0.12, medianApe: 0.1, bias: 0, within15: 0.7, ...over });
@@ -79,6 +79,28 @@ describe("forecastStory", () => {
     const no = forecastStory({ ...base, all: sum(sc()), recent: sum(sc({ days: 80 })), signals: [sig({ verdict: "noHelp" }), sig({ verdict: "thin" })] })!;
     expect(no.points.some((x) => x.key === "signal")).toBe(false);
     expect(no.next).toMatch(/^Next, the forecast learns/);
+  });
+
+  it("says when interest on Google is built in, where it stands now, and that there's nothing to do", () => {
+    const r = (over: Partial<SignalResult> = {}): SignalResult => ({ key: "combined", label: "Online interest", source: "Combined", from: "2025-05-27", to: "2026-11-15", delay: 3, sameDay: { days: 400, r: 0.5 }, ahead: { days: 390, r: 0.22, per20: 0.07 }, scored: 330, missWithout: 0.32, missWith: 0.3, verdict: "helps", ...over });
+    const stored: StoredSignal = { learnedOn: "2026-11-18", members: ["Search clicks", "Listing views"], level: 0.15, near: { slope: 0.35, meanX: 0.01, used: true }, week: { slope: 0.2, meanX: 0.01, used: false } };
+    const online = { members: stored.members, near: r(), week: r({ verdict: "noHelp" }), stored };
+    const s = forecastStory({ ...base, all: sum(sc()), recent: sum(sc({ days: 80 })), online, signals: [r({ key: "gsc.clicks", label: "Search clicks", source: "Google Search" })] })!;
+    const p = s.points.find((x) => x.key === "online")!;
+    expect(p.title).toBe("Interest on Google is now built into the forecast");
+    expect(p.detail).toContain("Search clicks and Listing views over the last week");
+    expect(p.detail).toContain("from 32% to 30%");
+    // 0.35 × (0.15 − 0.01) ≈ +5%.
+    expect(p.detail).toContain("running 15% above the month before, which adds about 5% to the coming days");
+    expect(p.action).toMatch(/^Nothing to do/);
+    // It's in, so it isn't also listed as "next to go in".
+    expect(s.points.some((x) => x.key === "signal")).toBe(false);
+    expect(s.next).toMatch(/^Next, the forecast learns/);
+
+    const quiet = forecastStory({ ...base, all: sum(sc()), recent: sum(sc({ days: 80 })), online: { ...online, stored: { ...stored, level: 0.01 } } })!;
+    expect(quiet.points.find((x) => x.key === "online")!.detail).toContain("about normal");
+    const off = forecastStory({ ...base, all: sum(sc()), recent: sum(sc({ days: 80 })), online: { ...online, stored: { ...stored, near: { ...stored.near, used: false } } } })!;
+    expect(off.points.some((x) => x.key === "online")).toBe(false);
   });
 
   it("ignores weather groups with too few days or too small an effect", () => {

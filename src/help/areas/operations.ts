@@ -949,7 +949,7 @@ An unlinked item still uses product but doesn't count as a sale, which shows up 
     body: "Sales expected for each of the next five weeks, day by day, built from history and adjusted for weather, events and your own changes.",
     article: `The forecast looks five weeks out so ordering, scheduling and budgets all work from the same numbers.
 
-Each day shows what moved it: the season (once there's a year of history), the weather forecast (rain, heavy rain, snow, heat and cold each learn their own effect from your history), events on the [events calendar](/events), and any manual change you made. Tap a day to see the breakdown, the expected number of orders and the hourly shape, or to override it.`,
+Each day shows what moved it: the season (once there's a year of history), the weather forecast (rain, heavy rain, snow, heat and cold each learn their own effect from your history), interest on Google (searches and listing activity, where they've made the forecast closer), events on the [events calendar](/events), and any manual change you made. Tap a day to see the breakdown, the expected number of orders and the hourly shape, or to override it.`,
     related: ["sales.weather", "sales.events", "sales.accuracy", "events.page"],
   },
   {
@@ -1026,7 +1026,7 @@ Any change to how Ops forecasts has to beat the current method on this page befo
     area: "sales",
     route: "/sales/scorecard",
     title: "Online signals",
-    body: "Each number from Google and the website tested against sales: does it move with sales on the day, and would it have made the forecast closer ahead of time? Nothing here changes the forecast yet.",
+    body: "Each number from Google and the website tested against sales: does it move with sales on the day, and would it have made the forecast closer ahead of time? The ones that help go into the forecast as one reading.",
     article: `Open **The numbers behind it → Online signals** on the forecast scorecard.
 
 The numbers tested are direction requests, views, calls and website clicks from your Google listing; clicks and times shown from Google Search; and visitors and actions on your own website.
@@ -1035,7 +1035,7 @@ The numbers tested are direction requests, views, calls and website clicks from 
 
 **Ahead** is the test that matters for a forecast. These numbers arrive late (Google's by several days), so a forecast can only use what had arrived when it was made. Ops compares the last week on file with the four weeks before it, then replays every past day using only the days before it. **Helps** means the replay cut the typical miss by at least 1%. **No help** means it didn't. **Too soon** means there isn't enough history for a verdict.
 
-A number that passes is a candidate to go into the forecast. Nothing on this table changes the forecast by itself.`,
+**What the forecast does with them.** The numbers that earn Helps rise and fall together, so they go in as one reading: the average of how far each ran, over the last week on file, from the four weeks before. That reading is replayed twice, for the next few days and for a forecast made a week ahead, and each part is switched **On** only if its replay beat the forecast without it. When interest on Google runs above normal the coming days' forecast goes up a little, and down when it runs below, never by more than a fifth. It's learned again every night, and tapping a day on Sales & forecast shows the line **Interest on Google** when it's moving that day.`,
     related: ["sales.scorecard", "sales.scorecard.numbers", "sales.scorecard.weather"],
     keywords: ["google", "listing", "direction requests", "search", "website", "correlation", "leading", "signal"],
   },

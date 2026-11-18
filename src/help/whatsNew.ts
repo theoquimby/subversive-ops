@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 18 Nov · 1.37 (online interest in the forecast) ----
+  {
+    id: "2026-11-18.online-in-forecast",
+    date: "2026-11-18",
+    title: "The forecast follows interest on Google",
+    line: "Searches and Google listing activity now nudge the coming week's forecast up or down.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/sales/scorecard",
+    help: "sales.scorecard.signals",
+    audience: "manager",
+  },
   // ---- 18 Nov · 1.36 (online numbers tested against sales) ----
   {
     id: "2026-11-18.online-signals",

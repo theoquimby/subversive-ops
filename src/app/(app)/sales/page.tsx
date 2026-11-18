@@ -38,7 +38,7 @@ export default async function SalesPage() {
   const haveToday = todayWeather.size > 0;
   if (!haveToday) await refreshWeather();
   else after(() => refreshWeather().then(() => undefined, () => undefined));
-  // What each kind of weather does to sales is learned nightly; this catches a first run or a missed night.
+  // What weather and online interest do to sales is learned nightly; this catches a first run or a missed night.
   after(() => ensureWeatherEffects());
 
   const [connected, lastSync, forecast, hourly, actuals, pastDrivers, accuracy, weather, wStatus, loc] = await Promise.all([
@@ -86,6 +86,7 @@ export default async function SalesPage() {
       weatherKind: drivers.weatherKind,
       weatherDays: drivers.weatherDays,
       weatherFar: daysBetween(today, date) >= EFFECT_FAR_DAYS,
+      onlineFactor: drivers.onlineFactor,
       events: drivers.events,
       weather: w ? { ...weatherLabel(w.code), highF: toF(w.tempMaxC), lowF: toF(w.tempMinC), precipMm: Math.round(w.precipMm) } : null,
       hours: f?.hours ?? [],

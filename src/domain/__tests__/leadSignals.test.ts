@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "../dates";
-import { aheadLevel, linkWord, sameDayLevel, testSignal, testSignals, type SignalDay } from "../leadSignals";
+import { aheadLevel, combinedLevelNow, linkWord, onlineFactor, parseStoredSignal, sameDayLevel, testCombined, testSignal, testSignals, toStoredSignal, type SignalDay } from "../leadSignals";
 
 const START = "2025-06-01";
 const N = 300;
@@ -98,6 +98,52 @@ describe("testSignals", () => {
       TODAY,
     );
     expect(out.map((r) => r.key)).toEqual(["s", "n"]);
+  });
+});
+
+describe("the combined reading", () => {
+  const clicks = { key: "c", label: "Search clicks", source: "Google Search", values: series((i) => 200 * (1 + busy(i))) };
+  const views = { key: "v", label: "Listing views", source: "Google listing", values: series((i) => 900 * (1 + busy(i) * 0.8)) };
+
+  it("tests the average of the members' levels, and keeps the fit for the live forecast", () => {
+    const near = testCombined([clicks, views], flat, TODAY)!;
+    expect(near.result.key).toBe("combined");
+    expect(near.result.verdict).toBe("helps");
+    expect(near.result.missWith!).toBeLessThan(near.result.missWithout!);
+    expect(near.slope).toBeGreaterThan(0.1);
+    expect(testCombined([], flat, TODAY)).toBeNull();
+    expect(testCombined([{ ...clicks, values: new Map() }], flat, TODAY)).toBeNull();
+  });
+
+  it("replays a forecast made a week ahead with numbers a week older", () => {
+    const week = testCombined([clicks, views], flat, TODAY, 6)!;
+    expect(week.result.key).toBe("combined.week");
+    expect(week.result.delay).toBe(7);
+    // Demand swings in three-week stretches, so a week-old reading still helps, though less.
+    const near = testCombined([clicks, views], flat, TODAY)!;
+    expect(week.result.missWith!).toBeGreaterThan(near.result.missWith!);
+  });
+
+  it("gives the live forecast a multiplier from where the reading stands now", () => {
+    const near = testCombined([clicks, views], flat, TODAY)!;
+    const week = testCombined([clicks, views], flat, TODAY, 6)!;
+    const level = combinedLevelNow([clicks, views], TODAY)!;
+    const stored = toStoredSignal({ learnedOn: TODAY, members: ["Search clicks", "Listing views"], level, near, week });
+    expect(parseStoredSignal(JSON.stringify(stored))).toEqual(stored);
+
+    const busyNow = { ...stored, level: stored.near.meanX + 0.3 };
+    expect(onlineFactor(busyNow, 0)).toBeGreaterThan(1.02);
+    expect(onlineFactor(busyNow, 2)).toBe(onlineFactor(busyNow, 0));
+    // Further out the week-ahead fit takes over; past nine days nothing is applied.
+    expect(onlineFactor(busyNow, 10)).toBe(1);
+    expect(onlineFactor({ ...busyNow, level: stored.near.meanX - 0.3 }, 0)).toBeLessThan(0.98);
+    // Never more than a fifth either way.
+    expect(onlineFactor({ ...busyNow, level: 50 }, 0)).toBe(1.2);
+    expect(onlineFactor({ ...busyNow, near: { ...busyNow.near, used: false } }, 0)).toBe(1);
+    expect(onlineFactor({ ...busyNow, week: { ...busyNow.week, used: false } }, 5)).toBe(1);
+    expect(onlineFactor({ ...busyNow, level: null }, 0)).toBe(1);
+    expect(onlineFactor(null, 0)).toBe(1);
+    expect(parseStoredSignal("junk")).toBeNull();
   });
 });
 

@@ -1,12 +1,12 @@
 import "server-only";
 import { addDays, dateRange, daysBetween, parseISODate, toISODate, type ISODate } from "@/domain/dates";
 import { groupScore, score, scoreDays, scoreLogged, summarize, type GroupScore, type Score, type ScoreDay, type ScoreSummary } from "@/domain/forecastScore";
-import { testSignals, type SignalResult, type SignalSeries } from "@/domain/leadSignals";
+import { combinedLevelNow, testCombined, testSignals, toStoredSignal, type SignalResult, type SignalSeries, type StoredSignal } from "@/domain/leadSignals";
 import { learnWeatherEffects, toStored, type WeatherEffects } from "@/domain/weatherEffect";
 import { ARCHIVE_LAG_DAYS, backfillSpans, NOAA_DAILY_TYPES, NOAA_STATION, parseNceiDaily } from "@/domain/weatherHistory";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
-import { dailySalesForecast, eventsBetween, pastEventDays, saveWeatherRows, storedWeatherEffects, WEATHER_EFFECTS_KEY, weatherMap } from "./forecasting";
+import { dailySalesForecast, eventsBetween, pastEventDays, saveWeatherRows, ONLINE_SIGNAL_KEY, storedOnlineSignal, storedWeatherEffects, WEATHER_EFFECTS_KEY, weatherMap } from "./forecasting";
 import { getAdjustments } from "./planning";
 import { businessToday } from "./sales";
 
@@ -98,8 +98,9 @@ export async function backfillWeather(maxSpans = 10): Promise<{ days: number; sp
 
 // ---- Forecasts kept as they were made -------------------------------------------------
 
-/** v2: weather by kind (rain, heavy rain, snow, heat, cold) in place of one rain factor. */
-export const FORECAST_MODEL = "v2";
+/** v2: weather by kind (rain, heavy rain, snow, heat, cold) in place of one rain factor.
+ * v3: online interest (Google searches and listing activity) on top of v2. */
+export const FORECAST_MODEL = "v3";
 const LOG_DAYS_AHEAD = 14;
 
 /** Keep tonight's forecast for today and the next two weeks, so it can be scored against what then sells. */
@@ -225,6 +226,11 @@ export interface Scorecard {
   withWeather: { without: Score | null; with: Score | null };
   /** Each online number tested against sales: does it move with them, and would it have made the forecast closer? */
   signals: SignalResult[];
+  /**
+   * The numbers that help, combined into one reading and tested again: for the next few days (against the
+   * day-before forecast) and for the week ahead. `stored` is what the live forecast uses.
+   */
+  online: { members: string[]; near: SignalResult | null; week: SignalResult | null; stored: StoredSignal };
   /** Forecasts as they were really made each night (with weather in them), once there are some to score. */
   logged: { since: ISODate | null; dayBefore: Score | null; weekAhead: Score | null };
 }
@@ -234,7 +240,7 @@ export async function forecastScorecard(): Promise<Scorecard> {
   const first = await firstSaleDate();
   const coverage = await weatherCoverage();
   const none = summarize([]);
-  if (!first) return { today, firstSale: null, days: [], openDays: 0, dailyOnly: 0, all: none, recent: none, byWeekday: [], byMonth: [], byWeather: [], byEvent: [], weather: coverage, weatherEffects: learnWeatherEffects([]).effects, withWeather: { without: null, with: null }, signals: [], logged: { since: null, dayBefore: null, weekAhead: null } };
+  if (!first) return { today, firstSale: null, days: [], openDays: 0, dailyOnly: 0, all: none, recent: none, byWeekday: [], byMonth: [], byWeather: [], byEvent: [], weather: coverage, weatherEffects: learnWeatherEffects([]).effects, withWeather: { without: null, with: null }, signals: [], online: { members: [], near: null, week: null, stored: toStoredSignal({ learnedOn: today, members: [], level: null, near: null, week: null }) }, logged: { since: null, dayBefore: null, weekAhead: null } };
 
   const [history, eventDays, events, manual, weather, logged, series] = await Promise.all([
     fullSalesHistory(first, today),
@@ -261,6 +267,14 @@ export async function forecastScorecard(): Promise<Scorecard> {
   const cutoff = addDays(today, -90);
   const learned = learnWeatherEffects(days);
   const scoredDays = days.filter((d) => d.f1 != null);
+  // Against the forecast with weather in it, so a rainy day isn't read as a quiet week online.
+  const dayBefore = days.map((d) => ({ date: d.date, actual: d.actual, forecast: d.f1 == null ? null : (learned.withWeather.get(d.date) ?? d.f1), event: d.event }));
+  const signals = testSignals(series, dayBefore, today);
+  // The ones that help largely move together, so they go into the forecast as one reading.
+  const helping = new Set(signals.filter((x) => x.verdict === "helps").map((x) => x.key));
+  const members = series.filter((x) => helping.has(x.key));
+  const near = testCombined(members, dayBefore, today);
+  const week = testCombined(members, days.map((d) => ({ date: d.date, actual: d.actual, forecast: d.f7, event: d.event })), today, 6);
   const since = logged.length ? toISODate(logged.reduce((a, b) => (a.madeOn < b.madeOn ? a : b)).madeOn) : null;
   const log = logged.map((l) => ({ date: toISODate(l.date), horizon: l.horizon, sales: l.sales.toNumber() }));
 
@@ -282,8 +296,13 @@ export async function forecastScorecard(): Promise<Scorecard> {
       without: score(scoredDays.map((d) => ({ forecast: d.f1!, actual: d.actual }))),
       with: score(scoredDays.map((d) => ({ forecast: learned.withWeather.get(d.date) ?? d.f1!, actual: d.actual }))),
     },
-    // Against the forecast with weather in it, so a rainy day isn't read as a quiet week online.
-    signals: testSignals(series, days.map((d) => ({ date: d.date, actual: d.actual, forecast: d.f1 == null ? null : (learned.withWeather.get(d.date) ?? d.f1), event: d.event })), today),
+    signals,
+    online: {
+      members: members.map((m) => m.label),
+      near: near?.result ?? null,
+      week: week?.result ?? null,
+      stored: toStoredSignal({ learnedOn: today, members: members.map((m) => m.label), level: combinedLevelNow(members, today), near, week }),
+    },
     logged: { since, dayBefore: scoreLogged(log, history.sales, 1), weekAhead: scoreLogged(log, history.sales, 7) },
   };
 }
@@ -296,20 +315,32 @@ export async function saveWeatherEffects(effects: WeatherEffects, today: ISODate
   await db.setting.upsert({ where: { key: WEATHER_EFFECTS_KEY }, create: { key: WEATHER_EFFECTS_KEY, value }, update: { value } });
 }
 
-/** Replay every past day, learn what each kind of weather does, and keep it for the live forecast. Runs nightly. */
-export async function learnWeatherEffectsNow(): Promise<WeatherEffects> {
-  const s = await forecastScorecard();
+/** Keep everything the replay learned where the live forecast reads it: weather by kind, and online interest. */
+export async function saveLearned(s: Pick<Scorecard, "today" | "weatherEffects" | "online">) {
   await saveWeatherEffects(s.weatherEffects, s.today);
-  return s.weatherEffects;
+  const value = JSON.stringify(s.online.stored);
+  await db.setting.upsert({ where: { key: ONLINE_SIGNAL_KEY }, create: { key: ONLINE_SIGNAL_KEY, value }, update: { value } });
+}
+
+/** True when either hasn't been learned today (first run, or a missed night). */
+export async function learnedIsStale(today: ISODate): Promise<boolean> {
+  const [w, o] = await Promise.all([storedWeatherEffects(), storedOnlineSignal()]);
+  return w?.learnedOn !== today || o?.learnedOn !== today;
+}
+
+/** Replay every past day, learn what weather and online interest do to sales, and keep it for the live forecast. Runs nightly. */
+export async function learnWeatherEffectsNow(): Promise<Scorecard> {
+  const s = await forecastScorecard();
+  await saveLearned(s);
+  return s;
 }
 
 /** Learn today if the nightly run hasn't (first run, or a missed night). Cheap when it's up to date. Never throws. */
 export async function ensureWeatherEffects(): Promise<void> {
   try {
-    const stored = await storedWeatherEffects();
-    if (stored?.learnedOn === businessToday()) return;
+    if (!(await learnedIsStale(businessToday()))) return;
     await learnWeatherEffectsNow();
   } catch (e) {
-    console.error("weather effects failed", e);
+    console.error("learning forecast inputs failed", e);
   }
 }

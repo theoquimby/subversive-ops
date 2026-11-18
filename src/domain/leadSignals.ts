@@ -158,16 +158,16 @@ export interface SignalResult {
   verdict: SignalVerdict;
 }
 
-/**
- * Test one series against the days. `today` sets how late its numbers run
- * (today minus its newest day, at least 1): a forecast can only use what had
- * arrived by then.
- */
-export function testSignal(series: SignalSeries, days: readonly SignalDay[], today: ISODate): SignalResult {
-  const { first, last, at } = reader(series.values, series.from, series.through);
-  const delay = last ? Math.min(7, Math.max(1, daysBetween(last, today))) : 1;
-  const sorted = [...days].filter((d) => d.forecast != null && d.forecast > 0 && d.actual > 0).sort((a, b) => a.date.localeCompare(b.date));
+/** How late a series runs: today minus its newest real day, between 1 and 7. */
+const delayOf = (last: ISODate | null, today: ISODate) => (last ? Math.min(7, Math.max(1, daysBetween(last, today))) : 1);
 
+/**
+ * The replay itself. Each day is forecast from the days before it: the slope
+ * so far, around the level the reading is usually at. Returns what was found
+ * and the fit as it stands at the end, for the live forecast.
+ */
+function replay(xAhead: (d: ISODate) => number | null, xSame: (d: ISODate) => number | null, days: readonly SignalDay[]) {
+  const sorted = [...days].filter((d) => d.forecast != null && d.forecast > 0 && d.actual > 0).sort((a, b) => a.date.localeCompare(b.date));
   const same = new Fit();
   const ahead = new Fit();
   let scored = 0;
@@ -177,12 +177,11 @@ export function testSignal(series: SignalSeries, days: readonly SignalDay[], tod
   for (const d of sorted) {
     const f = d.forecast!;
     const y = clamp(d.actual / f - 1);
-    const xs = sameDayLevel(at, d.date);
+    const xs = xSame(d.date);
     if (xs != null && !d.event) same.add(xs, y);
-    const xa = aheadLevel(at, d.date, delay);
+    const xa = xAhead(d.date);
     if (xa == null) continue;
     if (ahead.n >= SIGNAL_WARMUP) {
-      // Forecast this day from the days before it: the slope so far, around the level it's usually at.
       const move = clamp(ahead.slope * (xa - ahead.meanX), [-SIGNAL_MAX_MOVE, SIGNAL_MAX_MOVE]);
       scored++;
       actual += d.actual;
@@ -191,24 +190,131 @@ export function testSignal(series: SignalSeries, days: readonly SignalDay[], tod
     }
     if (!d.event) ahead.add(xa, y);
   }
-
   const missWithout = actual > 0 ? without / actual : null;
   const missWith = actual > 0 ? withIt / actual : null;
   const verdict: SignalVerdict = scored < SIGNAL_MIN_SCORED || missWith == null || missWithout == null ? "thin" : missWith <= missWithout * (1 - SIGNAL_MIN_GAIN) ? "helps" : "noHelp";
   return {
-    key: series.key,
-    label: series.label,
-    source: series.source,
-    from: first,
-    to: last,
-    delay,
     sameDay: same.n >= SIGNAL_MIN_DAYS && same.r != null ? { days: same.n, r: same.r } : null,
     ahead: ahead.n >= SIGNAL_MIN_DAYS && ahead.r != null ? { days: ahead.n, r: ahead.r, per20: ahead.slope * 0.2 } : null,
     scored,
     missWithout,
     missWith,
     verdict,
+    slope: ahead.slope,
+    meanX: ahead.meanX,
   };
+}
+
+/**
+ * Test one series against the days. `today` sets how late its numbers run
+ * (today minus its newest day, at least 1): a forecast can only use what had
+ * arrived by then.
+ */
+export function testSignal(series: SignalSeries, days: readonly SignalDay[], today: ISODate): SignalResult {
+  const { first, last, at } = reader(series.values, series.from, series.through);
+  const delay = delayOf(last, today);
+  const { slope: _slope, meanX: _meanX, ...found } = replay((d) => aheadLevel(at, d, delay), (d) => sameDayLevel(at, d), days);
+  void _slope;
+  void _meanX;
+  return { key: series.key, label: series.label, source: series.source, from: first, to: last, delay, ...found };
+}
+
+// ---- One combined reading -----------------------------------------------------------------
+
+/** The numbers that help largely rise and fall together, so they go in as one reading: the average of their levels. */
+const average = (xs: (number | null)[]): number | null => {
+  const ok = xs.filter((x): x is number => x != null);
+  return ok.length ? ok.reduce((s, x) => s + x, 0) / ok.length : null;
+};
+
+export interface CombinedFit {
+  result: SignalResult;
+  /** The fit as it stands today, for the live forecast: sales move `slope` for each 1.0 the reading sits above `meanX`. */
+  slope: number;
+  meanX: number;
+}
+
+/**
+ * Test the combined reading. `extraDelay` replays a forecast made further ahead:
+ * 6 for "a week ahead" (pass the week-ahead forecasts as `days`), when the newest
+ * numbers are that much older than the day being forecast.
+ */
+export function testCombined(members: readonly SignalSeries[], days: readonly SignalDay[], today: ISODate, extraDelay = 0): CombinedFit | null {
+  const rs = members.filter((m) => m.values.size > 0).map((m) => {
+    const r = reader(m.values, m.from, m.through);
+    return { ...r, delay: delayOf(r.last, today) };
+  });
+  if (!rs.length) return null;
+  const { slope, meanX, ...found } = replay(
+    (d) => average(rs.map((r) => aheadLevel(r.at, d, r.delay + extraDelay))),
+    (d) => average(rs.map((r) => sameDayLevel(r.at, d))),
+    days,
+  );
+  const firsts = rs.map((r) => r.first).filter((x): x is ISODate => x != null).sort();
+  const lasts = rs.map((r) => r.last).filter((x): x is ISODate => x != null).sort();
+  return {
+    result: { key: extraDelay ? "combined.week" : "combined", label: "Online interest", source: "Combined", from: firsts[0] ?? null, to: lasts[lasts.length - 1] ?? null, delay: Math.max(...rs.map((r) => r.delay)) + extraDelay, ...found },
+    slope,
+    meanX,
+  };
+}
+
+/** Where the combined reading stands right now: the last week on file against the four before, averaged over the members. */
+export function combinedLevelNow(members: readonly SignalSeries[], today: ISODate): number | null {
+  return average(
+    members.filter((m) => m.values.size > 0).map((m) => {
+      const r = reader(m.values, m.from, m.through);
+      return aheadLevel(r.at, today, delayOf(r.last, today));
+    }),
+  );
+}
+
+/** What's kept between nightly runs for the live forecast. */
+export interface StoredSignal {
+  learnedOn: ISODate;
+  /** The labels of the numbers that make up the reading. */
+  members: string[];
+  /** Where the reading stands: 0.1 = the last week on file ran 10% above the four before. Null when it can't be worked out. */
+  level: number | null;
+  /** For the next few days, and for the rest of the coming week; each only counts when its replay beat the forecast without it. */
+  near: { slope: number; meanX: number; used: boolean };
+  week: { slope: number; meanX: number; used: boolean };
+}
+
+/** Days ahead covered by the near fit (today and the next two days); the week fit covers the rest, up to nine days out. */
+export const SIGNAL_NEAR_DAYS = 2;
+export const SIGNAL_WEEK_DAYS = 9;
+
+export function toStoredSignal(i: { learnedOn: ISODate; members: readonly string[]; level: number | null; near: CombinedFit | null; week: CombinedFit | null }): StoredSignal {
+  const part = (f: CombinedFit | null) => ({ slope: Math.round((f?.slope ?? 0) * 10000) / 10000, meanX: Math.round((f?.meanX ?? 0) * 10000) / 10000, used: f?.result.verdict === "helps" });
+  return { learnedOn: i.learnedOn, members: [...i.members], level: i.level == null ? null : Math.round(i.level * 10000) / 10000, near: part(i.near), week: part(i.week) };
+}
+
+export function parseStoredSignal(json: string | null | undefined): StoredSignal | null {
+  if (!json) return null;
+  try {
+    const v = JSON.parse(json) as StoredSignal;
+    const part = (p: unknown) => {
+      const x = (p ?? {}) as { slope?: unknown; meanX?: unknown; used?: unknown };
+      return typeof x.slope === "number" && Number.isFinite(x.slope) && typeof x.meanX === "number" && Number.isFinite(x.meanX) ? { slope: x.slope, meanX: x.meanX, used: x.used === true } : { slope: 0, meanX: 0, used: false };
+    };
+    if (typeof v?.learnedOn !== "string") return null;
+    return { learnedOn: v.learnedOn, members: Array.isArray(v.members) ? v.members.filter((m) => typeof m === "string") : [], level: typeof v.level === "number" && Number.isFinite(v.level) ? v.level : null, near: part(v.near), week: part(v.week) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The multiplier for a day `daysAhead` days out (0 = today): how far the reading
+ * sits from its usual level, times what that has meant for sales, never more
+ * than a fifth either way. 1 when nothing is switched on or the day is too far out.
+ */
+export function onlineFactor(stored: StoredSignal | null, daysAhead: number): number {
+  if (!stored || stored.level == null || daysAhead < 0 || daysAhead > SIGNAL_WEEK_DAYS) return 1;
+  const fit = daysAhead <= SIGNAL_NEAR_DAYS ? stored.near : stored.week;
+  if (!fit.used) return 1;
+  return Math.round((1 + clamp(fit.slope * (stored.level - fit.meanX), [-SIGNAL_MAX_MOVE, SIGNAL_MAX_MOVE])) * 1000) / 1000;
 }
 
 /** Every series tested, the ones that help first (biggest gain first), then by how closely they move with sales. */

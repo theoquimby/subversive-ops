@@ -6,7 +6,7 @@
  */
 
 import type { GroupScore, ScoreDay, ScoreSummary } from "./forecastScore";
-import type { SignalResult } from "./leadSignals";
+import { onlineFactor, type SignalResult, type StoredSignal } from "./leadSignals";
 import type { WeatherEffects } from "./weatherEffect";
 import { WEATHER_KIND_LABEL, type WeatherKind } from "./weatherHistory";
 
@@ -71,6 +71,8 @@ export function forecastStory(i: {
   weatherEffects?: WeatherEffects;
   /** The online numbers tested against sales; one that would make the forecast closer gets a mention. */
   signals?: readonly SignalResult[];
+  /** The helpful numbers combined into one reading, and whether the forecast uses it. */
+  online?: { members: string[]; near: SignalResult | null; week: SignalResult | null; stored: StoredSignal };
 }): ForecastStory | null {
   const all = i.all.f1;
   if (!all) return null;
@@ -213,9 +215,27 @@ export function forecastStory(i: {
     });
   }
 
-  // An online number that runs ahead of sales.
-  const lead = (i.signals ?? []).find((x) => x.verdict === "helps" && x.ahead && x.missWith != null && x.missWithout != null);
-  if (lead) {
+  // Online interest: built into the forecast, or a number that has passed the test and is next to go in.
+  const on = i.online && (i.online.stored.near.used || i.online.stored.week.used) ? i.online : null;
+  const lead = on ? undefined : (i.signals ?? []).find((x) => x.verdict === "helps" && x.ahead && x.missWith != null && x.missWithout != null);
+  if (on) {
+    const r = on.stored.near.used ? on.near : on.week;
+    const move = onlineFactor(on.stored, on.stored.near.used ? 0 : 5) - 1;
+    const level = on.stored.level;
+    const now =
+      level == null
+        ? ""
+        : Math.abs(move) < 0.005
+          ? " Right now it's about normal, so it isn't moving the forecast."
+          : ` Right now it's running ${pct(level)} ${level >= 0 ? "above" : "below"} the month before, which ${move > 0 ? "adds" : "takes"} about ${pct(move)} ${move > 0 ? "to" : "off"} the coming days.`;
+    points.push({
+      key: "online",
+      tone: "good",
+      title: "Interest on Google is now built into the forecast",
+      detail: `${list(on.members)} over the last week, against the four weeks before.${r?.missWithout != null && r.missWith != null ? ` Over ${r.scored.toLocaleString("en-US")} past days that took the typical miss from ${pct(r.missWithout)} to ${pct(r.missWith)}.` : ""}${now}`,
+      action: "Nothing to do: when interest on Google climbs or drops, the forecast follows.",
+    });
+  } else if (lead) {
     const up = lead.ahead!.per20 >= 0;
     points.push({
       key: "signal",

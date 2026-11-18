@@ -33,6 +33,8 @@ export interface CalDay {
   weatherDays: number;
   /** Four or more days out: the effect is scaled back while it's still only a chance. */
   weatherFar: boolean;
+  /** Interest on Google against its usual level; 1 when it isn't moving the day. */
+  onlineFactor: number;
   events: {
     id: string;
     title: string;
@@ -319,6 +321,13 @@ function DayPanel({ day, onClose, onPrev, onNext }: { day: CalDay; onClose: () =
                       value={signed(day.weatherFactor)}
                       muted={day.weatherFactor === 1}
                     />
+                    {day.onlineFactor !== 1 && (
+                      <Row
+                        label="Interest on Google"
+                        hint={`Searches and activity on your Google listing over the last week ran ${day.onlineFactor > 1 ? "above" : "below"} the four weeks before. Weeks like that have sold ${day.onlineFactor > 1 ? "more" : "less"} here.`}
+                        value={signed(day.onlineFactor)}
+                      />
+                    )}
                     {day.events.length === 0 ? (
                       <Row label="Events" hint="Nothing on the calendar." value="±0%" muted />
                     ) : (
