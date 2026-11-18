@@ -20,6 +20,12 @@ export interface SignalSeries {
   /** Where it comes from, in the app's words ("Google listing"). */
   source: string;
   values: ReadonlyMap<ISODate, number>;
+  /**
+   * The stretch the source really covers, when the caller knows it: a day inside it with no value counts as zero,
+   * and anything after `through` hasn't arrived yet (Google files empty rows for recent days and fills them in later).
+   */
+  from?: ISODate;
+  through?: ISODate;
 }
 
 export interface SignalDay {
@@ -46,13 +52,15 @@ const SLOPE_PRIOR_DAYS = 30;
 const CLAMP: [number, number] = [-0.75, 1.5];
 const clamp = (x: number, [lo, hi]: [number, number] = CLAMP) => Math.min(hi, Math.max(lo, x));
 
-/** The stretch a series covers, and a reader that treats a gap inside it as zero (no visitors that day). */
-function reader(values: ReadonlyMap<ISODate, number>) {
-  let first: ISODate | null = null;
-  let last: ISODate | null = null;
-  for (const d of values.keys()) {
-    if (first == null || d < first) first = d;
-    if (last == null || d > last) last = d;
+/** The stretch a series covers (the caller's, or its own first and last day), and a reader that treats a gap inside it as zero. */
+function reader(values: ReadonlyMap<ISODate, number>, from?: ISODate, through?: ISODate) {
+  let first: ISODate | null = from ?? null;
+  let last: ISODate | null = through ?? null;
+  if (from == null || through == null) {
+    for (const d of values.keys()) {
+      if (from == null && (first == null || d < first)) first = d;
+      if (through == null && (last == null || d > last)) last = d;
+    }
   }
   const at = (d: ISODate): number | null => (first == null || last == null || d < first || d > last ? null : (values.get(d) ?? 0));
   return { first, last, at };
@@ -156,7 +164,7 @@ export interface SignalResult {
  * arrived by then.
  */
 export function testSignal(series: SignalSeries, days: readonly SignalDay[], today: ISODate): SignalResult {
-  const { first, last, at } = reader(series.values);
+  const { first, last, at } = reader(series.values, series.from, series.through);
   const delay = last ? Math.min(7, Math.max(1, daysBetween(last, today))) : 1;
   const sorted = [...days].filter((d) => d.forecast != null && d.forecast > 0 && d.actual > 0).sort((a, b) => a.date.localeCompare(b.date));
 
@@ -207,7 +215,7 @@ export function testSignal(series: SignalSeries, days: readonly SignalDay[], tod
 export function testSignals(series: readonly SignalSeries[], days: readonly SignalDay[], today: ISODate): SignalResult[] {
   const gain = (r: SignalResult) => (r.verdict === "helps" && r.missWith != null && r.missWithout ? 1 - r.missWith / r.missWithout : -1);
   return series
-    .filter((s) => s.values.size > 0)
+    .filter((s) => s.values.size > 0 && (s.from == null || s.through == null || s.from <= s.through))
     .map((s) => testSignal(s, days, today))
     .sort((a, b) => gain(b) - gain(a) || Math.abs(b.sameDay?.r ?? 0) - Math.abs(a.sameDay?.r ?? 0));
 }

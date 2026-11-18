@@ -183,15 +183,24 @@ async function onlineSeries(first: ISODate, today: ISODate): Promise<SignalSerie
     add(visitors, r.day, r.visitors);
     add(actions, r.day, r.converted);
   }
+  // How far each source really reaches: its busiest number's first and last day above zero. Google files
+  // empty rows for the latest days and fills them in later, so the last row isn't the last real day.
+  const span = (m: Map<ISODate, number>) => {
+    const real = [...m].filter(([, v]) => v > 0).map(([d]) => d).sort();
+    return real.length ? { from: real[0], through: real[real.length - 1] } : {};
+  };
+  const listing = span(views);
+  const searched = span(shown);
+  const site = span(visitors);
   return [
-    { key: "gbp.directions", label: "Direction requests", source: "Google listing", values: directions },
-    { key: "gbp.views", label: "Listing views", source: "Google listing", values: views },
-    { key: "gbp.calls", label: "Calls", source: "Google listing", values: calls },
-    { key: "gbp.site", label: "Website clicks", source: "Google listing", values: siteClicks },
-    { key: "gsc.clicks", label: "Search clicks", source: "Google Search", values: clicks },
-    { key: "gsc.shown", label: "Times shown in search", source: "Google Search", values: shown },
-    { key: "web.visitors", label: "Website visitors", source: "Website", values: visitors },
-    { key: "web.actions", label: "Calls, directions and orders", source: "Website", values: actions },
+    { key: "gbp.directions", label: "Direction requests", source: "Google listing", values: directions, ...listing },
+    { key: "gbp.views", label: "Listing views", source: "Google listing", values: views, ...listing },
+    { key: "gbp.calls", label: "Calls", source: "Google listing", values: calls, ...listing },
+    { key: "gbp.site", label: "Website clicks", source: "Google listing", values: siteClicks, ...listing },
+    { key: "gsc.clicks", label: "Search clicks", source: "Google Search", values: clicks, ...searched },
+    { key: "gsc.shown", label: "Times shown in search", source: "Google Search", values: shown, ...searched },
+    { key: "web.visitors", label: "Website visitors", source: "Website", values: visitors, ...site },
+    { key: "web.actions", label: "Calls, directions and orders", source: "Website", values: actions, ...site },
   ];
 }
 

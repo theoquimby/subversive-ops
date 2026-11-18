@@ -55,6 +55,19 @@ describe("testSignal", () => {
     expect(r.to).toBe(addDays(START, N - 4));
   });
 
+  it("goes by the stretch the caller says is real: later rows haven't arrived, gaps inside it are zero", () => {
+    // Google has filed rows up to yesterday, but real numbers stop five days back; the last four are placeholders.
+    const values = series((i) => (i >= N - 4 ? 0 : 200 * (1 + busy(i))));
+    const r = testSignal({ key: "s", label: "Listing views", source: "Google listing", values, from: START, through: addDays(START, N - 5) }, flat, TODAY);
+    expect(r.delay).toBe(5);
+    expect(r.to).toBe(addDays(START, N - 5));
+    // A sparse series (calls) with no row on most days still reads as zero inside the stretch, not as missing.
+    const sparse = new Map(dates.filter((_, i) => i % 9 === 0 && i < N - 30).map((d) => [d, 2]));
+    const calls = testSignal({ key: "c", label: "Calls", source: "Google listing", values: sparse, from: START, through: addDays(START, N - 5) }, flat, TODAY);
+    expect(calls.delay).toBe(5);
+    expect(calls.scored).toBeGreaterThan(100);
+  });
+
   it("gives no verdict on a short history", () => {
     const short = new Map(dates.slice(N - 80).map((d, i) => [d, 100 + i]));
     const r = testSignal({ key: "w", label: "Website visitors", source: "Website", values: short }, flat, TODAY);
