@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.34",
+    date: "2026-11-18",
+    title: "The scorecard says what to do",
+    summary: "The forecast scorecard now opens with a plain verdict on how far to trust the forecast and a short list of what to do differently, with the tables folded underneath.",
+    entries: ["2026-11-18.scorecard-story"],
+    fixed: [
+      "The verdict: solid, use with a cushion, or a rough guide, going by the last 90 days, with a typical day's miss in dollars and how many days in ten land close.",
+      "What to do with it: bad-weather days and how much less to plan for, weekdays the forecast can't call, event days, a steady lean high or low, and whether planning two weeks ahead costs any accuracy.",
+      "The tables (how far ahead, weather, weekday, events, month, every scored day) are folded under The numbers behind it.",
+      "The menu's highlight now follows the page you're on; it used to stay on Overview.",
+    ],
+  },
+  {
     version: "1.33",
     date: "2026-11-18",
     title: "Instagram and Facebook guide corrected",

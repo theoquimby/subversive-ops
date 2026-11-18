@@ -1,10 +1,13 @@
-import { EmptyState, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { WEEKDAYS } from "@/domain/dates";
 import { HORIZONS, type GroupScore, type Score } from "@/domain/forecastScore";
-import { WEATHER_KIND_HINT, WEATHER_KIND_LABEL, WEATHER_KINDS, type WeatherKind } from "@/domain/weatherHistory";
-import { pct, qty, shortDate } from "@/lib/format";
+import { forecastStory, type StoryTone } from "@/domain/forecastStory";
+import { WEATHER_KIND_HINT, WEATHER_KIND_LABEL, WEATHER_KINDS } from "@/domain/weatherHistory";
+import { money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { forecastScorecard } from "@/server/services/forecastScore";
+import { ChevronDown } from "lucide-react";
+import Link from "next/link";
 import { ScoreDaysTable, type DayRow } from "./days-table";
 import { LoadWeather } from "./load-weather";
 
@@ -14,15 +17,21 @@ export const maxDuration = 60;
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const dated = (d: string) => `${shortDate(d)}, ${d.slice(0, 4)}`;
-const missTone = (w: number | null | undefined) => (w == null ? undefined : w <= 0.15 ? "good" : w <= 0.3 ? "warn" : "bad");
 /** Too few days to read anything into. */
 const THIN = 8;
+
+const LEVEL = {
+  trust: { label: "Solid", tone: "good" },
+  guide: { label: "Use with a cushion", tone: "warn" },
+  rough: { label: "Rough guide", tone: "bad" },
+} as const;
+const DOT: Record<StoryTone, string> = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted" };
 
 function lean(b: number) {
   return Math.abs(b) < 0.02 ? "No lean" : `${pct(Math.abs(b), 0)} ${b > 0 ? "high" : "low"}`;
 }
 
-/** "Sales ran 8% under the forecast" for a group, from actual ÷ forecast. */
+/** "8% under" for a group, from actual ÷ forecast. */
 function ran(lift: number | null) {
   if (lift == null) return "—";
   return Math.abs(lift) < 0.02 ? "On forecast" : `${pct(Math.abs(lift), 0)} ${lift > 0 ? "over" : "under"}`;
@@ -36,8 +45,8 @@ function ScoreRow({ label, hint, s, lift }: { label: React.ReactNode; hint?: str
         <span className="font-medium text-ink">{label}</span>
         {hint && <span className="block text-xs text-muted">{hint}</span>}
       </Td>
-      <Td align="right" className="num text-ink-2">{s ? qty(s.days, 0) : "0"}</Td>
-      {lift !== undefined && <Td align="right" className={`num ${thin ? "text-muted" : lift != null && Math.abs(lift) >= 0.08 ? "font-medium text-warn" : "text-ink-2"}`}>{ran(lift)}</Td>}
+      <Td align="right" className={`num text-ink-2 ${lift !== undefined ? "hidden sm:table-cell" : ""}`}>{s ? qty(s.days, 0) : "0"}</Td>
+      {lift !== undefined && <Td align="right" className={`num whitespace-nowrap ${thin ? "text-muted" : lift != null && Math.abs(lift) >= 0.08 ? "font-medium text-warn" : "text-ink-2"}`}>{ran(lift)}</Td>}
       <Td align="right" className={`num ${thin ? "text-muted" : "font-medium text-ink"}`}>{s ? pct(s.wape, 0) : "—"}</Td>
       <Td align="right" className="num hidden text-ink-2 sm:table-cell">{s ? pct(s.within15, 0) : "—"}</Td>
       <Td align="right" className="num hidden text-ink-2 sm:table-cell">{s ? lean(s.bias) : "—"}</Td>
@@ -51,7 +60,7 @@ function ScoreTable({ first, lift, children }: { first: string; lift?: boolean; 
       <thead>
         <tr>
           <Th>{first}</Th>
-          <Th align="right">Days</Th>
+          <Th align="right" className={lift ? "hidden sm:table-cell" : undefined}>Days</Th>
           {lift && <Th align="right">Sales ran</Th>}
           <Th align="right">Typical miss</Th>
           <Th align="right" className="hidden sm:table-cell">Within 15%</Th>
@@ -63,14 +72,31 @@ function ScoreTable({ first, lift, children }: { first: string; lift?: boolean; 
   );
 }
 
+/** One fold of detail: a name, the gist in a line, and the table when opened. */
+function Fold({ title, gist, children }: { title: string; gist?: string; children: React.ReactNode }) {
+  return (
+    <details className="group/fold border-b border-border last:border-b-0">
+      <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-2.5 hover:bg-surface-2/60 sm:px-5 [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-ink">{title}</span>
+          {gist && <span className="block text-xs text-muted">{gist}</span>}
+        </span>
+        <ChevronDown aria-hidden className="size-4 shrink-0 text-muted transition-transform duration-180 group-open/fold:rotate-180" />
+      </summary>
+      <div className="px-3 pt-1 pb-5 sm:px-5">{children}</div>
+    </details>
+  );
+}
+
 const find = (g: GroupScore[], key: string) => g.find((x) => x.key === key);
 
 export default async function ScorecardPage() {
   await requireUser("MANAGER");
   const s = await forecastScorecard();
   const back = { href: "/sales", label: "Sales & forecast" };
+  const story = forecastStory(s);
 
-  if (!s.all.f1) {
+  if (!s.all.f1 || !story) {
     return (
       <>
         <PageHeader help="sales.scorecard" title="Forecast scorecard" back={back} />
@@ -82,99 +108,142 @@ export default async function ScorecardPage() {
   const a = s.all;
   const rows: DayRow[] = s.days.map((d) => ({ date: d.date, weekday: d.weekday, actual: d.actual, forecast: d.f1!, miss: d.f1! / d.actual - 1, weekAhead: d.f7, lastWeek: d.naive, weather: d.weather, event: d.event }));
   const weatherDays = s.days.filter((d) => d.weather != null).length;
-  const worstWeather = s.byWeather.filter((g) => g.key !== "fair" && (g.score?.days ?? 0) >= THIN && g.lift != null).sort((x, y) => Math.abs(y.lift!) - Math.abs(x.lift!))[0];
+  const level = LEVEL[story.level];
+  const solid = s.byWeekday.filter((g) => (g.score?.days ?? 0) >= THIN).sort((x, y) => x.score!.wape - y.score!.wape);
+  const bestDay = solid[0];
+  const worstDay = solid[solid.length - 1];
+  const ev = find(s.byEvent, "event");
+  const normal = find(s.byEvent, "normal");
 
   return (
     <>
-      <PageHeader
-        help="sales.scorecard"
-        title="Forecast scorecard"
-        back={back}
-        description={`How close the sales forecast has been, on ${qty(a.f1!.days, 0)} open days from ${dated(a.from!)} to ${dated(a.to!)}. Each day is forecast again using only what was known the evening before, then compared with what sold.`}
-      />
+      <PageHeader help="sales.scorecard" title="Forecast scorecard" back={back} description="How far to trust the sales forecast, and what to do differently because of it." />
 
-      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4 [&>[data-help-zone]>*]:h-full">
-        <Stat help="sales.scorecard.miss" label="Typical daily miss" value={pct(a.f1!.wape, 0)} tone={missTone(a.f1!.wape)} hint={`of the day's sales, over all ${qty(a.f1!.days, 0)} days`} />
-        <Stat help="sales.scorecard.miss" label="Lately" value={s.recent.f1 ? pct(s.recent.f1.wape, 0) : "—"} tone={missTone(s.recent.f1?.wape)} hint={s.recent.f1 ? `the last 90 days (${s.recent.f1.days} open days)` : "no open days in the last 90"} />
-        <Stat
-          help="sales.scorecard.skill"
-          label="Against last week"
-          value={a.skill == null ? "—" : Math.abs(a.skill) < 0.02 ? "About the same" : `${pct(Math.abs(a.skill), 0)} ${a.skill > 0 ? "closer" : "worse"}`}
-          tone={a.skill == null ? undefined : a.skill > 0.05 ? "good" : a.skill < -0.05 ? "bad" : undefined}
-          hint="than repeating the same day last week"
-        />
-        <Stat help="sales.scorecard.within" label="Within 15% of actual" value={pct(a.f1!.within15, 0)} hint={Math.abs(a.f1!.bias) < 0.02 ? "of days · no lean high or low" : `of days · the forecast leaned ${lean(a.f1!.bias)}`} />
-      </div>
-
-      <Section help="sales.scorecard.ahead" title="How far ahead" description="Schedules and orders are set days ahead, so the forecast has to hold up before the last week's sales are in.">
-        <ScoreTable first="Forecast made">
-          {HORIZONS.map((h) => <ScoreRow key={h.model} label={h.label} s={a[h.model]} />)}
-          <ScoreRow label="Same day last week" hint="The plain yardstick" s={a.naive} />
-        </ScoreTable>
-      </Section>
-
-      <Section
-        help="sales.scorecard.weather"
-        title="By weather"
-        description={
-          worstWeather
-            ? `Past forecasts are replayed without weather, so this shows what weather does to sales here: on ${WEATHER_KIND_LABEL[worstWeather.key as WeatherKind].toLowerCase()} days, sales ran ${ran(worstWeather.lift).toLowerCase()} the forecast.`
-            : "Past forecasts are replayed without weather, so this shows what weather does to sales here."
-        }
-      >
-        <ScoreTable first="The day was" lift>
-          {WEATHER_KINDS.map((k) => {
-            const g = find(s.byWeather, k);
-            return g ? <ScoreRow key={k} label={WEATHER_KIND_LABEL[k]} hint={WEATHER_KIND_HINT[k]} s={g.score} lift={g.lift} /> : null;
-          })}
-        </ScoreTable>
-        <p className="mt-2 text-xs text-muted">
-          Past weather is NOAA&apos;s record at {s.weather.station}, about 35 miles north (US government data, free to use). It&apos;s on file for {qty(weatherDays, 0)} of the {qty(s.days.length, 0)} scored days, and runs about five days behind. Past days have the whole day&apos;s rain, not the hours it fell. Groups with fewer than {THIN} days are greyed: too few to read anything into.
-        </p>
-        {s.weather.onFile < s.weather.wanted && (
-          <div className="mt-3">
-            <LoadWeather missing={s.weather.wanted - s.weather.onFile} />
+      <Card className="mb-10 p-5 sm:p-6">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          <Badge tone={level.tone}>{level.label}</Badge>
+          <span>{story.basis === "recent" ? "Going by the last 90 days" : "Going by all your history"}</span>
+        </div>
+        <h2 className="mt-3 text-xl font-semibold tracking-tight text-balance text-ink sm:text-2xl">{story.headline}</h2>
+        <p className="mt-2 max-w-2xl text-[0.95rem] leading-relaxed text-ink-2">{story.line}</p>
+        <dl className="mt-5 grid gap-x-8 gap-y-4 border-t border-border pt-4 sm:grid-cols-3">
+          <div>
+            <dt className="text-xs text-muted">A typical day is off by</dt>
+            <dd className="num mt-0.5 text-lg font-semibold tracking-tight text-ink">
+              {money(story.missDollars, { whole: true })} <span className="text-sm font-normal text-muted">· {pct(story.missShare, 0)} of the day</span>
+            </dd>
           </div>
-        )}
-      </Section>
+          <div>
+            <dt className="text-xs text-muted">Days that land within 15%</dt>
+            <dd className="num mt-0.5 text-lg font-semibold tracking-tight text-ink">{story.closeInTen} in 10</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted">Against just repeating last week</dt>
+            <dd className="num mt-0.5 text-lg font-semibold tracking-tight text-ink">{story.skill == null ? "—" : Math.abs(story.skill) < 0.02 ? "About the same" : story.skill > 0 ? `${pct(story.skill, 0)} closer` : "Last week was closer"}</dd>
+          </div>
+        </dl>
+      </Card>
 
-      <Section help="sales.scorecard.groups" title="By weekday">
-        <ScoreTable first="Weekday" lift>
-          {s.byWeekday.map((g) => <ScoreRow key={g.key} label={WEEKDAYS[Number(g.key)]} s={g.score} lift={g.lift} />)}
-        </ScoreTable>
-      </Section>
+      {story.points.length > 0 && (
+        <Section help="sales.scorecard.todo" title="What to do with it" description="The few things worth doing differently, from how the forecast has actually done.">
+          <Card className="divide-y divide-border">
+            {story.points.map((p) => (
+              <div key={p.key} className="flex gap-3 px-4 py-4 sm:px-5">
+                <span aria-hidden className={`mt-[0.45rem] size-2 shrink-0 rounded-full ${DOT[p.tone]}`} />
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-[0.95rem] font-semibold text-ink">{p.title}</h3>
+                  <p className="mt-0.5 text-sm text-ink-2">{p.detail}</p>
+                  {p.action && (
+                    <p className="mt-2 text-sm font-medium text-ink">
+                      {p.action}
+                      {p.link && (
+                        <>
+                          {" "}
+                          <Link href={p.link.href} className="font-normal whitespace-nowrap text-ink-2 underline underline-offset-2 hover:text-ink">
+                            {p.link.label} →
+                          </Link>
+                        </>
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </Card>
+        </Section>
+      )}
 
-      <Section help="sales.scorecard.groups" title="Event days" description="Days with something on the Events calendar, or a manual change to the forecast, against ordinary days.">
-        <ScoreTable first="Days with" lift>
-          <ScoreRow label="Nothing on the calendar" s={find(s.byEvent, "normal")?.score ?? null} lift={find(s.byEvent, "normal")?.lift ?? null} />
-          <ScoreRow label="An event or a manual change" s={find(s.byEvent, "event")?.score ?? null} lift={find(s.byEvent, "event")?.lift ?? null} />
-        </ScoreTable>
-      </Section>
-
-      <Section help="sales.scorecard.groups" title="By month" description="Every year on file together. A month where sales run well over or under the forecast is a season the method is slow to pick up.">
-        <ScoreTable first="Month" lift>
-          {s.byMonth.map((g) => <ScoreRow key={g.key} label={MONTHS[Number(g.key) - 1]} s={g.score} lift={g.lift} />)}
-        </ScoreTable>
+      <Section title="What happens next">
+        <p className="max-w-2xl text-sm leading-relaxed text-ink-2">{story.next}</p>
       </Section>
 
       <Section
-        help="sales.scorecard.logged"
-        title="Forecasts as they were made"
-        description="From now on each night's forecast is kept exactly as it was, weather and all, and scored against what then sells. This is the honest test of any change to the method."
+        help="sales.scorecard.numbers"
+        title="The numbers behind it"
+        description={`${qty(a.f1!.days, 0)} open days from ${dated(a.from!)} to ${dated(a.to!)}, each forecast again using only what was known the evening before. Open any line for the detail.`}
       >
-        {s.logged.dayBefore || s.logged.weekAhead ? (
-          <ScoreTable first={`Kept since ${s.logged.since ? dated(s.logged.since) : "—"}`}>
-            <ScoreRow label="The day before" s={s.logged.dayBefore} />
-            <ScoreRow label="A week ahead" s={s.logged.weekAhead} />
-          </ScoreTable>
-        ) : (
-          <p className="text-sm text-ink-2">{s.logged.since ? `Kept since ${dated(s.logged.since)}. The first scores show once those days have sold.` : "Starts tonight. The first scores show after a day or two."}</p>
-        )}
-      </Section>
+        <Card className="overflow-hidden">
+          <Fold title="How far ahead" gist={a.f14 ? `Off by ${pct(a.f1!.wape, 0)} the day before, ${pct(a.f14.wape, 0)} two weeks ahead` : undefined}>
+            <ScoreTable first="Forecast made">
+              {HORIZONS.map((h) => <ScoreRow key={h.model} label={h.label} s={a[h.model]} />)}
+              <ScoreRow label="Same day last week" hint="The plain yardstick" s={a.naive} />
+            </ScoreTable>
+          </Fold>
 
-      <Section help="sales.scorecard.days" title="Every scored day" description="What was forecast the evening before, and what sold. Sort by Forecast was to see the biggest misses.">
-        <ScoreDaysTable rows={rows} />
-        {s.dailyOnly > 0 && <p className="mt-2 text-xs text-muted">{qty(s.dailyOnly, 0)} older days come from item sales, from before hourly sales were kept.</p>}
+          <Fold title="By weather" gist={`Weather on file for ${qty(weatherDays, 0)} of ${qty(s.days.length, 0)} days`}>
+            <p className="mb-3 text-sm text-ink-2">Past forecasts are replayed without weather, so “Sales ran” shows what that weather does to sales here.</p>
+            <ScoreTable first="The day was" lift>
+              {WEATHER_KINDS.map((k) => {
+                const g = find(s.byWeather, k);
+                return g ? <ScoreRow key={k} label={WEATHER_KIND_LABEL[k]} hint={WEATHER_KIND_HINT[k]} s={g.score} lift={g.lift} /> : null;
+              })}
+            </ScoreTable>
+            <p className="mt-2 text-xs text-muted">
+              Past weather is NOAA&apos;s record at {s.weather.station}, about 35 miles north (US government data, free to use). It runs about five days behind and has the whole day&apos;s rain, not the hours it fell. Groups with fewer than {THIN} days are greyed.
+            </p>
+            {s.weather.onFile < s.weather.wanted && (
+              <div className="mt-3">
+                <LoadWeather missing={s.weather.wanted - s.weather.onFile} />
+              </div>
+            )}
+          </Fold>
+
+          <Fold title="By weekday" gist={bestDay && worstDay && bestDay !== worstDay ? `Closest on ${WEEKDAYS[Number(bestDay.key)]} (${pct(bestDay.score!.wape, 0)} off), weakest on ${WEEKDAYS[Number(worstDay.key)]} (${pct(worstDay.score!.wape, 0)})` : undefined}>
+            <ScoreTable first="Weekday" lift>
+              {s.byWeekday.map((g) => <ScoreRow key={g.key} label={WEEKDAYS[Number(g.key)]} s={g.score} lift={g.lift} />)}
+            </ScoreTable>
+          </Fold>
+
+          <Fold title="Event days" gist={ev?.score && normal?.score ? `Off by ${pct(ev.score.wape, 0)} on ${qty(ev.score.days, 0)} event days, ${pct(normal.score.wape, 0)} on ordinary days` : "Days with an event or a manual change, against ordinary days"}>
+            <ScoreTable first="Days with" lift>
+              <ScoreRow label="Nothing on the calendar" s={normal?.score ?? null} lift={normal?.lift ?? null} />
+              <ScoreRow label="An event or a manual change" s={ev?.score ?? null} lift={ev?.lift ?? null} />
+            </ScoreTable>
+          </Fold>
+
+          <Fold title="By month" gist="Every year on file together">
+            <ScoreTable first="Month" lift>
+              {s.byMonth.map((g) => <ScoreRow key={g.key} label={MONTHS[Number(g.key) - 1]} s={g.score} lift={g.lift} />)}
+            </ScoreTable>
+          </Fold>
+
+          <Fold title="Forecasts as they were made" gist={s.logged.since ? `Each night's forecast, kept since ${dated(s.logged.since)}` : "Each night's forecast is kept from tonight"}>
+            <p className="mb-3 text-sm text-ink-2">Each night&apos;s forecast is kept exactly as it was, weather and all, and scored against what then sells. This is the honest test of any change to the method.</p>
+            {s.logged.dayBefore || s.logged.weekAhead ? (
+              <ScoreTable first="Forecast made">
+                <ScoreRow label="The day before" s={s.logged.dayBefore} />
+                <ScoreRow label="A week ahead" s={s.logged.weekAhead} />
+              </ScoreTable>
+            ) : (
+              <p className="text-sm text-muted">The first scores show once those days have sold.</p>
+            )}
+          </Fold>
+
+          <Fold title="Every scored day" gist={`${qty(rows.length, 0)} days: what was forecast, what sold, the weather`}>
+            <ScoreDaysTable rows={rows} />
+            {s.dailyOnly > 0 && <p className="mt-2 text-xs text-muted">{qty(s.dailyOnly, 0)} older days come from item sales, from before hourly sales were kept.</p>}
+          </Fold>
+        </Card>
       </Section>
     </>
   );

@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 18 Nov · 1.34 (the scorecard says what to do) ----
+  {
+    id: "2026-11-18.scorecard-story",
+    date: "2026-11-18",
+    title: "The scorecard says what to do",
+    line: "The scorecard now opens with how far to trust the forecast and what to do differently.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/sales/scorecard",
+    help: "sales.scorecard",
+    audience: "manager",
+  },
   // ---- 18 Nov · 1.33 (Instagram and Facebook guide) ----
   {
     id: "2026-11-18.meta-guide",

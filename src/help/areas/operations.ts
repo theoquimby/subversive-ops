@@ -990,6 +990,8 @@ Each day shows what moved it: the season (once there's a year of history), the w
     body: "How close the sales forecast has been on every past open day, and where it goes wrong: by weekday, month, weather and event days.",
     article: `Open it from **Sales & forecast → Forecast scorecard**.
 
+The top of the page is the short version: how far to trust the forecast right now (solid, use with a cushion, or a rough guide), what a typical day's miss is in dollars, and a short list of things to do differently. The tables it comes from are folded under **The numbers behind it**.
+
 Each past open day is forecast again the way it would have been made the evening before, using only the sales known by then. That forecast is compared with what actually sold. Nothing from the day itself, or after it, can leak in.
 
 - **Typical daily miss**: all the misses added up, as a share of all the sales. 12% means a $3,000 day is usually forecast within about $360.
@@ -1002,6 +1004,22 @@ The replay leaves weather out, because the weather forecast for past days was ne
 Any change to how Ops forecasts has to beat the current method on this page before it replaces it.`,
     related: ["sales.accuracy", "sales.scorecard.miss", "sales.scorecard.weather"],
     keywords: ["scorecard", "accuracy", "backtest", "forecast", "miss", "error", "weather"],
+  },
+  {
+    id: "sales.scorecard.todo",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "What to do with it",
+    body: "The few things worth doing differently because of how the forecast has done: bad-weather days, weekdays it can't call, event days, a steady lean, and how far ahead to plan. Each comes from the tables underneath.",
+    related: ["sales.scorecard", "sales.scorecard.numbers"],
+  },
+  {
+    id: "sales.scorecard.numbers",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "The numbers behind it",
+    body: "Every table the summary is built from, folded away: how far ahead, weather, weekdays, event days, months, the forecasts kept each night, and every scored day. Open a line to see it.",
+    related: ["sales.scorecard", "sales.scorecard.weather", "sales.scorecard.days"],
   },
   {
     id: "sales.scorecard.miss",
