@@ -1,5 +1,6 @@
 import { env } from "@/server/env";
 import { refreshWeather } from "@/server/services/forecasting";
+import { logForecasts } from "@/server/services/forecastScore";
 
 export const maxDuration = 60;
 
@@ -13,5 +14,10 @@ export async function GET(req: Request) {
     console.error("weather refresh failed", r.error);
     return Response.json(r, { status: 502 });
   }
-  return Response.json(r);
+  // Then keep tonight's forecast so it can be scored later. It may not fail the weather refresh.
+  const logged = await logForecasts().catch((e) => {
+    console.error("forecast log failed", e);
+    return 0;
+  });
+  return Response.json({ ...r, logged });
 }

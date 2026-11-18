@@ -766,6 +766,33 @@ model WeatherDay {
   code      Int
   forecast  Boolean  @default(true)
   fetchedAt DateTime @default(now())
+  /// Extra detail, filled by the history load and the nightly refresh (null on older rows)
+  apparentMaxC Decimal? @db.Decimal(5, 1)
+  snowCm       Decimal? @db.Decimal(5, 1)
+  windMaxKph   Decimal? @db.Decimal(5, 1)
+  /// Rain and melted snow between 11am and 9pm local time, when guests decide to come out
+  precipDayMm  Decimal? @db.Decimal(6, 1)
+}
+
+/// Each night's sales forecast for the days ahead, kept as it was made so its accuracy can be scored honestly later.
+model ForecastLog {
+  id            String   @id @default(cuid())
+  /// The business day the forecast was made on
+  madeOn        DateTime @db.Date
+  /// The day it is for
+  date          DateTime @db.Date
+  /// Days ahead: 0 = for the same day
+  horizon       Int
+  sales         Decimal  @db.Decimal(12, 2)
+  baseline      Decimal  @db.Decimal(12, 2)
+  weatherFactor Decimal  @db.Decimal(6, 3)
+  eventFactor   Decimal  @db.Decimal(6, 3)
+  manual        Decimal  @db.Decimal(6, 3)
+  /// Which forecasting method made it, so methods can be compared
+  model         String   @default("v1")
+
+  @@unique([madeOn, date, model])
+  @@index([date])
 }
 
 // ---------------------------------------------------------------------------

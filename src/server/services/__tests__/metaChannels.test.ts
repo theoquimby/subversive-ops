@@ -117,7 +117,7 @@ describe("connecting", () => {
     expect(saved).not.toContain(USER);
     expect(saved).not.toContain(PAGE);
     const s = await svc.metaStatus();
-    expect(s).toMatchObject({ appReady: true, connected: true, needsReconnect: null, pageId: "10", pageName: "Subversive", igUsername: "drinksubversive", connectedBy: "Max", missing: [], userExpiresOn: "2027-01-15" });
+    expect(s).toMatchObject({ appReady: true, connected: true, needsReconnect: null, pageId: "10", pageName: "Subversive", igUsername: "drinksubversive", connectedBy: "Max", missing: [], userExpiresOn: new Date(Date.now() + 5_183_944_000).toISOString().slice(0, 10) });
     expect(svc.metaFacts(s)).toMatchObject({ connected: true, pagePicked: true, instagramLinked: true, synced: { instagram: false, facebook: false } });
   });
   it("says so when no Instagram account is linked to the Page, or a box was unticked", async () => {

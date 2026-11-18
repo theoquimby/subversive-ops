@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.31",
+    date: "2026-11-18",
+    title: "A scorecard for the forecast",
+    summary: "Sales & forecast has a scorecard: every past open day forecast again as it would have been made, compared with what sold, and broken down by weekday, month, weather and event days.",
+    entries: ["2026-11-18.forecast-scorecard"],
+    fixed: [
+      "Scorecard: the typical daily miss over all your history and over the last 90 days, how the forecast does against simply repeating last week's same day, and how it holds up a week and two weeks ahead.",
+      "By weather shows how far sales ran over or under the forecast on rainy, snowy, hot and freezing days. Rain is counted from 11am to 9pm, when it changes who comes out.",
+      "Each night's forecast is now kept as it was made, weather included, and scored once those days have sold.",
+      "The nightly weather now also keeps snowfall, wind, the feels-like high and rain during the day.",
+    ],
+  },
+  {
     version: "1.30",
     date: "2026-11-16",
     title: "Beers linked up, nothing kept twice",

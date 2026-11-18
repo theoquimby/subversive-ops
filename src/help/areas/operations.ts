@@ -983,6 +983,94 @@ Each day shows what moved it: the season (once there's a year of history), the w
     body: "How close past forecasts were to what actually sold. The closer it is, the more you can trust orders and schedules built on it.",
   },
   {
+    id: "sales.scorecard",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "Forecast scorecard",
+    body: "How close the sales forecast has been on every past open day, and where it goes wrong: by weekday, month, weather and event days.",
+    article: `Open it from **Sales & forecast → Forecast scorecard**.
+
+Each past open day is forecast again the way it would have been made the evening before, using only the sales known by then. That forecast is compared with what actually sold. Nothing from the day itself, or after it, can leak in.
+
+- **Typical daily miss**: all the misses added up, as a share of all the sales. 12% means a $3,000 day is usually forecast within about $360.
+- **Against “same day last week”**: the plainest forecast there is. If the forecast can't beat it, the method isn't earning its keep.
+- **How far ahead**: the same test for a forecast made a week and two weeks ahead, which is when schedules and orders are set.
+- **By weather, weekday, month and event days**: where sales run over or under the forecast. These are the gaps a better method has to close.
+
+The replay leaves weather out, because the weather forecast for past days was never kept. So **By weather** shows what weather does to sales here. From now on each night's forecast is kept as it was made, weather and all, under **Forecasts as they were made**.
+
+Any change to how Ops forecasts has to beat the current method on this page before it replaces it.`,
+    related: ["sales.accuracy", "sales.scorecard.miss", "sales.scorecard.weather"],
+    keywords: ["scorecard", "accuracy", "backtest", "forecast", "miss", "error", "weather"],
+  },
+  {
+    id: "sales.scorecard.miss",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "Typical daily miss",
+    body: "All the daily misses added up, as a share of all the sales in the period. Lower is better: under 15% is good for a taproom's daily sales.",
+    related: ["sales.scorecard"],
+  },
+  {
+    id: "sales.scorecard.skill",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "Against “same day last week”",
+    body: "How much closer the forecast is than simply repeating last week's same weekday, on the days both have a number. Worse than that yardstick means the method needs work.",
+    related: ["sales.scorecard"],
+  },
+  {
+    id: "sales.scorecard.within",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "Within 15% of actual",
+    body: "The share of days the forecast landed within 15% of what sold, and whether it leans high or low overall.",
+    related: ["sales.scorecard"],
+  },
+  {
+    id: "sales.scorecard.ahead",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "How far ahead",
+    body: "The same replay for a forecast made the day before, a week ahead and two weeks ahead, beside the plain yardstick. Schedules and orders rely on the further ones.",
+    related: ["sales.scorecard"],
+  },
+  {
+    id: "sales.scorecard.weather",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "By weather",
+    body: "Each scored day grouped by its weather. Sales ran shows how far actual sales were over or under a forecast made without weather, which is the effect of that weather here.",
+    article: `A day is named by the worst of its weather: snow (an inch or more), heavy rain (over 0.6 in between 11am and 9pm), rain (0.2 to 0.6 in in those hours), hot (86°F or more), freezing (a high of 32°F or below), otherwise fair. Rain overnight that clears by 11am counts as a fair day.
+
+Groups with only a handful of days are greyed, because a few days can't tell you much.`,
+    related: ["sales.scorecard", "sales.weather"],
+  },
+  {
+    id: "sales.scorecard.groups",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "By weekday, month and event days",
+    body: "Where the forecast is weakest. Sales ran over means the forecast was too low for those days; under means too high.",
+    related: ["sales.scorecard"],
+  },
+  {
+    id: "sales.scorecard.logged",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "Forecasts as they were made",
+    body: "Each night Ops keeps its forecast for the next two weeks exactly as it stood, then scores it once those days have sold. Unlike the replay, this includes the weather forecast.",
+    related: ["sales.scorecard"],
+  },
+  {
+    id: "sales.scorecard.days",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "Every scored day",
+    body: "One row per open day: the forecast made the evening before, what sold, the weather and whether an event was on. Filter by weekday, weather or year, and sort to find the biggest misses.",
+    related: ["sales.scorecard"],
+  },
+  {
     id: "sales.next7",
     area: "sales",
     route: "/sales",

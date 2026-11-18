@@ -130,6 +130,7 @@ export default async function SalesPage() {
         />
         <Stat help="sales.bias" label="Bias" value={accuracy.bias == null ? "—" : signedPct(accuracy.bias, 0)} hint={accuracy.bias == null ? "" : accuracy.bias > 0.02 ? "we forecast a little high" : accuracy.bias < -0.02 ? "we forecast a little low" : "no lean either way"} />
       </div>
+      <p className="-mt-5 mb-8 text-sm"><Link href="/sales/scorecard" className="font-medium text-ink-2 underline-offset-2 hover:text-ink hover:underline">Forecast scorecard →</Link> <span className="text-muted">every past day scored, and where the forecast goes wrong</span></p>
 
       <div className="mb-8 empty:hidden"><ForecastRanges /></div>
 

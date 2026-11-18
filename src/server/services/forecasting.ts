@@ -2,6 +2,7 @@ import "server-only";
 import { addDays, dateRange, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
 import { DayForecast, defaultHourlyShape, forecastSeries, hasYearOfHistory, hourlyShares, isWet, learnRainFactor, seasonalIndex, WeatherObs, YEAR_LAG } from "@/domain/forecast";
 import { backtest, bias, mape } from "@/domain/forecastAccuracy";
+import { parseOpenMeteo, WEATHER_DAILY, WEATHER_HOURLY, type WeatherRow } from "@/domain/weatherHistory";
 import { Prisma } from "@prisma/client";
 import { cache } from "react";
 import { db } from "../db";
@@ -53,20 +54,13 @@ export async function refreshWeather(force = false): Promise<{ skipped: true } |
   const attempt = new Date().toISOString();
   try {
     const { lat, lon } = await location();
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code&timezone=${encodeURIComponent(env.BUSINESS_TIMEZONE)}&forecast_days=16&past_days=92`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=${WEATHER_DAILY}&hourly=${WEATHER_HOURLY}&timezone=${encodeURIComponent(env.BUSINESS_TIMEZONE)}&forecast_days=16&past_days=92`;
     const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`Weather service returned ${res.status}`);
-    const j = (await res.json()) as { daily: { time: string[]; temperature_2m_max: (number | null)[]; temperature_2m_min: (number | null)[]; precipitation_sum: (number | null)[]; weather_code: (number | null)[] } };
-    const today = businessToday();
-    const d = j.daily;
-    await db.$transaction(
-      d.time.map((date, i) => {
-        const data = { tempMaxC: new Prisma.Decimal(d.temperature_2m_max[i] ?? 0), tempMinC: new Prisma.Decimal(d.temperature_2m_min[i] ?? 0), precipMm: new Prisma.Decimal(d.precipitation_sum[i] ?? 0), code: d.weather_code[i] ?? 0, forecast: date >= today, fetchedAt: new Date() };
-        return db.weatherDay.upsert({ where: { date: parseISODate(date) }, create: { date: parseISODate(date), ...data }, update: data });
-      }),
-    );
+    const rows = parseOpenMeteo(await res.json());
+    await saveWeatherRows(rows, businessToday());
     await saveWeatherStatus({ lastAttempt: attempt, lastOk: attempt, error: null });
-    return { days: d.time.length };
+    return { days: rows.length };
   } catch (e) {
     const err = e as Error;
     const message = err.name === "TimeoutError" ? "Weather service timed out" : err.message || "Weather service unreachable";
@@ -75,10 +69,31 @@ export async function refreshWeather(force = false): Promise<{ skipped: true } |
   }
 }
 
+/**
+ * Write weather rows over whatever is on file for those days. Days from
+ * `today` on are marked as forecast; earlier ones as what happened.
+ */
+export async function saveWeatherRows(rows: readonly WeatherRow[], today: ISODate): Promise<void> {
+  const dec = (n: number | null) => (n == null ? null : new Prisma.Decimal(n));
+  for (let i = 0; i < rows.length; i += 200) {
+    const values = rows.slice(i, i + 200).map(
+      (r) => Prisma.sql`(${parseISODate(r.date)}::date, ${dec(r.tempMaxC)}, ${dec(r.tempMinC)}, ${dec(r.precipMm)}, ${Math.round(r.code)}, ${r.date >= today}, now(), ${dec(r.apparentMaxC)}, ${dec(r.snowCm)}, ${dec(r.windMaxKph)}, ${dec(r.precipDayMm)})`,
+    );
+    await db.$executeRaw`
+      INSERT INTO "WeatherDay" ("date", "tempMaxC", "tempMinC", "precipMm", "code", "forecast", "fetchedAt", "apparentMaxC", "snowCm", "windMaxKph", "precipDayMm")
+      VALUES ${Prisma.join(values)}
+      ON CONFLICT ("date") DO UPDATE SET
+        "tempMaxC" = EXCLUDED."tempMaxC", "tempMinC" = EXCLUDED."tempMinC", "precipMm" = EXCLUDED."precipMm", "code" = EXCLUDED."code",
+        "forecast" = EXCLUDED."forecast", "fetchedAt" = EXCLUDED."fetchedAt",
+        "apparentMaxC" = COALESCE(EXCLUDED."apparentMaxC", "WeatherDay"."apparentMaxC"), "snowCm" = COALESCE(EXCLUDED."snowCm", "WeatherDay"."snowCm"),
+        "windMaxKph" = COALESCE(EXCLUDED."windMaxKph", "WeatherDay"."windMaxKph"), "precipDayMm" = COALESCE(EXCLUDED."precipDayMm", "WeatherDay"."precipDayMm")`;
+  }
+}
+
 /** Read once per render per range (forecasts for several date sets share it). */
 export const weatherMap = cache(async (from: ISODate, to: ISODate) => {
   const rows = await db.weatherDay.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(to) } } });
-  return new Map(rows.map((w) => [toISODate(w.date), { date: toISODate(w.date), precipMm: w.precipMm.toNumber(), tempMaxC: w.tempMaxC.toNumber(), tempMinC: w.tempMinC.toNumber(), code: w.code }]));
+  return new Map(rows.map((w) => [toISODate(w.date), { date: toISODate(w.date), precipMm: w.precipMm.toNumber(), tempMaxC: w.tempMaxC.toNumber(), tempMinC: w.tempMinC.toNumber(), code: w.code, snowCm: w.snowCm?.toNumber() ?? null, precipDayMm: w.precipDayMm?.toNumber() ?? null }]));
 });
 
 /** WMO weather code → short label + emoji-free icon key. */
@@ -110,7 +125,7 @@ export const dailySalesHistory = cache(async (from: ISODate, to: ISODate) => {
 });
 
 /** Events in [from, to), read once per render per range. */
-const eventsBetween = cache((from: ISODate, to: ISODate) =>
+export const eventsBetween = cache((from: ISODate, to: ISODate) =>
   db.event.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(to) } }, select: { date: true, impact: true, kind: true } }),
 );
 
