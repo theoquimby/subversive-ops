@@ -111,8 +111,8 @@ export async function deleteSeason(id: string): Promise<R> {
 export async function searchTown(q: string) {
   await requireUser("MANAGER");
   const query = q.trim();
-  if (query.length < 2) return { error: "Type at least two letters of the town." };
-  return findTown(query.slice(0, 80));
+  if (query.length < 6) return { error: "Type the street address with the town and state." };
+  return findTown(query.slice(0, 160));
 }
 
 const locSchema = z.object({ lat: z.number().min(-90, "Latitude is between -90 and 90").max(90, "Latitude is between -90 and 90"), lon: z.number().min(-180, "Longitude is between -180 and 180").max(180, "Longitude is between -180 and 180"), label: z.string().trim().min(1, "Give the place a name, like Catskill, NY").max(80) });

@@ -957,7 +957,7 @@ Each day shows what moved it: the season (once there's a year of history), the w
     area: "sales",
     route: "/sales",
     title: "Weather",
-    body: "The weather forecast for Catskill feeds the sales forecast. How much rain changes your sales is learned from your own history.",
+    body: "The National Weather Service forecast for the next week feeds the sales forecast. How much rain changes your sales is learned from your own history. Past weather comes from NOAA's record at Albany International Airport. Both are free US government data.",
     related: ["sales.forecast5w"],
   },
   {
@@ -1041,7 +1041,9 @@ Any change to how Ops forecasts has to beat the current method on this page befo
     route: "/sales/scorecard",
     title: "By weather",
     body: "Each scored day grouped by its weather. Sales ran shows how far actual sales were over or under a forecast made without weather, which is the effect of that weather here.",
-    article: `A day is named by the worst of its weather: snow (an inch or more), heavy rain (over 0.6 in between 11am and 9pm), rain (0.2 to 0.6 in in those hours), hot (86°F or more), freezing (a high of 32°F or below), otherwise fair. Rain overnight that clears by 11am counts as a fair day.
+    article: `A day is named by the worst of its weather: snow (an inch or more), heavy rain (over 0.6 in), rain (0.2 to 0.6 in), hot (86°F or more), freezing (a high of 32°F or below), otherwise fair.
+
+Past weather is NOAA's daily record at Albany International Airport, about 35 miles north, which runs about five days behind. It has each day's total rain, not the hours it fell, and a shower in Albany can miss Catskill, so read these as the broad effect of a wet or snowy day. The forecast for the coming week is the National Weather Service's for Catskill itself, and there rain counts from 11am to 9pm.
 
 Groups with only a handful of days are greyed, because a few days can't tell you much.`,
     related: ["sales.scorecard", "sales.weather"],

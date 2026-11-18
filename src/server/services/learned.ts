@@ -85,9 +85,10 @@ async function addressLocation(): Promise<{ lat: number; lon: number; label: str
   const { address } = await getBusinessContact();
   const town = address ? townFromAddress(address) : null;
   if (!town) return null;
-  const r = await findTown(town.split(",")[0]);
+  // The lookup needs the street address; the match is labelled with its town.
+  const r = await findTown(address!);
   if ("error" in r || !r.results.length) return null;
-  return r.results.find((x) => x.label === town) ?? null;
+  return r.results.find((x) => x.label.toLowerCase() === town.toLowerCase()) ?? r.results[0];
 }
 
 /** Work everything out from scratch (Square is called once). */

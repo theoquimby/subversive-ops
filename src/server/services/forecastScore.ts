@@ -1,11 +1,10 @@
 import "server-only";
 import { addDays, dateRange, daysBetween, parseISODate, toISODate, type ISODate } from "@/domain/dates";
 import { groupScore, scoreDays, scoreLogged, summarize, type GroupScore, type Score, type ScoreDay, type ScoreSummary } from "@/domain/forecastScore";
-import { ARCHIVE_LAG_DAYS, backfillSpans, parseOpenMeteo, WEATHER_DAILY, WEATHER_HOURLY } from "@/domain/weatherHistory";
+import { ARCHIVE_LAG_DAYS, backfillSpans, NOAA_DAILY_TYPES, NOAA_STATION, parseNceiDaily } from "@/domain/weatherHistory";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
-import { env } from "../env";
-import { dailySalesForecast, eventsBetween, location, pastEventDays, saveWeatherRows, weatherMap } from "./forecasting";
+import { dailySalesForecast, eventsBetween, pastEventDays, saveWeatherRows, weatherMap } from "./forecasting";
 import { getAdjustments } from "./planning";
 import { businessToday } from "./sales";
 
@@ -20,58 +19,78 @@ export async function firstSaleDate(): Promise<ISODate | null> {
 
 export interface WeatherCoverage {
   firstSale: ISODate | null;
-  /** Days from the first sale to five days ago (what the archive can give). */
+  /** Days from the first sale to five days ago (what NOAA's record can give). */
   wanted: number;
-  /** Of those, days on file with full detail. */
+  /** Of those, days loaded from NOAA's record. */
   onFile: number;
-  /** The earliest day of weather on file at all. */
-  from: ISODate | null;
+  /** The station the record comes from. */
+  station: string;
 }
 
-async function detailedDays(first: ISODate, today: ISODate): Promise<Set<ISODate>> {
-  const rows = await db.weatherDay.findMany({
-    where: { date: { gte: parseISODate(first), lt: parseISODate(today) }, forecast: false, OR: [{ precipDayMm: { not: null } }, { snowCm: { not: null } }] },
-    select: { date: true },
-  });
-  return new Set(rows.map((r) => toISODate(r.date)));
+const NOAA_KEY = "weather.noaa";
+interface NoaaState {
+  station: string;
+  from: ISODate;
+  through: ISODate;
 }
+
+/** The stretch of days already loaded from NOAA's record for the current station, if any. */
+async function noaaState(): Promise<NoaaState | null> {
+  const s = await db.setting.findUnique({ where: { key: NOAA_KEY } });
+  if (!s) return null;
+  try {
+    const v = JSON.parse(s.value) as NoaaState;
+    return v.station === NOAA_STATION.id && typeof v.from === "string" && typeof v.through === "string" && v.from <= v.through ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+const loadedDays = (st: NoaaState | null) => new Set(st ? dateRange(st.from, addDays(st.through, 1)) : []);
 
 export async function weatherCoverage(): Promise<WeatherCoverage> {
   const today = businessToday();
-  const [first, earliest] = await Promise.all([firstSaleDate(), db.weatherDay.aggregate({ _min: { date: true } })]);
-  const from = earliest._min.date ? toISODate(earliest._min.date) : null;
-  if (!first) return { firstSale: null, wanted: 0, onFile: 0, from };
+  const [first, st] = await Promise.all([firstSaleDate(), noaaState()]);
+  if (!first) return { firstSale: null, wanted: 0, onFile: 0, station: NOAA_STATION.name };
   const last = addDays(today, -ARCHIVE_LAG_DAYS);
-  const have = await detailedDays(first, today);
+  const have = loadedDays(st);
   const wantedDays = last >= first ? dateRange(first, addDays(last, 1)) : [];
-  return { firstSale: first, wanted: wantedDays.length, onFile: wantedDays.filter((d) => have.has(d)).length, from };
+  return { firstSale: first, wanted: wantedDays.length, onFile: wantedDays.filter((d) => have.has(d)).length, station: NOAA_STATION.name };
 }
 
 /**
- * Fill in the weather for every day back to the first sale, from the free
- * archive (Open-Meteo, no key). Asks only for what's missing, a year at a
- * time, so it's quick to run nightly once caught up. Never throws.
+ * Fill in what the weather actually was on every day back to the first sale,
+ * from NOAA's daily summaries (US government data, free for any use, no key).
+ * Asks only for what isn't loaded yet, a year at a time, so it's quick to run
+ * nightly once caught up. Never throws.
  */
-export async function backfillWeather(maxSpans = 4): Promise<{ days: number; spans: number } | { error: string }> {
+export async function backfillWeather(maxSpans = 10): Promise<{ days: number; spans: number } | { error: string }> {
   try {
     const today = businessToday();
     const first = await firstSaleDate();
     if (!first) return { days: 0, spans: 0 };
-    const spans = backfillSpans({ firstSale: first, today, have: await detailedDays(first, today), maxSpans });
-    const { lat, lon } = await location();
+    let st = await noaaState();
+    const spans = backfillSpans({ firstSale: first, today, have: loadedDays(st), maxSpans });
     let days = 0;
     for (const s of spans) {
-      const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${s.from}&end_date=${s.to}&daily=${WEATHER_DAILY}&hourly=${WEATHER_HOURLY}&timezone=${encodeURIComponent(env.BUSINESS_TIMEZONE)}`;
-      const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
-      if (!res.ok) throw new Error(`The weather archive returned ${res.status}`);
-      const rows = parseOpenMeteo(await res.json());
+      const url = `https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&stations=${NOAA_STATION.id}&startDate=${s.from}&endDate=${s.to}&dataTypes=${NOAA_DAILY_TYPES}&units=metric&format=json`;
+      const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(25_000) });
+      if (!res.ok) throw new Error(`NOAA's weather record returned ${res.status}`);
+      const rows = parseNceiDaily(await res.json());
       await saveWeatherRows(rows, today);
       days += rows.length;
+      // Remember how far the record reaches. A span with nothing in it yet (the latest few days) is asked for again tomorrow.
+      const lastDay = rows.reduce<ISODate | null>((m, r) => (m == null || r.date > m ? r.date : m), null);
+      if (lastDay) {
+        st = { station: NOAA_STATION.id, from: st && st.from < s.from ? st.from : s.from, through: st && st.through > lastDay ? st.through : lastDay };
+        const value = JSON.stringify(st);
+        await db.setting.upsert({ where: { key: NOAA_KEY }, create: { key: NOAA_KEY, value }, update: { value } });
+      }
     }
     return { days, spans: spans.length };
   } catch (e) {
     const err = e as Error;
-    return { error: err.name === "TimeoutError" ? "The weather archive timed out" : err.message || "The weather archive couldn't be reached" };
+    return { error: err.name === "TimeoutError" ? "NOAA's weather record timed out" : err.message || "NOAA's weather record couldn't be reached" };
   }
 }
 

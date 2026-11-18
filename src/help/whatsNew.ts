@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 18 Nov · 1.32 (weather from NWS and NOAA) ----
+  {
+    id: "2026-11-18.weather-noaa",
+    date: "2026-11-18",
+    title: "Weather from the Weather Service",
+    line: "The sales forecast now uses National Weather Service and NOAA data, with weather for every past day.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/sales/scorecard",
+    help: "sales.scorecard.weather",
+    audience: "manager",
+  },
   // ---- 18 Nov · 1.31 (forecast scorecard) ----
   {
     id: "2026-11-18.forecast-scorecard",

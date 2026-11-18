@@ -42,27 +42,35 @@ export async function saveLocation(loc: WeatherLocation) {
   await db.setting.deleteMany({ where: { key: "weather.status" } });
 }
 
-/** Town search for the weather location (Open-Meteo, free, no key). Never throws. */
+/**
+ * Address lookup for the weather location, from the US Census Bureau's
+ * geocoder (government service, free, no key). It needs a street address, not
+ * just a town. Never throws.
+ */
 export async function findTown(q: string): Promise<{ results: WeatherLocation[] } | { error: string }> {
+  const fail = { error: "The address lookup isn't answering right now. Type the latitude and longitude instead." };
   try {
-    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=en&format=json`;
-    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(6000) });
-    if (!res.ok) return { error: "The town search isn't answering right now. Type the latitude and longitude instead." };
-    const j = (await res.json()) as { results?: { name: string; latitude: number; longitude: number; admin1?: string; country_code?: string }[] };
-    return {
-      results: (j.results ?? []).map((r) => ({
-        lat: Math.round(r.latitude * 10000) / 10000,
-        lon: Math.round(r.longitude * 10000) / 10000,
-        label: [r.name, r.country_code === "US" ? stateCode(r.admin1) : r.admin1 ?? r.country_code].filter(Boolean).join(", "),
-      })),
-    };
+    const url = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${encodeURIComponent(q)}&benchmark=Public_AR_Current&format=json`;
+    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return fail;
+    const j = (await res.json()) as { result?: { addressMatches?: { coordinates?: { x?: number; y?: number }; addressComponents?: { city?: string; state?: string } }[] } };
+    const seen = new Set<string>();
+    const results: WeatherLocation[] = [];
+    for (const m of j.result?.addressMatches ?? []) {
+      const lat = m.coordinates?.y;
+      const lon = m.coordinates?.x;
+      if (typeof lat !== "number" || typeof lon !== "number") continue;
+      const city = (m.addressComponents?.city ?? "").toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+      const label = [city, m.addressComponents?.state].filter(Boolean).join(", ") || q;
+      if (seen.has(label)) continue;
+      seen.add(label);
+      results.push({ lat: Math.round(lat * 10000) / 10000, lon: Math.round(lon * 10000) / 10000, label });
+    }
+    return { results: results.slice(0, 5) };
   } catch {
-    return { error: "The town search isn't answering right now. Type the latitude and longitude instead." };
+    return fail;
   }
 }
-
-const STATES: Record<string, string> = { "New York": "NY", Vermont: "VT", Massachusetts: "MA", Connecticut: "CT", "New Jersey": "NJ", Pennsylvania: "PA" };
-const stateCode = (s?: string) => (s ? STATES[s] ?? s : undefined);
 
 // ---- Default labor target -----------------------------------------------------------------
 

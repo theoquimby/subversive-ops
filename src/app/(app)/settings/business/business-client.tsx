@@ -201,7 +201,7 @@ export function WeatherLocationEditor({ initial }: { initial: { lat: number; lon
   const find = () => startSearch(async () => {
     const r = await searchTown(q);
     if ("error" in r) { setSearchError(r.error ?? null); setResults(null); }
-    else { setSearchError(r.results.length ? null : `No town called "${q.trim()}" found.`); setResults(r.results); }
+    else { setSearchError(r.results.length ? null : `No match for "${q.trim()}". Type the full street address with the town and state.`); setResults(r.results); }
   });
 
   return (
@@ -211,7 +211,7 @@ export function WeatherLocationEditor({ initial }: { initial: { lat: number; lon
         <SaveStatus status={status} error={error} />
       </div>
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); find(); }}>
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a town, like Hudson" aria-label="Search for a town" className="min-w-0 flex-1 sm:max-w-xs" enterKeyHint="search" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Street address, town and state" aria-label="Look up an address" className="min-w-0 flex-1 sm:max-w-xs" enterKeyHint="search" />
         <Button type="submit" disabled={searching || q.trim().length < 2}>{searching ? "Finding…" : "Find"}</Button>
       </form>
       {searchError && <p className="text-xs text-bad">{searchError}</p>}

@@ -24,6 +24,20 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.32",
+    date: "2026-11-18",
+    title: "Weather from the National Weather Service",
+    summary: "The weather behind the sales forecast now comes from US government sources that are free for a business to use: the National Weather Service for the week ahead, and NOAA's record for every past day with sales.",
+    entries: ["2026-11-18.weather-noaa"],
+    fixed: [
+      "The forecast for the week ahead is the National Weather Service's for Catskill: highs and lows, rain by the hour, snow, wind and the feels-like high. It reaches seven days ahead where the old service reached sixteen.",
+      "What the weather actually was comes from NOAA's daily record at Albany International Airport, for every day back to your first sale. It loads by itself each night; the scorecard has a button to load it now.",
+      "The scorecard's By weather table now covers all your history, not just the last few months.",
+      "Settings → Business looks up the weather location from a street address (US Census Bureau).",
+      "The previous weather service's free plan was for non-commercial use only, so Ops no longer calls it.",
+    ],
+  },
+  {
     version: "1.31",
     date: "2026-11-18",
     title: "A scorecard for the forecast",

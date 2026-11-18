@@ -91,7 +91,7 @@ export default async function SalesPage() {
     ? `Weather unavailable${wStatus.error ? ` (${wStatus.error.toLowerCase()})` : ""} — forecasts assume a normal day.`
     : wStatus.error
       ? `Weather couldn't update just now; showing the last forecast we have for ${loc.label}.`
-      : `Weather for ${loc.label} from Open-Meteo${wStatus.lastOk ? `, updated ${relativeTime(new Date(wStatus.lastOk))}` : ""}. Rain is factored in by how much it has slowed sales here before.`;
+      : `Weather for ${loc.label} from the National Weather Service${wStatus.lastOk ? `, updated ${relativeTime(new Date(wStatus.lastOk))}` : ""}. Rain is factored in by how much it has slowed sales here before.`;
 
   const next7 = hourly.filter((h) => h.date < addDays(today, 7)).reduce((s, h) => s + h.qty, 0);
   const next28 = hourly.filter((h) => h.date < addDays(today, 28)).reduce((s, h) => s + h.qty, 0);

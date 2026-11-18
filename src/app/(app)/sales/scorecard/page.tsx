@@ -6,8 +6,11 @@ import { pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { forecastScorecard } from "@/server/services/forecastScore";
 import { ScoreDaysTable, type DayRow } from "./days-table";
+import { LoadWeather } from "./load-weather";
 
 export const metadata = { title: "Forecast scorecard" };
+/** Loading years of past weather takes several requests to NOAA. */
+export const maxDuration = 60;
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const dated = (d: string) => `${shortDate(d)}, ${d.slice(0, 4)}`;
@@ -126,8 +129,13 @@ export default async function ScorecardPage() {
           })}
         </ScoreTable>
         <p className="mt-2 text-xs text-muted">
-          Weather is on file for {qty(weatherDays, 0)} of the {qty(s.days.length, 0)} scored days{s.weather.from ? `, from ${dated(s.weather.from)}` : ""}. Groups with fewer than {THIN} days are greyed: too few to read anything into.
+          Past weather is NOAA&apos;s record at {s.weather.station}, about 35 miles north (US government data, free to use). It&apos;s on file for {qty(weatherDays, 0)} of the {qty(s.days.length, 0)} scored days, and runs about five days behind. Past days have the whole day&apos;s rain, not the hours it fell. Groups with fewer than {THIN} days are greyed: too few to read anything into.
         </p>
+        {s.weather.onFile < s.weather.wanted && (
+          <div className="mt-3">
+            <LoadWeather missing={s.weather.wanted - s.weather.onFile} />
+          </div>
+        )}
       </Section>
 
       <Section help="sales.scorecard.groups" title="By weekday">

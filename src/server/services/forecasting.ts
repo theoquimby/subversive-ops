@@ -2,7 +2,7 @@ import "server-only";
 import { addDays, dateRange, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
 import { DayForecast, defaultHourlyShape, forecastSeries, hasYearOfHistory, hourlyShares, isWet, learnRainFactor, seasonalIndex, WeatherObs, YEAR_LAG } from "@/domain/forecast";
 import { backtest, bias, mape } from "@/domain/forecastAccuracy";
-import { parseOpenMeteo, WEATHER_DAILY, WEATHER_HOURLY, type WeatherRow } from "@/domain/weatherHistory";
+import { parseNwsGrid, type WeatherRow } from "@/domain/weatherHistory";
 import { Prisma } from "@prisma/client";
 import { cache } from "react";
 import { db } from "../db";
@@ -16,7 +16,7 @@ const HISTORY_DAYS = 120;
 /** Enough for "same week last year" plus the four weeks before it. */
 const SEASONAL_HISTORY_DAYS = YEAR_LAG + 63;
 
-// ---- Weather (Open-Meteo: free, no key) -----------------------------------------
+// ---- Weather (US National Weather Service: public domain, no key) -----------------
 
 export async function location() {
   const s = await db.setting.findUnique({ where: { key: "location" } });
@@ -41,10 +41,37 @@ async function saveWeatherStatus(st: WeatherStatus) {
   await db.setting.upsert({ where: { key: WEATHER_STATUS }, create: { key: WEATHER_STATUS, value }, update: { value } });
 }
 
+/** The Weather Service asks every caller to say who it is. */
+export const NWS_HEADERS = { "User-Agent": "ops-weather/1.0 (taproom sales forecast)", Accept: "application/geo+json" } as const;
+const NWS_GRID_KEY = "weather.nwsGrid";
+
+/** The Weather Service's forecast grid for a spot, looked up once per location and remembered. */
+async function nwsGridUrl(lat: number, lon: number): Promise<string> {
+  const saved = await db.setting.findUnique({ where: { key: NWS_GRID_KEY } });
+  if (saved) {
+    try {
+      const g = JSON.parse(saved.value) as { lat: number; lon: number; url: string };
+      if (g.lat === lat && g.lon === lon && typeof g.url === "string" && g.url.startsWith("https://api.weather.gov/")) return g.url;
+    } catch {
+      // fall through and look it up again
+    }
+  }
+  const res = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, { headers: NWS_HEADERS, cache: "no-store", signal: AbortSignal.timeout(10_000) });
+  if (res.status === 404) throw new Error("The Weather Service has no forecast for that spot. It covers the United States only.");
+  if (!res.ok) throw new Error(`The Weather Service returned ${res.status}`);
+  const url = ((await res.json()) as { properties?: { forecastGridData?: unknown } }).properties?.forecastGridData;
+  if (typeof url !== "string" || !url.startsWith("https://api.weather.gov/")) throw new Error("The Weather Service sent no forecast address");
+  const value = JSON.stringify({ lat, lon, url });
+  await db.setting.upsert({ where: { key: NWS_GRID_KEY }, create: { key: NWS_GRID_KEY, value }, update: { value } });
+  return url;
+}
+
 /**
- * Pull 92 days of observed weather and a 16-day forecast. Self-throttles: at
- * most every 6 hours after a success, every 30 minutes after a failure. Never
- * throws — a network failure is recorded and returned as `{ error }`.
+ * Pull the Weather Service's forecast for the next week (api.weather.gov, US
+ * government data, free for any use). Self-throttles: at most every 6 hours
+ * after a success, every 30 minutes after a failure. Never throws — a network
+ * failure is recorded and returned as `{ error }`. What actually happened on
+ * past days comes from NOAA's daily record (see backfillWeather).
  */
 export async function refreshWeather(force = false): Promise<{ skipped: true } | { days: number } | { error: string }> {
   const status = await weatherStatus();
@@ -54,16 +81,18 @@ export async function refreshWeather(force = false): Promise<{ skipped: true } |
   const attempt = new Date().toISOString();
   try {
     const { lat, lon } = await location();
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=${WEATHER_DAILY}&hourly=${WEATHER_HOURLY}&timezone=${encodeURIComponent(env.BUSINESS_TIMEZONE)}&forecast_days=16&past_days=92`;
-    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`Weather service returned ${res.status}`);
-    const rows = parseOpenMeteo(await res.json());
-    await saveWeatherRows(rows, businessToday());
+    const res = await fetch(await nwsGridUrl(lat, lon), { headers: NWS_HEADERS, cache: "no-store", signal: AbortSignal.timeout(12_000) });
+    if (!res.ok) throw new Error(`The Weather Service returned ${res.status}`);
+    const { rows, partial } = parseNwsGrid(await res.json(), env.BUSINESS_TIMEZONE);
+    if (!rows.length) throw new Error("The Weather Service sent no forecast");
+    await saveWeatherRows(rows, businessToday(), new Set(partial));
+    // Forecast days further out than the Weather Service goes are stale: drop them.
+    await db.weatherDay.deleteMany({ where: { forecast: true, date: { gt: parseISODate(rows[rows.length - 1].date) } } });
     await saveWeatherStatus({ lastAttempt: attempt, lastOk: attempt, error: null });
     return { days: rows.length };
   } catch (e) {
     const err = e as Error;
-    const message = err.name === "TimeoutError" ? "Weather service timed out" : err.message || "Weather service unreachable";
+    const message = err.name === "TimeoutError" ? "The Weather Service timed out" : err.message || "The Weather Service couldn't be reached";
     await saveWeatherStatus({ ...status, lastAttempt: attempt, error: message }).catch(() => {});
     return { error: message };
   }
@@ -71,22 +100,31 @@ export async function refreshWeather(force = false): Promise<{ skipped: true } |
 
 /**
  * Write weather rows over whatever is on file for those days. Days from
- * `today` on are marked as forecast; earlier ones as what happened.
+ * `today` on are marked as forecast; earlier ones as what happened. For
+ * `partial` days (today, fetched after some of it has gone) rain and snow
+ * never go down: the hours already past aren't in the new figures.
  */
-export async function saveWeatherRows(rows: readonly WeatherRow[], today: ISODate): Promise<void> {
+export async function saveWeatherRows(rows: readonly WeatherRow[], today: ISODate, partial: ReadonlySet<ISODate> = new Set()): Promise<void> {
   const dec = (n: number | null) => (n == null ? null : new Prisma.Decimal(n));
+  // Dates go as text and are cast in SQL, so the database's time zone can't move them a day.
+  const partialDays = [...partial];
   for (let i = 0; i < rows.length; i += 200) {
     const values = rows.slice(i, i + 200).map(
-      (r) => Prisma.sql`(${parseISODate(r.date)}::date, ${dec(r.tempMaxC)}, ${dec(r.tempMinC)}, ${dec(r.precipMm)}, ${Math.round(r.code)}, ${r.date >= today}, now(), ${dec(r.apparentMaxC)}, ${dec(r.snowCm)}, ${dec(r.windMaxKph)}, ${dec(r.precipDayMm)})`,
+      (r) =>
+        Prisma.sql`(${r.date}::date, ${dec(r.tempMaxC)}::numeric, ${dec(r.tempMinC)}::numeric, ${dec(r.precipMm)}::numeric, ${Math.round(r.code)}::int, ${r.date >= today}::boolean, ${dec(r.apparentMaxC)}::numeric, ${dec(r.snowCm)}::numeric, ${dec(r.windMaxKph)}::numeric, ${dec(r.precipDayMm)}::numeric)`,
     );
     await db.$executeRaw`
-      INSERT INTO "WeatherDay" ("date", "tempMaxC", "tempMinC", "precipMm", "code", "forecast", "fetchedAt", "apparentMaxC", "snowCm", "windMaxKph", "precipDayMm")
-      VALUES ${Prisma.join(values)}
+      INSERT INTO "WeatherDay" AS w ("date", "tempMaxC", "tempMinC", "precipMm", "code", "forecast", "fetchedAt", "apparentMaxC", "snowCm", "windMaxKph", "precipDayMm")
+      SELECT v.d, v.tmax, v.tmin, v.precip, v.code, v.fc, now(), v.feels, v.snow, v.wind, v.dayrain
+      FROM (VALUES ${Prisma.join(values)}) AS v(d, tmax, tmin, precip, code, fc, feels, snow, wind, dayrain)
       ON CONFLICT ("date") DO UPDATE SET
-        "tempMaxC" = EXCLUDED."tempMaxC", "tempMinC" = EXCLUDED."tempMinC", "precipMm" = EXCLUDED."precipMm", "code" = EXCLUDED."code",
-        "forecast" = EXCLUDED."forecast", "fetchedAt" = EXCLUDED."fetchedAt",
-        "apparentMaxC" = COALESCE(EXCLUDED."apparentMaxC", "WeatherDay"."apparentMaxC"), "snowCm" = COALESCE(EXCLUDED."snowCm", "WeatherDay"."snowCm"),
-        "windMaxKph" = COALESCE(EXCLUDED."windMaxKph", "WeatherDay"."windMaxKph"), "precipDayMm" = COALESCE(EXCLUDED."precipDayMm", "WeatherDay"."precipDayMm")`;
+        "tempMaxC" = EXCLUDED."tempMaxC", "tempMinC" = EXCLUDED."tempMinC", "forecast" = EXCLUDED."forecast", "fetchedAt" = EXCLUDED."fetchedAt",
+        "apparentMaxC" = COALESCE(EXCLUDED."apparentMaxC", w."apparentMaxC"),
+        "windMaxKph" = COALESCE(EXCLUDED."windMaxKph", w."windMaxKph"),
+        "precipMm" = CASE WHEN EXCLUDED."date" = ANY(${partialDays}::date[]) THEN GREATEST(w."precipMm", EXCLUDED."precipMm") ELSE EXCLUDED."precipMm" END,
+        "code" = CASE WHEN EXCLUDED."date" = ANY(${partialDays}::date[]) AND w."precipMm" > EXCLUDED."precipMm" THEN w."code" ELSE EXCLUDED."code" END,
+        "snowCm" = CASE WHEN EXCLUDED."date" = ANY(${partialDays}::date[]) THEN GREATEST(w."snowCm", EXCLUDED."snowCm") ELSE EXCLUDED."snowCm" END,
+        "precipDayMm" = CASE WHEN EXCLUDED."date" = ANY(${partialDays}::date[]) THEN GREATEST(w."precipDayMm", EXCLUDED."precipDayMm") ELSE EXCLUDED."precipDayMm" END`;
   }
 }
 

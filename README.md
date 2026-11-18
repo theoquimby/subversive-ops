@@ -93,7 +93,7 @@ schedule**. Times are UTC.
 | Route | When | What it does |
 |---|---|---|
 | `/api/cron/square-sync` | Daily 09:17 | Catalog, the last 3 days of sales, team and timecards from Square. |
-| `/api/cron/weather` | Daily 10:07 | Weather forecast for the sales forecast (Open-Meteo, no key). |
+| `/api/cron/weather` | Daily 10:07 | Weather for the sales forecast: the National Weather Service forecast and NOAA's daily record (US government data, no key). |
 | `/api/cron/daily-ops` | Daily 10:23 | Auto-drafts supplier orders before their cutoff, imports new Google reviews (alerting on 1–2★), sends price-spike alerts, and on Fri/Sat drafts next week's schedule if auto-draft is on. |
 | `/api/cron/weekly-brief` | Sun 21:13 | Emails and pushes the weekly brief to managers. |
 
