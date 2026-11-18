@@ -2,6 +2,7 @@ import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from 
 import { WEEKDAYS } from "@/domain/dates";
 import { HORIZONS, type GroupScore, type Score } from "@/domain/forecastScore";
 import { forecastStory, type StoryTone } from "@/domain/forecastStory";
+import { linkWord, SIGNAL_MIN_SCORED, SIGNAL_WARMUP } from "@/domain/leadSignals";
 import { WEATHER_KIND_HINT, WEATHER_KIND_LABEL, WEATHER_KINDS } from "@/domain/weatherHistory";
 import { money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
@@ -119,6 +120,15 @@ export default async function ScorecardPage() {
   const worstDay = solid[solid.length - 1];
   const ev = find(s.byEvent, "event");
   const fx = s.weatherEffects;
+  const helping = s.signals.filter((x) => x.verdict === "helps");
+  const judged = s.signals.filter((x) => x.verdict !== "thin");
+  const signalGist = !s.signals.length
+    ? "Nothing on file yet from Google or the website"
+    : helping.length
+      ? `${helping.map((x) => x.label).join(", ")} would make the forecast closer`
+      : judged.length
+        ? `${judged.length} tested against sales; none makes the forecast closer yet`
+        : "Not enough history yet to say";
   const fxOn = fx.kinds.filter((k) => k.used);
   const plans = (f: number) => `${pct(Math.abs(f - 1), 0)} ${f < 1 ? "less" : "more"}`;
   const normal = find(s.byEvent, "normal");
@@ -263,6 +273,52 @@ export default async function ScorecardPage() {
             <ScoreTable first="Month" lift>
               {s.byMonth.map((g) => <ScoreRow key={g.key} label={MONTHS[Number(g.key) - 1]} s={g.score} lift={g.lift} />)}
             </ScoreTable>
+          </Fold>
+
+          <Fold title="Online signals" gist={signalGist}>
+            <p className="mb-3 text-sm text-ink-2">
+              Each number from Google and the website, tested two ways. <strong className="font-medium text-ink">On the day</strong>: when it runs above its usual level for that weekday, do sales run above the forecast too? <strong className="font-medium text-ink">Ahead</strong>: using only what had arrived when the forecast was made, would it have landed closer? Only the second can improve a forecast.
+            </p>
+            {s.signals.length ? (
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Number</Th>
+                    <Th align="right" className="hidden sm:table-cell">On file since</Th>
+                    <Th align="right">On the day</Th>
+                    <Th align="right" className="hidden sm:table-cell">Ahead</Th>
+                    <Th align="right" className="hidden sm:table-cell">Miss without → with</Th>
+                    <Th align="right">Verdict</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.signals.map((x) => (
+                    <Tr key={x.key}>
+                      <Td>
+                        <span className="font-medium text-ink">{x.label}</span>
+                        <span className="block text-xs text-muted">{x.source} · arrives {x.delay === 1 ? "the next day" : `${x.delay} days late`}</span>
+                      </Td>
+                      <Td align="right" className="num hidden whitespace-nowrap text-ink-2 sm:table-cell">{x.from ? dated(x.from) : "—"}</Td>
+                      <Td align="right" className="whitespace-nowrap text-ink-2">
+                        {linkWord(x.sameDay?.r)}
+                        {x.sameDay && <span className="num block text-xs text-muted">{x.sameDay.r.toFixed(2)} · {qty(x.sameDay.days, 0)} days</span>}
+                      </Td>
+                      <Td align="right" className="hidden whitespace-nowrap text-ink-2 sm:table-cell">
+                        {linkWord(x.ahead?.r)}
+                        {x.ahead && <span className="num block text-xs text-muted">{x.ahead.r.toFixed(2)} · {qty(x.ahead.days, 0)} days</span>}
+                      </Td>
+                      <Td align="right" className="num hidden whitespace-nowrap text-ink-2 sm:table-cell">{x.verdict !== "thin" && x.missWithout != null && x.missWith != null ? `${pct(x.missWithout, 1)} → ${pct(x.missWith, 1)}` : "—"}</Td>
+                      <Td align="right">{x.verdict === "helps" ? <Badge tone="good">Helps</Badge> : x.verdict === "noHelp" ? <Badge>No help</Badge> : <Badge>Too soon</Badge>}</Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted">Connect Google under Settings › Connections, or wait for the website to collect a few weeks of visits.</p>
+            )}
+            <p className="mt-2 text-xs text-muted">
+              The small figure is the correlation, from −1 to 1. The ahead test compares the last week on file with the four weeks before it, starts after {SIGNAL_WARMUP} days of history, and needs {SIGNAL_MIN_SCORED} replayed days for a verdict. “Helps” means the replay cut the typical miss by at least 1%. Nothing here changes the forecast yet.
+            </p>
           </Fold>
 
           <Fold title="Forecasts as they were made" gist={s.logged.since ? `Each night's forecast, kept since ${dated(s.logged.since)}` : "Each night's forecast is kept from tonight"}>

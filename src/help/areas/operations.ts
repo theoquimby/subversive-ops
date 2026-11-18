@@ -1018,8 +1018,26 @@ Any change to how Ops forecasts has to beat the current method on this page befo
     area: "sales",
     route: "/sales/scorecard",
     title: "The numbers behind it",
-    body: "Every table the summary is built from, folded away: how far ahead, weather, weekdays, event days, months, the forecasts kept each night, and every scored day. Open a line to see it.",
+    body: "Every table the summary is built from, folded away: how far ahead, weather, weekdays, event days, months, online signals, the forecasts kept each night, and every scored day. Open a line to see it.",
     related: ["sales.scorecard", "sales.scorecard.weather", "sales.scorecard.days"],
+  },
+  {
+    id: "sales.scorecard.signals",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "Online signals",
+    body: "Each number from Google and the website tested against sales: does it move with sales on the day, and would it have made the forecast closer ahead of time? Nothing here changes the forecast yet.",
+    article: `Open **The numbers behind it → Online signals** on the forecast scorecard.
+
+The numbers tested are direction requests, views, calls and website clicks from your Google listing; clicks and times shown from Google Search; and visitors and actions on your own website.
+
+**On the day** asks whether the number and sales move together: when direction requests run above their usual level for that weekday, do sales run above the forecast? A strong link means it's a real sign of demand.
+
+**Ahead** is the test that matters for a forecast. These numbers arrive late (Google's by several days), so a forecast can only use what had arrived when it was made. Ops compares the last week on file with the four weeks before it, then replays every past day using only the days before it. **Helps** means the replay cut the typical miss by at least 1%. **No help** means it didn't. **Too soon** means there isn't enough history for a verdict.
+
+A number that passes is a candidate to go into the forecast. Nothing on this table changes the forecast by itself.`,
+    related: ["sales.scorecard", "sales.scorecard.numbers", "sales.scorecard.weather"],
+    keywords: ["google", "listing", "direction requests", "search", "website", "correlation", "leading", "signal"],
   },
   {
     id: "sales.scorecard.miss",

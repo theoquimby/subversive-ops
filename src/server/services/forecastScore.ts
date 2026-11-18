@@ -1,6 +1,7 @@
 import "server-only";
 import { addDays, dateRange, daysBetween, parseISODate, toISODate, type ISODate } from "@/domain/dates";
 import { groupScore, score, scoreDays, scoreLogged, summarize, type GroupScore, type Score, type ScoreDay, type ScoreSummary } from "@/domain/forecastScore";
+import { testSignals, type SignalResult, type SignalSeries } from "@/domain/leadSignals";
 import { learnWeatherEffects, toStored, type WeatherEffects } from "@/domain/weatherEffect";
 import { ARCHIVE_LAG_DAYS, backfillSpans, NOAA_DAILY_TYPES, NOAA_STATION, parseNceiDaily } from "@/domain/weatherHistory";
 import { Prisma } from "@prisma/client";
@@ -147,6 +148,53 @@ async function fullSalesHistory(first: ISODate, today: ISODate) {
   return { sales, openDays, dailyOnly: [...openDays].filter((d) => !fromHourly.has(d)).length };
 }
 
+/**
+ * The online numbers on file, one series a day each: the Google listing
+ * (views, direction requests, calls, website clicks), Google Search (clicks,
+ * times shown) and the website's own visitors and actions.
+ */
+async function onlineSeries(first: ISODate, today: ISODate): Promise<SignalSeries[]> {
+  const day = { gte: parseISODate(first), lt: parseISODate(today) };
+  const [profile, search, web] = await Promise.all([
+    db.googleProfileDaily.findMany({ where: { day } }),
+    db.googleSearchDaily.findMany({ where: { dim: "total", day }, select: { day: true, clicks: true, impressions: true } }),
+    db.webDaily.findMany({ where: { dim: "total", day }, select: { day: true, visitors: true, converted: true } }),
+  ]);
+  const add = (m: Map<ISODate, number>, d: Date, v: number) => m.set(toISODate(d), (m.get(toISODate(d)) ?? 0) + v);
+  const views = new Map<ISODate, number>();
+  const directions = new Map<ISODate, number>();
+  const calls = new Map<ISODate, number>();
+  const siteClicks = new Map<ISODate, number>();
+  for (const r of profile) {
+    if (r.metric.startsWith("BUSINESS_IMPRESSIONS_")) add(views, r.day, r.value);
+    else if (r.metric === "BUSINESS_DIRECTION_REQUESTS") add(directions, r.day, r.value);
+    else if (r.metric === "CALL_CLICKS") add(calls, r.day, r.value);
+    else if (r.metric === "WEBSITE_CLICKS") add(siteClicks, r.day, r.value);
+  }
+  const clicks = new Map<ISODate, number>();
+  const shown = new Map<ISODate, number>();
+  for (const r of search) {
+    add(clicks, r.day, r.clicks);
+    add(shown, r.day, r.impressions);
+  }
+  const visitors = new Map<ISODate, number>();
+  const actions = new Map<ISODate, number>();
+  for (const r of web) {
+    add(visitors, r.day, r.visitors);
+    add(actions, r.day, r.converted);
+  }
+  return [
+    { key: "gbp.directions", label: "Direction requests", source: "Google listing", values: directions },
+    { key: "gbp.views", label: "Listing views", source: "Google listing", values: views },
+    { key: "gbp.calls", label: "Calls", source: "Google listing", values: calls },
+    { key: "gbp.site", label: "Website clicks", source: "Google listing", values: siteClicks },
+    { key: "gsc.clicks", label: "Search clicks", source: "Google Search", values: clicks },
+    { key: "gsc.shown", label: "Times shown in search", source: "Google Search", values: shown },
+    { key: "web.visitors", label: "Website visitors", source: "Website", values: visitors },
+    { key: "web.actions", label: "Calls, directions and orders", source: "Website", values: actions },
+  ];
+}
+
 export interface Scorecard {
   today: ISODate;
   firstSale: ISODate | null;
@@ -166,6 +214,8 @@ export interface Scorecard {
   weatherEffects: WeatherEffects;
   /** Every scored day, the day-before forecast without weather against the same forecast with the switched-on kinds. */
   withWeather: { without: Score | null; with: Score | null };
+  /** Each online number tested against sales: does it move with them, and would it have made the forecast closer? */
+  signals: SignalResult[];
   /** Forecasts as they were really made each night (with weather in them), once there are some to score. */
   logged: { since: ISODate | null; dayBefore: Score | null; weekAhead: Score | null };
 }
@@ -175,15 +225,16 @@ export async function forecastScorecard(): Promise<Scorecard> {
   const first = await firstSaleDate();
   const coverage = await weatherCoverage();
   const none = summarize([]);
-  if (!first) return { today, firstSale: null, days: [], openDays: 0, dailyOnly: 0, all: none, recent: none, byWeekday: [], byMonth: [], byWeather: [], byEvent: [], weather: coverage, weatherEffects: learnWeatherEffects([]).effects, withWeather: { without: null, with: null }, logged: { since: null, dayBefore: null, weekAhead: null } };
+  if (!first) return { today, firstSale: null, days: [], openDays: 0, dailyOnly: 0, all: none, recent: none, byWeekday: [], byMonth: [], byWeather: [], byEvent: [], weather: coverage, weatherEffects: learnWeatherEffects([]).effects, withWeather: { without: null, with: null }, signals: [], logged: { since: null, dayBefore: null, weekAhead: null } };
 
-  const [history, eventDays, events, manual, weather, logged] = await Promise.all([
+  const [history, eventDays, events, manual, weather, logged, series] = await Promise.all([
     fullSalesHistory(first, today),
     pastEventDays(first, today),
     eventsBetween(first, today),
     getAdjustments(),
     weatherMap(first, today),
     db.forecastLog.findMany({ where: { model: FORECAST_MODEL, date: { lt: parseISODate(today) }, horizon: { in: [1, 7] } }, select: { date: true, horizon: true, sales: true, madeOn: true } }),
+    onlineSeries(first, today),
   ]);
 
   // What was known in advance: events on the calendar and manual changes (as forecastAccuracy does).
@@ -222,6 +273,8 @@ export async function forecastScorecard(): Promise<Scorecard> {
       without: score(scoredDays.map((d) => ({ forecast: d.f1!, actual: d.actual }))),
       with: score(scoredDays.map((d) => ({ forecast: learned.withWeather.get(d.date) ?? d.f1!, actual: d.actual }))),
     },
+    // Against the forecast with weather in it, so a rainy day isn't read as a quiet week online.
+    signals: testSignals(series, days.map((d) => ({ date: d.date, actual: d.actual, forecast: d.f1 == null ? null : (learned.withWeather.get(d.date) ?? d.f1), event: d.event })), today),
     logged: { since, dayBefore: scoreLogged(log, history.sales, 1), weekAhead: scoreLogged(log, history.sales, 7) },
   };
 }

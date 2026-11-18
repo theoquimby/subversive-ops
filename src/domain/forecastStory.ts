@@ -6,6 +6,7 @@
  */
 
 import type { GroupScore, ScoreDay, ScoreSummary } from "./forecastScore";
+import type { SignalResult } from "./leadSignals";
 import type { WeatherEffects } from "./weatherEffect";
 import { WEATHER_KIND_LABEL, type WeatherKind } from "./weatherHistory";
 
@@ -43,6 +44,7 @@ export interface ForecastStory {
 }
 
 const KIND_DAYS: Record<string, string> = { rain: "rain days", heavyRain: "heavy rain days", snow: "snow days", hot: "hot days", cold: "freezing days" };
+const WHERE: Record<string, string> = { "Google listing": "on your Google listing", "Google Search": "in Google Search", Website: "on your website" };
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const pct = (n: number) => `${Math.round(Math.abs(n) * 100)}%`;
 const dollars = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
@@ -67,6 +69,8 @@ export function forecastStory(i: {
   today?: string;
   /** The weather the forecast already allows for; those kinds aren't something to shade for by hand. */
   weatherEffects?: WeatherEffects;
+  /** The online numbers tested against sales; one that would make the forecast closer gets a mention. */
+  signals?: readonly SignalResult[];
 }): ForecastStory | null {
   const all = i.all.f1;
   if (!all) return null;
@@ -209,6 +213,19 @@ export function forecastStory(i: {
     });
   }
 
+  // An online number that runs ahead of sales.
+  const lead = (i.signals ?? []).find((x) => x.verdict === "helps" && x.ahead && x.missWith != null && x.missWithout != null);
+  if (lead) {
+    const up = lead.ahead!.per20 >= 0;
+    points.push({
+      key: "signal",
+      tone: "good",
+      title: `${lead.label} ${WHERE[lead.source] ?? `from ${lead.source}`} run ahead of sales`,
+      detail: `When they run 20% above normal for a week, sales land about ${pct(lead.ahead!.per20)} ${up ? "over" : "under"} the forecast. Over ${lead.scored.toLocaleString("en-US")} past days, using them would have taken the typical miss from ${pct(lead.missWithout!)} to ${pct(lead.missWith!)}.`,
+      action: null,
+    });
+  }
+
   // How far ahead it holds.
   const f14 = i.all.f14;
   if (f14 && f14.days >= STORY_MIN_DAYS) {
@@ -232,9 +249,12 @@ export function forecastStory(i: {
   }
 
   const next = [
+    lead ? `${lead.label} ${WHERE[lead.source] ?? `from ${lead.source}`} passed the test and can go into the forecast next.` : null,
     hurt.length && !builtIn.length ? "Next, the forecast learns what rain, snow and cold do here, then holidays and school breaks." : "Next, the forecast learns holidays and school breaks.",
     "Every change has to beat today's numbers on this page before it replaces the current method.",
-  ].join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return { level, headline, line: line + trend, missDollars, missShare: basis.wape, closeInTen, skill, basis: useRecent ? "recent" : "all", points: points.slice(0, MAX_POINTS), next };
 }

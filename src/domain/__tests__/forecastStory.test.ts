@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GroupScore, Score, ScoreDay, ScoreSummary } from "../forecastScore";
 import { forecastStory } from "../forecastStory";
+import type { SignalResult } from "../leadSignals";
 import type { KindEffect, WeatherEffects } from "../weatherEffect";
 
 const sc = (over: Partial<Score> = {}): Score => ({ days: 400, wape: 0.12, medianApe: 0.1, bias: 0, within15: 0.7, ...over });
@@ -64,6 +65,20 @@ describe("forecastStory", () => {
     expect(open.title).toBe("Some weather still isn't in the forecast");
     expect(open.detail).toBe("On 122 past days: freezing 8% under.");
     expect(s.next).toMatch(/^Next, the forecast learns holidays/);
+  });
+
+  it("mentions an online number only when it would have made the forecast closer", () => {
+    const sig = (over: Partial<SignalResult>): SignalResult => ({ key: "gbp.directions", label: "Direction requests", source: "Google listing", from: "2025-06-01", to: "2026-11-14", delay: 4, sameDay: { days: 400, r: 0.4 }, ahead: { days: 380, r: 0.25, per20: 0.06 }, scored: 320, missWithout: 0.33, missWith: 0.31, verdict: "helps", ...over });
+    const yes = forecastStory({ ...base, all: sum(sc()), recent: sum(sc({ days: 80 })), signals: [sig({})] })!;
+    const p = yes.points.find((x) => x.key === "signal")!;
+    expect(p.title).toBe("Direction requests on your Google listing run ahead of sales");
+    expect(p.detail).toContain("about 6% over the forecast");
+    expect(p.detail).toContain("from 33% to 31%");
+    expect(p.action).toBeNull();
+    expect(yes.next).toMatch(/^Direction requests on your Google listing passed the test/);
+    const no = forecastStory({ ...base, all: sum(sc()), recent: sum(sc({ days: 80 })), signals: [sig({ verdict: "noHelp" }), sig({ verdict: "thin" })] })!;
+    expect(no.points.some((x) => x.key === "signal")).toBe(false);
+    expect(no.next).toMatch(/^Next, the forecast learns/);
   });
 
   it("ignores weather groups with too few days or too small an effect", () => {

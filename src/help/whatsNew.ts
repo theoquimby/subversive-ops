@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 18 Nov · 1.36 (online numbers tested against sales) ----
+  {
+    id: "2026-11-18.online-signals",
+    date: "2026-11-18",
+    title: "Online numbers tested against sales",
+    line: "See which Google and website numbers move with sales, and which could sharpen the forecast.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/sales/scorecard",
+    help: "sales.scorecard.signals",
+    audience: "manager",
+  },
   // ---- 18 Nov · 1.35 (weather by kind in the forecast) ----
   {
     id: "2026-11-18.weather-effects",

@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.36",
+    date: "2026-11-18",
+    title: "Online numbers tested against sales",
+    summary: "The forecast scorecard now tests every number from Google and the website against sales: whether it moves with sales on the day, and whether it would have made the forecast closer ahead of time.",
+    entries: ["2026-11-18.online-signals"],
+    fixed: [
+      "Tested: direction requests, views, calls and website clicks from the Google listing; clicks and times shown from Google Search; visitors and actions on the website.",
+      "Each gets a plain verdict under The numbers behind it → Online signals: Helps, No help, or Too soon when there isn't enough history.",
+      "The ahead-of-time test only uses what had arrived when the forecast was made, since Google's numbers run days late.",
+      "Nothing changes the forecast yet. A number that passes is next in line to go in.",
+    ],
+  },
+  {
     version: "1.35",
     date: "2026-11-18",
     title: "The forecast knows rain from snow",
