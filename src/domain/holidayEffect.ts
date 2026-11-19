@@ -145,18 +145,19 @@ export const CLOSED_MIN_YEARS = 3;
 
 /**
  * Single-day holidays the business was closed on at each of its last three
- * occurrences. An occurrence only counts when the business was otherwise
- * running that week (open within seven days either side), so a long shutdown
- * isn't read as a holiday habit.
+ * occurrences. An occurrence only counts when that weekday would normally have
+ * been open: open on at least two of the same weekday in the two weeks before
+ * and the two weeks after. So a Christmas Eve that fell on a Tuesday, at a
+ * place that doesn't open Tuesdays, says nothing, and neither does a holiday
+ * inside a long shutdown.
  */
 export function usuallyClosed(i: { openDays: ReadonlySet<ISODate>; from: ISODate; today: ISODate }): HolidayKind[] {
   const history = new Map<HolidayKind, boolean[]>();
   for (let d = i.from; d < i.today; d = addDays(d, 1)) {
     const kind = holidayKind(d);
     if (!kind || !SINGLE_DAY_HOLIDAYS.has(kind)) continue;
-    let running = false;
-    for (let k = 1; k <= 7 && !running; k++) running = i.openDays.has(addDays(d, -k)) || i.openDays.has(addDays(d, k));
-    if (!running) continue;
+    const sameWeekdayOpen = [-14, -7, 7, 14].filter((k) => i.openDays.has(addDays(d, k))).length;
+    if (sameWeekdayOpen < 2) continue;
     if (!history.has(kind)) history.set(kind, []);
     history.get(kind)!.push(i.openDays.has(d));
   }
@@ -167,7 +168,7 @@ export function usuallyClosed(i: { openDays: ReadonlySet<ISODate>; from: ISODate
 }
 
 /** Bumped whenever the way holidays are worked out changes, so what's stored is learned again at once. */
-export const HOLIDAY_RULES = 1;
+export const HOLIDAY_RULES = 2;
 
 /** What's kept between nightly runs for the live forecast. */
 export interface StoredHolidays {

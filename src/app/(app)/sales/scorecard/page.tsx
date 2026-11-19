@@ -124,7 +124,7 @@ export default async function ScorecardPage() {
   const hol = s.holidays;
   const holOn = hol.effects.kinds.filter((k) => k.used);
   const holidayGist = holOn.length || hol.closed.length
-    ? [holOn.length ? `In the forecast: ${holOn.length} of ${hol.effects.kinds.length}` : null, hol.closed.length ? `closed on ${hol.closed.map((k) => HOLIDAY_LABEL[k]).join(" and ")}` : null].filter(Boolean).join("; ")
+    ? [holOn.length ? `In the forecast: ${holOn.length} of ${hol.effects.kinds.length}` : null, hol.closed.length ? `closed on ${hol.closed.map((k) => HOLIDAY_LABEL[k]).join(", ")}` : null].filter(Boolean).join("; ")
     : hol.effects.kinds.length
       ? "None has a steady enough pattern to use yet"
       : "No holidays in your history yet";
@@ -295,7 +295,7 @@ export default async function ScorecardPage() {
                       <Td align="right"><Badge tone="good">Every year</Badge></Td>
                     </Tr>
                   ))}
-                  {hol.effects.kinds.map((k) => (
+                  {hol.effects.kinds.filter((k) => !hol.closed.includes(k.kind)).map((k) => (
                     <Tr key={k.kind}>
                       <Td>
                         <span className="font-medium text-ink">{HOLIDAY_LABEL[k.kind]}</span>

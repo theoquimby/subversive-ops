@@ -95,6 +95,19 @@ describe("usuallyClosed", () => {
     expect(usuallyClosed({ openDays: open(["christmas"], ["2024-12-25"]), from: "2019-06-01", today: "2026-06-01" })).toEqual([]);
     expect(usuallyClosed({ openDays: open(["christmas"]), from: "2024-06-01", today: "2026-06-01" })).toEqual([]);
   });
+  it("says nothing about a year the holiday fell on a weekday that's normally closed", () => {
+    // Never open on Mondays or Tuesdays. Christmas fell on a Monday in 2023, a Wednesday in 2024 and a Thursday in 2025.
+    const noMonTue = new Set([...open(["christmas"])].filter((d) => ![1, 2].includes(new Date(`${d}T00:00:00Z`).getUTCDay())));
+    // 2023's Monday Christmas doesn't count, so the last three that do are 2022, 2024 and 2025: still closed each time.
+    expect(usuallyClosed({ openDays: noMonTue, from: "2019-06-01", today: "2026-06-01" })).toEqual(["christmas"]);
+    // Open on Christmas 2022 (a Sunday): with 2023 not counting, that's one of the last three, so it's no longer "every year".
+    const openOnce = new Set([...noMonTue, "2022-12-25"]);
+    expect(usuallyClosed({ openDays: openOnce, from: "2019-06-01", today: "2026-06-01" })).toEqual([]);
+    // A place that never opens Mondays isn't "closed for" a holiday that always lands on one.
+    expect(usuallyClosed({ openDays: noMonTue, from: "2019-06-01", today: "2026-06-01" })).not.toContain("superBowl");
+    const noSundays = new Set([...open([])].filter((d) => new Date(`${d}T00:00:00Z`).getUTCDay() !== 0));
+    expect(usuallyClosed({ openDays: noSundays, from: "2019-06-01", today: "2026-06-01" })).toEqual([]);
+  });
   it("ignores a holiday that fell in a long shutdown", () => {
     // Shut for all of December 2025: that Christmas says nothing either way, so the three before it decide.
     const days = new Set([...open(["christmas"])].filter((d) => !(d >= "2025-12-10" && d <= "2026-01-10")));
@@ -134,7 +147,7 @@ describe("holidayPlan and upcomingHolidays", () => {
 
   it("survives a round trip through storage, and drops what older rules stored", () => {
     expect(parseStoredHolidays(JSON.stringify(stored))).toEqual(stored);
-    expect(parseStoredHolidays(JSON.stringify({ ...stored, rules: 0 }))).toBeNull();
+    expect(parseStoredHolidays(JSON.stringify({ ...stored, rules: 1 }))).toBeNull();
     expect(parseStoredHolidays("junk")).toBeNull();
   });
 });
