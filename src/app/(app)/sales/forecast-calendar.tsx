@@ -23,6 +23,8 @@ export interface CalDay {
   backtest: number | null;
   baseline: number;
   samples: number;
+  /** The usual-day average caps a freak day at one-and-a-half usual ones. */
+  capped: boolean;
   trend: number;
   manual: number;
   reason: string | null;
@@ -298,7 +300,7 @@ function DayPanel({ day, onClose, onPrev, onNext }: { day: CalDay; onClose: () =
                       label={`Usual ${day.weekdayName}`}
                       hint={
                         day.samples
-                          ? `Weighted average of the last ${day.samples} open ${day.weekdayName}s, recent weeks count most; past event days left out.`
+                          ? `Weighted average of the last ${day.samples} open ${day.weekdayName}s, recent weeks count most; past event days left out.${day.capped ? " A freak day counts for at most one-and-a-half usual ones." : ""}`
                           : `No open ${day.weekdayName}s in recent history.`
                       }
                       value={money(day.baseline, { whole: true })}

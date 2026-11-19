@@ -13,7 +13,7 @@ import { forecastItems } from "@/server/services/planning";
 import { businessToday, lastSquareSync } from "@/server/services/sales";
 import { Suspense } from "react";
 import { SquareItemsSection, SquareItemsSkeleton } from "./square-items-section";
-import { dailySalesHistory, demandDrivers, forecastAccuracy, hourlySalesForecast, location, refreshWeather, weatherLabel, weatherMap, weatherStatus } from "@/server/services/forecasting";
+import { dailySalesHistory, demandDrivers, forecastAccuracy, hourlySalesForecast, location, refreshWeather, storedMethod, weatherLabel, weatherMap, weatherStatus } from "@/server/services/forecasting";
 import { ensureWeatherEffects } from "@/server/services/forecastScore";
 import { after } from "next/server";
 import { CalDay, ForecastCalendar } from "./forecast-calendar";
@@ -42,7 +42,7 @@ export default async function SalesPage() {
   // What weather and online interest do to sales is learned nightly; this catches a first run or a missed night.
   after(() => ensureWeatherEffects());
 
-  const [connected, lastSync, forecast, hourly, actuals, pastDrivers, accuracy, weather, wStatus, loc] = await Promise.all([
+  const [connected, lastSync, forecast, hourly, actuals, pastDrivers, accuracy, weather, wStatus, loc, method] = await Promise.all([
     isSquareConnected(),
     lastSquareSync(),
     forecastItems(dates),
@@ -53,6 +53,7 @@ export default async function SalesPage() {
     weatherMap(calStart, calEnd),
     weatherStatus(),
     location(),
+    storedMethod(),
   ]);
 
   const byDate = new Map(hourly.map((h) => [h.date, h]));
@@ -76,6 +77,7 @@ export default async function SalesPage() {
       backtest: past ? backtestByDate.get(date) ?? null : null,
       baseline: f?.baseline ?? 0,
       samples: f?.samples ?? 0,
+      capped: !!method?.refined,
       trend: f?.trend ?? 1,
       seasonal: f?.seasonal ?? 1,
       orders: f?.orders ?? null,
