@@ -10,6 +10,7 @@ import type { OrderDiscount } from "../integrations/square";
 import { friendlySquareError, SquareClient } from "../integrations/square-http";
 import { listPayments, listRefunds } from "../integrations/square-payments";
 import { logSquareError, requireSquareClient, writeSettingJSON } from "./square";
+import { storeGuestVisits } from "./guests";
 import { storeSquareTips } from "./tips";
 import { ignoredSquareIds } from "./sales";
 import { settingValue } from "./setting-read";
@@ -86,6 +87,9 @@ export async function syncPayments(from: ISODate, toExclusive: ISODate, client?:
   // Card tips by person: same rows as before, from the same payments.
   const tipRows = cardTipRows(payments, dates, dateOf);
   await storeSquareTips("CARD", from, toExclusive, tipRows);
+
+  // Who came in: one anonymous mark per card per day, from the same payments (see services/guests.ts).
+  await storeGuestVisits(payments, dates).catch((e) => logSquareError("sales", `Card visits: ${friendlySquareError(e)}`).catch(() => undefined));
 
   let fees: ReturnType<typeof feeDays> | null = null;
   try {

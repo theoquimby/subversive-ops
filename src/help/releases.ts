@@ -24,6 +24,21 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.41",
+    date: "2026-11-19",
+    title: "Customers: who comes back",
+    summary: "A new Customers page shows how much of the business regulars carry, how many first-timers return, who looks local and who was passing through, and how many regulars have gone quiet. Worked out from card payments, with no names kept.",
+    entries: ["2026-11-19.customers"],
+    fixed: [
+      "Regulars (four or more days a year): how many there are and their share of card sales.",
+      "First-timers who come back within a month, three months and a year.",
+      "Regulars of the year before who haven't been in for 60 days, and what they spent.",
+      "Locals and visitors, read from when cards come, and new against returning cards week by week.",
+      "Ops keeps only a scrambled mark per card per day. No name, card number, email or phone is read or kept, so the figures are a floor and nobody can be contacted from them.",
+      "Press Load card visits from Square once to bring in the history; the nightly sync keeps it current after that.",
+    ],
+  },
+  {
     version: "1.40",
     date: "2026-11-18",
     title: "Did it work?",

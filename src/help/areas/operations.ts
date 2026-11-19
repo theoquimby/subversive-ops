@@ -983,6 +983,48 @@ Each day shows what moved it: the season (once there's a year of history), the w
     body: "How close past forecasts were to what actually sold. The closer it is, the more you can trust orders and schedules built on it.",
   },
   {
+    id: "sales.customers",
+    area: "sales",
+    route: "/sales/customers",
+    title: "Customers",
+    body: "Who comes back, how much regulars carry, and who has stopped coming, worked out from card payments in Square. No names or card numbers are kept.",
+    article: `Open it from **Numbers → Customers**, or from Sales & forecast.
+
+Square marks each card it sees. Ops keeps a scrambled copy of that mark for each day a card paid here, the day, and the amount before tips. That is enough to tell a regular from a one-time visitor. No name, card number, email or phone is read or kept, and the scrambled copy can't be turned back into a card.
+
+**What it shows**
+
+- **Regulars**: cards seen on four or more days in the last 12 months, how many there are, and how much of card sales they bring.
+- **First-timers who come back**: of cards seen for the first time in the last two years, the share seen again within a month, three months and a year.
+- **Regulars gone quiet**: regulars of the year before who haven't been in for 60 days, and what they spent that year.
+- **Locals and visitors**, read from timing alone: a card seen in three or more separate months is a local; one seen on a few days within ten days and never again is a visitor.
+- **New and returning** cards week by week.
+
+**Everything here is a floor.** Cash leaves no mark, a phone wallet and the card behind it look like two people, and so does a couple who take turns paying. The true repeat figures are higher. The direction they move in can be trusted, which is what matters when you're trying something new for locals.
+
+**Nobody can be contacted from here.** Ops knows each guest only as a scrambled mark. Reaching people needs them to give you their details, through a membership or an email list.
+
+**Loading the history.** The first time, press the button to load past card payments from Square. It works back a week at a time and takes a few minutes for several years; if you leave the page it carries on by itself each night. After that the nightly sync keeps it current.`,
+    related: ["sales.scorecard", "events.learned"],
+    keywords: ["regulars", "repeat", "returning", "loyalty", "locals", "visitors", "tourists", "retention", "cards"],
+  },
+  {
+    id: "sales.customers.todo",
+    area: "sales",
+    route: "/sales/customers",
+    title: "What to do with it",
+    body: "What stands out in who comes back, and what each figure is good for: regulars who've gone quiet, how many first-timers return, and whether locals or visitors bring more.",
+    related: ["sales.customers"],
+  },
+  {
+    id: "sales.customers.numbers",
+    area: "sales",
+    route: "/sales/customers",
+    title: "The numbers behind it",
+    body: "The tables the summary comes from, folded away: how often people come, locals and visitors, whether first-timers return, new and returning by week, and what Ops can and can't see.",
+    related: ["sales.customers"],
+  },
+  {
     id: "sales.scorecard",
     area: "sales",
     route: "/sales/scorecard",

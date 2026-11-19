@@ -1650,6 +1650,32 @@ model SquareDiscount {
   @@index([orderId])
 }
 
+// ---- Guests: who comes back (from Square card payments) ---------------------------------
+// One row per card per business day: the nearest thing the till has to "a guest came in".
+// `guest` is a one-way scramble of Square's own card marker. No name, card number, email
+// or phone is kept, and the marker can't be turned back into a card.
+
+/// A card seen on a business day, with what it paid (tips left out).
+model GuestVisit {
+  date     DateTime @db.Date
+  guest    String
+  payments Int      @default(1)
+  amount   Decimal  @db.Decimal(10, 2)
+
+  @@id([date, guest])
+  @@index([guest])
+}
+
+/// Per day: how many completed payments there were and how many carried a card that can be recognised again.
+model GuestDay {
+  date             DateTime @id @db.Date
+  payments         Int
+  identified       Int
+  amount           Decimal  @db.Decimal(12, 2)
+  identifiedAmount Decimal  @db.Decimal(12, 2)
+  syncedAt         DateTime @default(now())
+}
+
 // ---- Website: what guests see on the public site (feeds under /api/public) ------------
 // Additive. Keyed by the id of the Ops row they describe (no relations), so Recipe, Event
 // and Beer stay untouched; a row for something deleted is simply ignored.
