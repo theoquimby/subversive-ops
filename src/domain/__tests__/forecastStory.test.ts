@@ -139,6 +139,9 @@ describe("forecastStory", () => {
     const p = s.points.find((x) => x.key === "weekdays")!;
     expect(p.title).toBe("Mondays and Tuesdays are close to a guess");
     expect(p.action).toMatch(/go by what you know is booked/);
+    const oneDay = forecastStory({ ...base, all: sum(sc({ wape: 0.31 })), recent: sum(sc({ days: 80, wape: 0.31 })), byWeekday: [g("1", 107, 0.59), g("6", 402, 0.27)] })!;
+    expect(oneDay.points.find((x) => x.key === "weekdays")!.title).toBe("Mondays are close to a guess");
+    expect(oneDay.points.find((x) => x.key === "weekdays")!.detail).toMatch(/It's a small day/);
   });
 
   it("flags event days only when they're clearly worse than ordinary days", () => {

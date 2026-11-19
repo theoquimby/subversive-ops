@@ -201,7 +201,7 @@ export function forecastStory(i: {
     points.push({
       key: "weekdays",
       tone: "bad",
-      title: `${list(names)} ${weak.length === 1 ? "is" : "are"} close to a guess`,
+      title: `${list(names)} are close to a guess`,
       detail: `Off by ${list(weak.map((g) => pct(g.score!.wape)))} on a typical day. ${weak.length === 1 ? "It's a small day" : "They're small days"} (about ${dollars(roundMoney(avg))}), so one party or one dead night swings ${weak.length === 1 ? "it" : "them"}.`,
       action: `For ${list(names)}, go by what you know is booked, not the forecast.`,
     });
