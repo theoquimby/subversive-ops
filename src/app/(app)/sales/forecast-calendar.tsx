@@ -35,6 +35,10 @@ export interface CalDay {
   weatherFar: boolean;
   /** Interest on Google against its usual level; 1 when it isn't moving the day. */
   onlineFactor: number;
+  /** The holiday or school break the day falls on, if any, and what the forecast does for it. */
+  holiday: { label: string; days: number; closed: boolean; used: boolean } | null;
+  /** 1 when there's no holiday, it isn't switched on, or your own event or adjustment is used instead. */
+  holidayFactor: number;
   events: {
     id: string;
     title: string;
@@ -199,6 +203,8 @@ function DayPanel({ day, onClose, onPrev, onNext }: { day: CalDay; onClose: () =
   useEffect(() => ref.current?.focus(), []);
 
   const closedByEvent = day.events.some((e) => e.kind === "CLOSURE");
+  const closedByHoliday = !!day.holiday?.closed && day.holidayFactor === 0;
+  const ownPlan = day.manual !== 1 || day.events.some((e) => e.kind === "CLOSURE" || e.impact !== 1);
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={dayDate(day.date)}>
@@ -280,7 +286,9 @@ function DayPanel({ day, onClose, onPrev, onNext }: { day: CalDay; onClose: () =
 
               {day.closed && !closedByEvent ? (
                 <p className="mt-4 text-sm text-muted">
-                  We haven&apos;t been open on a {day.weekdayName} in recent weeks, so nothing is forecast. If you&apos;re opening, add an event on the events page and the forecast will use it.
+                  {closedByHoliday
+                    ? `You've been closed on ${day.holiday!.label} every year so far, so nothing is forecast. Opening this year? Add an event with its effect on the events page, or set your own adjustment below, and the forecast starts from a usual ${day.weekdayName}.`
+                    : `We haven't been open on a ${day.weekdayName} in recent weeks, so nothing is forecast. If you're opening, add an event on the events page and the forecast will use it.`}
                 </p>
               ) : (
                 <>
@@ -321,6 +329,20 @@ function DayPanel({ day, onClose, onPrev, onNext }: { day: CalDay; onClose: () =
                       value={signed(day.weatherFactor)}
                       muted={day.weatherFactor === 1}
                     />
+                    {day.holiday && (
+                      <Row
+                        label={day.holiday.label}
+                        hint={
+                          ownPlan
+                            ? "Your own event or adjustment is used for this day instead."
+                            : day.holiday.used && day.holidayFactor !== 1
+                              ? `Learned from ${day.holiday.days} past ${day.holiday.days === 1 ? "day" : "days"} like it: we sell about ${Math.round(Math.abs(day.holidayFactor - 1) * 100)}% ${day.holidayFactor > 1 ? "more" : "less"} than a usual ${day.weekdayName}.`
+                              : `No steady pattern here yet, so it's treated as a usual ${day.weekdayName}.`
+                        }
+                        value={signed(day.holidayFactor)}
+                        muted={day.holidayFactor === 1}
+                      />
+                    )}
                     {day.onlineFactor !== 1 && (
                       <Row
                         label="Interest on Google"

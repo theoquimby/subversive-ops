@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GroupScore, Score, ScoreDay, ScoreSummary } from "../forecastScore";
 import { forecastStory } from "../forecastStory";
+import type { UpcomingHoliday } from "../holidayEffect";
 import type { SignalResult, StoredSignal } from "../leadSignals";
 import type { KindEffect, WeatherEffects } from "../weatherEffect";
 
@@ -101,6 +102,31 @@ describe("forecastStory", () => {
     expect(quiet.points.find((x) => x.key === "online")!.detail).toContain("about normal");
     const off = forecastStory({ ...base, all: sum(sc()), recent: sum(sc({ days: 80 })), online: { ...online, stored: { ...stored, near: { ...stored.near, used: false } } } })!;
     expect(off.points.some((x) => x.key === "online")).toBe(false);
+  });
+
+  it("lists the holidays coming up with what the forecast plans for each, ahead of the good-to-know points", () => {
+    const h = (kind: UpcomingHoliday["kind"], from: string, to: string, over: Partial<UpcomingHoliday> = {}): UpcomingHoliday => ({ kind, from, to, factor: 1, days: 6, closed: false, used: false, ...over });
+    const upcoming = [
+      h("thanksgivingEve", "2026-11-25", "2026-11-25", { factor: 1.45, used: true }),
+      h("thanksgiving", "2026-11-26", "2026-11-26", { factor: 0, closed: true, used: true }),
+      h("blackFriday", "2026-11-27", "2026-11-27"),
+      h("thanksgivingWeekend", "2026-11-28", "2026-11-29", { factor: 0.85, used: true }),
+      h("christmasEve", "2026-12-15", "2026-12-15"),
+    ];
+    const s = forecastStory({ ...base, all: sum(sc({ wape: 0.33 }), { f14: sc({ wape: 0.34 }) }), recent: sum(sc({ days: 80, wape: 0.33 })), holidays: { upcoming } })!;
+    const p = s.points.find((x) => x.key === "holidays")!;
+    expect(p.title).toBe("The forecast now plans for the holidays coming up");
+    expect(p.detail).toBe(
+      "Thanksgiving Eve (Wed Nov 25): 45% above a usual Wednesday. Thanksgiving (Thu Nov 26): closed, as every year so far. Black Friday (Fri Nov 27): no steady pattern yet, so treated as a usual Friday. Thanksgiving weekend (Nov 28 to Nov 29): 15% below usual. 1 more after that.",
+    );
+    expect(p.action).toMatch(/yours is used instead/);
+    // It comes before "no worse two weeks out", which is only good to know.
+    expect(s.points.map((x) => x.key)).toEqual(["holidays", "ahead"]);
+    expect(s.next).toMatch(/big local events/);
+
+    const none = forecastStory({ ...base, all: sum(sc()), recent: sum(sc({ days: 80 })), holidays: { upcoming: [h("blackFriday", "2026-11-27", "2026-11-27")] } })!;
+    expect(none.points.find((x) => x.key === "holidays")!.title).toBe("Holidays are coming that the forecast can't call yet");
+    expect(forecastStory({ ...base, all: sum(sc()), recent: sum(sc({ days: 80 })), holidays: { upcoming: [] } })!.points.some((x) => x.key === "holidays")).toBe(false);
   });
 
   it("ignores weather groups with too few days or too small an effect", () => {

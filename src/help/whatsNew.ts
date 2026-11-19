@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 18 Nov · 1.38 (holidays and school breaks in the forecast) ----
+  {
+    id: "2026-11-18.holidays",
+    date: "2026-11-18",
+    title: "The forecast knows the holidays",
+    line: "Holidays and school breaks are planned for from past years; days you always close show as closed.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/sales/scorecard",
+    help: "sales.scorecard.holidays",
+    audience: "manager",
+  },
   // ---- 18 Nov · 1.37 (online interest in the forecast) ----
   {
     id: "2026-11-18.online-in-forecast",

@@ -24,6 +24,20 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.38",
+    date: "2026-11-18",
+    title: "The forecast knows the holidays",
+    summary: "The sales forecast now plans for holidays and school breaks from what they've done here in past years, shows days you close every year as closed, and lists what's coming up on the scorecard.",
+    entries: ["2026-11-18.holidays"],
+    fixed: [
+      "It knows the calendar for any year: the named holidays, Thanksgiving Eve through the weekend after, Christmas Eve to New Year's Eve, long weekends, the February school break and the weeks either side of Easter.",
+      "Each one is learned from past years and switched on only where replaying those years with it landed at least 5% closer. The scorecard shows each, On or Off, under Holidays and school breaks.",
+      "A holiday you've been closed on at each of the last three is forecast as closed. Add an event on the day if you're opening.",
+      "Your own event or adjustment on a day always wins over the holiday.",
+      "The top of the scorecard lists the holidays in the next four weeks and what the forecast plans for each. Tap a day on Sales & forecast to see the holiday's line in the breakdown.",
+    ],
+  },
+  {
     version: "1.37",
     date: "2026-11-18",
     title: "The forecast follows interest on Google",

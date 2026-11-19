@@ -949,7 +949,7 @@ An unlinked item still uses product but doesn't count as a sale, which shows up 
     body: "Sales expected for each of the next five weeks, day by day, built from history and adjusted for weather, events and your own changes.",
     article: `The forecast looks five weeks out so ordering, scheduling and budgets all work from the same numbers.
 
-Each day shows what moved it: the season (once there's a year of history), the weather forecast (rain, heavy rain, snow, heat and cold each learn their own effect from your history), interest on Google (searches and listing activity, where they've made the forecast closer), events on the [events calendar](/events), and any manual change you made. Tap a day to see the breakdown, the expected number of orders and the hourly shape, or to override it.`,
+Each day shows what moved it: the season (once there's a year of history), the weather forecast (rain, heavy rain, snow, heat and cold each learn their own effect from your history), holidays and school breaks (learned from past years), interest on Google (searches and listing activity, where they've made the forecast closer), events on the [events calendar](/events), and any manual change you made. Tap a day to see the breakdown, the expected number of orders and the hourly shape, or to override it.`,
     related: ["sales.weather", "sales.events", "sales.accuracy", "events.page"],
   },
   {
@@ -1018,8 +1018,30 @@ Any change to how Ops forecasts has to beat the current method on this page befo
     area: "sales",
     route: "/sales/scorecard",
     title: "The numbers behind it",
-    body: "Every table the summary is built from, folded away: how far ahead, weather, weekdays, event days, months, online signals, the forecasts kept each night, and every scored day. Open a line to see it.",
+    body: "Every table the summary is built from, folded away: how far ahead, weather, holidays, weekdays, event days, months, online signals, the forecasts kept each night, and every scored day. Open a line to see it.",
     related: ["sales.scorecard", "sales.scorecard.weather", "sales.scorecard.days"],
+  },
+  {
+    id: "sales.scorecard.holidays",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "Holidays and school breaks",
+    body: "What each holiday and school break has done to sales here, and which ones the forecast now plans for. Your own event or adjustment on a day always wins.",
+    article: `Open **The numbers behind it → Holidays and school breaks** on the forecast scorecard.
+
+Ops knows the calendar for any year: New Year's, the Super Bowl, Valentine's, St. Patrick's, Easter, Mother's and Father's Day, Juneteenth, July 4th, Halloween, Veterans Day, Thanksgiving Eve through the weekend after, Christmas Eve to New Year's Eve, the long weekends, the February school break (the week of Presidents' Day) and the weeks either side of Easter.
+
+Long weekends are pooled so they have enough days behind them: the winter ones (MLK, Presidents' Day) together, and the warm ones (Memorial Day, Labor Day, Columbus Day) together, with the Monday separate from the Saturday and Sunday.
+
+**How it's learned.** For each holiday, Ops compares how sales ran against the forecast with how they ran on ordinary days, then replays it year by year using only the years before. A holiday is switched **On** only if that replay landed at least 5% closer and the holiday moves the day by a tenth or more (with two dozen holidays and a handful of days each, a small effect could pass by luck). A holiday comes once a year, so these rest on few days; they're learned again every night, and a holiday that stops helping switches itself off.
+
+**Closed every year.** If you were closed on a holiday at each of its last three occurrences, the forecast shows it as closed. Opening this year? Add an event with its effect on that day, or set your own adjustment, and the forecast starts from a usual day.
+
+**Your plans win.** On a day with your own adjustment, a closure, or an event that changes the forecast, the holiday isn't applied and nothing is learned from the day. A calendar entry with no effect on the forecast (a game on TV, say) doesn't count.
+
+The top of the scorecard lists the holidays in the next four weeks with what the forecast plans for each, so you can check it against what you know.`,
+    related: ["sales.scorecard", "sales.scorecard.numbers", "sales.scorecard.weather"],
+    keywords: ["holiday", "thanksgiving", "christmas", "new year", "easter", "long weekend", "school break", "closed"],
   },
   {
     id: "sales.scorecard.signals",

@@ -2,6 +2,7 @@ import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from 
 import { WEEKDAYS } from "@/domain/dates";
 import { HORIZONS, type GroupScore, type Score } from "@/domain/forecastScore";
 import { forecastStory, type StoryTone } from "@/domain/forecastStory";
+import { HOLIDAY_HINT, HOLIDAY_LABEL } from "@/domain/holidays";
 import { linkWord, onlineFactor, SIGNAL_MIN_SCORED, SIGNAL_NEAR_DAYS, SIGNAL_WARMUP, SIGNAL_WEEK_DAYS, type SignalResult } from "@/domain/leadSignals";
 import { WEATHER_KIND_HINT, WEATHER_KIND_LABEL, WEATHER_KINDS } from "@/domain/weatherHistory";
 import { money, pct, qty, shortDate } from "@/lib/format";
@@ -120,6 +121,13 @@ export default async function ScorecardPage() {
   const fx = s.weatherEffects;
   const helping = s.signals.filter((x) => x.verdict === "helps");
   const judged = s.signals.filter((x) => x.verdict !== "thin");
+  const hol = s.holidays;
+  const holOn = hol.effects.kinds.filter((k) => k.used);
+  const holidayGist = holOn.length || hol.closed.length
+    ? [holOn.length ? `In the forecast: ${holOn.length} of ${hol.effects.kinds.length}` : null, hol.closed.length ? `closed on ${hol.closed.map((k) => HOLIDAY_LABEL[k]).join(" and ")}` : null].filter(Boolean).join("; ")
+    : hol.effects.kinds.length
+      ? "None has a steady enough pattern to use yet"
+      : "No holidays in your history yet";
   const live = s.online.stored;
   const inForecast = live.near.used || live.week.used;
   const nearMove = onlineFactor(live, 0) - 1;
@@ -259,6 +267,54 @@ export default async function ScorecardPage() {
                 <LoadWeather missing={s.weather.wanted - s.weather.onFile} />
               </div>
             )}
+          </Fold>
+
+          <Fold title="Holidays and school breaks" gist={holidayGist}>
+            <p className="mb-3 text-sm text-ink-2">
+              For each holiday, how far sales ran from the forecast on it compared with ordinary days, replayed year by year using only the years before. A holiday is switched on only where that landed at least 5% closer and it moves the day by a tenth or more.
+              {hol.effects.missWithout != null && hol.effects.missWith != null && ` On the ${qty(hol.effects.scored, 0)} replayed days of the ones switched on, the typical miss goes from ${pct(hol.effects.missWithout, 0)} to ${pct(hol.effects.missWith, 0)}.`}
+            </p>
+            {hol.effects.kinds.length || hol.closed.length ? (
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Holiday</Th>
+                    <Th align="right" className="hidden sm:table-cell">Days learned from</Th>
+                    <Th align="right">Forecast plans for</Th>
+                    <Th align="right" className="hidden sm:table-cell">Miss without → with</Th>
+                    <Th align="right">In the forecast</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hol.closed.map((k) => (
+                    <Tr key={k}>
+                      <Td><span className="font-medium text-ink">{HOLIDAY_LABEL[k]}</span></Td>
+                      <Td align="right" className="num hidden text-ink-2 sm:table-cell">—</Td>
+                      <Td align="right" className="whitespace-nowrap font-medium text-ink">Closed</Td>
+                      <Td align="right" className="num hidden text-ink-2 sm:table-cell">—</Td>
+                      <Td align="right"><Badge tone="good">Every year</Badge></Td>
+                    </Tr>
+                  ))}
+                  {hol.effects.kinds.map((k) => (
+                    <Tr key={k.kind}>
+                      <Td>
+                        <span className="font-medium text-ink">{HOLIDAY_LABEL[k.kind]}</span>
+                        {HOLIDAY_HINT[k.kind] && <span className="block text-xs text-muted">{HOLIDAY_HINT[k.kind]}</span>}
+                      </Td>
+                      <Td align="right" className="num hidden text-ink-2 sm:table-cell">{qty(k.days, 0)}</Td>
+                      <Td align="right" className={`num whitespace-nowrap ${k.used ? "font-medium text-ink" : "text-muted"}`}>{Math.abs(k.factor - 1) < 0.005 ? "No change" : plans(k.factor)}</Td>
+                      <Td align="right" className="num hidden whitespace-nowrap text-ink-2 sm:table-cell">{k.missWithout != null && k.missWith != null ? `${pct(k.missWithout, 0)} → ${pct(k.missWith, 0)}` : "—"}</Td>
+                      <Td align="right">{k.used ? <Badge tone="good">On</Badge> : <Badge>Off</Badge>}</Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted">Nothing to show until a holiday has come round at least once with sales on file.</p>
+            )}
+            <p className="mt-2 text-xs text-muted">
+              “More” and “less” are against a usual day of that weekday. A holiday comes once a year, so these rest on few days and are learned again every night. Days with your own adjustment, a closure, or an event that changes the forecast are left out: on those, your number is used and nothing is learned. “Closed” means closed at each of the last three, so nothing is forecast unless you add an event with its effect or your own adjustment.
+            </p>
           </Fold>
 
           <Fold title="By weekday" gist={bestDay && worstDay && bestDay !== worstDay ? `Closest on ${WEEKDAYS[Number(bestDay.key)]} (${pct(bestDay.score!.wape, 0)} off), weakest on ${WEEKDAYS[Number(worstDay.key)]} (${pct(worstDay.score!.wape, 0)})` : undefined}>

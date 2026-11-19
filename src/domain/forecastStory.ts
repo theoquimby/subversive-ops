@@ -5,7 +5,10 @@
  * Pure: plain data in, plain words out.
  */
 
+import { weekday } from "./dates";
 import type { GroupScore, ScoreDay, ScoreSummary } from "./forecastScore";
+import type { UpcomingHoliday } from "./holidayEffect";
+import { HOLIDAY_LABEL } from "./holidays";
 import { onlineFactor, type SignalResult, type StoredSignal } from "./leadSignals";
 import type { WeatherEffects } from "./weatherEffect";
 import { WEATHER_KIND_LABEL, type WeatherKind } from "./weatherHistory";
@@ -45,6 +48,10 @@ export interface ForecastStory {
 
 const KIND_DAYS: Record<string, string> = { rain: "rain days", heavyRain: "heavy rain days", snow: "snow days", hot: "hot days", cold: "freezing days" };
 const WHERE: Record<string, string> = { "Google listing": "on your Google listing", "Google Search": "in Google Search", Website: "on your website" };
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const dayOf = (d: string) => `${MONTHS_SHORT[Number(d.slice(5, 7)) - 1]} ${Number(d.slice(8))}`;
+/** Which points come first when there are more than fit: what needs doing, then what's simply good to know. */
+const ORDER = ["yardstick", "holidays", "weather", "weekdays", "events", "lean", "season", "weatherBuiltIn", "online", "signal", "hot", "ahead"];
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const pct = (n: number) => `${Math.round(Math.abs(n) * 100)}%`;
 const dollars = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
@@ -71,6 +78,8 @@ export function forecastStory(i: {
   weatherEffects?: WeatherEffects;
   /** The online numbers tested against sales; one that would make the forecast closer gets a mention. */
   signals?: readonly SignalResult[];
+  /** Holidays in the next four weeks and what the forecast does for each. */
+  holidays?: { upcoming: readonly UpcomingHoliday[] };
   /** The helpful numbers combined into one reading, and whether the forecast uses it. */
   online?: { members: string[]; near: SignalResult | null; week: SignalResult | null; stored: StoredSignal };
 }): ForecastStory | null {
@@ -109,6 +118,30 @@ export function forecastStory(i: {
       title: `${useRecent ? "Lately the" : "The"} same day last week has been the better guide`,
       detail: `${when} just repeating the same weekday from the week before landed closer than the forecast did.`,
       action: "Check the forecast against the same day last week, and lean toward last week where they disagree.",
+    });
+  }
+
+  // Holidays coming up: what the forecast plans for each, so the owner can check it against their own plans.
+  const coming = i.holidays?.upcoming ?? [];
+  if (coming.length) {
+    const say = (h: UpcomingHoliday) => {
+      const one = h.from === h.to;
+      const when = one ? `${DAY_NAMES[weekday(h.from)].slice(0, 3)} ${dayOf(h.from)}` : `${dayOf(h.from)} to ${dayOf(h.to)}`;
+      const usual = one ? `a usual ${DAY_NAMES[weekday(h.from)]}` : "usual";
+      const plan = h.closed ? "closed, as every year so far" : h.used && Math.abs(h.factor - 1) >= 0.005 ? `${pct(h.factor - 1)} ${h.factor > 1 ? "above" : "below"} ${usual}` : `no steady pattern yet, so treated as ${one ? usual : "usual days"}`;
+      return `${HOLIDAY_LABEL[h.kind]} (${when}): ${plan}`;
+    };
+    const shown = coming.slice(0, 4);
+    const planned = coming.some((h) => h.closed || h.used);
+    points.push({
+      key: "holidays",
+      tone: planned ? "good" : "neutral",
+      title: planned ? "The forecast now plans for the holidays coming up" : "Holidays are coming that the forecast can't call yet",
+      detail: planned
+        ? `${shown.map(say).join(". ")}.${coming.length > shown.length ? ` ${coming.length - shown.length} more after that.` : ""}`
+        : `${list(shown.map((h) => HOLIDAY_LABEL[h.kind]))} ${shown.length === 1 ? "is" : "are"} in the next four weeks. ${shown.length === 1 ? "It has" : "None has"} ${shown.length === 1 ? "no" : "a"} steady pattern in your history yet, so ${shown.length === 1 ? "it's" : "each is"} treated as a usual day.`,
+      action: "Check these against your own plans. If you're doing something different, add an event or adjust the day, and yours is used instead.",
+      link: { href: "/sales", label: "The forecast calendar" },
     });
   }
 
@@ -270,11 +303,15 @@ export function forecastStory(i: {
 
   const next = [
     lead ? `${lead.label} ${WHERE[lead.source] ?? `from ${lead.source}`} passed the test and can go into the forecast next.` : null,
-    hurt.length && !builtIn.length ? "Next, the forecast learns what rain, snow and cold do here, then holidays and school breaks." : "Next, the forecast learns holidays and school breaks.",
+    hurt.length && !builtIn.length
+      ? "Next, the forecast learns what rain, snow and cold do here."
+      : i.holidays
+        ? "Next, the forecast learns the big local events, and gets a closer look at Mondays and Tuesdays."
+        : "Next, the forecast learns holidays and school breaks.",
     "Every change has to beat today's numbers on this page before it replaces the current method.",
   ]
     .filter(Boolean)
     .join(" ");
 
-  return { level, headline, line: line + trend, missDollars, missShare: basis.wape, closeInTen, skill, basis: useRecent ? "recent" : "all", points: points.slice(0, MAX_POINTS), next };
+  return { level, headline, line: line + trend, missDollars, missShare: basis.wape, closeInTen, skill, basis: useRecent ? "recent" : "all", points: [...points].sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key)).slice(0, MAX_POINTS), next };
 }

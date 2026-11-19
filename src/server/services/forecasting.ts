@@ -2,6 +2,7 @@ import "server-only";
 import { addDays, dateRange, daysBetween, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
 import { DayForecast, defaultHourlyShape, forecastSeries, hasYearOfHistory, hourlyShares, seasonalIndex, WeatherObs, YEAR_LAG } from "@/domain/forecast";
 import { backtest, bias, mape } from "@/domain/forecastAccuracy";
+import { holidayPlan, parseStoredHolidays, type HolidayPlan, type StoredHolidays } from "@/domain/holidayEffect";
 import { onlineFactor as learnedOnlineFactor, parseStoredSignal, type StoredSignal } from "@/domain/leadSignals";
 import { parseStored, weatherFactor as learnedWeatherFactor, type StoredEffects } from "@/domain/weatherEffect";
 import { parseNwsGrid, weatherKind, type WeatherKind, type WeatherRow } from "@/domain/weatherHistory";
@@ -148,6 +149,11 @@ export const ONLINE_SIGNAL_KEY = "forecast.onlineSignal";
 /** Where online interest stands and what it has meant for sales, as last learned (see `saveLearned`). Null until it has run. */
 export const storedOnlineSignal = cache(async (): Promise<StoredSignal | null> => parseStoredSignal(await settingValue(ONLINE_SIGNAL_KEY)));
 
+export const HOLIDAYS_KEY = "forecast.holidays";
+
+/** What each holiday does to sales here, and the ones the business closes for, as last learned. Null until it has run. */
+export const storedHolidays = cache(async (): Promise<StoredHolidays | null> => parseStoredHolidays(await settingValue(HOLIDAYS_KEY)));
+
 /** WMO weather code → short label + emoji-free icon key. */
 export function weatherLabel(code: number): { label: string; icon: "sun" | "cloud" | "rain" | "snow" | "storm" | "fog" } {
   if (code === 0 || code === 1) return { label: "Clear", icon: "sun" };
@@ -210,6 +216,10 @@ export interface DayDrivers {
   weatherDays: number;
   /** Online interest (Google searches and listing activity) against its usual level; 1 when not in use or too far out. */
   onlineFactor: number;
+  /** The holiday or school break the day falls on, and what the forecast does for it (days still to come only). */
+  holiday: HolidayPlan | null;
+  /** 1 on an ordinary day, and whenever the owner has an event that changes the number, a closure or an adjustment on the day: theirs wins. */
+  holidayFactor: number;
   total: number;
 }
 
@@ -226,13 +236,14 @@ const demandDriversFor = cache(async (key: string): Promise<Map<ISODate, DayDriv
   const today = businessToday();
 
   const to = addDays(dates[dates.length - 1], 1);
-  const [manual, reasons, events, weather, effects, signal] = await Promise.all([
+  const [manual, reasons, events, weather, effects, signal, holidays] = await Promise.all([
     getAdjustments(),
     getReasons(),
     db.event.findMany({ where: { date: { gte: parseISODate(dates[0]), lt: parseISODate(to) } }, orderBy: { startTime: "asc" } }),
     weatherMap(dates[0], to),
     storedWeatherEffects(),
     storedOnlineSignal(),
+    storedHolidays(),
   ]);
   const out = new Map<ISODate, DayDrivers>();
   for (const date of dates) {
@@ -246,7 +257,12 @@ const demandDriversFor = cache(async (key: string): Promise<Map<ISODate, DayDriv
     const weatherFactor = learned.factor;
     const onlineFactor = date >= today ? learnedOnlineFactor(signal, daysBetween(today, date)) : 1;
     const m = manual.get(date) ?? 1;
-    out.set(date, { date, manual: m, reason: reasons[date] ?? null, events: ev, eventFactor, weather: w, weatherFactor, weatherKind: kind, weatherDays: learned.days, onlineFactor, total: m * eventFactor * weatherFactor * onlineFactor });
+    const holiday = date >= today ? holidayPlan(holidays, date) : null;
+    // The owner's own plan wins: an event that changes the number, a closure, or a manual adjustment.
+    // A calendar entry with no effect (a game on TV) doesn't count, the same as in the replay.
+    const ownPlan = m !== 1 || ev.some((e) => e.kind === "CLOSURE" || e.impact !== 1);
+    const holidayFactor = holiday && !ownPlan ? holiday.factor : 1;
+    out.set(date, { date, manual: m, reason: reasons[date] ?? null, events: ev, eventFactor, weather: w, weatherFactor, weatherKind: kind, weatherDays: learned.days, onlineFactor, holiday, holidayFactor, total: m * eventFactor * weatherFactor * onlineFactor * holidayFactor });
   }
   return out;
 });

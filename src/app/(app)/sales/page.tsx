@@ -2,6 +2,7 @@ import { HelpZone } from "@/components/help";
 import { ForecastRanges } from "@/app/(app)/insights/forecast-ranges";
 import { Card, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import { addDays, dateRange, daysBetween, weekday } from "@/domain/dates";
+import { HOLIDAY_LABEL } from "@/domain/holidays";
 import { EFFECT_FAR_DAYS } from "@/domain/weatherEffect";
 import { dayDate, money, qty, relativeTime, shortDate, signedPct } from "@/lib/format";
 import { requireUser } from "@/server/auth";
@@ -62,7 +63,7 @@ export default async function SalesPage() {
     const w = weather.get(date);
     const past = date < today;
     const actual = past ? actuals.sales.get(date) ?? 0 : null;
-    const closed = past ? !actuals.openDays.has(date) : !!f && (f.drivers.eventFactor === 0 || f.samples === 0);
+    const closed = past ? !actuals.openDays.has(date) : !!f && (f.drivers.eventFactor === 0 || f.samples === 0 || f.drivers.holidayFactor === 0);
     return {
       date,
       dayOfMonth: Number(date.slice(8)),
@@ -87,6 +88,8 @@ export default async function SalesPage() {
       weatherDays: drivers.weatherDays,
       weatherFar: daysBetween(today, date) >= EFFECT_FAR_DAYS,
       onlineFactor: drivers.onlineFactor,
+      holidayFactor: drivers.holidayFactor,
+      holiday: drivers.holiday ? { label: HOLIDAY_LABEL[drivers.holiday.kind], days: drivers.holiday.days, closed: drivers.holiday.closed, used: drivers.holiday.used } : null,
       events: drivers.events,
       weather: w ? { ...weatherLabel(w.code), highF: toF(w.tempMaxC), lowF: toF(w.tempMinC), precipMm: Math.round(w.precipMm) } : null,
       hours: f?.hours ?? [],
