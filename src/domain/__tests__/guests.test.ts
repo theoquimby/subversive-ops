@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "../dates";
-import { guestDays, guestStory, guestSummary, kindOf, type GuestAgg } from "../guests";
+import { guestDays, guestStory, guestSummary, kindOf, quietAfter, type GuestAgg } from "../guests";
 
 const TODAY = "2026-11-19";
 
@@ -51,7 +51,7 @@ describe("guestSummary", () => {
   const guests: GuestAgg[] = [
     ...Array.from({ length: 700 }, (_, i) => g({ first: addDays("2026-01-01", i % 280), last: addDays("2026-01-01", i % 280) })),
     ...Array.from({ length: 200 }, (_, i) => g({ first: addDays("2026-01-01", i), second: addDays("2026-01-01", i + (i % 2 ? 40 : 200)), last: addDays("2026-01-01", i + 40), days: 2, months: 2, amount: 90, days365: 2, amount365: 90 })),
-    ...Array.from({ length: 80 }, (_, i) => g({ first: "2024-03-01", second: "2024-03-08", last: i < 30 ? "2026-08-15" : "2026-11-10", days: 30, months: 14, amount: 1500, days365: 6, amount365: 300, daysPrior: 6, amountPrior: 310 })),
+    ...Array.from({ length: 80 }, (_, i) => g({ first: "2024-03-01", second: "2024-03-08", last: i < 30 ? "2026-05-01" : i < 50 ? "2026-08-15" : "2026-11-10", days: 30, months: 14, amount: 1500, days365: 6, amount365: 300, daysPrior: 6, amountPrior: 310 })),
     ...Array.from({ length: 20 }, () => g({ first: "2023-05-01", second: "2023-05-04", last: "2026-11-15", days: 150, months: 30, amount: 9000, days365: 40, amount365: 2400, daysPrior: 38, amountPrior: 2300 })),
   ];
   const days = [{ payments: 1000, identified: 850, amount: 50000, identifiedAmount: 45000 }];
@@ -85,7 +85,11 @@ describe("guestSummary", () => {
   it("sorts cards into locals and visitors by timing, and spots regulars who've gone quiet", () => {
     expect(s.kinds.local.guests).toBe(100);
     expect(s.kinds.visitor.guests).toBeGreaterThan(600);
-    // 30 of the 100 regulars of the year before haven't been in since mid-August.
+    // Six visits a year means a usual gap of two months, so quiet starts at about five months away: the 30 not
+    // seen since May count, the 20 not seen since mid-August don't yet.
+    expect(quietAfter(6)).toBe(152);
+    expect(quietAfter(4)).toBe(228);
+    expect(quietAfter(52)).toBe(60);
     expect(s.quiet).toEqual({ guests: 30, sales: 9300, of: 100 });
   });
 
@@ -100,7 +104,7 @@ describe("guestSummary", () => {
     expect(story.headline).toBe("A small group of regulars carries 61% of card sales");
     expect(story.line).toContain("1,000 different cards paid here. 100 of them (10%) came on four or more days and brought 61% of card sales.");
     const quiet = story.points.find((p) => p.key === "quiet")!;
-    expect(quiet.title).toBe("30 regulars haven't been in for two months");
+    expect(quiet.title).toBe("30 regulars have gone quiet");
     expect(quiet.detail).toContain("about $9,300");
     expect(quiet.action).toMatch(/membership or an email list/);
     expect(story.points.find((p) => p.key === "returns")!.title).toMatch(/of first-time cards come back within three months/);

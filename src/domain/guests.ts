@@ -90,8 +90,17 @@ export interface GuestAgg {
 
 /** Days in a year that make a regular (the trade's usual line: four or more). */
 export const REGULAR_DAYS = 4;
-/** A regular not seen for this long has gone quiet. */
+/**
+ * A regular has gone quiet when they've been away much longer than is usual for them: two and a half times
+ * their own typical gap, and never less than this many days. Someone who comes four times a year often goes
+ * three months between visits; someone who comes weekly doesn't go two.
+ */
 export const QUIET_DAYS = 60;
+export const QUIET_GAPS = 2.5;
+/** Days away after which a regular who came on `days` days in a year counts as gone quiet. */
+export const quietAfter = (days: number) => Math.max(QUIET_DAYS, Math.round((QUIET_GAPS * 365) / Math.max(1, days)));
+/** Bumped when the way any figure is worked out changes, so the kept copy is counted again at once. */
+export const GUEST_RULES = 2;
 /** First-timers are followed for return over the last two years. */
 const COHORT_DAYS = 730;
 /** A card first seen this recently hasn't had time to show what it is. */
@@ -151,7 +160,7 @@ export interface GuestSummary {
   returns: ReturnRate[];
   /** History doesn't reach a year before the first-timers being followed, so some "first-timers" are old regulars. */
   shallow: boolean;
-  /** Regulars of the year before who haven't been seen in the last 60 days, and what they spent that year. */
+  /** Regulars of the year before who've been away far longer than is usual for them, and what they spent that year. */
   quiet: { guests: number; sales: number; of: number };
   /** Share of payments, and of money, that carried a recognisable card over the last 365 days; null with no days on file. */
   coverage: { payments: number; amount: number } | null;
@@ -168,7 +177,6 @@ export function guestSummary(i: { guests: readonly GuestAgg[]; days: readonly Pi
   const cohortStart = addDays(i.today, -COHORT_DAYS);
   const returns: ReturnRate[] = [30, 90, 365].map((within) => ({ within, firstTimers: 0, returned: 0, rate: null }));
   const quiet = { guests: 0, sales: 0, of: 0 };
-  const quietSince = addDays(i.today, -QUIET_DAYS);
 
   for (const g of i.guests) {
     if (from == null || g.first < from) from = g.first;
@@ -190,7 +198,7 @@ export function guestSummary(i: { guests: readonly GuestAgg[]; days: readonly Pi
     }
     if (g.daysPrior >= REGULAR_DAYS) {
       quiet.of++;
-      if (g.last < quietSince) {
+      if (daysBetween(g.last, i.today) >= quietAfter(g.daysPrior)) {
         quiet.guests++;
         quiet.sales += g.amountPrior;
       }
@@ -265,8 +273,8 @@ export function guestStory(s: GuestSummary): GuestStory | null {
     points.push({
       key: "quiet",
       tone: s.quiet.guests / Math.max(1, s.quiet.of) >= 0.25 ? "bad" : "warn",
-      title: `${n(s.quiet.guests)} regulars haven't been in for two months`,
-      detail: `They were among ${n(s.quiet.of)} regulars in the year before, and spent about ${usd(s.quiet.sales)} between them in that year. Some of that is the season; some have moved on.`,
+      title: `${n(s.quiet.guests)} regulars have gone quiet`,
+      detail: `They were among ${n(s.quiet.of)} regulars in the year before, and have now been away far longer than is usual for them (at least two months, and two and a half times their own usual gap). They spent about ${usd(s.quiet.sales)} between them in that year. Some will be seasonal; some have moved on.`,
       action: "Ops knows them only as cards, so there's no way to reach them. A membership or an email list is what would let you.",
     });
   }

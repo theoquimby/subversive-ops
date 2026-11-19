@@ -32,14 +32,11 @@ export function LoadHistory({ label, firstSale }: { label: string; firstSale: st
           setNote({ text: "All of it is loaded." });
           break;
         }
-        setNote({ text: `Loaded back to ${r.through ? `${shortDate(r.through)}, ${r.through.slice(0, 4)}` : "…"}${firstSale ? ` (going back to ${firstSale.slice(0, 4)})` : ""}. Keep this page open.` });
-        // Show what's in so far every few stretches.
-        if (i % 4 === 3) {
-          await recountGuests();
-          router.refresh();
-        }
+        setNote({ text: `Loaded back to ${r.through ? `${shortDate(r.through)}, ${r.through.slice(0, 4)}` : "…"}${firstSale ? ` (going back to ${firstSale.slice(0, 4)})` : ""}. Keep this page open; the figures appear when it finishes or you press Stop.` });
       }
     } finally {
+      // Count what's in (all of it, or as far as it got) and show it.
+      await recountGuests().catch(() => undefined);
       setBusy(false);
       router.refresh();
     }

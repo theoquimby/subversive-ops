@@ -996,7 +996,7 @@ Square marks each card it sees. Ops keeps a scrambled copy of that mark for each
 
 - **Regulars**: cards seen on four or more days in the last 12 months, how many there are, and how much of card sales they bring.
 - **First-timers who come back**: of cards seen for the first time in the last two years, the share seen again within a month, three months and a year.
-- **Regulars gone quiet**: regulars of the year before who haven't been in for 60 days, and what they spent that year.
+- **Regulars gone quiet**: regulars of the year before who've been away far longer than is usual for them (at least two months, and two and a half times their own usual gap), and what they spent that year.
 - **Locals and visitors**, read from timing alone: a card seen in three or more separate months is a local; one seen on a few days within ten days and never again is a visitor.
 - **New and returning** cards week by week.
 

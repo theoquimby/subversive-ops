@@ -32,7 +32,7 @@ export const RELEASES: Release[] = [
     fixed: [
       "Regulars (four or more days a year): how many there are and their share of card sales.",
       "First-timers who come back within a month, three months and a year.",
-      "Regulars of the year before who haven't been in for 60 days, and what they spent.",
+      "Regulars of the year before who've been away far longer than is usual for them, and what they spent.",
       "Locals and visitors, read from when cards come, and new against returning cards week by week.",
       "Ops keeps only a scrambled mark per card per day. No name, card number, email or phone is read or kept, so the figures are a floor and nobody can be contacted from them.",
       "Press Load card visits from Square once to bring in the history; the nightly sync keeps it current after that.",

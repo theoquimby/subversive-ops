@@ -1,6 +1,6 @@
 import "server-only";
 import { addDays, businessDate, dateRange, ISODate, parseISODate, toISODate, zonedMidnightUTC } from "@/domain/dates";
-import { guestDays, guestStory, guestSummary, QUIET_DAYS, type GuestAgg, type GuestPayment, type GuestStory, type GuestSummary } from "@/domain/guests";
+import { GUEST_RULES, guestDays, guestStory, guestSummary, QUIET_DAYS, type GuestAgg, type GuestPayment, type GuestStory, type GuestSummary } from "@/domain/guests";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { env } from "../env";
@@ -105,6 +105,7 @@ export interface GuestWeek {
 }
 
 interface StoredGuests {
+  rules: number;
   computedOn: ISODate;
   summary: GuestSummary;
   weekly: GuestWeek[];
@@ -143,6 +144,7 @@ export async function computeGuests(): Promise<StoredGuests> {
       GROUP BY 1 ORDER BY 1`,
   ]);
   const stored: StoredGuests = {
+    rules: GUEST_RULES,
     computedOn: today,
     summary: guestSummary({ guests, days: days.map((d) => ({ payments: d.payments, identified: d.identified, amount: d.amount.toNumber(), identifiedAmount: d.identifiedAmount.toNumber() })), today }),
     weekly: weekly.map((w) => ({ week: w.week, guests: w.guests, newGuests: w.newGuests, sales: Math.round(w.sales), returningSales: Math.round(w.returningSales) })),
@@ -176,7 +178,7 @@ export interface GuestView {
 export async function guestView(): Promise<GuestView> {
   const [connected, daysOnFile, kept, backfill, firstSale] = await Promise.all([isSquareConnected(), db.guestDay.count({ where: { payments: { gt: 0 } } }), readSettingJSON<StoredGuests>(SUMMARY_KEY), guestBackfill(), firstSaleDate()]);
   // Counted nightly; count now if there are visits but no kept copy, or it's from another day.
-  const stored = daysOnFile > 0 && kept?.computedOn !== businessToday() ? await computeGuests() : kept;
+  const stored = daysOnFile > 0 && (kept?.computedOn !== businessToday() || kept.rules !== GUEST_RULES) ? await computeGuests() : kept;
   const summary = daysOnFile > 0 ? (stored?.summary ?? null) : null;
   return { connected, daysOnFile, summary, story: summary ? guestStory(summary) : null, weekly: summary ? (stored?.weekly ?? []) : [], backfill, firstSale };
 }

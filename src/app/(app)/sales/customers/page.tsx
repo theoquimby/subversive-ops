@@ -1,6 +1,6 @@
 import { Fold } from "@/components/fold";
 import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
-import { BANDS, KINDS, QUIET_DAYS, REGULAR_DAYS } from "@/domain/guests";
+import { BANDS, KINDS, REGULAR_DAYS } from "@/domain/guests";
 import { money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { guestView } from "@/server/services/guests";
@@ -83,7 +83,7 @@ export default async function CustomersPage() {
               <dd className="num mt-0.5 text-lg font-semibold tracking-tight text-ink">{r90?.rate != null ? pct(r90.rate, 0) : "Too soon to say"}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted">Regulars not seen for {QUIET_DAYS} days</dt>
+              <dt className="text-xs text-muted">Regulars gone quiet</dt>
               <dd className="num mt-0.5 text-lg font-semibold tracking-tight text-ink">
                 {qty(s.quiet.guests, 0)} <span className="text-sm font-normal text-muted">of {qty(s.quiet.of, 0)}</span>
               </dd>
