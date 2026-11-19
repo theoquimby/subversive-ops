@@ -2,6 +2,7 @@ import "server-only";
 import { addDays, dateRange, daysBetween, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
 import { DayForecast, defaultHourlyShape, forecastSeries, hasYearOfHistory, hourlyShares, seasonalIndex, WeatherObs, YEAR_LAG } from "@/domain/forecast";
 import { backtest, bias, mape } from "@/domain/forecastAccuracy";
+import { CAP_HIGH, parseStoredMethod, realOpenDays, type StoredMethod } from "@/domain/forecastMethod";
 import { holidayPlan, parseStoredHolidays, type HolidayPlan, type StoredHolidays } from "@/domain/holidayEffect";
 import { onlineFactor as learnedOnlineFactor, parseStoredSignal, type StoredSignal } from "@/domain/leadSignals";
 import { parseStored, weatherFactor as learnedWeatherFactor, type StoredEffects } from "@/domain/weatherEffect";
@@ -154,6 +155,11 @@ export const HOLIDAYS_KEY = "forecast.holidays";
 /** What each holiday does to sales here, and the ones the business closes for, as last learned. Null until it has run. */
 export const storedHolidays = cache(async (): Promise<StoredHolidays | null> => parseStoredHolidays(await settingValue(HOLIDAYS_KEY)));
 
+export const METHOD_KEY = "forecast.method";
+
+/** Whether the usual-day average leaves out stray-sale days and caps freak days, as last decided by the replay. */
+export const storedMethod = cache(async (): Promise<StoredMethod | null> => parseStoredMethod(await settingValue(METHOD_KEY)));
+
 /** WMO weather code → short label + emoji-free icon key. */
 export function weatherLabel(code: number): { label: string; icon: "sun" | "cloud" | "rain" | "snow" | "storm" | "fog" } {
   if (code === 0 || code === 1) return { label: "Clear", icon: "sun" };
@@ -195,9 +201,12 @@ export async function pastEventDays(from: ISODate, to: ISODate) {
 
 /** History for baselines: sales, open days, and open days minus event days (once per render per range). */
 const baselineHistory = cache(async (from: ISODate, to: ISODate) => {
-  const [h, events] = await Promise.all([dailySalesHistory(from, to), pastEventDays(from, to)]);
-  const cleanOpenDays = new Set([...h.openDays].filter((d) => !events.has(d)));
-  return { ...h, cleanOpenDays, eventDays: events };
+  const [h, events, method] = await Promise.all([dailySalesHistory(from, to), pastEventDays(from, to), storedMethod()]);
+  // When the replay favours it, a day with only a stray sale isn't an open day for the usual-day average.
+  const refined = !!method?.refined;
+  const open = refined ? realOpenDays(h.sales) : h.openDays;
+  const cleanOpenDays = new Set([...open].filter((d) => !events.has(d)));
+  return { ...h, cleanOpenDays, eventDays: events, refined };
 });
 
 // ---- Adjustments: manual × events × weather --------------------------------------
@@ -315,8 +324,10 @@ const dailySalesForecastFor = cache(async (key: string): Promise<DailySalesForec
   const adjustments = new Map([...drivers].map(([d, x]) => [d, x.total]));
   // Orders follow the same model, on days that had both sales and orders recorded.
   const orderDays = new Set([...history.cleanOpenDays].filter((d) => (orders.get(d) ?? 0) > 0));
-  const orderF = orderDays.size ? new Map(forecastSeries({ history: orders, openDays: orderDays, asOf: today, dates, adjustments }).map((f) => [f.date, f])) : null;
-  return forecastSeries({ history: history.sales, openDays: history.cleanOpenDays, asOf: today, dates, adjustments }).map((f) => {
+  // And one freak day counts for at most one-and-a-half usual ones.
+  const opts = history.refined ? { capHigh: CAP_HIGH } : {};
+  const orderF = orderDays.size ? new Map(forecastSeries({ history: orders, openDays: orderDays, asOf: today, dates, adjustments }, opts).map((f) => [f.date, f])) : null;
+  return forecastSeries({ history: history.sales, openDays: history.cleanOpenDays, asOf: today, dates, adjustments }, opts).map((f) => {
     const o = orderF?.get(f.date);
     return { ...f, drivers: drivers.get(f.date)!, orders: o && o.samples > 0 ? o.qty : null };
   });

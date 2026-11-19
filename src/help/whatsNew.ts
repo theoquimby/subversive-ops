@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 18 Nov · 1.39 (a steadier usual day) ----
+  {
+    id: "2026-11-18.usual-day",
+    date: "2026-11-18",
+    title: "A steadier usual day",
+    line: "Stray sales on closed days and one-off freak days no longer throw off the forecast.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/sales/scorecard",
+    help: "sales.scorecard.method",
+    audience: "manager",
+  },
   // ---- 18 Nov · 1.38 (holidays and school breaks in the forecast) ----
   {
     id: "2026-11-18.holidays",

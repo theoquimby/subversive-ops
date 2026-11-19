@@ -24,6 +24,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.39",
+    date: "2026-11-18",
+    title: "A steadier usual day",
+    summary: "The forecast's starting point, the usual for each weekday, no longer counts stray-sale days as open days and no longer lets one freak day pull it for weeks. Used only where the replay shows it's closer.",
+    entries: ["2026-11-18.usual-day"],
+    fixed: [
+      "A day with only a stray sale (under a tenth of a typical day, like a gift card bought on a closed Tuesday) isn't counted as an open day, in the forecast or on the scorecard.",
+      "One freak day, a holiday or a single huge order, counts for at most one-and-a-half usual days, so the weeks after it aren't forecast too high.",
+      "Both are replayed beside the old method every night and switched on only when they're at least 1% closer over all the history and no worse over the last 12 months. The scorecard shows the result under The usual day.",
+    ],
+  },
+  {
     version: "1.38",
     date: "2026-11-18",
     title: "The forecast knows the holidays",

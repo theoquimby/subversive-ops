@@ -121,6 +121,12 @@ export default async function ScorecardPage() {
   const fx = s.weatherEffects;
   const helping = s.signals.filter((x) => x.verdict === "helps");
   const judged = s.signals.filter((x) => x.verdict !== "thin");
+  const mc = s.method.check;
+  const methodGist = mc.use && mc.all
+    ? `In use: stray-sale days left out, freak days capped (miss ${pct(mc.all.before, 1)} → ${pct(mc.all.after, 1)})`
+    : mc.all
+      ? "Tested: leaving out stray-sale days and capping freak days isn't closer, so it's not in use"
+      : "Not enough history to test yet";
   const hol = s.holidays;
   const holOn = hol.effects.kinds.filter((k) => k.used);
   const holidayGist = holOn.length || hol.closed.length
@@ -219,6 +225,42 @@ export default async function ScorecardPage() {
               {HORIZONS.map((h) => <ScoreRow key={h.model} label={h.label} s={a[h.model]} />)}
               <ScoreRow label="Same day last week" hint="The plain yardstick" s={a.naive} />
             </ScoreTable>
+          </Fold>
+
+          <Fold title="The usual day" gist={methodGist}>
+            <p className="mb-3 text-sm text-ink-2">
+              Every forecast starts from the usual for that weekday: the last eight weeks, recent ones counting most. Two refinements are tested against it. A day with only a stray sale (under a tenth of a typical day, like a gift card bought on a closed Tuesday) isn&apos;t counted as an open day. And one freak day, a holiday or a single huge order, counts for at most one-and-a-half usual days, so it can&apos;t pull the usual for weeks afterwards.
+            </p>
+            {mc.all ? (
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Replayed over</Th>
+                    <Th align="right" className="hidden sm:table-cell">Days</Th>
+                    <Th align="right">Miss without → with</Th>
+                    <Th align="right">In the forecast</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {([["All your history", mc.all], ["The last 12 months", mc.recent]] as const).map(([label, m]) =>
+                    m ? (
+                      <Tr key={label}>
+                        <Td><span className="font-medium text-ink">{label}</span></Td>
+                        <Td align="right" className="num hidden text-ink-2 sm:table-cell">{qty(m.days, 0)}</Td>
+                        <Td align="right" className="num whitespace-nowrap text-ink-2">{pct(m.before, 1)} → {pct(m.after, 1)}</Td>
+                        <Td align="right">{mc.use ? <Badge tone="good">On</Badge> : <Badge>Off</Badge>}</Td>
+                      </Tr>
+                    ) : null,
+                  )}
+                </tbody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted">This needs a few months of sales before it can be tested.</p>
+            )}
+            <p className="mt-2 text-xs text-muted">
+              Switched on only when it&apos;s at least 1% closer over all your history and no worse over the last 12 months; decided again every night.
+              {mc.strayDays > 0 && ` ${qty(mc.strayDays, 0)} ${mc.strayDays === 1 ? "day" : "days"} with only a stray sale ${mc.use ? "are no longer counted as open days, so they aren't scored on this page either" : "would no longer count as open days"}.`}
+            </p>
           </Fold>
 
           <Fold title="By weather" gist={fxOn.length ? `In the forecast: ${fxOn.map((k) => `${WEATHER_KIND_LABEL[k.kind].toLowerCase()} ${plans(k.factor)}`).join(", ")}` : `Weather on file for ${qty(weatherDays, 0)} of ${qty(s.days.length, 0)} days`}>

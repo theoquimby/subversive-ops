@@ -1,6 +1,7 @@
 import "server-only";
 import { addDays, dateRange, daysBetween, parseISODate, toISODate, type ISODate } from "@/domain/dates";
 import { groupScore, score, scoreDays, scoreLogged, summarize, type GroupScore, type Score, type ScoreDay, type ScoreSummary } from "@/domain/forecastScore";
+import { CAP_HIGH, checkMethod, realOpenDays, toStoredMethod, type MethodCheck, type StoredMethod } from "@/domain/forecastMethod";
 import { learnHolidayEffects, toStoredHolidays, upcomingHolidays, usuallyClosed, type HolidayEffects, type StoredHolidays, type UpcomingHoliday } from "@/domain/holidayEffect";
 import type { HolidayKind } from "@/domain/holidays";
 import { combinedLevelNow, settledSpan, testCombined, testSignals, toStoredSignal, type SignalResult, type SignalSeries, type StoredSignal } from "@/domain/leadSignals";
@@ -8,7 +9,7 @@ import { learnWeatherEffects, toStored, type WeatherEffects } from "@/domain/wea
 import { ARCHIVE_LAG_DAYS, backfillSpans, NOAA_DAILY_TYPES, NOAA_STATION, parseNceiDaily } from "@/domain/weatherHistory";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
-import { dailySalesForecast, eventsBetween, pastEventDays, saveWeatherRows, HOLIDAYS_KEY, ONLINE_SIGNAL_KEY, storedHolidays, storedOnlineSignal, storedWeatherEffects, WEATHER_EFFECTS_KEY, weatherMap } from "./forecasting";
+import { dailySalesForecast, eventsBetween, pastEventDays, saveWeatherRows, HOLIDAYS_KEY, METHOD_KEY, ONLINE_SIGNAL_KEY, storedHolidays, storedMethod, storedOnlineSignal, storedWeatherEffects, WEATHER_EFFECTS_KEY, weatherMap } from "./forecasting";
 import { getAdjustments } from "./planning";
 import { businessToday } from "./sales";
 
@@ -102,8 +103,9 @@ export async function backfillWeather(maxSpans = 10): Promise<{ days: number; sp
 
 /** v2: weather by kind (rain, heavy rain, snow, heat, cold) in place of one rain factor.
  * v3: online interest (Google searches and listing activity) on top of v2.
- * v4: holidays and school breaks on top of v3. */
-export const FORECAST_MODEL = "v4";
+ * v4: holidays and school breaks on top of v3.
+ * v5: the usual-day average leaves out stray-sale days and caps freak days, when the replay favours it. */
+export const FORECAST_MODEL = "v5";
 const LOG_DAYS_AHEAD = 14;
 
 /** Keep tonight's forecast for today and the next two weeks, so it can be scored against what then sells. */
@@ -229,6 +231,8 @@ export interface Scorecard {
   weatherEffects: WeatherEffects;
   /** Every scored day, the day-before forecast without weather against the same forecast with the switched-on kinds. */
   withWeather: { without: Score | null; with: Score | null };
+  /** The usual-day average with stray-sale days left out and freak days capped, against the method without: which is closer. */
+  method: { check: MethodCheck; stored: StoredMethod };
   /** What each holiday and school break does to sales, the ones closed every year, and what's coming in the next four weeks. */
   holidays: { effects: HolidayEffects; closed: HolidayKind[]; upcoming: UpcomingHoliday[]; stored: StoredHolidays };
   /** Each online number tested against sales: does it move with them, and would it have made the forecast closer? */
@@ -247,7 +251,7 @@ export async function forecastScorecard(): Promise<Scorecard> {
   const first = await firstSaleDate();
   const coverage = await weatherCoverage();
   const none = summarize([]);
-  if (!first) return { today, firstSale: null, days: [], openDays: 0, dailyOnly: 0, all: none, recent: none, byWeekday: [], byMonth: [], byWeather: [], byEvent: [], weather: coverage, weatherEffects: learnWeatherEffects([]).effects, withWeather: { without: null, with: null }, holidays: { effects: learnHolidayEffects([]).effects, closed: [], upcoming: [], stored: toStoredHolidays(learnHolidayEffects([]).effects, [], today) }, signals: [], online: { members: [], near: null, week: null, stored: toStoredSignal({ learnedOn: today, members: [], level: null, near: null, week: null }) }, logged: { since: null, dayBefore: null, weekAhead: null } };
+  if (!first) return { today, firstSale: null, days: [], openDays: 0, dailyOnly: 0, all: none, recent: none, byWeekday: [], byMonth: [], byWeather: [], byEvent: [], weather: coverage, weatherEffects: learnWeatherEffects([]).effects, withWeather: { without: null, with: null }, method: { check: checkMethod([], [], today, 0), stored: toStoredMethod(checkMethod([], [], today, 0), today) }, holidays: { effects: learnHolidayEffects([]).effects, closed: [], upcoming: [], stored: toStoredHolidays(learnHolidayEffects([]).effects, [], today) }, signals: [], online: { members: [], near: null, week: null, stored: toStoredSignal({ learnedOn: today, members: [], level: null, near: null, week: null }) }, logged: { since: null, dayBefore: null, weekAhead: null } };
 
   const [history, eventDays, events, manual, weather, logged, series] = await Promise.all([
     fullSalesHistory(first, today),
@@ -270,7 +274,15 @@ export async function forecastScorecard(): Promise<Scorecard> {
   for (const [d, list] of byDate) adjustments.set(d, list.some((e) => e.kind === "CLOSURE") ? 0 : list.reduce((p, e) => p * e.impact, 1));
   for (const [d, m] of manual) if (d >= first && d < today) adjustments.set(d, (adjustments.get(d) ?? 1) * m);
 
-  const days = scoreDays({ history: history.sales, openDays: history.openDays, eventDays, adjustments, weather, dates: dateRange(first, today) });
+  // The replay twice: as the method was, and with stray-sale days left out and freak days capped. Whichever
+  // lands closer is the one everything below (and the live forecast) builds on.
+  const dates = dateRange(first, today);
+  const plain = scoreDays({ history: history.sales, openDays: history.openDays, eventDays, adjustments, weather, dates });
+  const realOpen = realOpenDays(history.sales);
+  const refined = scoreDays({ history: history.sales, openDays: realOpen, eventDays, adjustments, weather, dates }, { capHigh: CAP_HIGH });
+  const method = checkMethod(plain, refined, today, history.openDays.size - realOpen.size);
+  const days = method.use ? refined : plain;
+  const openDays = method.use ? realOpen : history.openDays;
   const cutoff = addDays(today, -90);
   const learned = learnWeatherEffects(days);
   const scoredDays = days.filter((d) => d.f1 != null);
@@ -278,7 +290,7 @@ export async function forecastScorecard(): Promise<Scorecard> {
   // both, so a rainy day or a holiday isn't read as something else.
   const withWeather = days.map((d) => ({ date: d.date, actual: d.actual, forecast: d.f1 == null ? null : (learned.withWeather.get(d.date) ?? d.f1), event: d.event }));
   const holidays = learnHolidayEffects(withWeather);
-  const holidaysStored = toStoredHolidays(holidays.effects, usuallyClosed({ openDays: history.openDays, from: first, today }), today);
+  const holidaysStored = toStoredHolidays(holidays.effects, usuallyClosed({ openDays, from: first, today }), today);
   const dayBefore = withWeather.map((d) => ({ ...d, forecast: d.forecast == null ? null : (holidays.withHolidays.get(d.date) ?? d.forecast) }));
   const signals = testSignals(series, dayBefore, today);
   // The ones that help largely move together, so they go into the forecast as one reading.
@@ -293,7 +305,7 @@ export async function forecastScorecard(): Promise<Scorecard> {
     today,
     firstSale: first,
     days,
-    openDays: history.openDays.size,
+    openDays: openDays.size,
     dailyOnly: history.dailyOnly,
     all: summarize(days),
     recent: summarize(days.filter((d) => d.date >= cutoff)),
@@ -307,6 +319,7 @@ export async function forecastScorecard(): Promise<Scorecard> {
       without: score(scoredDays.map((d) => ({ forecast: d.f1!, actual: d.actual }))),
       with: score(scoredDays.map((d) => ({ forecast: learned.withWeather.get(d.date) ?? d.f1!, actual: d.actual }))),
     },
+    method: { check: method, stored: toStoredMethod(method, today) },
     holidays: { effects: holidays.effects, closed: holidaysStored.closed as HolidayKind[], upcoming: upcomingHolidays(holidaysStored, today), stored: holidaysStored },
     signals,
     online: {
@@ -328,17 +341,17 @@ export async function saveWeatherEffects(effects: WeatherEffects, today: ISODate
 }
 
 /** Keep everything the replay learned where the live forecast reads it: weather by kind, holidays, and online interest. */
-export async function saveLearned(s: Pick<Scorecard, "today" | "weatherEffects" | "online" | "holidays">) {
+export async function saveLearned(s: Pick<Scorecard, "today" | "weatherEffects" | "online" | "holidays" | "method">) {
   await saveWeatherEffects(s.weatherEffects, s.today);
-  for (const [key, value] of [[ONLINE_SIGNAL_KEY, JSON.stringify(s.online.stored)], [HOLIDAYS_KEY, JSON.stringify(s.holidays.stored)]]) {
+  for (const [key, value] of [[ONLINE_SIGNAL_KEY, JSON.stringify(s.online.stored)], [HOLIDAYS_KEY, JSON.stringify(s.holidays.stored)], [METHOD_KEY, JSON.stringify(s.method.stored)]]) {
     await db.setting.upsert({ where: { key }, create: { key, value }, update: { value } });
   }
 }
 
 /** True when any of them hasn't been learned today (first run, or a missed night). */
 export async function learnedIsStale(today: ISODate): Promise<boolean> {
-  const [w, o, h] = await Promise.all([storedWeatherEffects(), storedOnlineSignal(), storedHolidays()]);
-  return w?.learnedOn !== today || o?.learnedOn !== today || h?.learnedOn !== today;
+  const [w, o, h, m] = await Promise.all([storedWeatherEffects(), storedOnlineSignal(), storedHolidays(), storedMethod()]);
+  return w?.learnedOn !== today || o?.learnedOn !== today || h?.learnedOn !== today || m?.learnedOn !== today;
 }
 
 /** Replay every past day, learn what weather, holidays and online interest do to sales, and keep it for the live forecast. Runs nightly. */

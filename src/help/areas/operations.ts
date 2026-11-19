@@ -1018,8 +1018,26 @@ Any change to how Ops forecasts has to beat the current method on this page befo
     area: "sales",
     route: "/sales/scorecard",
     title: "The numbers behind it",
-    body: "Every table the summary is built from, folded away: how far ahead, weather, holidays, weekdays, event days, months, online signals, the forecasts kept each night, and every scored day. Open a line to see it.",
+    body: "Every table the summary is built from, folded away: how far ahead, the usual day, weather, holidays, weekdays, event days, months, online signals, the forecasts kept each night, and every scored day. Open a line to see it.",
     related: ["sales.scorecard", "sales.scorecard.weather", "sales.scorecard.days"],
+  },
+  {
+    id: "sales.scorecard.method",
+    area: "sales",
+    route: "/sales/scorecard",
+    title: "The usual day",
+    body: "How the usual for a weekday is worked out: stray-sale days aren't counted as open days, and one freak day can't pull the usual for weeks. Used only when the replay shows it's closer.",
+    article: `Open **The numbers behind it → The usual day** on the forecast scorecard.
+
+Every forecast starts from the usual for that weekday: the last eight weeks of that weekday, recent ones counting most. Two things used to throw it off.
+
+**Stray-sale days.** A gift card bought online on a Tuesday you're closed shows up as a Tuesday with $40 of sales. That isn't an open day, and it shouldn't sit in the average of recent Tuesdays or be scored as a forecast that missed. A day now counts as open only when it sold at least a tenth of the typical day over the eight weeks before it.
+
+**Freak days.** A holiday Monday or one huge order used to stay in the average for eight weeks, so the Mondays after Labor Day were forecast far too high. Each recent day now counts for at most one-and-a-half times the middle one.
+
+Both are replayed over every past day beside the method without them, and switched **On** only when that's at least 1% closer over all your history and no worse over the last 12 months. It's decided again every night.`,
+    related: ["sales.scorecard", "sales.scorecard.numbers", "sales.forecast"],
+    keywords: ["baseline", "usual", "average", "outlier", "stray", "closed day", "monday", "tuesday"],
   },
   {
     id: "sales.scorecard.holidays",

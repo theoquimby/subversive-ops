@@ -306,7 +306,7 @@ export function forecastStory(i: {
     hurt.length && !builtIn.length
       ? "Next, the forecast learns what rain, snow and cold do here."
       : i.holidays
-        ? "Next, the forecast learns the big local events, and gets a closer look at Mondays and Tuesdays."
+        ? "Next, the forecast learns the big local events."
         : "Next, the forecast learns holidays and school breaks.",
     "Every change has to beat today's numbers on this page before it replaces the current method.",
   ]

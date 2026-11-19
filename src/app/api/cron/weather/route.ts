@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   const history = await backfillWeather();
   if ("error" in history) console.error("weather history failed", history.error);
   const effects = await learnWeatherEffectsNow().then(
-    (s) => ({ weather: s.weatherEffects.kinds.filter((k) => k.used).map((k) => k.kind), online: s.online.stored.near.used || s.online.stored.week.used, holidays: s.holidays.stored.kinds.filter((k) => k.used).length }),
+    (s) => ({ weather: s.weatherEffects.kinds.filter((k) => k.used).map((k) => k.kind), online: s.online.stored.near.used || s.online.stored.week.used, holidays: s.holidays.stored.kinds.filter((k) => k.used).length, refined: s.method.stored.refined }),
     (e) => {
       console.error("weather effects failed", e);
       return null;

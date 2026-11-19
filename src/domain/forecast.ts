@@ -31,6 +31,11 @@ export interface ForecastOptions {
   /** How far to trust last year's week-to-week shape: 0 = ignore, 1 = fully (default 0.7). */
   seasonalWeight?: number;
   seasonalClamp?: [number, number]; // default [0.5, 2.5]
+  /**
+   * Count each recent same-weekday day for at most this many times the middle one, so one freak day
+   * (a holiday, a single huge order) doesn't pull the usual for weeks. Needs three days to go by. Off by default.
+   */
+  capHigh?: number;
 }
 
 export interface ForecastInput {
@@ -156,18 +161,21 @@ export function forecastSeries(input: ForecastInput, opts: ForecastOptions = {})
     let cursor = addDays(input.asOf, -1);
     while (weekday(cursor) !== wd) cursor = addDays(cursor, -1);
 
-    let weighted = 0;
-    let weights = 0;
-    let samples = 0;
+    const picked: { v: number; w: number }[] = [];
     for (let i = 0; i < weeksBack; i++) {
       const d = addDays(cursor, -7 * i);
       if (!input.openDays.has(d)) continue;
-      const w = weeksBack - i; // most recent week weighs most
-      weighted += (input.history.get(d) ?? 0) * w;
-      weights += w;
-      samples++;
+      picked.push({ v: input.history.get(d) ?? 0, w: weeksBack - i }); // most recent week weighs most
     }
-    const baseline = weights > 0 ? weighted / weights : 0;
+    const samples = picked.length;
+    let cap = Infinity;
+    if (opts.capHigh != null && samples >= 3) {
+      const sorted = picked.map((p) => p.v).sort((x, y) => x - y);
+      const mid = samples >> 1;
+      cap = (samples % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2) * opts.capHigh;
+    }
+    const weights = picked.reduce((t, p) => t + p.w, 0);
+    const baseline = weights > 0 ? picked.reduce((t, p) => t + Math.min(p.v, cap) * p.w, 0) / weights : 0;
     const adjustment = input.adjustments?.get(date) ?? 1;
     const seasonal = seasonalOn ? seasonalIndex(input.history, input.openDays, input.asOf, date, opts) : 1;
     return { date, qty: baseline * seasonal * trend * adjustment, baseline, trend, seasonal, adjustment, samples };
