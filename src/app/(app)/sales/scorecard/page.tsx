@@ -313,7 +313,7 @@ export default async function ScorecardPage() {
               <p className="text-sm text-muted">Nothing to show until a holiday has come round at least once with sales on file.</p>
             )}
             <p className="mt-2 text-xs text-muted">
-              “More” and “less” are against a usual day of that weekday. A holiday comes once a year, so these rest on few days and are learned again every night. Days with your own adjustment, a closure, or an event that changes the forecast are left out: on those, your number is used and nothing is learned. “Closed” means closed at each of the last three, so nothing is forecast unless you add an event with its effect or your own adjustment.
+              “More” and “less” are against a usual day of that weekday. A holiday comes once a year, so these rest on few days and are learned again every night. Days with your own adjustment, a closure, or an event that changes the forecast are left out: on those, your number is used and nothing is learned. “Closed” means closed at each of the last three, so nothing is forecast unless you add an event with its effect.
             </p>
           </Fold>
 

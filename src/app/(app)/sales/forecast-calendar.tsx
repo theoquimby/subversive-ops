@@ -287,7 +287,7 @@ function DayPanel({ day, onClose, onPrev, onNext }: { day: CalDay; onClose: () =
               {day.closed && !closedByEvent ? (
                 <p className="mt-4 text-sm text-muted">
                   {closedByHoliday
-                    ? `You've been closed on ${day.holiday!.label} every year so far, so nothing is forecast. Opening this year? Add an event with its effect on the events page, or set your own adjustment below, and the forecast starts from a usual ${day.weekdayName}.`
+                    ? `You've been closed on ${day.holiday!.label} every year so far, so nothing is forecast. Opening this year? Add an event with its effect on the events page and the forecast starts from a usual ${day.weekdayName}.`
                     : `We haven't been open on a ${day.weekdayName} in recent weeks, so nothing is forecast. If you're opening, add an event on the events page and the forecast will use it.`}
                 </p>
               ) : (

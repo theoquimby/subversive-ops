@@ -1035,7 +1035,7 @@ Long weekends are pooled so they have enough days behind them: the winter ones (
 
 **How it's learned.** For each holiday, Ops compares how sales ran against the forecast with how they ran on ordinary days, then replays it year by year using only the years before. A holiday is switched **On** only if that replay landed at least 5% closer and the holiday moves the day by a tenth or more (with two dozen holidays and a handful of days each, a small effect could pass by luck). A holiday comes once a year, so these rest on few days; they're learned again every night, and a holiday that stops helping switches itself off.
 
-**Closed every year.** If you were closed on a holiday at each of its last three occurrences, the forecast shows it as closed. A year only counts if you'd normally have been open that weekday, so a Christmas Eve that fell on a day you never open says nothing. Opening this year? Add an event with its effect on that day, or set your own adjustment, and the forecast starts from a usual day.
+**Closed every year.** If you were closed on a holiday at each of its last three occurrences, the forecast shows it as closed. A year only counts if you'd normally have been open that weekday, so a Christmas Eve that fell on a day you never open says nothing. Opening this year? Add an event with its effect on that day and the forecast starts from a usual day.
 
 **Your plans win.** On a day with your own adjustment, a closure, or an event that changes the forecast, the holiday isn't applied and nothing is learned from the day. A calendar entry with no effect on the forecast (a game on TV, say) doesn't count.
 
