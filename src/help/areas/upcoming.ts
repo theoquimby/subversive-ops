@@ -711,8 +711,30 @@ Past event days are left out of the "usual day" averages, for both the sales for
     id: "events.learned",
     area: "events",
     route: "/events",
-    title: "Learned impact",
-    body: "Once an event has happened, its real effect is worked out from sales against a normal day, so next year's version starts from what actually happened.",
+    title: "Did it work?",
+    body: "Each thing you've put on, scored against an ordinary day of that weekday at that time of year, with a verdict only when the nights together say more than chance would.",
+    article: `Open **Events** and look under **Did it work?**
+
+Every past event is compared with an ordinary day: the last eight days of that weekday with nothing on and no holiday, scaled by how your other days were doing around the event against how they were doing back then. That way a weekly night that has run for months is still compared with the same weekday from before it started, allowing for the season.
+
+Events with the same name are read together (every trivia night, every home game), because one night proves nothing: an ordinary night swings by a quarter or more on its own. Ops works out how big that swing is for you by running the same sum on every ordinary day of the last two years.
+
+**The verdicts**
+
+- **Added sales** or **Cost sales**: the nights together clear what chance does about 19 times in 20. You get the size, the range it could really be, and dollars a night.
+- **Can't tell yet**: what the nights point to could still be chance. It says how many more nights would settle it.
+- **Too few nights**: fewer than three.
+- **Nothing to compare**: no ordinary days of that weekday to set it against.
+
+**When more nights won't help.** If something runs every single week, every night is compared with the same eight ordinary days from before it began, and no number of extra nights fixes that. Skipping two or three weeks, or running it every other week, gives fresh ordinary days and a much faster answer.
+
+**Setting upcoming events.** When there's a number to use, a button sets the upcoming events of that series to it. If the result isn't settled, the number is scaled back.
+
+It measures sales, not profit: host fees, prizes and extra staff aren't taken off. It also shows how the days either side did, since an event can borrow sales from them.
+
+**To score something you've already run**, add it under Add events: pick the first night, set Weekly until to today, and leave the impact blank. Past dates work.`,
+    related: ["events.impact", "events.past", "sales.scorecard"],
+    keywords: ["trivia", "live music", "promotion", "lift", "result", "measure", "did it work"],
   },
   {
     id: "events.holidays",

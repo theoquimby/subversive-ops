@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 18 Nov · 1.40 (did it work?) ----
+  {
+    id: "2026-11-18.did-it-work",
+    date: "2026-11-18",
+    title: "Did it work?",
+    line: "An honest verdict on each event or night you've run: added sales, cost sales, or too soon to say.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/events",
+    help: "events.learned",
+    audience: "manager",
+  },
   // ---- 18 Nov · 1.39 (a steadier usual day) ----
   {
     id: "2026-11-18.usual-day",

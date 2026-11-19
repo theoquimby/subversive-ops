@@ -1,12 +1,16 @@
 import "server-only";
 import { addDays, ISODate, parseISODate, toISODate } from "@/domain/dates";
-import { cleanTitle, EventDraft, eventLifts, eventSeries, learnedImpacts, nyHolidays } from "@/domain/events";
+import { eventResults } from "@/domain/eventResults";
+import { cleanTitle, EventDraft, eventSeries, nyHolidays } from "@/domain/events";
+import { realOpenDays } from "@/domain/forecastMethod";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { dailySalesHistory } from "./forecasting";
 import { businessToday } from "./sales";
 
-const LEARN_DAYS = 365;
+/** Events this far back are scored; ordinary days are looked for up to a year and a half before the first of them. */
+const RESULT_DAYS = 1095;
+const LOOKBACK_DAYS = 78 * 7 + 30;
 
 export interface EventRow {
   id: string;
@@ -77,39 +81,47 @@ export async function addHolidays(year: number) {
 // ---- Learning ------------------------------------------------------------------------
 
 /**
- * For every past event in the last year: actual sales ÷ what the day would
- * have done without it. Grouped by series ("GAME:knicks") into a learned
- * impact, with how many upcoming events of that series could use it.
+ * Did it work? Every past event of the last three years against an ordinary
+ * day of that weekday at that time of year, and each series (every trivia
+ * night, every home game) with a verdict only when its nights together say
+ * more than chance would. Also how many upcoming events of each series could
+ * take the measured number.
  */
 export async function eventLearning() {
   const today = businessToday();
-  const from = addDays(today, -LEARN_DAYS);
+  const from = addDays(today, -RESULT_DAYS);
   const [past, future, history] = await Promise.all([
     db.event.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(today) } } }),
     db.event.findMany({ where: { date: { gte: parseISODate(today) } } }),
-    dailySalesHistory(addDays(from, -70), today),
+    dailySalesHistory(addDays(from, -LOOKBACK_DAYS), today),
   ]);
-  const lifts = eventLifts(history.sales, history.openDays, past.map((e) => ({ id: e.id, date: toISODate(e.date), title: e.title, kind: e.kind })));
-  const learned = learnedImpacts(lifts);
+  // A day with only a stray sale isn't an open day, here as in the forecast.
+  const results = eventResults({
+    sales: history.sales,
+    openDays: realOpenDays(history.sales),
+    events: past.map((e) => ({ id: e.id, date: toISODate(e.date), title: e.title, kind: e.kind, impact: e.impact.toNumber() })),
+    today,
+  });
+  const bySeries = new Map(results.series.map((s) => [s.series, s]));
   const upcoming = new Map<string, { count: number; differing: number }>();
   for (const e of future) {
     const s = eventSeries(e.kind, e.title);
-    const l = learned.get(s);
-    if (!l) continue;
+    const impact = bySeries.get(s)?.impact;
+    if (impact == null) continue;
     const cur = upcoming.get(s) ?? { count: 0, differing: 0 };
     cur.count++;
-    if (Math.abs(e.impact.toNumber() - l.impact) >= 0.005) cur.differing++;
+    if (Math.abs(e.impact.toNumber() - impact) >= 0.005) cur.differing++;
     upcoming.set(s, cur);
   }
-  return { lifts: new Map(lifts.map((l) => [l.id, l])), learned, upcoming };
+  return { outcomes: results.outcomes, series: results.series, upcoming };
 }
 
-/** Set every upcoming event in a series to its learned impact. */
+/** Set every upcoming event in a series to its measured effect (scaled back when the result is still unclear). */
 export async function applyLearnedImpact(series: string) {
   const today = businessToday();
-  const { learned } = await eventLearning();
-  const l = learned.get(series);
-  if (!l) return { error: "Nothing learned for that kind of event yet." };
+  const { series: all } = await eventLearning();
+  const l = all.find((x) => x.series === series && x.impact != null);
+  if (!l || l.impact == null) return { error: "There aren't enough nights to put a number on that yet." };
   // A booking's entry keeps the impact the booking works out; it isn't overwritten here.
   const future = await db.event.findMany({ where: { date: { gte: parseISODate(today) }, kind: { not: "CLOSURE" }, privateEvent: { is: null } } });
   const ids = future.filter((e) => eventSeries(e.kind, e.title) === series).map((e) => e.id);

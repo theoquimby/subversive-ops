@@ -1,11 +1,10 @@
 /**
  * Events that move demand: games, festivals, live music, buyouts, closures,
- * holidays. Pure helpers for holiday dates, clean event data, and learning
- * how much each kind of event actually moved sales.
+ * holidays. Pure helpers for holiday dates, clean event data, and grouping
+ * events that recur. What each did to sales is worked out in eventResults.ts.
  */
 
 import { addDays, ISODate, parseISODate, toISODate, weekday } from "./dates";
-import { forecastSeries } from "./forecast";
 
 export const EVENT_KINDS = ["GAME", "FESTIVAL", "MUSIC", "PRIVATE", "CLOSURE", "HOLIDAY", "OTHER"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
@@ -160,67 +159,6 @@ export function eventSeries(kind: string, title: string): string {
     .replace(/\s+/g, " ")
     .trim();
   return `${kind}:${head || title.toLowerCase().trim()}`;
-}
-
-// ---- Learning ------------------------------------------------------------------------
-
-export interface PastEvent {
-  id: string;
-  date: ISODate;
-  title: string;
-  kind: string;
-}
-
-export interface EventLift {
-  id: string;
-  date: ISODate;
-  series: string;
-  actual: number;
-  /** What the day would have done without the event (same-weekday history, no other events). */
-  baseline: number;
-  lift: number | null;
-}
-
-/**
- * Actual sales ÷ the forecast the day would have had without any event, for
- * each past event. Other event days are left out of the baseline so one
- * festival doesn't inflate the next comparison.
- */
-export function eventLifts(history: ReadonlyMap<ISODate, number>, openDays: ReadonlySet<ISODate>, events: PastEvent[]): EventLift[] {
-  const eventDays = new Set(events.map((e) => e.date));
-  const clean = new Set([...openDays].filter((d) => !eventDays.has(d)));
-  const cache = new Map<ISODate, { baseline: number; samples: number }>();
-  return events.map((e) => {
-    if (!cache.has(e.date)) {
-      const [f] = forecastSeries({ history, openDays: clean, asOf: e.date, dates: [e.date] });
-      cache.set(e.date, { baseline: f.qty, samples: f.samples });
-    }
-    const { baseline, samples } = cache.get(e.date)!;
-    const actual = history.get(e.date) ?? 0;
-    const usable = e.kind !== "CLOSURE" && samples >= 3 && baseline > 0;
-    return { id: e.id, date: e.date, series: eventSeries(e.kind, e.title), actual, baseline, lift: usable ? actual / baseline : null };
-  });
-}
-
-export interface LearnedImpact {
-  series: string;
-  samples: number;
-  impact: number;
-}
-
-/** Average lift per series, clamped to a sane range and rounded to whole percents. */
-export function learnedImpacts(lifts: EventLift[]): Map<string, LearnedImpact> {
-  const by = new Map<string, number[]>();
-  for (const l of lifts) {
-    if (l.lift == null) continue;
-    by.set(l.series, [...(by.get(l.series) ?? []), l.lift]);
-  }
-  const out = new Map<string, LearnedImpact>();
-  for (const [series, xs] of by) {
-    const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
-    out.set(series, { series, samples: xs.length, impact: Math.round(Math.min(3, Math.max(0.3, mean)) * 100) / 100 });
-  }
-  return out;
 }
 
 /** Year of a business date. */

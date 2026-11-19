@@ -24,6 +24,20 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.40",
+    date: "2026-11-18",
+    title: "Did it work?",
+    summary: "The Events page now gives an honest verdict on each thing you've put on: whether it added sales, cost sales, or can't be told apart from chance yet, and what would settle it.",
+    entries: ["2026-11-18.did-it-work"],
+    fixed: [
+      "Each event is compared with an ordinary day of that weekday at that time of year, so a weekly night that has run for months is still measured against how that weekday did before it began.",
+      "Events with the same name are judged together, and a result is only called when the nights clear what chance does about 19 times in 20. You get the size, the range, and dollars a night.",
+      "When it can't tell yet, it says how many more nights would settle it, or that skipping a few weeks would get there much faster.",
+      "It replaces Learned impact, which took a single night's result at face value. The button to set upcoming events now scales the number back when the result isn't settled.",
+      "To score something you've already run, add it with past dates: first night, Weekly until today.",
+    ],
+  },
+  {
     version: "1.39",
     date: "2026-11-18",
     title: "A steadier usual day",

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dateRange, weekday } from "../dates";
-import { easterSunday, eventLifts, eventSeries, lastWeekday, learnedImpacts, nthWeekday, nyHolidays, parseClockTime, parseImpactPct, repeatDates, displayTime } from "../events";
+import { easterSunday, eventSeries, lastWeekday, nthWeekday, nyHolidays, parseClockTime, parseImpactPct, repeatDates, displayTime } from "../events";
 
 describe("holiday dates", () => {
   it("computes floating holidays", () => {
@@ -59,31 +58,5 @@ describe("clean input", () => {
     expect(eventSeries("GAME", "Knicks v. Nets")).toBe("GAME:knicks");
     expect(eventSeries("MUSIC", "Live music: The Felice Brothers")).toBe("MUSIC:live music");
     expect(eventSeries("FESTIVAL", "Oktoberfest 2026")).toBe("FESTIVAL:oktoberfest");
-  });
-});
-
-describe("learning event impact", () => {
-  const asOf = "2026-11-10";
-  const days = dateRange(addDays(asOf, -70), asOf);
-  const openDays = new Set(days.filter((d) => weekday(d) !== 2));
-  it("compares event days with a baseline that ignores other events", () => {
-    // Every Saturday does 1000; two game Saturdays did 1500.
-    const games = days.filter((d) => weekday(d) === 6).slice(-2);
-    const history = new Map(days.map((d) => [d, games.includes(d) ? 1500 : weekday(d) === 6 ? 1000 : 500]));
-    const lifts = eventLifts(history, openDays, games.map((d, i) => ({ id: `g${i}`, date: d, title: i ? "Knicks vs Heat" : "Knicks vs Nets", kind: "GAME" })));
-    expect(lifts[0].lift).toBeCloseTo(1.5, 1);
-    expect(lifts[1].lift).toBeCloseTo(1.5, 1); // the earlier game didn't inflate the baseline
-    const learned = learnedImpacts(lifts).get("GAME:knicks");
-    expect(learned?.samples).toBe(2);
-    expect(learned?.impact).toBeCloseTo(1.5, 1);
-  });
-  it("skips closures and days without enough history", () => {
-    const history = new Map(days.map((d) => [d, 500]));
-    const lifts = eventLifts(history, openDays, [
-      { id: "c", date: days[60], title: "Closed for repairs", kind: "CLOSURE" },
-      { id: "e", date: days[3], title: "Early", kind: "OTHER" },
-    ]);
-    expect(lifts.every((l) => l.lift == null)).toBe(true);
-    expect(learnedImpacts(lifts).size).toBe(0);
   });
 });
