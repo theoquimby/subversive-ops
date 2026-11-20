@@ -226,8 +226,11 @@ async function saveNew(source: "oauth" | "token", environment: SquareEnvironment
   const c = { accessToken, environment };
   const [merchant, locations] = await Promise.all([fetchMerchant(c), fetchLocations(c)]);
   const active = locations.filter((l) => l.active);
-  // Default to every active location (Square Online orders often use their own).
-  const locationIds = (active.length ? active : locations).map((l) => l.id);
+  // Reconnecting the same business (say, to grant one more permission) keeps the locations already picked.
+  const prev = await readStored();
+  const kept = prev && prev.merchantId === merchant.id ? prev.locationIds.filter((id) => locations.some((l) => l.id === id)) : [];
+  // Otherwise default to every active location (Square Online orders often use their own).
+  const locationIds = kept.length ? kept : (active.length ? active : locations).map((l) => l.id);
   await writeStored({
     v: 1,
     source,

@@ -12,6 +12,8 @@ export const SQUARE_SCOPES = [
   "TIMECARDS_READ",
   "TIMECARDS_SETTINGS_READ",
   "INVENTORY_READ",
+  // Only for the postal code on a payer's profile (see square-customers.ts): where people come from.
+  "CUSTOMERS_READ",
 ] as const;
 
 export function authorizeUrl(environment: SquareEnvironment, applicationId: string, state: string): string {

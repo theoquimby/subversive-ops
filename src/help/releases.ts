@@ -34,6 +34,8 @@ export const RELEASES: Release[] = [
       "Each coming day also shows what that weekday's last four ordinary days actually took, and is marked when it only covers its crew if the forecast holds.",
       "On the Schedule the week grid says \"needs $…\" under any such day.",
       "It's a prompt, not a rule: it never blocks publishing, and past days aren't listed.",
+      "Connecting Square now also asks for the Customers permission. It's used for one check only: how many payers' Square profiles hold a postal code, before any map of where people come from is drawn. No names are read and nothing is kept.",
+      "Reconnecting Square keeps the locations you'd already picked.",
     ],
   },
   {

@@ -2,7 +2,9 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { FeePayment, FeeRefund, SquareProcessingFee } from "@/domain/squareMoney";
 import type { PaymentTip } from "@/domain/tipSources";
-import { squareCall, SquareClient } from "./square-http";
+import { normalPostal, tallyProfiles, type PlacePayment, type ProfileTally } from "@/domain/places";
+import { profilePlaces } from "./square-customers";
+import { squareCall, SquareClient, SquareError } from "./square-http";
 
 /**
  * Payments and refunds (scope PAYMENTS_READ for both: "Permissions:
@@ -133,19 +135,26 @@ export interface PlaceCheck {
   /** How many different postal codes turned up, and the commonest three-digit areas: enough to see if it's worth mapping. */
   distinctPostal: number;
   areas: { area: string; payments: number }[];
+  /**
+   * The same question asked of the Square profiles behind the payments. `denied` when the
+   * connection hasn't been given the Customers permission yet.
+   */
+  profiles: { denied: true } | ({ denied: false } & ProfileTally);
 }
 
 /**
  * A count, and nothing else, of how many completed payments in [startISO, endISO)
  * carry a postal code. Square's reference lists `billing_address` on a payment
  * and on its card but doesn't say when either is filled in, so this asks the
- * payments themselves. No code is kept: only totals and three-digit areas leave here.
+ * payments themselves, and then the customer profiles they're tied to.
+ * No code and no profile id is kept: only totals and three-digit areas leave here.
  */
 export async function placeCheck(client: SquareClient, startISO: string, endISO: string): Promise<PlaceCheck> {
   const by = new Map<string, { payments: number; withPostal: number }>();
   const areas = new Map<string, number>();
   const codes = new Set<string>();
   const out = { payments: 0, withPostal: 0, withCustomer: 0, withEmail: 0 };
+  const rows: PlacePayment[] = [];
   for (const locationId of client.locationIds) {
     let cursor: string | undefined;
     do {
@@ -154,7 +163,8 @@ export async function placeCheck(client: SquareClient, startISO: string, endISO:
       const page = await squareCall<{ payments?: RawPlacePayment[]; cursor?: string }>(client, `/payments?${q}`);
       for (const p of page.payments ?? []) {
         if (p.status !== "COMPLETED") continue;
-        const postal = (p.billing_address?.postal_code ?? p.card_details?.card?.billing_address?.postal_code ?? p.shipping_address?.postal_code ?? "").trim();
+        const postal = normalPostal(p.billing_address?.postal_code) ?? normalPostal(p.card_details?.card?.billing_address?.postal_code) ?? normalPostal(p.shipping_address?.postal_code);
+        rows.push({ customerId: p.customer_id ?? null, postal });
         const entry = p.card_details ? (p.card_details.entry_method ?? "card, method not given") : "no card";
         const e = by.get(entry) ?? { payments: 0, withPostal: 0 };
         e.payments++;
@@ -172,10 +182,20 @@ export async function placeCheck(client: SquareClient, startISO: string, endISO:
       cursor = page.cursor;
     } while (cursor);
   }
+  let profiles: PlaceCheck["profiles"];
+  try {
+    const ids = [...new Set(rows.flatMap((r) => (r.customerId ? [r.customerId] : [])))];
+    profiles = { denied: false, ...tallyProfiles(rows, ids.length ? await profilePlaces(client, ids) : new Map()) };
+  } catch (e) {
+    // 403: the connection was made before Ops asked for the Customers permission.
+    if (!(e instanceof SquareError) || e.status !== 403) throw e;
+    profiles = { denied: true };
+  }
   return {
     ...out,
     byEntry: [...by].map(([entry, v]) => ({ entry, ...v })).sort((a, b) => b.payments - a.payments),
     distinctPostal: codes.size,
     areas: [...areas].map(([area, payments]) => ({ area, payments })).sort((a, b) => b.payments - a.payments).slice(0, 8),
+    profiles,
   };
 }

@@ -1017,8 +1017,19 @@ Square marks each card it sees. Ops keeps a scrambled copy of that mark for each
     area: "sales",
     route: "/sales/customers/places",
     title: "Where people come from",
-    body: "A check of whether Square's payments say where the payer lives: how many carry a postal code, by how the card was read. It reads counts only and keeps nothing.",
+    body: "A check, before any map is drawn, of whether Square can say where payers live: how many payments carry a postal code, and how many of the Square profiles behind them hold one. It reads counts only and keeps nothing.",
+    article: `Open it at **/sales/customers/places**. It's a check, not a report: it answers whether there is enough to draw a map of where customers come from.
+
+**What it looks at.** The last three weeks of completed payments in Square, and the Square customer profile each one is tied to.
+
+- **The card.** Tap, chip and swipe carry no postal code. Only a card typed in by hand or kept on file does.
+- **The profile.** Square ties most card payments to a customer profile. Some it makes by itself after a payment, and those usually hold nothing; ones from an online order, a loyalty sign-up or added by hand may hold an address.
+
+**The Customers permission.** Reading profiles needs one more permission from Square. If the page says it's missing, go to **Settings → Square**, press **Reconnect**, sign in to Square and press **Allow**. Your locations and everything already imported stay as they are.
+
+**What is read.** Square sends the whole profile. Ops looks only at the postal code and at how the profile was created. Names, emails, phone numbers and street addresses are not read, and nothing from this check is kept: the page shows totals and three-digit areas, worked out fresh each time you open it.`,
     related: ["sales.customers"],
+    keywords: ["map", "zip", "postal", "where", "travel", "tourists", "origin"],
   },
   {
     id: "sales.customers.todo",
