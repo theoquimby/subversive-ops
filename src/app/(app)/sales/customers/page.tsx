@@ -1,5 +1,6 @@
 import { Badge, Card, cx, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { BANDS, KINDS, REGULAR_DAYS, type CategoryMix, type GuestPoint, type ItemPick, type RhythmCell } from "@/domain/guests";
+import { mondayOf } from "@/domain/pnl";
 import { money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { guestView } from "@/server/services/guests";
@@ -285,6 +286,8 @@ export default async function CustomersPage() {
   }));
   const weekSales = v.weekly.reduce((a, w) => a + w.sales, 0);
   const weekReturning = v.weekly.reduce((a, w) => a + w.returningSales, 0);
+  // The newest week on file is usually still in progress; "last week" is the one before it.
+  const lastWeek = weeks.find((w) => w.week < mondayOf(s.asOf)) ?? null;
 
   const quietParts: SharePart[] = [
     { key: "coming", label: "Still coming", tone: "back-2", readout: `${qty(s.quiet.of - s.quiet.guests, 0)} of last year's ${qty(s.quiet.of, 0)} regulars have been in about as often as is usual for them.` },
@@ -659,7 +662,7 @@ export default async function CustomersPage() {
             id="weekly"
             className="mt-4"
             title={weekSales > 0 ? `${pct(weekReturning / weekSales, 0)} of card sales over the last six months came from cards that had been in before` : "New and returning, week by week"}
-            detail={weeks.length ? `Each column is a week of card sales. Last week: ${qty(weeks[0].guests, 0)} cards, ${qty(weeks[0].newGuests, 0)} of them never seen before.` : undefined}
+            detail={lastWeek ? `Each column is a week of card sales. Last week: ${qty(lastWeek.guests, 0)} cards, ${qty(lastWeek.newGuests, 0)} of them never seen before.` : "Each column is a week of card sales."}
             numbers={
               <>
                 <Table>

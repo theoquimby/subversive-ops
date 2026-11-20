@@ -262,7 +262,7 @@ export function Columns({ cols, series, money = true, height = 200, ariaLabel, c
   const barW = Math.max(5, Math.min(24, band * 0.62));
   const x = (i: number) => pad.left + band * i + band / 2;
   const y = (v: number) => pad.top + (1 - v / top) * (H - pad.top - pad.bottom);
-  const labelEvery = Math.max(1, Math.ceil(34 / band));
+  const labelEvery = Math.max(1, Math.ceil(Math.max(...cols.map((c) => c.label.length)) * 6.5 / band));
   const hv = hover == null ? null : cols[hover];
 
   return (
