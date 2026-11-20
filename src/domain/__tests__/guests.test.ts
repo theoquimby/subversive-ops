@@ -166,6 +166,13 @@ describe("guestRhythm", () => {
     expect(season.action).toMatch(/winter membership or a standing weekly night/);
   });
 
+  it("only speaks about weekdays that are regularly open", () => {
+    // Ten Tuesdays in the year, all visitors: it's in the table but not in the summary.
+    const tue = guestRhythm([...rows, { wd: 2, month: 8, kind: "visitor", visits: 80, sales: 5000 }, { wd: 2, month: 8, kind: "local", visits: 2, sales: 100 }], [...open, { wd: 2, month: 8, days: 10 }]);
+    expect(tue.weekdays.some((c) => c.key === 2)).toBe(true);
+    expect(rhythmPoints(tue).find((x) => x.key === "weekdays")!.title).not.toMatch(/Tuesday/);
+  });
+
   it("says so when locals hold steady and only visitors fall away, and stays quiet with too little to go on", () => {
     const steady = guestRhythm(rows.map((x) => (x.kind === "local" ? { ...x, visits: 12 * 4, sales: 12 * 4 * 45 } : x)), open);
     expect(rhythmPoints(steady).find((x) => x.key === "season")!.title).toBe("Locals hold steady through your quietest months; it's visitors who fall away");

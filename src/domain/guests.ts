@@ -354,6 +354,8 @@ export interface GuestRhythm {
 }
 
 const WEEKDAY_MIN_DAYS = 8;
+/** Open on at least half the weeks of the year: a weekday the summary can speak about. */
+const REGULAR_WEEKDAY_DAYS = 26;
 const MONTH_MIN_DAYS = 4;
 
 export function guestRhythm(rows: readonly RhythmRow[], open: readonly { wd: number; month: number; days: number }[]): GuestRhythm {
@@ -390,11 +392,13 @@ const per = (x: number) => (x >= 10 ? String(Math.round(x)) : (Math.round(x * 10
 /** What the weekday and month view says, as an owner would put it. */
 export function rhythmPoints(r: GuestRhythm): GuestPoint[] {
   const points: GuestPoint[] = [];
-  if (r.weekdays.length >= 3) {
-    const byShare = [...r.weekdays].sort((a, b) => b.localShare - a.localShare);
+  // Only days the place is regularly open: a weekday open ten times in the year isn't a pattern.
+  const regular = r.weekdays.filter((c) => c.openDays >= REGULAR_WEEKDAY_DAYS);
+  if (regular.length >= 3) {
+    const byShare = [...regular].sort((a, b) => b.localShare - a.localShare);
     const most = byShare[0];
     const least = byShare[byShare.length - 1];
-    const crowd = [...r.weekdays].sort((a, b) => b.localsPerDay - a.localsPerDay)[0];
+    const crowd = [...regular].sort((a, b) => b.localsPerDay - a.localsPerDay)[0];
     if (most.localShare - least.localShare >= 0.08) {
       const midweek = most.key >= 1 && most.key <= 4;
       points.push({
