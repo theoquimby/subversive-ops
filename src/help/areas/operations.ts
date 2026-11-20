@@ -998,6 +998,7 @@ Square marks each card it sees. Ops keeps a scrambled copy of that mark for each
 - **First-timers who come back**: of cards seen for the first time in the last two years, the share seen again within a month, three months and a year.
 - **Regulars gone quiet**: regulars of the year before who've been away far longer than is usual for them (at least two months, and two and a half times their own usual gap), and what they spent that year.
 - **Locals and visitors**, read from timing alone: a card seen in three or more separate months is a local; one seen on a few days within ten days and never again is a visitor.
+- **When locals and visitors come**: a typical open day for each weekday and each month, with how many local and visitor cards came and how much of the money locals brought. It shows which nights already belong to locals and whether they keep coming through the quiet months.
 - **New and returning** cards week by week.
 
 **Everything here is a floor.** Cash leaves no mark, a phone wallet and the card behind it look like two people, and so does a couple who take turns paying. The true repeat figures are higher. The direction they move in can be trusted, which is what matters when you're trying something new for locals.
@@ -1021,7 +1022,7 @@ Square marks each card it sees. Ops keeps a scrambled copy of that mark for each
     area: "sales",
     route: "/sales/customers",
     title: "The numbers behind it",
-    body: "The tables the summary comes from, folded away: how often people come, locals and visitors, whether first-timers return, new and returning by week, and what Ops can and can't see.",
+    body: "The tables the summary comes from, folded away: how often people come, locals and visitors, when each of them comes, whether first-timers return, new and returning by week, and what Ops can and can't see.",
     related: ["sales.customers"],
   },
   {

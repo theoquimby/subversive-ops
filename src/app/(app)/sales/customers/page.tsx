@@ -1,6 +1,6 @@
 import { Fold } from "@/components/fold";
 import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
-import { BANDS, KINDS, REGULAR_DAYS } from "@/domain/guests";
+import { BANDS, KINDS, REGULAR_DAYS, type RhythmCell } from "@/domain/guests";
 import { money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { guestView } from "@/server/services/guests";
@@ -12,6 +12,40 @@ export const maxDuration = 60;
 
 const dated = (d: string) => `${shortDate(d)}, ${d.slice(0, 4)}`;
 const DOT = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted" } as const;
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const count = (x: number) => (x >= 10 ? qty(x, 0) : qty(x, 1));
+
+/** A typical open day per weekday or month: sales, local and visitor cards, and locals' share of the money. */
+function RhythmTable({ first, cells, name }: { first: string; cells: RhythmCell[]; name: (key: number) => string }) {
+  const top = Math.max(...cells.map((c) => c.localShare));
+  return (
+    <Table>
+      <thead>
+        <tr>
+          <Th>{first}</Th>
+          <Th align="right" className="hidden sm:table-cell">Open days</Th>
+          <Th align="right">Sales a day</Th>
+          <Th align="right">Local cards</Th>
+          <Th align="right" className="hidden sm:table-cell">Visitor cards</Th>
+          <Th align="right">Locals&apos; share</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {cells.map((c) => (
+          <Tr key={c.key}>
+            <Td><span className="font-medium text-ink">{name(c.key)}</span></Td>
+            <Td align="right" className="num hidden text-ink-2 sm:table-cell">{qty(c.openDays, 0)}</Td>
+            <Td align="right" className="num text-ink-2">{money(c.salesPerDay, { whole: true })}</Td>
+            <Td align="right" className="num text-ink-2">{count(c.localsPerDay)}</Td>
+            <Td align="right" className="num hidden text-ink-2 sm:table-cell">{count(c.visitorsPerDay)}</Td>
+            <Td align="right" className={`num ${c.localShare === top ? "font-semibold text-ink" : "font-medium text-ink"}`}>{pct(c.localShare, 0)}</Td>
+          </Tr>
+        ))}
+      </tbody>
+    </Table>
+  );
+}
 
 export default async function CustomersPage() {
   await requireUser("MANAGER");
@@ -51,6 +85,8 @@ export default async function CustomersPage() {
   const story = v.story;
   const r90 = s.returns.find((r) => r.within === 90);
   const weeks = [...v.weekly].reverse();
+  const rhythm = v.rhythm;
+  const mostLocal = rhythm?.weekdays.length ? [...rhythm.weekdays].sort((a, b) => b.localShare - a.localShare)[0] : null;
 
   return (
     <>
@@ -168,6 +204,19 @@ export default async function CustomersPage() {
             </Table>
             <p className="mt-2 text-xs text-muted">This is a reading of timing, not of where anyone lives: a weekender with a house nearby reads as a local, and a local who came once reads as a visitor.</p>
           </Fold>
+
+          {rhythm && (rhythm.weekdays.length > 0 || rhythm.months.length > 0) && (
+            <Fold title="When locals and visitors come" gist={mostLocal ? `${DAYS[mostLocal.key]}s are the most local day: ${pct(mostLocal.localShare, 0)} of card sales from locals` : "By weekday and by month"}>
+              <p className="mb-3 text-sm text-ink-2">A typical open day over the last 12 months: card sales, how many local and visitor cards came, and how much of the money locals brought.</p>
+              {rhythm.weekdays.length > 0 && <RhythmTable first="Weekday" cells={rhythm.weekdays} name={(k) => DAYS[k]} />}
+              {rhythm.months.length > 0 && (
+                <div className="mt-5">
+                  <RhythmTable first="Month" cells={rhythm.months} name={(k) => MONTHS[k - 1]} />
+                </div>
+              )}
+              <p className="mt-2 text-xs text-muted">Card sales only, before tips. A local is a card seen in three or more separate months; a visitor one seen on a few days within ten days and not again. A card first seen in the last few weeks is counted by what it has done so far, so the most recent month leans a little towards visitors.</p>
+            </Fold>
+          )}
 
           <Fold title="Do first-timers come back?" gist={r90?.rate != null ? `${pct(r90.rate, 0)} within three months` : "Too few first-timers have had time yet"}>
             <Table>

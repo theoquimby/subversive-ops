@@ -24,6 +24,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.42",
+    date: "2026-11-19",
+    title: "When locals come, and when visitors do",
+    summary: "The Customers page now shows a typical open day for each weekday and each month: how many local and visitor cards came, and how much of the money locals brought.",
+    entries: ["2026-11-19.customer-rhythm"],
+    fixed: [
+      "By weekday: which day is the most local, which belongs to visitors, and where locals come in the greatest numbers.",
+      "By month: whether locals keep coming through the quietest months or fall away with the visitors.",
+      "Both feed the summary at the top of the page, with what each is good for.",
+    ],
+  },
+  {
     version: "1.41",
     date: "2026-11-19",
     title: "Customers: who comes back",

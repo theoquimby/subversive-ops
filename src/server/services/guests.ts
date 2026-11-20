@@ -1,6 +1,6 @@
 import "server-only";
 import { addDays, businessDate, dateRange, ISODate, parseISODate, toISODate, zonedMidnightUTC } from "@/domain/dates";
-import { GUEST_RULES, guestDays, guestStory, guestSummary, QUIET_DAYS, type GuestAgg, type GuestPayment, type GuestStory, type GuestSummary } from "@/domain/guests";
+import { GUEST_RULES, guestDays, guestRhythm, guestStory, guestSummary, LOCAL_MONTHS, QUIET_DAYS, VISITOR_MAX_DAYS, VISITOR_SPAN_DAYS, type GuestAgg, type GuestRhythm, type RhythmRow, type GuestPayment, type GuestStory, type GuestSummary } from "@/domain/guests";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { env } from "../env";
@@ -109,6 +109,7 @@ interface StoredGuests {
   computedOn: ISODate;
   summary: GuestSummary;
   weekly: GuestWeek[];
+  rhythm: GuestRhythm;
 }
 
 /** Count everything again from the visits on file and keep the result (the page reads the kept copy). */
@@ -117,7 +118,7 @@ export async function computeGuests(): Promise<StoredGuests> {
   const year = addDays(today, -365);
   const priorTo = addDays(today, -QUIET_DAYS);
   const priorFrom = addDays(priorTo, -365);
-  const [guests, days, weekly] = await Promise.all([
+  const [guests, days, weekly, rhythmRows, openDays] = await Promise.all([
     db.$queryRaw<GuestAgg[]>`
       SELECT MIN("date")::text AS "first",
              (ARRAY_AGG("date" ORDER BY "date"))[2]::text AS "second",
@@ -142,12 +143,34 @@ export async function computeGuests(): Promise<StoredGuests> {
       FROM "GuestVisit" v JOIN f USING ("guest")
       WHERE v."date" >= ${addDays(today, -7 * WEEKS)}::date AND v."date" < ${today}::date
       GROUP BY 1 ORDER BY 1`,
+    // The last 12 months of visits by weekday, month and kind of card (the same reading of timing as `kindOf`,
+    // except that a brand-new card is counted by what it has done so far).
+    db.$queryRaw<RhythmRow[]>`
+      WITH g AS (
+        SELECT "guest", MIN("date") AS first, MAX("date") AS last, COUNT(*) AS days, COUNT(DISTINCT date_trunc('month', "date")) AS months
+        FROM "GuestVisit" GROUP BY "guest"),
+      k AS (
+        SELECT "guest", CASE WHEN months >= ${LOCAL_MONTHS} THEN 'local'
+                             WHEN days <= ${VISITOR_MAX_DAYS} AND (last - first) <= ${VISITOR_SPAN_DAYS} THEN 'visitor'
+                             ELSE 'occasional' END AS kind
+        FROM g)
+      SELECT EXTRACT(DOW FROM v."date")::int AS "wd", EXTRACT(MONTH FROM v."date")::int AS "month", k.kind AS "kind",
+             COUNT(*)::int AS "visits", SUM(v."amount")::float8 AS "sales"
+      FROM "GuestVisit" v JOIN k USING ("guest")
+      WHERE v."date" >= ${year}::date AND v."date" < ${today}::date
+      GROUP BY 1, 2, 3`,
+    db.$queryRaw<{ wd: number; month: number; days: number }[]>`
+      SELECT EXTRACT(DOW FROM "date")::int AS "wd", EXTRACT(MONTH FROM "date")::int AS "month", COUNT(*)::int AS "days"
+      FROM "GuestDay"
+      WHERE "identified" > 0 AND "date" >= ${year}::date AND "date" < ${today}::date
+      GROUP BY 1, 2`,
   ]);
   const stored: StoredGuests = {
     rules: GUEST_RULES,
     computedOn: today,
     summary: guestSummary({ guests, days: days.map((d) => ({ payments: d.payments, identified: d.identified, amount: d.amount.toNumber(), identifiedAmount: d.identifiedAmount.toNumber() })), today }),
     weekly: weekly.map((w) => ({ week: w.week, guests: w.guests, newGuests: w.newGuests, sales: Math.round(w.sales), returningSales: Math.round(w.returningSales) })),
+    rhythm: guestRhythm(rhythmRows, openDays),
   };
   await writeSettingJSON(SUMMARY_KEY, stored);
   return stored;
@@ -170,6 +193,8 @@ export interface GuestView {
   summary: GuestSummary | null;
   story: GuestStory | null;
   weekly: GuestWeek[];
+  /** A typical open day by weekday and by month: who came. */
+  rhythm: GuestRhythm | null;
   backfill: GuestBackfill | null;
   /** The first day with sales: how far back the history could go. */
   firstSale: ISODate | null;
@@ -180,7 +205,8 @@ export async function guestView(): Promise<GuestView> {
   // Counted nightly; count now if there are visits but no kept copy, or it's from another day.
   const stored = daysOnFile > 0 && (kept?.computedOn !== businessToday() || kept.rules !== GUEST_RULES) ? await computeGuests() : kept;
   const summary = daysOnFile > 0 ? (stored?.summary ?? null) : null;
-  return { connected, daysOnFile, summary, story: summary ? guestStory(summary) : null, weekly: summary ? (stored?.weekly ?? []) : [], backfill, firstSale };
+  const rhythm = summary ? (stored?.rhythm ?? null) : null;
+  return { connected, daysOnFile, summary, story: summary ? guestStory(summary, rhythm) : null, weekly: summary ? (stored?.weekly ?? []) : [], rhythm, backfill, firstSale };
 }
 
 /** Days on file, for a progress line: the earliest day loaded. */

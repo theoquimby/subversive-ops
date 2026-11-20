@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "../dates";
-import { guestDays, guestStory, guestSummary, kindOf, quietAfter, type GuestAgg } from "../guests";
+import { guestDays, guestRhythm, guestStory, guestSummary, kindOf, quietAfter, rhythmPoints, type GuestAgg, type RhythmRow } from "../guests";
 
 const TODAY = "2026-11-19";
 
@@ -110,5 +110,72 @@ describe("guestSummary", () => {
     expect(story.points.find((p) => p.key === "returns")!.title).toMatch(/of first-time cards come back within three months/);
     expect(story.points.find((p) => p.key === "kinds")!.action).toMatch(/Locals bring the bigger share/);
     expect(story.points.find((p) => p.key === "coverage")!.title).toBe("90% of what's paid carries a card Ops can recognise again");
+  });
+});
+
+describe("guestRhythm", () => {
+  // Open Wednesday to Sunday, 50 of each in the year. Locals: 12 cards every open day. Visitors: 4 on a
+  // Wednesday or Thursday, 30 on a Friday, 60 on a Saturday or Sunday; and four times as many from July to October.
+  const rows: RhythmRow[] = [];
+  const open: { wd: number; month: number; days: number }[] = [];
+  for (let month = 1; month <= 12; month++) {
+    const peak = month >= 7 && month <= 10;
+    for (const wd of [3, 4, 5, 6, 0]) {
+      const days = 4;
+      open.push({ wd, month, days });
+      const visitors = (wd === 3 || wd === 4 ? 4 : wd === 5 ? 30 : 60) * (peak ? 2 : 0.5);
+      const locals = month <= 3 ? 6 : 12;
+      rows.push({ wd, month, kind: "local", visits: locals * days, sales: locals * days * 45 });
+      rows.push({ wd, month, kind: "visitor", visits: visitors * days, sales: visitors * days * 55 });
+      rows.push({ wd, month, kind: "occasional", visits: 2 * days, sales: 2 * days * 50 });
+    }
+  }
+  const r = guestRhythm(rows, open);
+
+  it("gives a typical open day for each weekday and month: cards, sales, and who brought them", () => {
+    expect(r.weekdays.map((c) => c.key)).toEqual([3, 4, 5, 6, 0]);
+    const wed = r.weekdays[0];
+    const sat = r.weekdays[3];
+    expect(wed.openDays).toBe(48);
+    expect(wed.localsPerDay).toBeCloseTo((6 * 3 + 12 * 9) / 12);
+    expect(wed.localShare).toBeGreaterThan(0.5);
+    expect(sat.localShare).toBeLessThan(0.2);
+    expect(sat.visitorsPerDay).toBeGreaterThan(wed.visitorsPerDay * 10);
+    expect(r.months).toHaveLength(12);
+    expect(r.months[0].localsPerDay).toBeCloseTo(6);
+    expect(r.months[7].salesPerDay).toBeGreaterThan(r.months[0].salesPerDay * 2);
+  });
+
+  it("leaves out weekdays hardly ever open and months with almost no days", () => {
+    const thin = guestRhythm([...rows, { wd: 1, month: 9, kind: "local", visits: 5, sales: 300 }], [...open, { wd: 1, month: 9, days: 1 }]);
+    expect(thin.weekdays.some((c) => c.key === 1)).toBe(false);
+    expect(guestRhythm([], [])).toEqual({ weekdays: [], months: [] });
+  });
+
+  it("says which day is the locals' and what the quiet months look like", () => {
+    const p = rhythmPoints(r);
+    const days = p.find((x) => x.key === "weekdays")!;
+    expect(days.title).toMatch(/^(Wednesday|Thursday)s are your most local day; (Saturday|Sunday)s belong to visitors$/);
+    expect(days.detail).toMatch(/Locals bring \d+% of card sales on a (Wednesday|Thursday) and \d+% on a (Saturday|Sunday)\./);
+    expect(days.action).toMatch(/^Midweek is where locals decide your night/);
+    const season = p.find((x) => x.key === "season")!;
+    // January to March: half the locals of the busy months.
+    expect(season.title).toBe("In your quietest months even locals come 50% less");
+    expect(season.detail).toContain("In January, February and March a typical open day has about 6 local cards");
+    expect(season.detail).toContain("12 local cards");
+    expect(season.action).toMatch(/winter membership or a standing weekly night/);
+  });
+
+  it("says so when locals hold steady and only visitors fall away, and stays quiet with too little to go on", () => {
+    const steady = guestRhythm(rows.map((x) => (x.kind === "local" ? { ...x, visits: 12 * 4, sales: 12 * 4 * 45 } : x)), open);
+    expect(rhythmPoints(steady).find((x) => x.key === "season")!.title).toBe("Locals hold steady through your quietest months; it's visitors who fall away");
+    expect(rhythmPoints({ weekdays: [], months: [] })).toEqual([]);
+  });
+
+  it("joins the main story after the points about regulars", () => {
+    const summary = guestSummary({ guests: Array.from({ length: 300 }, () => g({ months: 4, days: 6, days365: 6, amount365: 300 })), days: [], today: TODAY });
+    const story = guestStory(summary, r)!;
+    expect(story.points.map((x) => x.key)).toEqual(expect.arrayContaining(["weekdays", "season"]));
+    expect(guestStory(summary)!.points.some((x) => x.key === "weekdays")).toBe(false);
   });
 });
