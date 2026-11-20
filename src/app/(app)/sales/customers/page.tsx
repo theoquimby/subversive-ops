@@ -267,14 +267,14 @@ export default async function CustomersPage() {
               gist={v.orders.localFavourites.length && v.orders.visitorFavourites.length ? `Locals lean towards ${v.orders.localFavourites[0].name}; visitors towards ${v.orders.visitorFavourites[0].name}` : "Item by item and by category"}
             >
               <p className="mb-4 text-sm text-ink-2">
-                Over the last 12 months locals brought {pct(v.orders.localShare, 0)} of card sales and visitors {pct(v.orders.visitorShare, 0)}. An item is listed when one group buys at least a quarter more of it than that.
+                Over the last 12 months locals brought {pct(v.orders.localShare, 0)} of card sales and visitors {pct(v.orders.visitorShare, 0)} (brand-new cards counted by what they&apos;ve done so far). An item is listed when one group buys noticeably more of it than that.
                 {v.orders.perVisit.local != null && v.orders.perVisit.visitor != null && ` A local's card spends about ${money(v.orders.perVisit.local, { whole: true })} on a visit; a visitor's about ${money(v.orders.perVisit.visitor, { whole: true })}.`}
               </p>
               <div className="grid gap-5 lg:grid-cols-2">
                 <Favourites title="Locals buy more of" picks={v.orders.localFavourites} share={(p) => p.localShare} who="locals" />
                 <Favourites title="Visitors buy more of" picks={v.orders.visitorFavourites} share={(p) => p.visitorShare} who="visitors" />
               </div>
-              {([["by category", "Category", v.orders.categories], ["by serving", "Serving", v.orders.servings]] as const).map(([title, first, mixRows]) =>
+              {([["by category", "Category", v.orders.categories], ["by size or option", "Size or option", v.orders.servings]] as const).map(([title, first, mixRows]) =>
                 mixRows.length ? (
                   <div key={title}>
                     <h4 className="mt-6 mb-1 text-sm font-medium text-ink">How each splits their money, {title}</h4>

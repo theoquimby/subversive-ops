@@ -245,7 +245,9 @@ describe("guestOrders", () => {
     expect(o.localFavourites.map((p) => p.key)).toEqual(["Pilsner", "Wings"]);
     expect(o.localFavourites[0]).toMatchObject({ localShare: 0.75, lean: 2.5 });
     expect(o.visitorFavourites.map((p) => p.key)).toEqual(["Flight", "Burger"]);
-    // An add-on with no category is never a favourite.
+    // An add-on is never a favourite, with no category or under an add-on group.
+    const addOn = guestOrders([...rows, row("Fries", "Add a side:", "local", 4000), row("Fries", "Add a side:", "visitor", 1000)])!;
+    expect(addOn.localFavourites.some((p) => p.key === "Fries")).toBe(false);
     expect([...o.localFavourites, ...o.visitorFavourites].some((p) => p.key === "Extra cheese")).toBe(false);
     expect(o.perVisit).toEqual({ local: 30, visitor: 60 });
   });
@@ -274,6 +276,17 @@ describe("guestOrders", () => {
     expect(taster.visitor).toBeCloseTo(4800 / 12000);
     // Items sold in one size only have no size table.
     expect(o.servings).toEqual([]);
+  });
+
+  it("lets the bigger group have favourites too, though it can't lean as far", () => {
+    // Visitors are 60% of sales; the IPA is 67% visitors (of what the two bought): 1.1 times their share.
+    const ipa = guestOrders(rows.filter((r) => r.kind !== "occasional"))!.visitorFavourites.find((p) => p.key === "IPA");
+    expect(ipa).toBeUndefined();
+    const flight = o.visitorFavourites.find((p) => p.key === "Flight")!;
+    expect(flight.lean).toBeGreaterThan(1.5);
+    const even = guestOrders([row("A", "Beer", "local", 4000), row("A", "Beer", "visitor", 6900), row("B", "Beer", "local", 6000), row("B", "Beer", "visitor", 3100)])!;
+    expect(even.visitorFavourites.map((p) => p.key)).toEqual(["A"]);
+    expect(even.localFavourites.map((p) => p.key)).toEqual(["B"]);
   });
 
   it("ignores items too small to judge, and copes with nothing", () => {

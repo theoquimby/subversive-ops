@@ -100,7 +100,7 @@ export const QUIET_GAPS = 2.5;
 /** Days away after which a regular who came on `days` days in a year counts as gone quiet. */
 export const quietAfter = (days: number) => Math.max(QUIET_DAYS, Math.round((QUIET_GAPS * 365) / Math.max(1, days)));
 /** Bumped when the way any figure is worked out changes, so the kept copy is counted again at once. */
-export const GUEST_RULES = 5;
+export const GUEST_RULES = 6;
 /** First-timers are followed for return over the last two years. */
 const COHORT_DAYS = 730;
 /** A card first seen this recently hasn't had time to show what it is. */
@@ -542,8 +542,11 @@ export interface GuestOrders {
 /** An item has to sell at least this share of everything (and this many dollars) before it can be called a favourite. */
 const FAVOURITE_MIN_SHARE = 0.003;
 const FAVOURITE_MIN_SALES = 400;
-/** A favourite is bought at least this much more than the group's share of everything. */
-const FAVOURITE_LEAN = 1.25;
+/**
+ * A favourite is bought at least this much more than the group's share of everything. Kept low because the
+ * bigger group can't lean far: if visitors are 56% of sales, no item can be more than 1.8 times that.
+ */
+const FAVOURITE_LEAN = 1.1;
 const FAVOURITES = 6;
 /** How Square joins an item's name to its size. */
 const SIZE_MARK = " · ";
@@ -584,8 +587,9 @@ export function guestOrders(rows: readonly OrderRow[], visits: readonly RhythmRo
       .sort((a, b) => b.sales - a.sales)
       .slice(0, take);
   const floor = Math.max(FAVOURITE_MIN_SALES, total * FAVOURITE_MIN_SHARE);
-  // Real menu items only: add-ons and anything without a category say little on their own.
-  const eligible = [...items.values()].filter((i) => i.category != null && i.sales >= floor);
+  // Real menu items only: add-ons (Square groups them under a name ending in a colon, like "Add a side:") and
+  // anything without a category say little on their own.
+  const eligible = [...items.values()].filter((i) => i.category != null && !i.category.trim().endsWith(":") && i.sales >= floor);
   const pick = (i: (typeof eligible)[number], lean: number): ItemPick => ({ key: i.key, name: i.name, category: i.category, sales: Math.round(i.sales), localShare: i.local / i.sales, visitorShare: i.visitor / i.sales, lean });
   const favourites = (share: number, mine: (i: (typeof eligible)[number]) => number) =>
     share > 0
