@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.45",
+    date: "2026-11-20",
+    title: "Profit by day: which days pay",
+    summary: "A new page under Numbers shows what each day of the week leaves once food, drink, wages and card fees are paid, whether it's worth opening, and which hours earn their wages.",
+    entries: ["2026-11-20.profit-by-day"],
+    fixed: [
+      "A typical day of each weekday, split into where its sales go, and every open day of the last year as a dot: the ones that lost money stand out.",
+      "What each weekday added over the year, and how much of its sales would have to move to other days before closing it would pay.",
+      "Each weekday season by season and hour by hour, so a slow winter Monday or a slow last hour shows up on its own.",
+      "Rent is left out on purpose: closing a day doesn't save it. It shows only as a yardstick.",
+    ],
+  },
+  {
     version: "1.44",
     date: "2026-11-20",
     title: "The Customers page, in pictures",

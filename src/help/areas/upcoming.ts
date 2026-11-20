@@ -541,6 +541,49 @@ Days imported before Ops read tips by person show their card tips in **Not linke
 
 export const pnl: HelpEntry[] = [
   {
+    id: "pnl.days",
+    area: "pnl",
+    route: "/pnl/days",
+    title: "Profit by day",
+    body: "What each day of the week leaves once food, drink, wages and card fees are paid, whether it's worth opening, and which hours earn their wages. The last 52 weeks, from the same figures as the P&L.",
+    article: `Open it from **Numbers → Profit by day**, or from the top of the P&L.
+
+It answers one question: is each day you open worth opening?
+
+**What a day leaves** is its sales, less food and drink, less the wages on the clock that day, less card fees. Rent and other fixed costs are left out on purpose. They're owed whether you open or not, so a day is worth opening as soon as it leaves more than nothing. Rent shows only as a yardstick: a grey line on the dots chart, and "its share of the rent" in the notes.
+
+**How to read it**
+
+- **Where a typical day's sales go**: one column per weekday. Violet is food and drink, pink is wages, teal is card fees, and blue is what's left. A day that falls short has a dark mark where its sales stopped.
+- **Every open day, by what it left**: one dot per day. Dots left of the zero line lost money. The dark tick is that weekday's average.
+- **Added over the year, and what closing would take**: everything each weekday left in 12 months. Under each is how much of its sales would have to turn up on other days for closing to pay. If that share is high, keep the day.
+- **Season by season**: the same weekday in winter, spring, summer and autumn. A weekday can pay all year except one season.
+- **Hour by hour**: what each hour's sales leave after food and drink, next to the wages on the clock. A shaded hour costs more than it brings in. Pick a weekday at the top of the chart.
+- **The crew**: wages as a share of sales, and the sales each weekday needs to cover them.
+
+**What it can't see.** Salaried pay and your own time aren't on timecards. Prep or brewing done on one day for another counts where it was clocked. Sales with no recipe behind them are costed at a typical 30%. And nobody can know how many guests would come another day if you closed one: the page gives you the number to beat, not the answer.
+
+It's worked out once a day, overnight, so the first look of the day can take a few seconds.`,
+    related: ["pnl.page", "pnl.days.todo", "pnl.days.numbers", "sales.scorecard", "sales.customers"],
+    keywords: ["monday", "weekday", "open days", "closing", "hours", "worth opening", "break even", "contribution", "day of week"],
+  },
+  {
+    id: "pnl.days.todo",
+    area: "pnl",
+    route: "/pnl/days",
+    title: "In short",
+    body: "The findings on this page as a list, in the order the page tells them: the thinnest day, who pays the rent, seasons and hours that lose money, and where wages run high. Tap one to jump to it.",
+    related: ["pnl.days"],
+  },
+  {
+    id: "pnl.days.numbers",
+    area: "pnl",
+    route: "/pnl/days",
+    title: "How this is worked out",
+    body: "What's counted, what's estimated and what's left out: recipe costs (30% where an item has no recipe), timecards with employer taxes, Square's card fees, and no rent, because closing a day doesn't save it.",
+    related: ["pnl.days", "pnl.caveats"],
+  },
+  {
     id: "pnl.page",
     area: "pnl",
     route: "/pnl",

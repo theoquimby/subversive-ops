@@ -3,6 +3,7 @@
 import { cx } from "@/components/ui";
 import { money, pct, shortDate } from "@/lib/format";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { VIZ_VARS } from "./viz-vars";
 
 /*
  * P&L story charts. One color per job, the same on every chart here:
@@ -16,7 +17,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
  * #3d76ea on #1a1a18; fees #0f8577 / #2fae9e sit apart from all three. Values
  * and labels stay in text tokens.
  */
-export const VIZ_VARS = "[--viz-cogs:#6250d6] [--viz-labor:var(--series-2)] [--viz-profit:#2563eb] [--viz-fees:#0f8577] dark:[--viz-cogs:#9085e9] dark:[--viz-profit:#3d76ea] dark:[--viz-fees:#2fae9e]";
+export { VIZ_VARS };
 
 /** A same-hue hatch for "estimated" (45°), over a lighter wash of that hue. */
 const hatch = (color: string): CSSProperties => ({

@@ -9,6 +9,7 @@ import { fetchMerchant } from "../integrations/square-auth";
 import { syncSquareTeam, syncSquareTimecards } from "./labor";
 import { businessToday, syncCatalog, syncSales } from "./sales";
 import { backfillGuestItems, backfillGuests, computeGuestsQuietly, guestBackfill, guestItemsBackfill, syncGuestItemsQuietly } from "./guests";
+import { computeDayProfitQuietly } from "./dayProfit";
 import { syncPaymentsQuietly } from "./square-money";
 import { isSquareConnected, logSquareError, readSettingJSON, recordSquareSync, requireSquareClient, squareStreams, SquareStream, withSquareLock, writeSettingJSON } from "./square";
 
@@ -47,6 +48,8 @@ export async function dailySync() {
   const items = await guestItemsBackfill();
   if (items && !items.finishedAt) await backfillGuestItems(60_000).catch(() => undefined);
   await computeGuestsQuietly();
+  // Profit by day reads a year of everything: work it out now so the page opens at once.
+  await computeDayProfitQuietly();
   // Carry on a first import nobody finished (it normally runs from the Square page).
   const bf = await getBackfill();
   const backfill = bf && bf.phase !== "done" ? await backfillStep(150_000).catch((e) => ({ error: (e as Error).message })) : null;

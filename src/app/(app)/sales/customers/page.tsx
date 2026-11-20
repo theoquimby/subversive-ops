@@ -1,11 +1,10 @@
-import { Badge, Card, cx, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
+import { Chapter, InShort, Numbers } from "@/components/chapter";
+import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { BANDS, KINDS, REGULAR_DAYS, type CategoryMix, type GuestPoint, type ItemPick, type RhythmCell } from "@/domain/guests";
 import { mondayOf } from "@/domain/pnl";
 import { money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { guestView } from "@/server/services/guests";
-import { ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
-import type { ReactNode } from "react";
 import { ColourKey, Columns, LeanRows, PairBars, ShareBars, Waffle, type Col, type SharePart, type VizTone, type WafflePart } from "./charts";
 import { LoadHistory } from "./load-history";
 
@@ -14,8 +13,6 @@ export const metadata = { title: "Customers" };
 export const maxDuration = 60;
 
 const dated = (d: string) => `${shortDate(d)}, ${d.slice(0, 4)}`;
-const DOT = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-border-strong" } as const;
-const FLAG = { good: "Going well", warn: "Worth a look", bad: "Needs attention" } as const;
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const count = (x: number) => (x >= 10 ? qty(x, 0) : qty(x, 1));
@@ -27,38 +24,6 @@ const REGULAR_OPEN_DAYS = 26;
 
 const BAND_TONE: Record<(typeof BANDS)[number]["key"], VizTone> = { once: "rest", few: "back-1", regular: "back-2", core: "back-3" };
 const KIND_TONE: Record<(typeof KINDS)[number]["key"], VizTone> = { local: "local", visitor: "visitor", occasional: "rest", new: "rest" };
-
-/** One finding: what it is, the picture, what to do about it, and the table underneath for anyone who wants it. */
-function Chapter({ id, point, title, detail, children, numbers, className }: { id: string; point?: GuestPoint; title: string; detail?: ReactNode; children: ReactNode; numbers?: ReactNode; className?: string }) {
-  const tone = point?.tone ?? "neutral";
-  return (
-    <Card id={id} className={cx("flex scroll-mt-24 flex-col p-4 sm:p-6", className)}>
-      {tone !== "neutral" && (
-        <div className="mb-2">
-          <Badge tone={tone}>{FLAG[tone]}</Badge>
-        </div>
-      )}
-      <h3 className="max-w-3xl text-base font-semibold tracking-tight text-balance text-ink sm:text-lg">{point?.title ?? title}</h3>
-      {(point?.detail ?? detail) && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-2">{point?.detail ?? detail}</p>}
-      <div className="mt-5 flex-1">{children}</div>
-      {point?.action && (
-        <div className="mt-5 flex gap-2.5 rounded-lg bg-surface-2 px-3.5 py-3 text-sm text-ink">
-          <ArrowRight aria-hidden className="mt-0.5 size-4 shrink-0 text-muted" />
-          <p className="max-w-2xl font-medium">{point.action}</p>
-        </div>
-      )}
-      {numbers && (
-        <details className="group/num mt-4 border-t border-border pt-2">
-          <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1 rounded-md pr-2 text-sm text-muted transition-colors duration-120 hover:text-ink [&::-webkit-details-marker]:hidden">
-            <ChevronDown aria-hidden className="size-4 transition-transform duration-180 group-open/num:rotate-180" />
-            The numbers
-          </summary>
-          <div className="mt-2">{numbers}</div>
-        </details>
-      )}
-    </Card>
-  );
-}
 
 /** A typical open day per weekday or month: sales, local and visitor cards, and locals' share of the money. */
 function RhythmTable({ first, cells, name }: { first: string; cells: RhythmCell[]; name: (key: number) => string }) {
@@ -303,15 +268,15 @@ export default async function CustomersPage() {
 
   // The findings in the order the page tells them, for the list at the top.
   const contents = [
-    point("kinds") && { id: "who", p: point("kinds")! },
-    point("weekdays") && { id: "weekdays", p: point("weekdays")! },
-    point("season") && { id: "season", p: point("season")! },
-    point("orders") && { id: "orders", p: point("orders")! },
-    point("mix") && { id: "mix", p: point("mix")! },
-    point("returns") && { id: "returns", p: point("returns")! },
-    point("quiet") && { id: "quiet", p: point("quiet")! },
-    point("coverage") && { id: "worked-out", p: point("coverage")! },
-  ].filter((x): x is { id: string; p: GuestPoint } => !!x);
+    point("kinds") && { id: "who", point: point("kinds")! },
+    point("weekdays") && { id: "weekdays", point: point("weekdays")! },
+    point("season") && { id: "season", point: point("season")! },
+    point("orders") && { id: "orders", point: point("orders")! },
+    point("mix") && { id: "mix", point: point("mix")! },
+    point("returns") && { id: "returns", point: point("returns")! },
+    point("quiet") && { id: "quiet", point: point("quiet")! },
+    point("coverage") && { id: "worked-out", point: point("coverage")! },
+  ].filter((x): x is { id: string; point: GuestPoint } => !!x);
 
   return (
     <>
@@ -365,12 +330,7 @@ export default async function CustomersPage() {
               </dd>
             </div>
           </dl>
-          <details className="group/num mt-4 border-t border-border pt-2">
-            <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1 rounded-md pr-2 text-sm text-muted transition-colors duration-120 hover:text-ink [&::-webkit-details-marker]:hidden">
-              <ChevronDown aria-hidden className="size-4 transition-transform duration-180 group-open/num:rotate-180" />
-              The numbers
-            </summary>
-            <div className="mt-2">
+          <Numbers>
               <Table>
                 <thead>
                   <tr>
@@ -397,8 +357,7 @@ export default async function CustomersPage() {
                 </tbody>
               </Table>
               <p className="mt-2 text-xs text-muted">The last 12 months, card payments only. A “day” is one card on one business day, however many rounds it bought. Sales are before tips.</p>
-            </div>
-          </details>
+          </Numbers>
         </Card>
       ) : (
         <Card className="mb-10 p-5 text-sm text-ink-2">Only {qty(s.guests, 0)} different cards are on file for the last 12 months, too few to say much yet. Load more history above, or give it a few weeks.</Card>
@@ -419,18 +378,7 @@ export default async function CustomersPage() {
 
       {contents.length > 0 && (
         <Section help="sales.customers.todo" title="In short" description="What stands out, in the order the page tells it. Tap one to jump to it.">
-          <Card className="divide-y divide-border overflow-hidden">
-            {contents.map(({ id, p }) => (
-              <a key={p.key} href={`#${id}`} className="flex min-h-12 items-center gap-3 px-4 py-2.5 transition-colors duration-120 hover:bg-surface-2/60 sm:px-5">
-                <span aria-hidden className={`size-2 shrink-0 rounded-full ${DOT[p.tone]}`} />
-                <span className="min-w-0 flex-1 text-sm font-medium text-ink">
-                  {p.title}
-                  {p.tone !== "neutral" && <span className="sr-only"> ({FLAG[p.tone]})</span>}
-                </span>
-                <ChevronRight aria-hidden className="size-4 shrink-0 text-muted" />
-              </a>
-            ))}
-          </Card>
+          <InShort items={contents} />
         </Section>
       )}
 

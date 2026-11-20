@@ -92,6 +92,7 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
   return (
     <>
       <PageHeader help="pnl.page" title="P&L" description="Where each dollar of sales went: food and drink, labor, and what was left." />
+      <p className="-mt-5 mb-6 text-sm"><Link href="/pnl/days" className="font-medium text-ink-2 underline-offset-2 hover:text-ink hover:underline">Profit by day →</Link> <span className="text-muted">which days of the week pay, and which hours</span></p>
       <HelpZone id="pnl.period" className="mb-6">
         <PeriodSwitch period={period} from={from} to={addDays(toExclusive, -1)} />
       </HelpZone>

@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 20 Nov · 1.45 (profit by day) ----
+  {
+    id: "2026-11-20.profit-by-day",
+    date: "2026-11-20",
+    title: "Profit by day: which days pay",
+    line: "See what each weekday leaves after costs, and whether Mondays are worth opening.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/pnl/days",
+    help: "pnl.days",
+    audience: "manager",
+  },
   // ---- 20 Nov · 1.44 (the Customers page in pictures) ----
   {
     id: "2026-11-20.customer-pictures",

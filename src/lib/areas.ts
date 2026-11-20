@@ -34,6 +34,7 @@ import {
   Carrot,
   ChefHat,
   CircleUserRound,
+  ChartColumnStacked,
   ChartLine,
   UsersRound,
   CircleHelp,
@@ -189,6 +190,7 @@ export const MANAGER_NAV: NavGroup[] = [
   { title: "Numbers", area: "numbers", items: [
     item("numbers", "/insights", "Insights", Lightbulb),
     item("numbers", "/pnl", "P&L", TrendingUp),
+    item("numbers", "/pnl/days", "Profit by day", ChartColumnStacked),
     item("numbers", "/accounting", "Month-end", Calculator),
     item("numbers", "/sales", "Sales & forecast", ChartLine),
     item("numbers", "/sales/customers", "Customers", UsersRound),
