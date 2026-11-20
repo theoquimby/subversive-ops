@@ -100,7 +100,7 @@ export const QUIET_GAPS = 2.5;
 /** Days away after which a regular who came on `days` days in a year counts as gone quiet. */
 export const quietAfter = (days: number) => Math.max(QUIET_DAYS, Math.round((QUIET_GAPS * 365) / Math.max(1, days)));
 /** Bumped when the way any figure is worked out changes, so the kept copy is counted again at once. */
-export const GUEST_RULES = 3;
+export const GUEST_RULES = 5;
 /** First-timers are followed for return over the last two years. */
 const COHORT_DAYS = 730;
 /** A card first seen this recently hasn't had time to show what it is. */
@@ -261,7 +261,7 @@ export interface GuestStory {
 /** Enough cards in the last year to say anything. */
 export const STORY_MIN_GUESTS = 200;
 
-export function guestStory(s: GuestSummary, rhythm?: GuestRhythm | null): GuestStory | null {
+export function guestStory(s: GuestSummary, rhythm?: GuestRhythm | null, orders?: GuestOrders | null): GuestStory | null {
   if (s.guests < STORY_MIN_GUESTS) return null;
   const reg = s.regulars;
   const once = s.bands.once;
@@ -295,6 +295,7 @@ export function guestStory(s: GuestSummary, rhythm?: GuestRhythm | null): GuestS
     });
   }
   if (rhythm) points.push(...rhythmPoints(rhythm));
+  if (orders) points.push(...orderPoints(orders));
   const v = s.kinds.visitor;
   const l = s.kinds.local;
   if (v.guests + l.guests >= 50) {
@@ -433,3 +434,214 @@ export function rhythmPoints(r: GuestRhythm): GuestPoint[] {
   }
   return points;
 }
+
+// ---- What they order ---------------------------------------------------------------------------
+
+/** One line of a completed order, as the sales sync already reads it. */
+export interface SoldLine {
+  orderId: string;
+  closedAt: string;
+  squareId: string;
+  name: string;
+  qty: number;
+  netSales: number;
+}
+
+/** A payment's link to its order and its card. */
+export interface OrderCard {
+  orderId: string | null;
+  cardKey: string | null;
+  amountCents: number;
+  status: string;
+}
+
+export interface GuestItemRow {
+  date: ISODate;
+  guest: string;
+  squareId: string;
+  name: string;
+  qty: number;
+  amount: number;
+}
+
+/**
+ * What each card bought on each business day. An order's lines go to the card
+ * that paid most of it (a split tab counts for whoever paid the bigger half);
+ * orders paid in cash belong to nobody and are left out.
+ */
+export function guestItems(lines: readonly SoldLine[], payments: readonly OrderCard[], dates: readonly ISODate[], dateOf: (iso: string) => ISODate): GuestItemRow[] {
+  const payer = new Map<string, { key: string; cents: number }>();
+  for (const p of payments) {
+    if (!p.orderId || !p.cardKey || p.status !== "COMPLETED") continue;
+    const cur = payer.get(p.orderId);
+    if (!cur || p.amountCents > cur.cents) payer.set(p.orderId, { key: p.cardKey, cents: p.amountCents });
+  }
+  const wanted = new Set(dates);
+  const out = new Map<string, GuestItemRow>();
+  for (const l of lines) {
+    const guest = payer.get(l.orderId)?.key;
+    if (!guest) continue;
+    const date = dateOf(l.closedAt);
+    if (!wanted.has(date)) continue;
+    const k = `${date}|${guest}|${l.squareId}`;
+    const row = out.get(k) ?? { date, guest, squareId: l.squareId, name: l.name, qty: 0, amount: 0 };
+    row.qty += l.qty;
+    row.amount += l.netSales;
+    out.set(k, row);
+  }
+  return [...out.values()].map((r) => ({ ...r, qty: Math.round(r.qty * 1000) / 1000, amount: Math.round(r.amount * 100) / 100 })).filter((r) => r.qty !== 0 || r.amount !== 0);
+}
+
+/** Item sales over the last 12 months by kind of card. */
+export interface OrderRow {
+  squareId: string;
+  name: string;
+  /** The item's Square category; null for add-ons and anything not in the catalog. */
+  category: string | null;
+  kind: RhythmKind;
+  qty: number;
+  sales: number;
+}
+
+export interface ItemPick {
+  /** The item, whatever size it was poured or served in. */
+  key: string;
+  name: string;
+  category: string | null;
+  sales: number;
+  /** Share of this item's card sales that came from locals, and from visitors. */
+  localShare: number;
+  visitorShare: number;
+  /** How much more of it the group buys than its share of everything (2 = twice as much). */
+  lean: number;
+}
+
+export interface CategoryMix {
+  name: string;
+  sales: number;
+  /** Share of what locals spend that goes on this category, and of what visitors spend. */
+  local: number;
+  visitor: number;
+}
+
+export interface GuestOrders {
+  /** Card sales with items attached over the period, and each kind's share of them. */
+  sales: number;
+  localShare: number;
+  visitorShare: number;
+  /** A typical visit's spend. */
+  perVisit: { local: number | null; visitor: number | null };
+  categories: CategoryMix[];
+  /** The same split by serving (full pour, half pour, taster…), when items come in more than one. */
+  servings: CategoryMix[];
+  /** Items locals buy far more of than their share, and the same for visitors. */
+  localFavourites: ItemPick[];
+  visitorFavourites: ItemPick[];
+}
+
+/** An item has to sell at least this share of everything (and this many dollars) before it can be called a favourite. */
+const FAVOURITE_MIN_SHARE = 0.003;
+const FAVOURITE_MIN_SALES = 400;
+/** A favourite is bought at least this much more than the group's share of everything. */
+const FAVOURITE_LEAN = 1.25;
+const FAVOURITES = 6;
+/** How Square joins an item's name to its size. */
+const SIZE_MARK = " · ";
+
+export function guestOrders(rows: readonly OrderRow[], visits: readonly RhythmRow[] = []): GuestOrders | null {
+  const total = rows.reduce((s, r) => s + r.sales, 0);
+  if (total <= 0) return null;
+  const of = (k: RhythmKind) => rows.filter((r) => r.kind === k).reduce((s, r) => s + r.sales, 0);
+  const local = of("local");
+  const visitor = of("visitor");
+  const localShare = local / total;
+  const visitorShare = visitor / total;
+
+  // Square names a size of an item "Item · Size": the item is judged whole, and the sizes get their own table.
+  const items = new Map<string, { key: string; name: string; category: string | null; sales: number; local: number; visitor: number }>();
+  const cats = new Map<string, { sales: number; local: number; visitor: number }>();
+  const sizes = new Map<string, { sales: number; local: number; visitor: number }>();
+  for (const r of rows) {
+    const at = r.name.indexOf(SIZE_MARK);
+    const item = at > 0 ? r.name.slice(0, at).trim() : r.name;
+    const size = at > 0 ? r.name.slice(at + SIZE_MARK.length).trim() : null;
+    const it = items.get(item) ?? { key: item, name: item, category: r.category, sales: 0, local: 0, visitor: 0 };
+    if (it.category == null) it.category = r.category;
+    const cat = cats.get(r.category ?? "Other") ?? { sales: 0, local: 0, visitor: 0 };
+    const sz = size && r.category != null ? (sizes.get(size) ?? { sales: 0, local: 0, visitor: 0 }) : null;
+    for (const x of sz ? [it, cat, sz] : [it, cat]) {
+      x.sales += r.sales;
+      if (r.kind === "local") x.local += r.sales;
+      if (r.kind === "visitor") x.visitor += r.sales;
+    }
+    items.set(item, it);
+    cats.set(r.category ?? "Other", cat);
+    if (sz && size) sizes.set(size, sz);
+  }
+  const mix = (m: Map<string, { sales: number; local: number; visitor: number }>, take: number): CategoryMix[] =>
+    [...m]
+      .map(([name, c]) => ({ name, sales: Math.round(c.sales), local: local > 0 ? c.local / local : 0, visitor: visitor > 0 ? c.visitor / visitor : 0 }))
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, take);
+  const floor = Math.max(FAVOURITE_MIN_SALES, total * FAVOURITE_MIN_SHARE);
+  // Real menu items only: add-ons and anything without a category say little on their own.
+  const eligible = [...items.values()].filter((i) => i.category != null && i.sales >= floor);
+  const pick = (i: (typeof eligible)[number], lean: number): ItemPick => ({ key: i.key, name: i.name, category: i.category, sales: Math.round(i.sales), localShare: i.local / i.sales, visitorShare: i.visitor / i.sales, lean });
+  const favourites = (share: number, mine: (i: (typeof eligible)[number]) => number) =>
+    share > 0
+      ? eligible
+          .map((i) => pick(i, mine(i) / i.sales / share))
+          .filter((p) => p.lean >= FAVOURITE_LEAN)
+          .sort((a, b) => b.lean - a.lean)
+          .slice(0, FAVOURITES)
+      : [];
+  // Only worth a table when there's more than one serving and each is more than a stray sale.
+  const bigSizes = mix(sizes, 6).filter((x) => x.sales >= floor);
+  const servings = bigSizes.length >= 2 ? bigSizes : [];
+  const spend = (k: RhythmKind) => {
+    const v = visits.filter((r) => r.kind === k);
+    const n = v.reduce((s, r) => s + r.visits, 0);
+    return n >= 50 ? v.reduce((s, r) => s + r.sales, 0) / n : null;
+  };
+  return {
+    sales: Math.round(total),
+    localShare,
+    visitorShare,
+    perVisit: { local: spend("local"), visitor: spend("visitor") },
+    categories: mix(cats, 10),
+    servings,
+    localFavourites: favourites(localShare, (i) => i.local),
+    visitorFavourites: favourites(visitorShare, (i) => i.visitor),
+  };
+}
+
+/** What the order view says, as an owner would put it. */
+export function orderPoints(o: GuestOrders): GuestPoint[] {
+  const points: GuestPoint[] = [];
+  const names = (xs: ItemPick[]) => listOf(xs.slice(0, 3).map((x) => x.name));
+  if (o.localFavourites.length >= 2 && o.visitorFavourites.length >= 2) {
+    const l = o.localFavourites[0];
+    const v = o.visitorFavourites[0];
+    points.push({
+      key: "orders",
+      tone: "neutral",
+      title: `Locals lean towards ${names(o.localFavourites)}; visitors towards ${names(o.visitorFavourites)}`,
+      detail: `Locals bring ${pc(o.localShare)} of card sales overall but ${pc(l.localShare)} of ${l.name}. Visitors bring ${pc(o.visitorShare)} overall but ${pc(v.visitorShare)} of ${v.name}.`,
+      action: "The locals' list is what to put in front of regulars and build a midweek night around. The visitors' list is your shop window: lead with it on the Google listing and the website.",
+    });
+  }
+  // The category where the two differ most in how they split their spend.
+  const gap = [...o.categories].filter((c) => c.name !== "Other").sort((a, b) => Math.abs(b.local - b.visitor) - Math.abs(a.local - a.visitor))[0];
+  if (gap && Math.abs(gap.local - gap.visitor) >= 0.05) {
+    const more = gap.local > gap.visitor ? "locals" : "visitors";
+    points.push({
+      key: "mix",
+      tone: "neutral",
+      title: `${gap.name} is ${pc(gap.local)} of what locals spend and ${pc(gap.visitor)} of what visitors spend`,
+      detail: `It's the biggest difference in how the two split their money.${o.perVisit.local != null && o.perVisit.visitor != null ? ` A local's card spends about ${usd2(o.perVisit.local)} on a visit and a visitor's about ${usd2(o.perVisit.visitor)}.` : ""}`,
+      action: more === "locals" ? `${gap.name} is more of a locals' habit: worth protecting when you change the menu.` : `${gap.name} is what visitors come for more than locals do: there may be room to sell locals more of it.`,
+    });
+  }
+  return points;
+}
+const usd2 = (x: number) => `$${Math.round(x)}`;

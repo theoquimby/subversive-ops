@@ -1666,6 +1666,19 @@ model GuestVisit {
   @@index([guest])
 }
 
+/// What a card bought on a business day, item by item (kept for about two years). The same
+/// scrambled card mark as GuestVisit; nothing else about the guest.
+model GuestItem {
+  date     DateTime @db.Date
+  guest    String
+  squareId String
+  name     String
+  qty      Decimal  @db.Decimal(10, 3)
+  amount   Decimal  @db.Decimal(10, 2)
+
+  @@id([date, guest, squareId])
+}
+
 /// Per day: how many completed payments there were and how many carried a card that can be recognised again.
 model GuestDay {
   date             DateTime @id @db.Date

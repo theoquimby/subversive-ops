@@ -1,6 +1,6 @@
 import { Fold } from "@/components/fold";
 import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
-import { BANDS, KINDS, REGULAR_DAYS, type RhythmCell } from "@/domain/guests";
+import { BANDS, KINDS, REGULAR_DAYS, type ItemPick, type RhythmCell } from "@/domain/guests";
 import { money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { guestView } from "@/server/services/guests";
@@ -47,6 +47,40 @@ function RhythmTable({ first, cells, name }: { first: string; cells: RhythmCell[
   );
 }
 
+/** Items one group buys far more of than its share of everything. */
+function Favourites({ title, picks, share, who }: { title: string; picks: ItemPick[]; share: (p: ItemPick) => number; who: string }) {
+  return (
+    <div>
+      <h4 className="mb-1 text-sm font-medium text-ink">{title}</h4>
+      {picks.length ? (
+        <Table>
+          <thead>
+            <tr>
+              <Th>Item</Th>
+              <Th align="right" className="hidden sm:table-cell">Card sales</Th>
+              <Th align="right">From {who}</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {picks.map((p) => (
+              <Tr key={p.key}>
+                <Td>
+                  <span className="font-medium text-ink">{p.name}</span>
+                  {p.category && <span className="block text-xs text-muted">{p.category}</span>}
+                </Td>
+                <Td align="right" className="num hidden text-ink-2 sm:table-cell">{money(p.sales, { whole: true })}</Td>
+                <Td align="right" className="num font-medium text-ink">{pct(share(p), 0)}</Td>
+              </Tr>
+            ))}
+          </tbody>
+        </Table>
+      ) : (
+        <p className="text-sm text-muted">Nothing stands out yet.</p>
+      )}
+    </div>
+  );
+}
+
 export default async function CustomersPage() {
   await requireUser("MANAGER");
   const v = await guestView();
@@ -54,6 +88,7 @@ export default async function CustomersPage() {
   const header = <PageHeader help="sales.customers" title="Customers" back={back} description="Who comes back, how much regulars carry, and who has stopped coming. Worked out from card payments, with no names kept." />;
   const s = v.summary;
   const loading = !!v.backfill && !v.backfill.finishedAt;
+  const itemsPending = !v.itemsBackfill?.finishedAt;
   const loadedFrom = s?.from ?? null;
 
   if (!v.connected && !s) {
@@ -92,7 +127,7 @@ export default async function CustomersPage() {
     <>
       {header}
 
-      {(loading || (v.firstSale && loadedFrom && loadedFrom > v.firstSale && !v.backfill?.finishedAt)) && (
+      {loading || (v.firstSale && loadedFrom && loadedFrom > v.firstSale && !v.backfill?.finishedAt) ? (
         <Card className="mb-8 p-4 sm:p-5">
           <p className="mb-3 text-sm text-ink-2">
             Card visits are on file from {loadedFrom ? dated(loadedFrom) : "recent days"}. Your sales go back to {v.firstSale ? dated(v.firstSale) : "earlier"}; the figures below get steadier as more is loaded.
@@ -100,7 +135,15 @@ export default async function CustomersPage() {
           </p>
           <LoadHistory label={v.backfill ? "Carry on loading" : "Load the rest of the history"} firstSale={v.firstSale} />
         </Card>
-      )}
+      ) : itemsPending ? (
+        <Card className="mb-8 p-4 sm:p-5">
+          <p className="mb-3 text-sm text-ink-2">
+            {v.itemsBackfill ? `What each card ordered is loaded back to ${dated(v.itemsBackfill.next)}.` : "One more thing can be loaded: what each card ordered over the last two years, to see what locals and visitors buy."}
+            {v.itemsBackfill?.lastError && <span className="text-bad"> Last try: {v.itemsBackfill.lastError}</span>}
+          </p>
+          <LoadHistory label={v.itemsBackfill ? "Carry on loading" : "Load what each card ordered"} firstSale={null} />
+        </Card>
+      ) : null}
 
       {story ? (
         <Card className="mb-10 p-5 sm:p-6">
@@ -215,6 +258,50 @@ export default async function CustomersPage() {
                 </div>
               )}
               <p className="mt-2 text-xs text-muted">Card sales only, before tips. A local is a card seen in three or more separate months; a visitor one seen on a few days within ten days and not again. A card first seen in the last few weeks is counted by what it has done so far, so the most recent month leans a little towards visitors.</p>
+            </Fold>
+          )}
+
+          {v.orders && (
+            <Fold
+              title="What locals and visitors order"
+              gist={v.orders.localFavourites.length && v.orders.visitorFavourites.length ? `Locals lean towards ${v.orders.localFavourites[0].name}; visitors towards ${v.orders.visitorFavourites[0].name}` : "Item by item and by category"}
+            >
+              <p className="mb-4 text-sm text-ink-2">
+                Over the last 12 months locals brought {pct(v.orders.localShare, 0)} of card sales and visitors {pct(v.orders.visitorShare, 0)}. An item is listed when one group buys at least a quarter more of it than that.
+                {v.orders.perVisit.local != null && v.orders.perVisit.visitor != null && ` A local's card spends about ${money(v.orders.perVisit.local, { whole: true })} on a visit; a visitor's about ${money(v.orders.perVisit.visitor, { whole: true })}.`}
+              </p>
+              <div className="grid gap-5 lg:grid-cols-2">
+                <Favourites title="Locals buy more of" picks={v.orders.localFavourites} share={(p) => p.localShare} who="locals" />
+                <Favourites title="Visitors buy more of" picks={v.orders.visitorFavourites} share={(p) => p.visitorShare} who="visitors" />
+              </div>
+              {([["by category", "Category", v.orders.categories], ["by serving", "Serving", v.orders.servings]] as const).map(([title, first, mixRows]) =>
+                mixRows.length ? (
+                  <div key={title}>
+                    <h4 className="mt-6 mb-1 text-sm font-medium text-ink">How each splits their money, {title}</h4>
+                    <Table>
+                      <thead>
+                        <tr>
+                          <Th>{first}</Th>
+                          <Th align="right" className="hidden sm:table-cell">Card sales</Th>
+                          <Th align="right">Of locals&apos; spend</Th>
+                          <Th align="right">Of visitors&apos; spend</Th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mixRows.map((c) => (
+                          <Tr key={c.name}>
+                            <Td><span className="font-medium text-ink">{c.name}</span></Td>
+                            <Td align="right" className="num hidden text-ink-2 sm:table-cell">{money(c.sales, { whole: true })}</Td>
+                            <Td align="right" className="num text-ink-2">{pct(c.local, 0)}</Td>
+                            <Td align="right" className="num text-ink-2">{pct(c.visitor, 0)}</Td>
+                          </Tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+                ) : null,
+              )}
+              <p className="mt-2 text-xs text-muted">An order counts for the card that paid for it, so a round bought for the table is the buyer&apos;s. A beer is judged whole, whatever size it was poured in; add-ons and items without a Square category are left out of the two lists. Item detail is kept for two years.</p>
             </Fold>
           )}
 

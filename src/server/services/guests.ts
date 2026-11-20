@@ -1,13 +1,14 @@
 import "server-only";
 import { addDays, businessDate, dateRange, ISODate, parseISODate, toISODate, zonedMidnightUTC } from "@/domain/dates";
-import { GUEST_RULES, guestDays, guestRhythm, guestStory, guestSummary, LOCAL_MONTHS, QUIET_DAYS, VISITOR_MAX_DAYS, VISITOR_SPAN_DAYS, type GuestAgg, type GuestRhythm, type RhythmRow, type GuestPayment, type GuestStory, type GuestSummary } from "@/domain/guests";
+import { GUEST_RULES, guestDays, guestItems, guestOrders, guestRhythm, guestStory, guestSummary, LOCAL_MONTHS, QUIET_DAYS, VISITOR_MAX_DAYS, VISITOR_SPAN_DAYS, type GuestAgg, type GuestOrders, type GuestRhythm, type OrderRow, type RhythmKind, type RhythmRow, type GuestPayment, type GuestStory, type GuestSummary } from "@/domain/guests";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { env } from "../env";
 import { friendlySquareError, type SquareClient } from "../integrations/square-http";
+import { listOrders } from "../integrations/square";
 import { listPayments } from "../integrations/square-payments";
 import { firstSaleDate } from "./forecastScore";
-import { businessToday } from "./sales";
+import { businessToday, ignoredSquareIds, squareCatalogMeta } from "./sales";
 import { isSquareConnected, readSettingJSON, requireSquareClient, writeSettingJSON } from "./square";
 
 /**
@@ -89,6 +90,77 @@ export async function backfillGuests(budgetMs = 35_000, client?: SquareClient): 
   }
 }
 
+// ---- What each card ordered ------------------------------------------------------------------
+
+/** Item detail is kept for about two years: enough for a full year of comparison, without growing forever. */
+const ITEM_DAYS = 730;
+const ITEM_KEEP_DAYS = 800;
+const ITEMS_BACKFILL_KEY = "guests.itemsBackfill";
+
+export const guestItemsBackfill = () => readSettingJSON<GuestBackfill>(ITEMS_BACKFILL_KEY);
+
+/** Replace what's on file for these business days with what these orders and payments say. */
+async function syncGuestItems(from: ISODate, toExclusive: ISODate, client: SquareClient) {
+  const start = zonedMidnightUTC(from, tz()).toISOString();
+  const end = zonedMidnightUTC(toExclusive, tz()).toISOString();
+  const [{ units }, payments] = await Promise.all([listOrders(client, start, end), listPayments(client, start, end)]);
+  const dates = dateRange(from, toExclusive);
+  const rows = guestItems(units, payments, dates, (iso) => businessDate(iso, tz()));
+  await db.$transaction([
+    db.guestItem.deleteMany({ where: { date: { in: dates.map(parseISODate) } } }),
+    db.guestItem.createMany({ data: rows.map((r) => ({ date: parseISODate(r.date), guest: r.guest, squareId: r.squareId, name: r.name.slice(0, 200), qty: new Prisma.Decimal(r.qty.toFixed(3)), amount: D(r.amount) })) }),
+  ]);
+  return rows.length;
+}
+
+/** The nightly touch-up for recent days, and the oldest detail dropped. A failure is logged, not thrown. */
+export async function syncGuestItemsQuietly(from: ISODate, toExclusive: ISODate) {
+  try {
+    const client = await requireSquareClient();
+    const rows = await syncGuestItems(from, toExclusive, client);
+    await db.guestItem.deleteMany({ where: { date: { lt: parseISODate(addDays(businessToday(), -ITEM_KEEP_DAYS)) } } });
+    return rows;
+  } catch (e) {
+    console.error("guest items failed", friendlySquareError(e));
+    return null;
+  }
+}
+
+/** Load what each card ordered for the last two years, a week at a time, newest first. Same shape as `backfillGuests`. */
+export async function backfillGuestItems(budgetMs = 35_000): Promise<{ state: GuestBackfill | null; error?: string }> {
+  const started = Date.now();
+  let state = await guestItemsBackfill();
+  try {
+    if (!(await isSquareConnected())) return { state, error: "Square isn't connected." };
+    const today = businessToday();
+    if (!state) {
+      const first = await firstSaleDate();
+      if (!first) return { state: null, error: "There are no sales on file yet." };
+      const twoYears = addDays(today, -ITEM_DAYS);
+      state = { from: first > twoYears ? first : twoYears, next: addDays(today, 1), startedAt: new Date().toISOString(), finishedAt: null, lastError: null };
+      await writeSettingJSON(ITEMS_BACKFILL_KEY, state);
+    }
+    if (state.finishedAt) return { state };
+    const client = await requireSquareClient();
+    while (state.next > state.from && Date.now() - started < budgetMs) {
+      const weekBefore: ISODate = addDays(state.next, -7);
+      const chunkFrom: ISODate = weekBefore > state.from ? weekBefore : state.from;
+      await syncGuestItems(chunkFrom, state.next, client);
+      state = { ...state, next: chunkFrom, lastError: null };
+      await writeSettingJSON(ITEMS_BACKFILL_KEY, state);
+    }
+    if (state.next <= state.from) {
+      state = { ...state, finishedAt: new Date().toISOString() };
+      await writeSettingJSON(ITEMS_BACKFILL_KEY, state);
+    }
+    return { state };
+  } catch (e) {
+    const error = friendlySquareError(e);
+    if (state) await writeSettingJSON(ITEMS_BACKFILL_KEY, { ...state, lastError: error }).catch(() => undefined);
+    return { state, error };
+  }
+}
+
 // ---- The picture ----------------------------------------------------------------------------
 
 const SUMMARY_KEY = "guests.summary";
@@ -110,6 +182,7 @@ interface StoredGuests {
   summary: GuestSummary;
   weekly: GuestWeek[];
   rhythm: GuestRhythm;
+  orders: GuestOrders | null;
 }
 
 /** Count everything again from the visits on file and keep the result (the page reads the kept copy). */
@@ -118,7 +191,7 @@ export async function computeGuests(): Promise<StoredGuests> {
   const year = addDays(today, -365);
   const priorTo = addDays(today, -QUIET_DAYS);
   const priorFrom = addDays(priorTo, -365);
-  const [guests, days, weekly, rhythmRows, openDays] = await Promise.all([
+  const [guests, days, weekly, rhythmRows, openDays, itemRows, meta, ignored] = await Promise.all([
     db.$queryRaw<GuestAgg[]>`
       SELECT MIN("date")::text AS "first",
              (ARRAY_AGG("date" ORDER BY "date"))[2]::text AS "second",
@@ -164,13 +237,32 @@ export async function computeGuests(): Promise<StoredGuests> {
       FROM "GuestDay"
       WHERE "identified" > 0 AND "date" >= ${year}::date AND "date" < ${today}::date
       GROUP BY 1, 2`,
+    // What each kind of card bought over the same 12 months, item by item.
+    db.$queryRaw<{ squareId: string; name: string; kind: RhythmKind; qty: number; sales: number }[]>`
+      WITH g AS (
+        SELECT "guest", MIN("date") AS first, MAX("date") AS last, COUNT(*) AS days, COUNT(DISTINCT date_trunc('month', "date")) AS months
+        FROM "GuestVisit" GROUP BY "guest"),
+      k AS (
+        SELECT "guest", CASE WHEN months >= ${LOCAL_MONTHS} THEN 'local'
+                             WHEN days <= ${VISITOR_MAX_DAYS} AND (last - first) <= ${VISITOR_SPAN_DAYS} THEN 'visitor'
+                             ELSE 'occasional' END AS kind
+        FROM g)
+      SELECT i."squareId" AS "squareId", MAX(i."name") AS "name", k.kind AS "kind", SUM(i."qty")::float8 AS "qty", SUM(i."amount")::float8 AS "sales"
+      FROM "GuestItem" i JOIN k USING ("guest")
+      WHERE i."date" >= ${year}::date AND i."date" < ${today}::date
+      GROUP BY 1, 3`,
+    squareCatalogMeta(),
+    ignoredSquareIds(),
   ]);
+  const skip = new Set(ignored);
+  const orderRows: OrderRow[] = itemRows.filter((r) => !skip.has(r.squareId)).map((r) => ({ ...r, name: meta[r.squareId]?.baseName || r.name, category: meta[r.squareId]?.category ?? null }));
   const stored: StoredGuests = {
     rules: GUEST_RULES,
     computedOn: today,
     summary: guestSummary({ guests, days: days.map((d) => ({ payments: d.payments, identified: d.identified, amount: d.amount.toNumber(), identifiedAmount: d.identifiedAmount.toNumber() })), today }),
     weekly: weekly.map((w) => ({ week: w.week, guests: w.guests, newGuests: w.newGuests, sales: Math.round(w.sales), returningSales: Math.round(w.returningSales) })),
     rhythm: guestRhythm(rhythmRows, openDays),
+    orders: guestOrders(orderRows, rhythmRows),
   };
   await writeSettingJSON(SUMMARY_KEY, stored);
   return stored;
@@ -195,18 +287,23 @@ export interface GuestView {
   weekly: GuestWeek[];
   /** A typical open day by weekday and by month: who came. */
   rhythm: GuestRhythm | null;
+  /** What locals and visitors order; null until item detail is loaded. */
+  orders: GuestOrders | null;
   backfill: GuestBackfill | null;
+  /** The loading of what each card ordered (the last two years). */
+  itemsBackfill: GuestBackfill | null;
   /** The first day with sales: how far back the history could go. */
   firstSale: ISODate | null;
 }
 
 export async function guestView(): Promise<GuestView> {
-  const [connected, daysOnFile, kept, backfill, firstSale] = await Promise.all([isSquareConnected(), db.guestDay.count({ where: { payments: { gt: 0 } } }), readSettingJSON<StoredGuests>(SUMMARY_KEY), guestBackfill(), firstSaleDate()]);
+  const [connected, daysOnFile, kept, backfill, itemsBackfill, firstSale] = await Promise.all([isSquareConnected(), db.guestDay.count({ where: { payments: { gt: 0 } } }), readSettingJSON<StoredGuests>(SUMMARY_KEY), guestBackfill(), guestItemsBackfill(), firstSaleDate()]);
   // Counted nightly; count now if there are visits but no kept copy, or it's from another day.
   const stored = daysOnFile > 0 && (kept?.computedOn !== businessToday() || kept.rules !== GUEST_RULES) ? await computeGuests() : kept;
   const summary = daysOnFile > 0 ? (stored?.summary ?? null) : null;
   const rhythm = summary ? (stored?.rhythm ?? null) : null;
-  return { connected, daysOnFile, summary, story: summary ? guestStory(summary, rhythm) : null, weekly: summary ? (stored?.weekly ?? []) : [], rhythm, backfill, firstSale };
+  const orders = summary ? (stored?.orders ?? null) : null;
+  return { connected, daysOnFile, summary, story: summary ? guestStory(summary, rhythm, orders) : null, weekly: summary ? (stored?.weekly ?? []) : [], rhythm, orders, backfill, itemsBackfill, firstSale };
 }
 
 /** Days on file, for a progress line: the earliest day loaded. */

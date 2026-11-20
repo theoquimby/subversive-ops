@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "../dates";
-import { guestDays, guestRhythm, guestStory, guestSummary, kindOf, quietAfter, rhythmPoints, type GuestAgg, type RhythmRow } from "../guests";
+import { guestDays, guestItems, guestOrders, guestRhythm, guestStory, guestSummary, kindOf, orderPoints, quietAfter, rhythmPoints, type GuestAgg, type OrderRow, type RhythmRow } from "../guests";
 
 const TODAY = "2026-11-19";
 
@@ -184,5 +184,112 @@ describe("guestRhythm", () => {
     const story = guestStory(summary, r)!;
     expect(story.points.map((x) => x.key)).toEqual(expect.arrayContaining(["weekdays", "season"]));
     expect(guestStory(summary)!.points.some((x) => x.key === "weekdays")).toBe(false);
+  });
+});
+
+describe("guestItems", () => {
+  const dateOf = (iso: string) => iso.slice(0, 10);
+  const line = (orderId: string, squareId: string, qty: number, netSales: number, closedAt = "2026-11-14T20:00:00Z") => ({ orderId, closedAt, squareId, name: squareId.toUpperCase(), qty, netSales });
+  const pay = (orderId: string | null, cardKey: string | null, amountCents: number, status = "COMPLETED") => ({ orderId, cardKey, amountCents, status });
+
+  it("gives each order's lines to the card that paid for it, adding up a card's day", () => {
+    const rows = guestItems(
+      [line("o1", "ipa", 2, 16), line("o1", "burger", 1, 18), line("o2", "ipa", 1, 8), line("o3", "stout", 1, 9)],
+      [pay("o1", "a", 3400), pay("o2", "a", 800), pay("o3", "b", 900)],
+      ["2026-11-14"],
+      dateOf,
+    );
+    expect(rows).toEqual([
+      { date: "2026-11-14", guest: "a", squareId: "ipa", name: "IPA", qty: 3, amount: 24 },
+      { date: "2026-11-14", guest: "a", squareId: "burger", name: "BURGER", qty: 1, amount: 18 },
+      { date: "2026-11-14", guest: "b", squareId: "stout", name: "STOUT", qty: 1, amount: 9 },
+    ]);
+  });
+
+  it("counts a split tab for whoever paid the bigger half, and leaves cash orders and other days out", () => {
+    const rows = guestItems(
+      [line("o1", "ipa", 4, 32), line("o2", "ipa", 1, 8), line("o3", "ipa", 1, 8), line("o4", "ipa", 1, 8, "2026-11-13T20:00:00Z")],
+      [pay("o1", "a", 1200), pay("o1", "b", 2000), pay("o2", null, 800), pay("o3", "c", 800, "FAILED"), pay("o4", "a", 800)],
+      ["2026-11-14"],
+      dateOf,
+    );
+    expect(rows).toEqual([{ date: "2026-11-14", guest: "b", squareId: "ipa", name: "IPA", qty: 4, amount: 32 }]);
+  });
+
+  it("nets a return against the sale", () => {
+    expect(guestItems([line("o1", "ipa", 1, 8), line("o1", "ipa", -1, -8)], [pay("o1", "a", 800)], ["2026-11-14"], dateOf)).toEqual([]);
+  });
+});
+
+describe("guestOrders", () => {
+  const row = (squareId: string, category: string | null, kind: OrderRow["kind"], sales: number): OrderRow => ({ squareId, name: squareId, category, kind, qty: sales / 8, sales });
+  // Locals spend 30,000 and visitors 60,000. Locals over-buy the pilsner and the wings; visitors the flight and the burger.
+  const rows: OrderRow[] = [
+    row("Pilsner", "Beer", "local", 9000), row("Pilsner", "Beer", "visitor", 3000),
+    row("Wings", "Food", "local", 6000), row("Wings", "Food", "visitor", 4000),
+    row("IPA", "Beer", "local", 9000), row("IPA", "Beer", "visitor", 18000),
+    row("Flight", "Beer", "local", 1000), row("Flight", "Beer", "visitor", 12000),
+    row("Burger", "Food", "local", 4000), row("Burger", "Food", "visitor", 21000),
+    row("Extra cheese", null, "local", 1000), row("Extra cheese", null, "visitor", 2000),
+    row("IPA", "Beer", "occasional", 10000),
+  ];
+  const visits: RhythmRow[] = [
+    { wd: 5, month: 6, kind: "local", visits: 1000, sales: 30000 },
+    { wd: 6, month: 6, kind: "visitor", visits: 1000, sales: 60000 },
+  ];
+  const o = guestOrders(rows, visits)!;
+
+  it("finds what each group buys far more of than its share of everything", () => {
+    expect(o.sales).toBe(100000);
+    expect(o.localShare).toBeCloseTo(0.3);
+    expect(o.localFavourites.map((p) => p.key)).toEqual(["Pilsner", "Wings"]);
+    expect(o.localFavourites[0]).toMatchObject({ localShare: 0.75, lean: 2.5 });
+    expect(o.visitorFavourites.map((p) => p.key)).toEqual(["Flight", "Burger"]);
+    // An add-on with no category is never a favourite.
+    expect([...o.localFavourites, ...o.visitorFavourites].some((p) => p.key === "Extra cheese")).toBe(false);
+    expect(o.perVisit).toEqual({ local: 30, visitor: 60 });
+  });
+
+  it("shows how each group splits its money across categories", () => {
+    const food = o.categories.find((c) => c.name === "Food")!;
+    expect(food.local).toBeCloseTo(10000 / 30000);
+    expect(food.visitor).toBeCloseTo(25000 / 60000);
+    expect(o.categories.map((c) => c.name)).toEqual(["Beer", "Food", "Other"]);
+  });
+
+  it("judges a beer whole, whatever size it was poured in, and compares the sizes separately", () => {
+    const sized: OrderRow[] = [
+      { squareId: "a1", name: "Lager · Full Pour", category: "Beer", kind: "local", qty: 900, sales: 7200 },
+      { squareId: "a2", name: "Lager · Half Pour", category: "Beer", kind: "local", qty: 300, sales: 1800 },
+      { squareId: "a3", name: "Lager · Taster", category: "Beer", kind: "visitor", qty: 500, sales: 2000 },
+      { squareId: "b1", name: "Stout · Full Pour", category: "Beer", kind: "visitor", qty: 900, sales: 7200 },
+      { squareId: "b3", name: "Stout · Taster", category: "Beer", kind: "visitor", qty: 700, sales: 2800 },
+    ];
+    const s = guestOrders(sized)!;
+    expect(s.localFavourites.map((p) => [p.key, p.sales])).toEqual([["Lager", 11000]]);
+    expect(s.visitorFavourites.map((p) => p.key)).toEqual(["Stout"]);
+    expect(s.servings.map((x) => x.name)).toEqual(["Full Pour", "Taster", "Half Pour"]);
+    const taster = s.servings.find((x) => x.name === "Taster")!;
+    expect(taster.local).toBe(0);
+    expect(taster.visitor).toBeCloseTo(4800 / 12000);
+    // Items sold in one size only have no size table.
+    expect(o.servings).toEqual([]);
+  });
+
+  it("ignores items too small to judge, and copes with nothing", () => {
+    const small = guestOrders([...rows, row("Rare bottle", "Beer", "local", 200)])!;
+    expect(small.localFavourites.some((p) => p.key === "Rare bottle")).toBe(false);
+    expect(guestOrders([])).toBeNull();
+  });
+
+  it("says it plainly", () => {
+    const p = orderPoints(o);
+    expect(p[0].title).toBe("Locals lean towards Pilsner and Wings; visitors towards Flight and Burger");
+    expect(p[0].detail).toBe("Locals bring 30% of card sales overall but 75% of Pilsner. Visitors bring 60% overall but 92% of Flight.");
+    const mix = p.find((x) => x.key === "mix")!;
+    expect(mix.title).toBe("Food is 33% of what locals spend and 42% of what visitors spend");
+    expect(mix.detail).toContain("A local's card spends about $30 on a visit and a visitor's about $60.");
+    const summary = guestSummary({ guests: Array.from({ length: 300 }, () => g({ months: 4, days: 6, days365: 6, amount365: 300 })), days: [], today: TODAY });
+    expect(guestStory(summary, null, o)!.points.map((x) => x.key)).toEqual(expect.arrayContaining(["orders", "mix"]));
   });
 });

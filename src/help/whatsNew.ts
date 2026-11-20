@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 19 Nov · 1.43 (what locals and visitors order) ----
+  {
+    id: "2026-11-19.customer-orders",
+    date: "2026-11-19",
+    title: "What locals order, and what visitors do",
+    line: "See which items locals buy more of, which visitors do, and what each spends on a visit.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/sales/customers",
+    help: "sales.customers",
+    audience: "manager",
+  },
   // ---- 19 Nov · 1.42 (when locals and visitors come) ----
   {
     id: "2026-11-19.customer-rhythm",

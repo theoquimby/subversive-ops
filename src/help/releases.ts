@@ -24,6 +24,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.43",
+    date: "2026-11-19",
+    title: "What locals order, and what visitors do",
+    summary: "The Customers page now shows which items locals buy far more of than their share, which ones visitors do, how each splits their money across categories, and what a typical visit spends.",
+    entries: ["2026-11-19.customer-orders"],
+    fixed: [
+      "Locals' favourites and visitors' favourites: items one group buys at least a quarter more of than its share of everything.",
+      "How each group splits its spend across categories, and a typical visit's spend for each.",
+      "An order counts for the card that paid for it. Item detail is kept for the last two years; press Load what each card ordered once to bring it in.",
+    ],
+  },
+  {
     version: "1.42",
     date: "2026-11-19",
     title: "When locals come, and when visitors do",

@@ -125,6 +125,8 @@ export interface OrderTotal {
 }
 
 export interface SoldUnit {
+  /** The order it was rung on (links a line to the card that paid, for who-orders-what). */
+  orderId: string;
   closedAt: string; // ISO timestamp
   squareId: string;
   name: string;
@@ -173,7 +175,7 @@ export async function listOrders(client: SquareClient, startISO: string, endISO:
         totals.push({ closedAt: order.closed_at, netSales: (gross - giftCards) / 100, tips: cents(n?.tip_money ?? order.total_tip_money) / 100, tax: cents(n?.tax_money ?? order.total_tax_money) / 100 });
         const push = (lines: SquareLine[] | undefined, sign: 1 | -1) => {
           for (const li of lines ?? []) {
-            for (const u of lineUnits(li, sign)) out.push({ closedAt: order.closed_at!, squareId: u.squareId, name: u.name, qty: u.qty, netSales: u.netCents / 100 });
+            for (const u of lineUnits(li, sign)) out.push({ orderId: order.id, closedAt: order.closed_at!, squareId: u.squareId, name: u.name, qty: u.qty, netSales: u.netCents / 100 });
           }
         };
         push(order.line_items, 1);

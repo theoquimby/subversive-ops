@@ -8,7 +8,7 @@ import { friendlySquareError } from "../integrations/square-http";
 import { fetchMerchant } from "../integrations/square-auth";
 import { syncSquareTeam, syncSquareTimecards } from "./labor";
 import { businessToday, syncCatalog, syncSales } from "./sales";
-import { backfillGuests, computeGuestsQuietly, guestBackfill } from "./guests";
+import { backfillGuestItems, backfillGuests, computeGuestsQuietly, guestBackfill, guestItemsBackfill, syncGuestItemsQuietly } from "./guests";
 import { syncPaymentsQuietly } from "./square-money";
 import { isSquareConnected, logSquareError, readSettingJSON, recordSquareSync, requireSquareClient, squareStreams, SquareStream, withSquareLock, writeSettingJSON } from "./square";
 
@@ -42,6 +42,10 @@ export async function dailySync() {
   // Carry on loading the history of card visits if it was started and isn't done, then count everything again.
   const guests = await guestBackfill();
   if (guests && !guests.finishedAt) await backfillGuests(60_000).catch(() => undefined);
+  // What each card ordered: the same recent days again, and more of the history if that isn't finished.
+  await syncGuestItemsQuietly(addDays(today, -3), addDays(today, 1));
+  const items = await guestItemsBackfill();
+  if (items && !items.finishedAt) await backfillGuestItems(60_000).catch(() => undefined);
   await computeGuestsQuietly();
   // Carry on a first import nobody finished (it normally runs from the Square page).
   const bf = await getBackfill();
