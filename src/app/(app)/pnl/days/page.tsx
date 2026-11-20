@@ -1,7 +1,7 @@
 import { Chapter, InShort } from "@/components/chapter";
 import { ColumnsChart, type Col } from "@/components/columns-chart";
 import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
-import { about, hourLabel, SEASONS, type ProfitPoint, type WeekdayProfit } from "@/domain/dayProfit";
+import { about, hourLabel, RECENT_DAYS, SEASONS, type ProfitPoint, type WeekdayProfit } from "@/domain/dayProfit";
 import { TYPICAL_COST_SHARE } from "@/domain/pnlStory";
 import { dayDate, money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
@@ -70,6 +70,7 @@ export default async function ProfitByDayPage() {
   }));
 
   const yearMax = Math.max(1, ...regular.map((w) => Math.abs(w.yearLeft)));
+  const recentMax = Math.max(1, ...regular.flatMap((w) => [Math.abs(w.left), Math.abs(w.recent.left)]));
   const seasonMax = Math.max(1, ...p.seasons.map((c) => Math.abs(c.left ?? 0)));
   const coldCells = p.seasons.filter((c) => c.left != null && c.left < 0).length;
   const laborMax = Math.max(0.01, ...regular.map((w) => w.laborPct ?? 0));
@@ -82,7 +83,7 @@ export default async function ProfitByDayPage() {
   }));
   const hourStart = String(late?.wd ?? (v.hours.some((h) => h.wd === worst?.wd) ? worst!.wd : (v.hours[0]?.wd ?? "")));
 
-  const contents = (["weakest", "rent", "season", "hours", "labor", "closed"] as const)
+  const contents = (["weakest", "recent", "rent", "season", "hours", "labor", "closed"] as const)
     .map((k) => ({ id: k === "closed" ? "worked-out" : k, point: point(k) }))
     .filter((x): x is { id: string; point: ProfitPoint } => !!x.point);
 
@@ -183,7 +184,36 @@ export default async function ProfitByDayPage() {
             }
           >
             <h4 className="mb-3 text-sm font-medium text-ink">Every open day, by what it left</h4>
-            <DayStrip rows={stripRows} fixed={p.fixedPerOpenDay} />
+            <DayStrip rows={stripRows} fixed={p.fixedPerOpenDay} recent={RECENT_DAYS} />
+          </Chapter>
+
+          <Chapter id="recent" point={point("recent")} title="Lately is in line with the year" detail={`Each weekday's last ${RECENT_DAYS} open days next to its whole year: about two months against twelve.`}>
+            <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+              <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-[3px] bg-border-strong" /> A typical day over the year</span>
+              <span className={`inline-flex items-center gap-1.5 ${VIZ_VARS}`}><span aria-hidden className="inline-block size-2.5 rounded-[3px]" style={{ background: "var(--viz-profit)" }} /> A typical day of its last {RECENT_DAYS}</span>
+              <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-[3px] bg-bad" /> Lost money</span>
+            </div>
+            <ul className={`space-y-3 ${VIZ_VARS}`}>
+              {regular.map((w) => (
+                <li key={w.wd} className="grid grid-cols-1 items-center gap-x-4 gap-y-1 sm:grid-cols-[6.5rem_1fr]">
+                  <div className="text-sm font-medium text-ink">{DAYS[w.wd]}</div>
+                  <div className="space-y-1 border-l border-border-strong">
+                    {[
+                      { v: w.left, color: "var(--border-strong)", note: "" },
+                      { v: w.recent.left, color: w.recent.left < 0 ? "var(--bad)" : "var(--viz-profit)", note: w.recent.lost ? ` · ${w.recent.lost} of ${w.recent.days} lost money` : "" },
+                    ].map((b, k) => (
+                      <div key={k} className="flex items-center gap-2">
+                        <div className="h-2 min-w-[2px] rounded-r-[4px]" style={{ width: `calc((100% - 11rem) * ${(Math.abs(b.v) / recentMax).toFixed(4)})`, background: b.color }} />
+                        <span className={`num text-xs whitespace-nowrap ${b.v < 0 ? "font-semibold text-bad" : k === 1 ? "font-semibold text-ink" : "text-ink-2"}`}>
+                          {signed(b.v)}
+                          <span className="font-normal text-muted">{b.note}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
           </Chapter>
 
           <Chapter

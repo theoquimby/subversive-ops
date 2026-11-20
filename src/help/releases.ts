@@ -33,6 +33,7 @@ export const RELEASES: Release[] = [
       "A typical day of each weekday, split into where its sales go, and every open day of the last year as a dot: the ones that lost money stand out.",
       "What each weekday added over the year, and how much of its sales would have to move to other days before closing it would pay.",
       "Each weekday season by season and hour by hour, so a slow winter Monday or a slow last hour shows up on its own.",
+      "Lately against the year: each weekday's last 8 open days next to its 12-month average.",
       "Rent is left out on purpose: closing a day doesn't save it. It shows only as a yardstick.",
     ],
   },

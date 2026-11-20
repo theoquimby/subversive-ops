@@ -13,7 +13,7 @@
 import { daysBetween, ISODate, parseISODate, weekday } from "./dates";
 
 /** Bump when the method changes, so a kept copy is worked out again. */
-export const DAY_PROFIT_RULES = 1;
+export const DAY_PROFIT_RULES = 2;
 
 /** A weekday needs this many open days in the year to be shown, and this many to be compared and advised on. */
 const SHOWN_DAYS = 8;
@@ -28,6 +28,10 @@ const TRADING_SHARE = 0.03;
 /** Closing early is only suggested for the last hour or two, and only when they lose at least this much a day. */
 const LATE_HOURS = 2;
 const LATE_MIN_LOSS = 10;
+/** "Lately" is a weekday's last few open days: about two months of it. */
+export const RECENT_DAYS = 8;
+/** Lately counts as thinner when it leaves under this share of the year's average. */
+const SLIPPING = 0.6;
 
 export const SEASONS = ["Winter", "Spring", "Summer", "Autumn"] as const;
 /** Dec to Feb is winter (0), then spring, summer, autumn. */
@@ -84,6 +88,8 @@ export interface WeekdayProfit {
   verdict: DayVerdict;
   /** Leaves at least its share of rent and fixed costs; null when those aren't set. */
   coversFixed: boolean | null;
+  /** Its last few open days: how many, what a typical one left, and how many lost money. */
+  recent: { days: number; left: number; lost: number };
 }
 
 export interface SeasonCell {
@@ -158,6 +164,7 @@ export function dayProfit(i: { days: readonly ProfitDayInput[]; open: ReadonlySe
     const lostDays = ds.filter((d) => d.left < 0).length;
     const keepRate = sales > 0 ? 1 - (goods + fees) / sales : 0;
     const regular = ds.length >= REGULAR_DAYS;
+    const last = ds.slice(-RECENT_DAYS);
     weekdays.push({
       wd,
       openDays: ds.length,
@@ -174,6 +181,7 @@ export function dayProfit(i: { days: readonly ProfitDayInput[]; open: ReadonlySe
       moveShare: sales <= 0 ? null : left <= 0 ? 0 : left / (left + labor),
       verdict: left < 0 ? "loses" : lostDays / ds.length >= THIN_LOSS_SHARE || left < THIN_MARGIN * sales ? "thin" : "pays",
       coversFixed: fixedPerOpenDay == null ? null : left >= fixedPerOpenDay,
+      recent: { days: last.length, left: avg(last.map((d) => d.left)), lost: last.filter((d) => d.left < 0).length },
     });
     if (regular) {
       for (let season = 0; season < 4; season++) {
@@ -267,7 +275,7 @@ export function hourProfit(rows: readonly HourInput[], p: DayProfit): WeekdayHou
 // ---- What it says ------------------------------------------------------------------------------
 
 export interface ProfitPoint {
-  key: "weakest" | "season" | "hours" | "labor" | "rent" | "closed";
+  key: "weakest" | "recent" | "season" | "hours" | "labor" | "rent" | "closed";
   tone: "good" | "warn" | "bad" | "neutral";
   title: string;
   detail: string;
@@ -305,12 +313,16 @@ export function dayProfitStory(p: DayProfit, hours: readonly WeekdayHours[] = []
   const losing = regular.filter((w) => w.verdict === "loses");
   const thin = regular.filter((w) => w.verdict === "thin");
 
-  const level = losing.length ? "bad" : thin.length ? "warn" : "good";
+  // The year can look fine while the last couple of months don't.
+  const slipping = regular.filter((w) => w.recent.days >= RECENT_DAYS && w.recent.left < 0 && w.left >= 0);
+  const level = losing.length ? "bad" : thin.length || slipping.length ? "warn" : "good";
   const headline = losing.length
     ? `${listOf(losing.map(plural))} cost more to open than they bring in`
-    : thin.length
-      ? `Every day you open pays for itself, but ${listOf(thin.map(plural))} only just`
-      : "Every day you open pays for itself";
+    : slipping.length
+      ? `Every day paid for itself over the year, but lately ${listOf(slipping.map(plural))} haven't`
+      : thin.length
+        ? `Every day you open pays for itself, but ${listOf(thin.map(plural))} only just`
+        : "Every day you open pays for itself";
   const line = `Over the last 12 months a typical open day took ${about(p.typical.sales)} and left ${about(p.typical.left)} once food, drink, wages and card fees were paid. A ${DAY_NAMES[best.wd]} leaves about ${about(best.left)}; a ${DAY_NAMES[worst.wd]} ${worst.left < 0 ? `loses about ${about(-worst.left)}` : `about ${about(worst.left)}`}.`;
 
   const points: ProfitPoint[] = [];
@@ -325,6 +337,20 @@ export function dayProfitStory(p: DayProfit, hours: readonly WeekdayHours[] = []
         ? `Closing ${plural(worst)} would save about ${about(-worst.yearLeft)} a year even if nobody came another day instead. A shorter ${DAY_NAMES[worst.wd]} is the smaller step to try first.`
         : `Over the year ${plural(worst)} added about ${about(worst.yearLeft)} towards rent. Closing would only pay if more than ${pc(worst.moveShare ?? 0)} of ${DAY_NAMES[worst.wd]}'s sales turned up on other days instead${(worst.moveShare ?? 0) >= 0.25 ? ", which is a lot to count on" : ""}. Keep it open.`,
   });
+
+  const lately = regular
+    .filter((w) => w.recent.days >= RECENT_DAYS && w.left > 0 && w.recent.left < w.left * SLIPPING && (w.recent.left < 0 || w.recent.lost >= 3))
+    .sort((a, b) => a.recent.left - b.recent.left)[0];
+  if (lately) {
+    const r = lately.recent;
+    points.push({
+      key: "recent",
+      tone: r.left < 0 ? "bad" : "warn",
+      title: r.left < 0 ? `Lately ${plural(lately)} have been losing money` : `Lately ${plural(lately)} are thinner: ${r.lost} of the last ${r.days} lost money`,
+      detail: `The last ${r.days} ${plural(lately)} ${r.left < 0 ? `lost about ${about(-r.left)}` : `left about ${about(r.left)}`} each on average, against ${about(lately.left)} left over the whole year. ${r.lost} of them lost money.`,
+      action: `One slow stretch isn't a reason to close. If it's still like this in a month, try a smaller crew or a shorter ${DAY_NAMES[lately.wd]} first: the crew is about ${about(lately.labor)} a day.`,
+    });
+  }
 
   const cold = p.seasons.filter((c) => c.left != null && c.left < 0).sort((a, b) => a.left! - b.left!);
   if (cold.length) {

@@ -182,6 +182,27 @@ describe("dayProfitStory", () => {
     expect(s.points.find((x) => x.key === "closed")!.title).toBe("$7,800 of wages fell on days you were closed");
   });
 
+  it("says when the last couple of months are worse than the year", () => {
+    // The last 8 Mondays took half as much: each lost money, though the year's average is fine.
+    const base = year((d) => (weekday(d.date) === 1 ? { sales: 1200, goods: 360, fees: 30 } : {}));
+    const mondays = base.filter((d) => weekday(d.date) === 1).map((d) => d.date);
+    const slow = new Set(mondays.slice(-8));
+    const days = base.map((d) => (slow.has(d.date) ? { ...d, sales: 500, goods: 150, fees: 12.5 } : d));
+    const p = dayProfit({ days, open: openOf(days) });
+    const mon = p.weekdays.find((w) => w.wd === 1)!;
+    expect(mon.left).toBeGreaterThan(0);
+    expect(mon.recent).toEqual({ days: 8, left: 500 - 150 - 450 - 12.5, lost: 8 });
+    const s = dayProfitStory(p)!;
+    expect(s.level).toBe("warn");
+    expect(s.headline).toBe("Every day paid for itself over the year, but lately Mondays haven't");
+    const r = s.points.find((x) => x.key === "recent")!;
+    expect(r.tone).toBe("bad");
+    expect(r.title).toBe("Lately Mondays have been losing money");
+    expect(r.detail).toContain("lost about $110 each on average");
+    // A steady year says nothing about lately.
+    expect(dayProfitStory(dayProfit({ days: base, open: openOf(base) }))!.points.some((x) => x.key === "recent")).toBe(false);
+  });
+
   it("words dollars and hours the way they're said", () => {
     expect(about(1234)).toBe("$1,200");
     expect(about(87)).toBe("$90");

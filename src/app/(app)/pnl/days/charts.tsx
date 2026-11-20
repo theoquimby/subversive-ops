@@ -55,7 +55,7 @@ export interface StripRow {
  * food, drink, wages and card fees. Dots left of the zero line lost money. The
  * dark tick is the weekday's average; the grey line is a day's share of rent.
  */
-export function DayStrip({ rows, fixed }: { rows: StripRow[]; fixed: number | null }) {
+export function DayStrip({ rows, fixed, recent = 0 }: { rows: StripRow[]; fixed: number | null; recent?: number }) {
   const { ref, w: W } = useWidth(260);
   const [hover, setHover] = useState<{ row: number; i: number } | null>(null);
   const all = rows.flatMap((r) => r.days.map((d) => d.left)).sort((a, b) => a - b);
@@ -80,6 +80,7 @@ export function DayStrip({ rows, fixed }: { rows: StripRow[]; fixed: number | nu
         <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-full" style={{ background: "var(--viz-profit)" }} /> A day that paid for itself</span>
         <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-full bg-bad" /> A day that lost money</span>
         <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block h-3 w-0.5 rounded-full bg-ink" /> The weekday&apos;s average</span>
+        {recent > 0 && <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-full border-[1.5px] border-ink" /> Ringed: its last {recent}</span>}
       </div>
       <div className="relative" ref={ref}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block" role="img" aria-label={`What each open day left, by weekday. ${rows.map((r) => `${r.name}: ${dollars(r.mean)} on average, ${r.lost} of ${r.days.length} lost money`).join(". ")}.`} onMouseLeave={() => setHover(null)}>
@@ -101,6 +102,7 @@ export function DayStrip({ rows, fixed }: { rows: StripRow[]; fixed: number | nu
               <text x={0} y={yRow(ri)} dy="0.34em" className="fill-ink-2 text-[11px] font-medium">{r.name.slice(0, 3)}</text>
               {r.days.map((d, i) => {
                 const on = hover?.row === ri && hover.i === i;
+                const late = recent > 0 && i >= r.days.length - recent;
                 return (
                   <circle
                     key={d.date}
@@ -108,9 +110,9 @@ export function DayStrip({ rows, fixed }: { rows: StripRow[]; fixed: number | nu
                     cy={yRow(ri) + ((((i * 37) % 11) - 5) * 2.2)}
                     r={on ? 5.5 : 4}
                     fill={d.left < 0 ? "var(--bad)" : "var(--viz-profit)"}
-                    fillOpacity={on ? 1 : 0.5}
-                    stroke="var(--surface)"
-                    strokeWidth={on ? 2 : 0.75}
+                    fillOpacity={on || late ? 1 : 0.55}
+                    stroke={late && !on ? "var(--ink)" : "var(--surface)"}
+                    strokeWidth={on ? 2 : late ? 1.25 : 0.75}
                     onMouseEnter={() => setHover({ row: ri, i })}
                     onTouchStart={() => setHover({ row: ri, i })}
                   />

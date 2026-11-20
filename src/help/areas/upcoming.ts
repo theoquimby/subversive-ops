@@ -555,7 +555,8 @@ It answers one question: is each day you open worth opening?
 **How to read it**
 
 - **Where a typical day's sales go**: one column per weekday. Violet is food and drink, pink is wages, teal is card fees, and blue is what's left. A day that falls short has a dark mark where its sales stopped.
-- **Every open day, by what it left**: one dot per day. Dots left of the zero line lost money. The dark tick is that weekday's average.
+- **Every open day, by what it left**: one dot per day. Dots left of the zero line lost money. The dark tick is that weekday's average, and each weekday's last 8 days are ringed.
+- **Lately**: each weekday's last 8 open days next to its whole year, so a slow couple of months shows up before it's buried in the average.
 - **Added over the year, and what closing would take**: everything each weekday left in 12 months. Under each is how much of its sales would have to turn up on other days for closing to pay. If that share is high, keep the day.
 - **Season by season**: the same weekday in winter, spring, summer and autumn. A weekday can pay all year except one season.
 - **Hour by hour**: what each hour's sales leave after food and drink, next to the wages on the clock. A shaded hour costs more than it brings in. Pick a weekday at the top of the chart.
