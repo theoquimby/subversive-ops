@@ -24,6 +24,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.44",
+    date: "2026-11-20",
+    title: "The Customers page, in pictures",
+    summary: "The Customers page now tells its story top to bottom in charts instead of tables: who comes, when, what they order, and whether they come back. The tables are still there, under each chart.",
+    entries: ["2026-11-20.customer-pictures"],
+    fixed: [
+      "One colour per group all the way down: blue for locals, pink for visitors, violet for people who came back, grey for everyone else.",
+      "Each finding has its picture, a line on what to do about it, and its table under The numbers.",
+      "Point at or tap any part of a chart to read it. In short, near the top, lists the findings and jumps to each.",
+    ],
+  },
+  {
     version: "1.43",
     date: "2026-11-19",
     title: "What locals order, and what visitors do",

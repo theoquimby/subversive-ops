@@ -1002,6 +1002,8 @@ Square marks each card it sees. Ops keeps a scrambled copy of that mark for each
 - **What locals and visitors order**: the items each group buys far more of than its share of everything, how each splits its money across categories, and what a typical visit spends. An order counts for the card that paid for it.
 - **New and returning** cards week by week.
 
+**How to read it.** The page runs top to bottom as one story: who comes, when they come, what they order, and whether they come back. Each finding has a picture, a line on what to do about it, and the table underneath under **The numbers**. The colours mean the same thing all the way down: blue is locals, pink is visitors, violet is people who came back (the darker, the more often), and grey is everyone else. Point at or tap any part of a chart to read it. **In short** near the top lists the findings; tap one to jump to it.
+
 **Everything here is a floor.** Cash leaves no mark, a phone wallet and the card behind it look like two people, and so does a couple who take turns paying. The true repeat figures are higher. The direction they move in can be trusted, which is what matters when you're trying something new for locals.
 
 **Nobody can be contacted from here.** Ops knows each guest only as a scrambled mark. Reaching people needs them to give you their details, through a membership or an email list.
@@ -1014,16 +1016,16 @@ Square marks each card it sees. Ops keeps a scrambled copy of that mark for each
     id: "sales.customers.todo",
     area: "sales",
     route: "/sales/customers",
-    title: "What to do with it",
-    body: "What stands out in who comes back, and what each figure is good for: regulars who've gone quiet, how many first-timers return, and whether locals or visitors bring more.",
+    title: "In short",
+    body: "The findings on this page as a list, in the order the page tells them. Tap one to jump to its picture, what it's good for, and the numbers behind it. A coloured dot marks one that's worth a look.",
     related: ["sales.customers"],
   },
   {
     id: "sales.customers.numbers",
     area: "sales",
     route: "/sales/customers",
-    title: "The numbers behind it",
-    body: "The tables the summary comes from, folded away: how often people come, locals and visitors, when each of them comes, what each orders, whether first-timers return, new and returning by week, and what Ops can and can't see.",
+    title: "How this is worked out",
+    body: "How much of what's paid carries a card Ops can recognise again, why every figure here is a floor, and what is and isn't kept. No name, card number, email or phone is read or stored.",
     related: ["sales.customers"],
   },
   {
