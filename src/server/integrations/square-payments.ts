@@ -109,3 +109,73 @@ export async function listRefunds(client: SquareClient, startISO: string, endISO
   }
   return out;
 }
+
+// ---- Can Square say where people come from? ---------------------------------------------------
+
+interface RawPlacePayment {
+  status?: string;
+  customer_id?: string;
+  buyer_email_address?: string;
+  billing_address?: { postal_code?: string };
+  shipping_address?: { postal_code?: string };
+  card_details?: { entry_method?: string; card?: { billing_address?: { postal_code?: string } } };
+}
+
+export interface PlaceCheck {
+  payments: number;
+  /** Payments carrying a postal code anywhere Square might put one. */
+  withPostal: number;
+  /** Payments tied to a Square customer profile (which may hold an address), and ones with an email. */
+  withCustomer: number;
+  withEmail: number;
+  /** The same counts by how the card was read (EMV, CONTACTLESS, SWIPED, KEYED, ON_FILE) or "no card". */
+  byEntry: { entry: string; payments: number; withPostal: number }[];
+  /** How many different postal codes turned up, and the commonest three-digit areas: enough to see if it's worth mapping. */
+  distinctPostal: number;
+  areas: { area: string; payments: number }[];
+}
+
+/**
+ * A count, and nothing else, of how many completed payments in [startISO, endISO)
+ * carry a postal code. Square's reference lists `billing_address` on a payment
+ * and on its card but doesn't say when either is filled in, so this asks the
+ * payments themselves. No code is kept: only totals and three-digit areas leave here.
+ */
+export async function placeCheck(client: SquareClient, startISO: string, endISO: string): Promise<PlaceCheck> {
+  const by = new Map<string, { payments: number; withPostal: number }>();
+  const areas = new Map<string, number>();
+  const codes = new Set<string>();
+  const out = { payments: 0, withPostal: 0, withCustomer: 0, withEmail: 0 };
+  for (const locationId of client.locationIds) {
+    let cursor: string | undefined;
+    do {
+      const q = new URLSearchParams({ begin_time: startISO, end_time: endISO, location_id: locationId, sort_order: "ASC", limit: "100" });
+      if (cursor) q.set("cursor", cursor);
+      const page = await squareCall<{ payments?: RawPlacePayment[]; cursor?: string }>(client, `/payments?${q}`);
+      for (const p of page.payments ?? []) {
+        if (p.status !== "COMPLETED") continue;
+        const postal = (p.billing_address?.postal_code ?? p.card_details?.card?.billing_address?.postal_code ?? p.shipping_address?.postal_code ?? "").trim();
+        const entry = p.card_details ? (p.card_details.entry_method ?? "card, method not given") : "no card";
+        const e = by.get(entry) ?? { payments: 0, withPostal: 0 };
+        e.payments++;
+        out.payments++;
+        if (postal) {
+          e.withPostal++;
+          out.withPostal++;
+          codes.add(postal);
+          areas.set(postal.slice(0, 3), (areas.get(postal.slice(0, 3)) ?? 0) + 1);
+        }
+        if (p.customer_id) out.withCustomer++;
+        if (p.buyer_email_address) out.withEmail++;
+        by.set(entry, e);
+      }
+      cursor = page.cursor;
+    } while (cursor);
+  }
+  return {
+    ...out,
+    byEntry: [...by].map(([entry, v]) => ({ entry, ...v })).sort((a, b) => b.payments - a.payments),
+    distinctPostal: codes.size,
+    areas: [...areas].map(([area, payments]) => ({ area, payments })).sort((a, b) => b.payments - a.payments).slice(0, 8),
+  };
+}

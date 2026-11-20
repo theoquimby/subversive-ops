@@ -132,8 +132,17 @@ async function weekAhead(profit: DayProfit): Promise<CrewOutlook[]> {
   const dates = dateRange(today, to);
   try {
     const [forecast, shifts] = await Promise.all([dailySalesForecast(dates), laborByDay(today, to, "shifts")]);
-    const sales = new Map(forecast.map((f) => [f.date, f.qty]));
-    return crewOutlook(dates.map((date) => ({ date, sales: sales.get(date) ?? 0, cost: shifts.get(date)?.cost ?? 0, hours: shifts.get(date)?.hours ?? 0 })), profit, today);
+    const by = new Map(forecast.map((f) => [f.date, f]));
+    return crewOutlook(
+      dates.map((date) => {
+        const f = by.get(date);
+        // A holiday, an event or the owner's own adjustment: the last few ordinary days aren't a guide to it.
+        const special = !!f && (f.drivers.holidayFactor !== 1 || f.drivers.eventFactor !== 1 || f.drivers.manual !== 1);
+        return { date, sales: f?.qty ?? 0, cost: shifts.get(date)?.cost ?? 0, hours: shifts.get(date)?.hours ?? 0, special };
+      }),
+      profit,
+      today,
+    );
   } catch (e) {
     console.error("profit by day: week ahead failed", e);
     return [];

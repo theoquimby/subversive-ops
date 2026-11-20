@@ -31,6 +31,7 @@ export const RELEASES: Release[] = [
     entries: ["2026-11-20.schedule-cover"],
     fixed: [
       "On Profit by day the crew is the shifts scheduled, or that weekday's usual wages when nothing is scheduled yet.",
+      "Each coming day also shows what that weekday's last four ordinary days actually took, and is marked when it only covers its crew if the forecast holds.",
       "On the Schedule the week grid says \"needs $…\" under any such day.",
       "It's a prompt, not a rule: it never blocks publishing, and past days aren't listed.",
     ],

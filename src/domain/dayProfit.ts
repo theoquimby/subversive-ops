@@ -309,6 +309,8 @@ export interface CrewDayInput {
   /** Scheduled wages for the day, with employer taxes, and the hours behind them. */
   cost: number;
   hours: number;
+  /** A holiday, an event or an adjustment is in the forecast: recent ordinary days say nothing about it. */
+  special?: boolean;
 }
 
 export interface CrewOutlook {
@@ -326,11 +328,20 @@ export interface CrewOutlook {
   overHours: number | null;
   /** The crew costs noticeably more than the forecast leaves. */
   short: boolean;
+  /**
+   * What the same weekday's last few ordinary days actually took (the middle of them); null on a
+   * special day or with too few to go on. And whether, at that pace, the crew wouldn't be covered.
+   */
+  lately: number | null;
+  latelyShort: boolean;
 }
 export type CrewShort = CrewOutlook;
 
 /** A crew is flagged when it costs at least this much more than the forecast leaves. */
 const CREW_MIN_OVER = 20;
+/** "The recent pace" is the middle of a weekday's last few ordinary days; it needs at least this many. */
+export const PACE_DAYS = 4;
+const PACE_MIN_DAYS = 3;
 
 /**
  * Each day from `from` on with a forecast: what the forecast leaves after
@@ -338,7 +349,7 @@ const CREW_MIN_OVER = 20;
  * week's when the weekday is rarely open) against the crew. With no shifts
  * scheduled the crew is that weekday's usual wages, when it has any history.
  */
-export function crewOutlook(days: readonly CrewDayInput[], p: Pick<DayProfit, "weekdays" | "typical">, from?: ISODate): CrewOutlook[] {
+export function crewOutlook(days: readonly CrewDayInput[], p: Pick<DayProfit, "weekdays" | "typical"> & Partial<Pick<DayProfit, "days">>, from?: ISODate): CrewOutlook[] {
   const rate = (x: { sales: number; goods: number; fees: number } | null | undefined) => (x && x.sales > 0 ? 1 - (x.goods + x.fees) / x.sales : null);
   const out: CrewOutlook[] = [];
   for (const d of days) {
@@ -352,13 +363,27 @@ export function crewOutlook(days: readonly CrewDayInput[], p: Pick<DayProfit, "w
     const over = cost - kept;
     const perHour = !usual && d.hours > 0 ? d.cost / d.hours : null;
     const short = over >= CREW_MIN_OVER;
-    out.push({ date: d.date, sales: d.sales, cost, usual, kept, needs: cost / keep, over, overHours: short && perHour ? Math.max(0.5, Math.round((over / perHour) * 2) / 2) : null, short });
+    const past = d.special ? [] : (p.days ?? []).filter((x) => x.wd === weekday(d.date) && !x.oneOff && x.date < d.date).slice(-PACE_DAYS);
+    const lately = past.length >= PACE_MIN_DAYS ? median(past.map((x) => x.sales)) : null;
+    out.push({
+      date: d.date,
+      sales: d.sales,
+      cost,
+      usual,
+      kept,
+      needs: cost / keep,
+      over,
+      overHours: short && perHour ? Math.max(0.5, Math.round((over / perHour) * 2) / 2) : null,
+      short,
+      lately,
+      latelyShort: lately != null && cost - lately * keep >= CREW_MIN_OVER,
+    });
   }
   return out;
 }
 
 /** The scheduled days whose crew costs more than the forecast leaves: something to trim. */
-export const crewShortfalls = (days: readonly CrewDayInput[], p: Pick<DayProfit, "weekdays" | "typical">, from?: ISODate): CrewShort[] =>
+export const crewShortfalls = (days: readonly CrewDayInput[], p: Pick<DayProfit, "weekdays" | "typical"> & Partial<Pick<DayProfit, "days">>, from?: ISODate): CrewShort[] =>
   crewOutlook(days, p, from).filter((o) => o.short && !o.usual);
 
 // ---- What it says ------------------------------------------------------------------------------
@@ -392,7 +417,20 @@ export const hourLabel = (h: number) => `${h % 12 === 0 ? 12 : h % 12}${h < 12 ?
 /** What the week ahead says, when a day's forecast won't cover its crew. */
 export function outlookPoint(ahead: readonly CrewOutlook[]): ProfitPoint | null {
   const short = ahead.filter((o) => o.short).sort((a, b) => b.over - a.over);
-  if (!short.length) return null;
+  if (!short.length) {
+    // Covered at the forecast, but not if the day comes in like that weekday has lately.
+    const thin = ahead.filter((o) => o.latelyShort && o.lately != null).sort((a, b) => a.lately! / a.needs - b.lately! / b.needs);
+    if (!thin.length) return null;
+    const t = thin[0];
+    const name = DAY_NAMES[weekday(t.date)];
+    return {
+      key: "ahead",
+      tone: "warn",
+      title: thin.length === 1 ? `This ${name} only covers its crew if the forecast holds` : `${thin.length} days ahead only cover their crew if the forecast holds`,
+      detail: `${thin.length === 1 ? "The" : `Take ${name}: the`} forecast is ${about(t.sales)}, but the last ${PACE_DAYS} ordinary ${name}s took about ${about(t.lately!)}. At that pace the day leaves well under the ${about(t.cost)} ${t.usual ? "a usual crew costs" : "the crew scheduled costs"}; it needs ${about(t.needs)} in sales to cover it.`,
+      action: `Plan ${name} on the lower figure: start one person later, or send one home early if it's slow by the first hour. If it does come in at the forecast you've lost little.`,
+    };
+  }
   const o = short[0];
   const day = DAY_NAMES[weekday(o.date)];
   return {

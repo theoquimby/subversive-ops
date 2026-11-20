@@ -575,7 +575,7 @@ It answers one question: is each day you open worth opening?
 
 **How to read it**
 
-- **The week ahead**: each coming day's forecast, what it leaves after food, drink and card fees, and what the crew costs. The crew is the shifts on the Schedule, or that weekday's usual wages when nothing is scheduled yet. A day that falls short is shaded and says by how much.
+- **The week ahead**: each coming day's forecast, what it leaves after food, drink and card fees, and what the crew costs. The crew is the shifts on the Schedule, or that weekday's usual wages when nothing is scheduled yet. A day that falls short is shaded and says by how much. Each day also shows what that weekday's last four ordinary days actually took: when the forecast covers the crew but that recent pace wouldn't, the day is marked as one that only pays if the forecast holds. Holidays and event days aren't judged this way.
 - **Where a typical day's sales go**: one column per weekday. Violet is food and drink, pink is wages, teal is card fees, and blue is what's left. A day that falls short has a dark mark where its sales stopped.
 - **Every open day, by what it left**: one dot per day. Dots left of the zero line lost money. The dark tick is that weekday's average, and each weekday's last 8 days are ringed.
 - **Lately**: each weekday's last 8 open days next to its whole year, so a slow couple of months shows up before it's buried in the average.

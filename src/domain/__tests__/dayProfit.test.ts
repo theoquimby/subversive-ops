@@ -217,6 +217,31 @@ describe("crewShortfalls", () => {
     expect(two.action).toContain("Trim about 5.5 hours on Wednesday");
   });
 
+  it("also holds each day against what that weekday actually took lately", () => {
+    // The year's Mondays took $700, but the last four took $500: the forecast of $900 covers a $450 crew, the recent pace doesn't.
+    const base = year();
+    const mondays = base.filter((d) => weekday(d.date) === 1).map((d) => d.date);
+    const slow = new Set(mondays.slice(-4));
+    const hist = base.map((d) => (slow.has(d.date) ? { ...d, sales: 500, goods: 150, fees: 12.5 } : d));
+    const q = dayProfit({ days: hist, open: openOf(hist) });
+    const [o] = crewOutlook([{ date: mon, sales: 900, cost: 450, hours: 22.5 }], q);
+    expect(o.short).toBe(false);
+    expect(o.lately).toBe(500);
+    expect(o.latelyShort).toBe(true);
+    const point = outlookPoint([o])!;
+    expect(point.title).toBe("This Monday only covers its crew if the forecast holds");
+    expect(point.detail).toContain("the last 4 ordinary Mondays took about $500");
+    // A holiday or an event in the forecast isn't judged on ordinary days.
+    expect(crewOutlook([{ date: mon, sales: 900, cost: 450, hours: 22.5, special: true }], q)[0].lately).toBeNull();
+    // The steady year: lately is the same $700, which covers the crew.
+    const [steady] = crewOutlook([{ date: mon, sales: 900, cost: 450, hours: 22.5 }], p);
+    expect(steady.lately).toBe(700);
+    expect(steady.latelyShort).toBe(false);
+    expect(outlookPoint([steady])).toBeNull();
+    // Short at the forecast outranks "only if the forecast holds".
+    expect(outlookPoint([o, ...crewOutlook([{ date: addDays(mon, 2), sales: 500, cost: 450, hours: 22.5 }], q)])!.title).toContain("won't cover");
+  });
+
   it("falls back to the whole week's cost of goods for a weekday that's rarely open, and to nothing with no history", () => {
     const tue = crewShortfalls([{ date: addDays(mon, 1), sales: 400, cost: 300, hours: 15 }], p);
     expect(tue).toHaveLength(1);

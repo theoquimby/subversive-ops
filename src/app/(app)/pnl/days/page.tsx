@@ -1,7 +1,7 @@
 import { Chapter, InShort } from "@/components/chapter";
 import { ColumnsChart, type Col } from "@/components/columns-chart";
 import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
-import { about, hourLabel, outlookPoint, RECENT_DAYS, SEASONS, type ProfitPoint, type WeekdayProfit } from "@/domain/dayProfit";
+import { about, hourLabel, outlookPoint, PACE_DAYS, RECENT_DAYS, SEASONS, type ProfitPoint, type WeekdayProfit } from "@/domain/dayProfit";
 import { TYPICAL_COST_SHARE } from "@/domain/pnlStory";
 import { dayDate, money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
@@ -167,17 +167,18 @@ export default async function ProfitByDayPage() {
             </>
           }
         >
-          <Chapter id="ahead" point={aheadPoint ?? undefined} title="The week ahead covers its crew at the forecast" detail="What each day's forecast leaves after food, drink and card fees, next to what the crew costs. “Needs” is the sales that would just cover the crew: when the forecast has been running high, that is the number to hold a day against.">
+          <Chapter id="ahead" point={aheadPoint ?? undefined} title="The week ahead covers its crew at the forecast" detail="What each day's forecast leaves after food, drink and card fees, next to what the crew costs. “Needs” is the sales that would just cover the crew. Under it is what that weekday’s last few ordinary days actually took, so a forecast that has been running high can’t hide a thin day.">
             <div className={`mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted ${VIZ_VARS}`}>
               <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-[3px]" style={{ background: "var(--viz-profit)" }} /> What the forecast leaves after food and drink</span>
               <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-[3px]" style={{ background: "var(--viz-labor)" }} /> The crew</span>
             </div>
             <ul className={`space-y-3 ${VIZ_VARS}`}>
               {v.ahead.map((o) => (
-                <li key={o.date} className={`grid grid-cols-1 items-center gap-x-4 gap-y-1 sm:grid-cols-[12rem_1fr] ${o.short ? "-mx-2 rounded-lg bg-surface-2 px-2 py-1.5" : ""}`}>
+                <li key={o.date} className={`grid grid-cols-1 items-center gap-x-4 gap-y-1 sm:grid-cols-[12rem_1fr] ${o.short || o.latelyShort ? "-mx-2 rounded-lg bg-surface-2 px-2 py-1.5" : ""}`}>
                   <div className="text-sm font-medium text-ink">
                     {dayDate(o.date)}
                     <span className="block text-xs font-normal text-muted">forecast {whole(o.sales)} · needs {whole(o.needs)}</span>
+                    {o.lately != null && <span className={`block text-xs font-normal ${o.latelyShort ? "font-medium text-warn" : "text-muted"}`}>last {PACE_DAYS} took about {whole(o.lately)}</span>}
                   </div>
                   <div className="space-y-1 border-l border-border-strong">
                     <div className="flex items-center gap-2">

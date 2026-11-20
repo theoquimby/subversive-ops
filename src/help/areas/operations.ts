@@ -1013,6 +1013,14 @@ Square marks each card it sees. Ops keeps a scrambled copy of that mark for each
     keywords: ["regulars", "repeat", "returning", "loyalty", "locals", "visitors", "tourists", "retention", "cards"],
   },
   {
+    id: "sales.customers.places",
+    area: "sales",
+    route: "/sales/customers/places",
+    title: "Where people come from",
+    body: "A check of whether Square's payments say where the payer lives: how many carry a postal code, by how the card was read. It reads counts only and keeps nothing.",
+    related: ["sales.customers"],
+  },
+  {
     id: "sales.customers.todo",
     area: "sales",
     route: "/sales/customers",
