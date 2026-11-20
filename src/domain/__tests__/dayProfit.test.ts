@@ -160,6 +160,9 @@ describe("hourProfit", () => {
     expect(late.hours).toBe(2);
     expect(late.left).toBeCloseTo(40.5 - 68 + 20.25 - 60);
     expect(late.yearLeft).toBeCloseTo(late.left * 52);
+    // A stray sale in the small hours doesn't stretch the day.
+    const stray = hourProfit([...rows, { date: p.days.find((x) => x.wd === 1)!.date, hour: 4, sales: 40, labor: 0 }], p);
+    expect(stray.find((x) => x.wd === 1)!.hours[0].hour).toBe(15);
     // A weekday with no hourly rows isn't listed.
     expect(h.some((x) => x.wd === 6)).toBe(false);
   });
@@ -221,6 +224,13 @@ describe("dayProfitStory", () => {
     expect(r.tone).toBe("bad");
     expect(r.title).toBe("Lately Mondays have been losing money");
     expect(r.detail).toContain("lost about $110 each on average");
+    // Thinner but not losing on average: three of the last eight lost money.
+    const thinDates = mondays.slice(-8);
+    const thinner = base.map((d) => (thinDates.slice(0, 5).includes(d.date) ? { ...d, sales: 800, goods: 240, fees: 20 } : thinDates.slice(5).includes(d.date) ? { ...d, sales: 600, goods: 180, fees: 15 } : d));
+    const t = dayProfitStory(dayProfit({ days: thinner, open: openOf(thinner) }))!;
+    expect(t.level).toBe("warn");
+    expect(t.headline).toBe("Every day pays for itself over the year, but Mondays have thinned out lately");
+    expect(t.points.find((x) => x.key === "recent")!.title).toBe("Lately Mondays are thinner: 3 of the last 8 lost money");
     // A steady year says nothing about lately.
     expect(dayProfitStory(dayProfit({ days: base, open: openOf(base) }))!.points.some((x) => x.key === "recent")).toBe(false);
   });

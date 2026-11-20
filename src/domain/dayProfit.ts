@@ -13,7 +13,7 @@
 import { daysBetween, ISODate, parseISODate, weekday } from "./dates";
 
 /** Bump when the method changes, so a kept copy is worked out again. */
-export const DAY_PROFIT_RULES = 3;
+export const DAY_PROFIT_RULES = 4;
 
 /** A weekday needs this many open days in the year to be shown, and this many to be compared and advised on. */
 const SHOWN_DAYS = 8;
@@ -282,7 +282,8 @@ export function hourProfit(rows: readonly HourInput[], p: DayProfit): WeekdayHou
       const wages = labor[hour] / w.openDays;
       return { hour, sales: perDay, kept, labor: wages, left: kept - wages, trading: w.sales > 0 && perDay >= w.sales * TRADING_SHARE };
     });
-    const busy = cells.filter((c) => c.sales >= 1 || c.labor >= 1);
+    // From the first person in to the last one out; a stray sale at an odd hour doesn't stretch the day.
+    const busy = cells.filter((c) => c.labor >= 5 || c.sales >= w.sales * 0.01);
     if (!busy.length || !cells.some((c) => c.trading)) continue;
     const hours = cells.slice(busy[0].hour, busy[busy.length - 1].hour + 1);
     // Walk back from the last trading hour while the hours lose money.
@@ -342,14 +343,17 @@ export function dayProfitStory(p: DayProfit, hours: readonly WeekdayHours[] = []
 
   // The year can look fine while the last couple of months don't.
   const slipping = regular.filter((w) => w.recent.days >= RECENT_DAYS && w.recent.left < 0 && w.left >= 0);
-  const level = losing.length ? "bad" : thin.length || slipping.length ? "warn" : "good";
+  const thinning = regular.filter((w) => w.recent.days >= RECENT_DAYS && w.left > 0 && w.recent.left < w.left * SLIPPING && (w.recent.left < 0 || w.recent.lost >= 3));
+  const level = losing.length ? "bad" : thin.length || thinning.length ? "warn" : "good";
   const headline = losing.length
     ? `${listOf(losing.map(plural))} cost more to open than they bring in`
     : slipping.length
       ? `Every day paid for itself over the year, but lately ${listOf(slipping.map(plural))} haven't`
-      : thin.length
-        ? `Every day you open pays for itself, but ${listOf(thin.map(plural))} only just`
-        : "Every day you open pays for itself";
+      : thinning.length
+        ? `Every day pays for itself over the year, but ${listOf(thinning.map(plural))} have thinned out lately`
+        : thin.length
+          ? `Every day you open pays for itself, but ${listOf(thin.map(plural))} only just`
+          : "Every day you open pays for itself";
   const line = `Over the last 12 months a typical open day took ${about(p.typical.sales)} and left ${about(p.typical.left)} once food, drink, wages and card fees were paid. A ${DAY_NAMES[best.wd]} leaves about ${about(best.left)}; a ${DAY_NAMES[worst.wd]} ${worst.left < 0 ? `loses about ${about(-worst.left)}` : `about ${about(worst.left)}`}.`;
 
   const points: ProfitPoint[] = [];
@@ -365,9 +369,7 @@ export function dayProfitStory(p: DayProfit, hours: readonly WeekdayHours[] = []
         : `Over the year ${plural(worst)} added about ${about(worst.yearLeft)} towards rent. Closing would only pay if more than ${pc(worst.moveShare ?? 0)} of ${DAY_NAMES[worst.wd]}'s sales turned up on other days instead${(worst.moveShare ?? 0) >= 0.25 ? ", which is a lot to count on" : ""}. Keep it open.`,
   });
 
-  const lately = regular
-    .filter((w) => w.recent.days >= RECENT_DAYS && w.left > 0 && w.recent.left < w.left * SLIPPING && (w.recent.left < 0 || w.recent.lost >= 3))
-    .sort((a, b) => a.recent.left - b.recent.left)[0];
+  const lately = [...thinning].sort((a, b) => a.recent.left - b.recent.left)[0];
   if (lately) {
     const r = lately.recent;
     points.push({
