@@ -102,6 +102,28 @@ describe("dayProfit", () => {
     expect(q.seasons).toHaveLength(6 * 4);
   });
 
+  it("leaves a one-off day out of the typical day, but keeps it in the year's total", () => {
+    const mondays = days.filter((d) => weekday(d.date) === 1).map((d) => d.date);
+    const big = mondays[30];
+    // One Monday takes five times the usual: a private event, say.
+    const odd = days.map((d) => (d.date === big ? { ...d, sales: 3700, goods: 1110, fees: 92.5 } : d));
+    const q = dayProfit({ days: odd, open: openOf(odd) });
+    expect(q.days.filter((d) => d.oneOff).map((d) => d.date)).toEqual([big]);
+    const mon = q.weekdays.find((w) => w.wd === 1)!;
+    expect(mon.openDays).toBe(51);
+    expect(mon.oneOffs).toBe(1);
+    expect(mon.sales).toBeCloseTo(700);
+    expect(mon.left).toBeCloseTo(22.5);
+    expect(mon.yearLeft).toBeCloseTo(51 * 22.5 + (3700 - 1110 - 450 - 92.5));
+    expect(q.typical!.openDays).toBe(311);
+    // A good day isn't a one-off: under twice the usual stays in.
+    const busy = days.map((d) => (d.date === big ? { ...d, sales: 1300 } : d));
+    expect(dayProfit({ days: busy, open: openOf(busy) }).days.some((d) => d.oneOff)).toBe(false);
+    // Nor is a whole busy season: summer Saturdays at double winter's are judged against each other.
+    const summer = year((d) => (weekday(d.date) === 6 && seasonOf(d.date) === 2 ? { sales: 11000, goods: 3300, fees: 275 } : {}));
+    expect(dayProfit({ days: summer, open: openOf(summer) }).days.filter((d) => d.oneOff).length).toBeLessThanOrEqual(4);
+  });
+
   it("copes with nothing", () => {
     const q = dayProfit({ days: [], open: new Set() });
     expect(q.typical).toBeNull();

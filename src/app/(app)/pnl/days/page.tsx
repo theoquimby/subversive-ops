@@ -38,7 +38,9 @@ export default async function ProfitByDayPage() {
   const point = (key: ProfitPoint["key"]) => story.points.find((x) => x.key === key);
   const regular = p.weekdays.filter((w) => w.regular);
   const worst = [...regular].sort((a, b) => a.left - b.left)[0];
-  const lostDays = p.days.filter((d) => d.left < 0).length;
+  const usualDays = p.days.filter((d) => !d.oneOff);
+  const oneOffs = p.days.filter((d) => d.oneOff);
+  const lostDays = usualDays.filter((d) => d.left < 0).length;
 
   // ---- The pictures: everything a chart needs, as plain data ---------------------------------
 
@@ -50,7 +52,7 @@ export default async function ProfitByDayPage() {
     parts: [w.goods, w.labor, w.fees, Math.max(0, w.left)],
     tick: w.left < 0 ? w.sales : undefined,
     tip: {
-      title: `A typical ${DAYS[w.wd]} · open ${qty(w.openDays, 0)} times`,
+      title: `A typical ${DAYS[w.wd]} · open ${qty(w.openDays + w.oneOffs, 0)} times`,
       rows: [
         { label: "Sales", value: whole(w.sales), strong: true },
         { color: "var(--viz-cogs)", label: "Food & drink", value: whole(w.goods) },
@@ -61,13 +63,18 @@ export default async function ProfitByDayPage() {
     },
   }));
 
-  const stripRows = p.weekdays.map((w) => ({
-    key: String(w.wd),
-    name: DAYS[w.wd],
-    mean: w.left,
-    lost: w.lostDays,
-    days: p.days.filter((d) => d.wd === w.wd).map((d) => ({ date: d.date, label: dayDate(d.date), sales: d.sales, left: d.left })),
-  }));
+  const stripRows = p.weekdays.map((w) => {
+    const ds = p.days.filter((d) => d.wd === w.wd);
+    // "Lately" is the weekday's last few ordinary days.
+    const late = new Set(ds.filter((d) => !d.oneOff).slice(-RECENT_DAYS).map((d) => d.date));
+    return {
+      key: String(w.wd),
+      name: DAYS[w.wd],
+      mean: w.left,
+      lost: w.lostDays,
+      days: ds.map((d) => ({ date: d.date, label: dayDate(d.date), sales: d.sales, left: d.left, late: late.has(d.date), oneOff: d.oneOff })),
+    };
+  });
 
   const yearMax = Math.max(1, ...regular.map((w) => Math.abs(w.yearLeft)));
   const recentMax = Math.max(1, ...regular.flatMap((w) => [Math.abs(w.left), Math.abs(w.recent.left)]));
@@ -90,7 +97,7 @@ export default async function ProfitByDayPage() {
   const WeekdayName = ({ w }: { w: WeekdayProfit }) => (
     <span className="font-medium text-ink">
       {DAYS[w.wd]}
-      {!w.regular && <span className="ml-1.5 text-xs font-normal text-muted">open {qty(w.openDays, 0)} times</span>}
+      {!w.regular && <span className="ml-1.5 text-xs font-normal text-muted">open {qty(w.openDays + w.oneOffs, 0)} times</span>}
     </span>
   );
 
@@ -130,7 +137,7 @@ export default async function ProfitByDayPage() {
           <div>
             <dt className="text-xs text-muted">Open days that lost money</dt>
             <dd className="num mt-0.5 text-lg font-semibold tracking-tight text-ink">
-              {qty(lostDays, 0)} <span className="text-sm font-normal text-muted">of {qty(p.days.length, 0)}</span>
+              {qty(lostDays, 0)} <span className="text-sm font-normal text-muted">of {qty(usualDays.length, 0)}</span>
             </dd>
           </div>
           <div>
@@ -376,6 +383,13 @@ export default async function ProfitByDayPage() {
               </p>
             )}
             {v.missingRates > 0 && <p className="text-warn">{qty(v.missingRates, 0)} timecards have no pay rate, so wages are understated. Set rates under Team.</p>}
+            {oneOffs.length > 0 && (
+              <p>
+                {oneOffs.length === 1 ? "One day" : `${qty(oneOffs.length, 0)} days`} took more than twice what&apos;s usual for {oneOffs.length === 1 ? "its" : "their"} weekday at that time of year: a holiday, a private event, a big order. {oneOffs.length === 1 ? "It's" : "They're"} left out of every &ldquo;typical day&rdquo; here so {oneOffs.length === 1 ? "it doesn't" : "they don't"} flatter it, and still {oneOffs.length === 1 ? "counts" : "count"} in what each weekday added over the year:{" "}
+                {[...oneOffs].reverse().slice(0, 8).map((d) => `${dayDate(d.date)} (${whole(d.sales)})`).join(", ")}
+                {oneOffs.length > 8 ? ` and ${qty(oneOffs.length - 8, 0)} more` : ""}.
+              </p>
+            )}
             <p>Wages are what&apos;s on the clock that day. Anyone on a salary, and your own time, isn&apos;t in them. Work done on one day for another (prep, brewing) counts on the day it was done.</p>
             <p>Rent, insurance and other fixed costs are left out of what a day leaves, on purpose: closing a day doesn&apos;t save them. They show only as a yardstick.</p>
             <p>&ldquo;What closing would take&rdquo; assumes the crew&apos;s wages are saved and the day&apos;s sales are lost, apart from whatever share comes in on other days. How many guests would really come another day is the one thing no till can tell you.</p>

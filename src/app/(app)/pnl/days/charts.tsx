@@ -47,7 +47,7 @@ export interface StripRow {
   /** A typical day's left-over, and how many of the days lost money. */
   mean: number;
   lost: number;
-  days: { date: string; label: string; sales: number; left: number }[];
+  days: { date: string; label: string; sales: number; left: number; late?: boolean; oneOff?: boolean }[];
 }
 
 /**
@@ -81,6 +81,9 @@ export function DayStrip({ rows, fixed, recent = 0 }: { rows: StripRow[]; fixed:
         <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-full bg-bad" /> A day that lost money</span>
         <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block h-3 w-0.5 rounded-full bg-ink" /> The weekday&apos;s average</span>
         {recent > 0 && <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-full border-[1.5px] border-ink" /> Ringed: its last {recent}</span>}
+        {rows.some((r) => r.days.some((d) => d.oneOff)) && (
+          <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-full border-[1.75px]" style={{ borderColor: "var(--viz-profit)" }} /> Hollow: a one-off, left out of the average</span>
+        )}
       </div>
       <div className="relative" ref={ref}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block" role="img" aria-label={`What each open day left, by weekday. ${rows.map((r) => `${r.name}: ${dollars(r.mean)} on average, ${r.lost} of ${r.days.length} lost money`).join(". ")}.`} onMouseLeave={() => setHover(null)}>
@@ -102,17 +105,18 @@ export function DayStrip({ rows, fixed, recent = 0 }: { rows: StripRow[]; fixed:
               <text x={0} y={yRow(ri)} dy="0.34em" className="fill-ink-2 text-[11px] font-medium">{r.name.slice(0, 3)}</text>
               {r.days.map((d, i) => {
                 const on = hover?.row === ri && hover.i === i;
-                const late = recent > 0 && i >= r.days.length - recent;
+                const late = !!d.late;
+                const color = d.left < 0 ? "var(--bad)" : "var(--viz-profit)";
                 return (
                   <circle
                     key={d.date}
                     cx={x(d.left)}
                     cy={yRow(ri) + ((((i * 37) % 11) - 5) * 2.2)}
                     r={on ? 5.5 : 4}
-                    fill={d.left < 0 ? "var(--bad)" : "var(--viz-profit)"}
-                    fillOpacity={on || late ? 1 : 0.55}
-                    stroke={late && !on ? "var(--ink)" : "var(--surface)"}
-                    strokeWidth={on ? 2 : late ? 1.25 : 0.75}
+                    fill={d.oneOff ? "var(--surface)" : color}
+                    fillOpacity={on || late || d.oneOff ? 1 : 0.55}
+                    stroke={d.oneOff ? color : late && !on ? "var(--ink)" : "var(--surface)"}
+                    strokeWidth={d.oneOff ? 1.75 : on ? 2 : late ? 1.25 : 0.75}
                     onMouseEnter={() => setHover({ row: ri, i })}
                     onTouchStart={() => setHover({ row: ri, i })}
                   />
@@ -128,6 +132,7 @@ export function DayStrip({ rows, fixed, recent = 0 }: { rows: StripRow[]; fixed:
             <div className="mb-1 text-muted">{hv.label}</div>
             <div className="flex justify-between gap-3 py-0.5"><span className="text-muted">Sales</span><span className="num font-medium text-ink">{dollars(hv.sales)}</span></div>
             <div className="flex justify-between gap-3 py-0.5"><span className="text-muted">{hv.left < 0 ? "Lost" : "Left over"}</span><span className={cx("num font-semibold", hv.left < 0 ? "text-bad" : "text-ink")}>{dollars(Math.abs(hv.left))}</span></div>
+            {hv.oneOff && <div className="mt-1 text-muted">A one-off: left out of the average</div>}
           </div>
         )}
       </div>

@@ -24,6 +24,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.46",
+    date: "2026-11-20",
+    title: "Profit by day: one-off days left out",
+    summary: "A day that took more than twice what's usual for its weekday (a holiday, a private event, a big order) no longer counts towards that weekday's typical day, so one good Monday can't flatter Mondays.",
+    entries: ["2026-11-20.profit-one-offs"],
+    fixed: [
+      "One-off days show as hollow dots and are listed at the bottom of the page. They still count in what each weekday added over the year.",
+      "Lately, hour by hour and season by season all leave them out too.",
+    ],
+  },
+  {
     version: "1.45",
     date: "2026-11-20",
     title: "Profit by day: which days pay",

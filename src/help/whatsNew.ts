@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 20 Nov · 1.46 (one-off days left out of profit by day) ----
+  {
+    id: "2026-11-20.profit-one-offs",
+    date: "2026-11-20",
+    title: "Profit by day: one-off days left out",
+    line: "A holiday or private event no longer flatters a weekday's typical day.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/pnl/days",
+    help: "pnl.days",
+    audience: "manager",
+  },
   // ---- 20 Nov · 1.45 (profit by day) ----
   {
     id: "2026-11-20.profit-by-day",

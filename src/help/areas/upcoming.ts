@@ -562,6 +562,8 @@ It answers one question: is each day you open worth opening?
 - **Hour by hour**: what each hour's sales leave after food and drink, next to the wages on the clock. A shaded hour costs more than it brings in. Pick a weekday at the top of the chart.
 - **The crew**: wages as a share of sales, and the sales each weekday needs to cover them.
 
+**One-off days are left out of the averages.** A day that took more than twice what's usual for its weekday at that time of year (a holiday, a private event, a big order) shows as a hollow dot. It doesn't count towards the typical day, so one good Monday can't make Mondays look better than they are. It still counts in what the weekday added over the year, and the days are listed at the bottom of the page.
+
 **What it can't see.** Salaried pay and your own time aren't on timecards. Prep or brewing done on one day for another counts where it was clocked. Sales with no recipe behind them are costed at a typical 30%. And nobody can know how many guests would come another day if you closed one: the page gives you the number to beat, not the answer.
 
 It's worked out once a day, overnight, so the first look of the day can take a few seconds.`,

@@ -13,7 +13,7 @@
 import { daysBetween, ISODate, parseISODate, weekday } from "./dates";
 
 /** Bump when the method changes, so a kept copy is worked out again. */
-export const DAY_PROFIT_RULES = 2;
+export const DAY_PROFIT_RULES = 3;
 
 /** A weekday needs this many open days in the year to be shown, and this many to be compared and advised on. */
 const SHOWN_DAYS = 8;
@@ -28,6 +28,14 @@ const TRADING_SHARE = 0.03;
 /** Closing early is only suggested for the last hour or two, and only when they lose at least this much a day. */
 const LATE_HOURS = 2;
 const LATE_MIN_LOSS = 10;
+/**
+ * A one-off: a day that took more than this many times what's usual for its weekday at that time of
+ * year (the middle of the same weekday's open days within the window either side). A holiday, a
+ * private event, a deposit rung through the till: real money, but not a typical Monday.
+ */
+export const ONE_OFF_TIMES = 2;
+const ONE_OFF_WINDOW = 56;
+const ONE_OFF_NEIGHBOURS = 4;
 /** "Lately" is a weekday's last few open days: about two months of it. */
 export const RECENT_DAYS = 8;
 /** Lately counts as thinner when it leaves under this share of the year's average. */
@@ -57,6 +65,8 @@ export interface OpenDay {
   fees: number;
   /** Sales less food, drink, wages and card fees. */
   left: number;
+  /** Far above what's usual for its weekday: left out of the typical-day figures, kept in the year's totals. */
+  oneOff: boolean;
 }
 
 export type DayVerdict = "pays" | "thin" | "loses";
@@ -64,7 +74,9 @@ export type DayVerdict = "pays" | "thin" | "loses";
 export interface WeekdayProfit {
   /** 0 = Sunday. */
   wd: number;
+  /** The ordinary open days the typical day is worked out from, and the one-offs left out of it. */
   openDays: number;
+  oneOffs: number;
   /** Open most weeks: enough days to compare and advise on. */
   regular: boolean;
   /** A typical open day. */
@@ -76,7 +88,7 @@ export interface WeekdayProfit {
   /** Days that left less than nothing. */
   lostDays: number;
   laborPct: number | null;
-  /** Everything this weekday left over the period. */
+  /** Everything this weekday left over the period, one-offs included. */
   yearLeft: number;
   /** The sales a day needs to cover its crew, at this weekday's own food and drink cost. */
   breakEven: number | null;
@@ -109,7 +121,7 @@ export interface DayProfit {
   weekdays: WeekdayProfit[];
   /** Regular weekdays by season. */
   seasons: SeasonCell[];
-  /** A typical open day, any weekday. */
+  /** A typical open day, any weekday (one-offs left out). */
   typical: { openDays: number; sales: number; goods: number; labor: number; fees: number; left: number } | null;
   /** Card fees as a share of sales on the days Square gave them; null when it gave none. */
   feeRate: number | null;
@@ -124,6 +136,10 @@ export interface DayProfit {
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const avg = (xs: number[]) => (xs.length ? sum(xs) / xs.length : 0);
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length ? (s[(s.length - 1) >> 1] + s[s.length >> 1]) / 2 : 0;
+};
 
 export function dayProfit(i: { days: readonly ProfitDayInput[]; open: ReadonlySet<ISODate>; fixedMonthly?: number | null }): DayProfit {
   const input = [...i.days].sort((a, b) => a.date.localeCompare(b.date));
@@ -143,7 +159,15 @@ export function dayProfit(i: { days: readonly ProfitDayInput[]; open: ReadonlySe
     }
     if (d.fees == null) feesEstimated++;
     const fees = d.fees ?? d.sales * (feeRate ?? 0);
-    days.push({ date: d.date, wd: weekday(d.date), sales: d.sales, goods: d.goods, labor: d.labor, fees, left: d.sales - d.goods - d.labor - fees });
+    days.push({ date: d.date, wd: weekday(d.date), sales: d.sales, goods: d.goods, labor: d.labor, fees, left: d.sales - d.goods - d.labor - fees, oneOff: false });
+  }
+  // A day far above what's usual for its weekday at that time of year isn't a typical one.
+  for (const wd of [0, 1, 2, 3, 4, 5, 6]) {
+    const ds = days.filter((d) => d.wd === wd);
+    for (const d of ds) {
+      const near = ds.filter((x) => x !== d && Math.abs(daysBetween(x.date, d.date)) <= ONE_OFF_WINDOW).map((x) => x.sales);
+      d.oneOff = near.length >= ONE_OFF_NEIGHBOURS && d.sales > median(near) * ONE_OFF_TIMES;
+    }
   }
 
   const span = input.length ? daysBetween(input[0].date, input[input.length - 1].date) + 1 : 0;
@@ -154,8 +178,9 @@ export function dayProfit(i: { days: readonly ProfitDayInput[]; open: ReadonlySe
   const weekdays: WeekdayProfit[] = [];
   const seasons: SeasonCell[] = [];
   for (const wd of [1, 2, 3, 4, 5, 6, 0]) {
-    const ds = days.filter((d) => d.wd === wd);
-    if (ds.length < SHOWN_DAYS) continue;
+    const every = days.filter((d) => d.wd === wd);
+    if (every.length < SHOWN_DAYS) continue;
+    const ds = every.filter((d) => !d.oneOff);
     const sales = avg(ds.map((d) => d.sales));
     const goods = avg(ds.map((d) => d.goods));
     const labor = avg(ds.map((d) => d.labor));
@@ -163,11 +188,12 @@ export function dayProfit(i: { days: readonly ProfitDayInput[]; open: ReadonlySe
     const left = sales - goods - labor - fees;
     const lostDays = ds.filter((d) => d.left < 0).length;
     const keepRate = sales > 0 ? 1 - (goods + fees) / sales : 0;
-    const regular = ds.length >= REGULAR_DAYS;
+    const regular = every.length >= REGULAR_DAYS;
     const last = ds.slice(-RECENT_DAYS);
     weekdays.push({
       wd,
       openDays: ds.length,
+      oneOffs: every.length - ds.length,
       regular,
       sales,
       goods,
@@ -176,7 +202,7 @@ export function dayProfit(i: { days: readonly ProfitDayInput[]; open: ReadonlySe
       left,
       lostDays,
       laborPct: sales > 0 ? labor / sales : null,
-      yearLeft: sum(ds.map((d) => d.left)),
+      yearLeft: sum(every.map((d) => d.left)),
       breakEven: keepRate > 0 ? labor / keepRate : null,
       moveShare: sales <= 0 ? null : left <= 0 ? 0 : left / (left + labor),
       verdict: left < 0 ? "loses" : lostDays / ds.length >= THIN_LOSS_SHARE || left < THIN_MARGIN * sales ? "thin" : "pays",
@@ -191,14 +217,15 @@ export function dayProfit(i: { days: readonly ProfitDayInput[]; open: ReadonlySe
     }
   }
 
+  const usual = days.filter((d) => !d.oneOff);
   return {
     from: input[0]?.date ?? null,
     to: input[input.length - 1]?.date ?? null,
     days,
     weekdays,
     seasons,
-    typical: days.length
-      ? { openDays: days.length, sales: avg(days.map((d) => d.sales)), goods: avg(days.map((d) => d.goods)), labor: avg(days.map((d) => d.labor)), fees: avg(days.map((d) => d.fees)), left: avg(days.map((d) => d.left)) }
+    typical: usual.length
+      ? { openDays: usual.length, sales: avg(usual.map((d) => d.sales)), goods: avg(usual.map((d) => d.goods)), labor: avg(usual.map((d) => d.labor)), fees: avg(usual.map((d) => d.fees)), left: avg(usual.map((d) => d.left)) }
       : null,
     feeRate,
     feesEstimated,
@@ -238,7 +265,7 @@ export interface WeekdayHours {
 
 /** Each regular weekday hour by hour, over its open days. */
 export function hourProfit(rows: readonly HourInput[], p: DayProfit): WeekdayHours[] {
-  const wdOf = new Map(p.days.map((d) => [d.date, d.wd]));
+  const wdOf = new Map(p.days.filter((d) => !d.oneOff).map((d) => [d.date, d.wd]));
   const out: WeekdayHours[] = [];
   for (const w of p.weekdays.filter((x) => x.regular)) {
     const keepRate = w.sales > 0 ? 1 - (w.goods + w.fees) / w.sales : 0;
@@ -334,7 +361,7 @@ export function dayProfitStory(p: DayProfit, hours: readonly WeekdayHours[] = []
     detail: `It takes ${about(worst.sales)}; food, drink, wages and card fees come to ${about(costs)}. ${worst.lostDays} of the last ${worst.openDays} ${plural(worst)} lost money.`,
     action:
       worst.left < 0
-        ? `Closing ${plural(worst)} would save about ${about(-worst.yearLeft)} a year even if nobody came another day instead. A shorter ${DAY_NAMES[worst.wd]} is the smaller step to try first.`
+        ? `Closing ${plural(worst)} would save about ${about(-worst.left * worst.openDays)} a year even if nobody came another day instead. A shorter ${DAY_NAMES[worst.wd]} is the smaller step to try first.`
         : `Over the year ${plural(worst)} added about ${about(worst.yearLeft)} towards rent. Closing would only pay if more than ${pc(worst.moveShare ?? 0)} of ${DAY_NAMES[worst.wd]}'s sales turned up on other days instead${(worst.moveShare ?? 0) >= 0.25 ? ", which is a lot to count on" : ""}. Keep it open.`,
   });
 
