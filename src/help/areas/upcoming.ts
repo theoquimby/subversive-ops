@@ -225,6 +225,27 @@ These rules are pre-filled for New York and editable in Settings. The app applie
 
 export const schedule: HelpEntry[] = [
   {
+    id: "schedule.cover",
+    area: "schedule",
+    route: "/schedule",
+    title: "Days the forecast won't cover",
+    body: "Days still to come where the scheduled crew costs more than the forecast leaves after food, drink and card fees. Each says about how many hours to trim, or the sales the day would need.",
+    article: `The schedule already shows labor as a share of forecast sales. This goes one step further: after food, drink and card fees, does what's left of the forecast pay for the people on the clock?
+
+For each day it takes the forecast, keeps the share that weekday usually keeps after food, drink and card fees (from [Profit by day](/pnl/days)), and compares that with the scheduled wages, employer taxes included.
+
+A day is listed when the crew costs at least $20 more than that. It shows:
+
+- **About how many hours to trim** to bring the crew back under what the forecast leaves.
+- **The sales the day needs** for this crew to be covered as scheduled.
+
+On the week grid the same days say "needs $…" under the date.
+
+It's a prompt, not a rule. The forecast is a best guess and misses by a fair margin on quiet days, so a day can be listed and still turn out fine. It never blocks publishing. Days already past aren't listed, and nothing shows until Profit by day has a few months of history.`,
+    related: ["schedule.page", "pnl.days", "sales.scorecard"],
+    keywords: ["break even", "cover the crew", "overstaffed", "too many staff", "slow day"],
+  },
+  {
     id: "schedule.page",
     area: "schedule",
     route: "/schedule",
@@ -233,11 +254,11 @@ export const schedule: HelpEntry[] = [
     article: `1. **Generate** — shifts are drafted to match how busy each hour is forecast to be, using people who are available for each position. Shifts over the meal-break threshold get a meal break.
 2. **Intensity** — slide toward leaner or more generous staffing. If the week has a labor % budget, **Fit to budget** picks the most generous level that stays within it.
 3. **Adjust** — drag or edit shifts, swap people, add or remove shifts.
-4. **Check** — the staff vs demand chart shows each hour's coverage; compliance warnings list what breaks a rule.
+4. **Check** — the staff vs demand chart shows each hour's coverage; compliance warnings list what breaks a rule; **Days the forecast won't cover** lists days where the crew costs more than the forecast leaves.
 5. **Publish** — staff see their shifts under My shifts.
 
 Turn on **Draft next week automatically** in the generate panel and next week is drafted every weekend if it's still empty.`,
-    related: ["schedule.generate", "schedule.budget", "schedule.demand", "schedule.intensity", "schedule.compliance", "schedule.publish", "schedule.requests", "sales.forecast5w"],
+    related: ["schedule.generate", "schedule.budget", "schedule.demand", "schedule.intensity", "schedule.compliance", "schedule.cover", "schedule.publish", "schedule.requests", "sales.forecast5w"],
     keywords: ["rota", "shifts", "roster", "staffing"],
   },
   {
@@ -554,6 +575,7 @@ It answers one question: is each day you open worth opening?
 
 **How to read it**
 
+- **The week ahead**: each coming day's forecast, what it leaves after food, drink and card fees, and what the crew costs. The crew is the shifts on the Schedule, or that weekday's usual wages when nothing is scheduled yet. A day that falls short is shaded and says by how much.
 - **Where a typical day's sales go**: one column per weekday. Violet is food and drink, pink is wages, teal is card fees, and blue is what's left. A day that falls short has a dark mark where its sales stopped.
 - **Every open day, by what it left**: one dot per day. Dots left of the zero line lost money. The dark tick is that weekday's average, and each weekday's last 8 days are ringed.
 - **Lately**: each weekday's last 8 open days next to its whole year, so a slow couple of months shows up before it's buried in the average.

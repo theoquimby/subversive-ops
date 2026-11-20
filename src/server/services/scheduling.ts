@@ -2,6 +2,7 @@ import "server-only";
 import { NEEDS_MANAGER } from "@/domain/swaps";
 import { addDays, ISODate, parseISODate, todayIn, toISODate, weekday } from "@/domain/dates";
 import { requiredForShift, validOn, type CertTypeLike } from "@/domain/certs";
+import { crewShortfalls, type CrewShort } from "@/domain/dayProfit";
 import { applyRuleSettings, assignShifts, Candidate, checkCompliance, curveToBlocks, defaultBreakMinutes, LaborRules, PositionRule } from "@/domain/labor";
 import {
   Availability, availabilityConflicts, clipAvailability, coverage, curveHours, dayRequirement, fitSliderToTarget, HourDemand, hourlySalesOrFallback, inclusiveDates,
@@ -10,6 +11,7 @@ import {
 import { startLabel } from "@/domain/showWindow";
 import { db, num } from "../db";
 import { env } from "../env";
+import { keptDayProfit } from "./dayProfit";
 import { hourlySalesForecast } from "./forecasting";
 import { getLaborRules, getOpeningHours } from "./labor-rules";
 import { localHour } from "./sales";
@@ -179,6 +181,8 @@ export interface WeekData {
   pendingRequests: number;
   /** Weekly labor % budget (Budgets page), if set. */
   laborTarget: number | null;
+  /** Days still to come where the scheduled crew costs more than the forecast leaves after food and drink. */
+  cover: CrewShort[];
   /** People needed vs scheduled per hour, per date. */
   demand: Record<ISODate, HourDemand[]>;
   autoDraft: boolean;
@@ -264,12 +268,13 @@ export async function loadWeek(monday: ISODate): Promise<WeekData> {
     laborTargetFor(monday),
     getAutoDraft(),
   ]);
-  const [employees, timeOff, days, pendingAll, certs] = await Promise.all([
+  const [employees, timeOff, days, pendingAll, certs, profit] = await Promise.all([
     loadEmployees(positions),
     approvedTimeOff(monday, dates[6]),
     forecastDays(dates, opening),
     db.timeOffRequest.count({ where: { status: "PENDING" } }),
     loadCertCoverage(),
+    keptDayProfit().catch(() => null),
   ]);
   const shifts = rows.map(toView);
   const emps = new Map(employees.map((e) => [e.id, e]));
@@ -300,6 +305,7 @@ export async function loadWeek(monday: ISODate): Promise<WeekData> {
     rules,
     pendingRequests: pendingAll + pendingSwaps,
     laborTarget,
+    cover: profit ? crewShortfalls(summary.days.map((d) => ({ date: d.date, sales: d.sales, cost: d.cost, hours: d.hours })), profit.profit, todayIn(TZ)) : [],
     demand: Object.fromEntries(dates.map((d) => [d, staffVsDemand([...(req.get(d)?.values() ?? [])], shifts.filter((s) => s.date === d))])),
     autoDraft,
   };

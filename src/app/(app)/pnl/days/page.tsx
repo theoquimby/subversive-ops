@@ -1,7 +1,7 @@
 import { Chapter, InShort } from "@/components/chapter";
 import { ColumnsChart, type Col } from "@/components/columns-chart";
 import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
-import { about, hourLabel, RECENT_DAYS, SEASONS, type ProfitPoint, type WeekdayProfit } from "@/domain/dayProfit";
+import { about, hourLabel, outlookPoint, RECENT_DAYS, SEASONS, type ProfitPoint, type WeekdayProfit } from "@/domain/dayProfit";
 import { TYPICAL_COST_SHARE } from "@/domain/pnlStory";
 import { dayDate, money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
@@ -90,9 +90,12 @@ export default async function ProfitByDayPage() {
   }));
   const hourStart = String(late?.wd ?? (v.hours.some((h) => h.wd === worst?.wd) ? worst!.wd : (v.hours[0]?.wd ?? "")));
 
-  const contents = (["weakest", "recent", "rent", "season", "hours", "labor", "closed"] as const)
-    .map((k) => ({ id: k === "closed" ? "worked-out" : k, point: point(k) }))
-    .filter((x): x is { id: string; point: ProfitPoint } => !!x.point);
+  const aheadPoint = outlookPoint(v.ahead);
+  const aheadMax = Math.max(1, ...v.ahead.flatMap((o) => [o.kept, o.cost]));
+  const contents = [
+    { id: "ahead", point: aheadPoint ?? undefined },
+    ...(["weakest", "recent", "rent", "season", "hours", "labor", "closed"] as const).map((k) => ({ id: k === "closed" ? "worked-out" : k, point: point(k) })),
+  ].filter((x): x is { id: string; point: ProfitPoint } => !!x.point);
 
   const WeekdayName = ({ w }: { w: WeekdayProfit }) => (
     <span className="font-medium text-ink">
@@ -152,6 +155,47 @@ export default async function ProfitByDayPage() {
       {contents.length > 0 && (
         <Section help="pnl.days.todo" title="In short" description="What stands out, in the order the page tells it. Tap one to jump to it.">
           <InShort items={contents} />
+        </Section>
+      )}
+
+      {v.ahead.length > 0 && (
+        <Section
+          title="The week ahead"
+          description={
+            <>
+              Each coming day&apos;s forecast against its crew: the shifts on the <Link href="/schedule" className="underline underline-offset-2 hover:text-ink">Schedule</Link>, or that weekday&apos;s usual wages when nothing is scheduled yet.
+            </>
+          }
+        >
+          <Chapter id="ahead" point={aheadPoint ?? undefined} title="The week ahead covers its crew at the forecast" detail="What each day's forecast leaves after food, drink and card fees, next to what the crew costs.">
+            <div className={`mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted ${VIZ_VARS}`}>
+              <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-[3px]" style={{ background: "var(--viz-profit)" }} /> What the forecast leaves after food and drink</span>
+              <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-[3px]" style={{ background: "var(--viz-labor)" }} /> The crew</span>
+            </div>
+            <ul className={`space-y-3 ${VIZ_VARS}`}>
+              {v.ahead.map((o) => (
+                <li key={o.date} className={`grid grid-cols-1 items-center gap-x-4 gap-y-1 sm:grid-cols-[8.5rem_1fr] ${o.short ? "-mx-2 rounded-lg bg-surface-2 px-2 py-1.5" : ""}`}>
+                  <div className="text-sm font-medium text-ink">
+                    {dayDate(o.date)}
+                    <span className="block text-xs font-normal text-muted">forecast {whole(o.sales)}</span>
+                  </div>
+                  <div className="space-y-1 border-l border-border-strong">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 min-w-[2px] rounded-r-[4px]" style={{ width: `calc((100% - 12rem) * ${(o.kept / aheadMax).toFixed(4)})`, background: "var(--viz-profit)" }} />
+                      <span className="num text-xs whitespace-nowrap text-ink-2">{whole(o.kept)} left</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 min-w-[2px] rounded-r-[4px]" style={{ width: `calc((100% - 12rem) * ${(o.cost / aheadMax).toFixed(4)})`, background: "var(--viz-labor)" }} />
+                      <span className="num text-xs whitespace-nowrap text-ink-2">
+                        {whole(o.cost)} {o.usual ? "usual crew" : "scheduled"}
+                        {o.short ? <span className="font-semibold text-warn"> · {whole(o.over)} short</span> : <span className="text-muted"> · {whole(Math.max(0, -o.over))} to spare</span>}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Chapter>
         </Section>
       )}
 

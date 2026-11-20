@@ -300,10 +300,71 @@ export function hourProfit(rows: readonly HourInput[], p: DayProfit): WeekdayHou
   return out;
 }
 
+// ---- A scheduled crew against the forecast --------------------------------------------------
+
+export interface CrewDayInput {
+  date: ISODate;
+  /** Forecast sales for the day. */
+  sales: number;
+  /** Scheduled wages for the day, with employer taxes, and the hours behind them. */
+  cost: number;
+  hours: number;
+}
+
+export interface CrewOutlook {
+  date: ISODate;
+  sales: number;
+  /** The crew's cost: the shifts scheduled, or the weekday's usual wages when nothing is scheduled yet. */
+  cost: number;
+  usual: boolean;
+  /** What the forecast leaves after food, drink and card fees. */
+  kept: number;
+  /** The sales the day needs for that to cover the crew. */
+  needs: number;
+  /** Wages over what the forecast leaves (negative when there's room to spare), and about how many scheduled hours that is. */
+  over: number;
+  overHours: number | null;
+  /** The crew costs noticeably more than the forecast leaves. */
+  short: boolean;
+}
+export type CrewShort = CrewOutlook;
+
+/** A crew is flagged when it costs at least this much more than the forecast leaves. */
+const CREW_MIN_OVER = 20;
+
+/**
+ * Each day from `from` on with a forecast: what the forecast leaves after
+ * food, drink and card fees (at that weekday's own cost of goods, or the whole
+ * week's when the weekday is rarely open) against the crew. With no shifts
+ * scheduled the crew is that weekday's usual wages, when it has any history.
+ */
+export function crewOutlook(days: readonly CrewDayInput[], p: Pick<DayProfit, "weekdays" | "typical">, from?: ISODate): CrewOutlook[] {
+  const rate = (x: { sales: number; goods: number; fees: number } | null | undefined) => (x && x.sales > 0 ? 1 - (x.goods + x.fees) / x.sales : null);
+  const out: CrewOutlook[] = [];
+  for (const d of days) {
+    if ((from && d.date < from) || d.sales <= 0) continue;
+    const w = p.weekdays.find((x) => x.wd === weekday(d.date));
+    const keep = rate(w) ?? rate(p.typical);
+    const usual = d.cost <= 0;
+    const cost = usual ? (w?.labor ?? 0) : d.cost;
+    if (keep == null || keep <= 0 || cost <= 0) continue;
+    const kept = d.sales * keep;
+    const over = cost - kept;
+    const perHour = !usual && d.hours > 0 ? d.cost / d.hours : null;
+    const short = over >= CREW_MIN_OVER;
+    out.push({ date: d.date, sales: d.sales, cost, usual, kept, needs: cost / keep, over, overHours: short && perHour ? Math.max(0.5, Math.round((over / perHour) * 2) / 2) : null, short });
+  }
+  return out;
+}
+
+/** The scheduled days whose crew costs more than the forecast leaves: something to trim. */
+export const crewShortfalls = (days: readonly CrewDayInput[], p: Pick<DayProfit, "weekdays" | "typical">, from?: ISODate): CrewShort[] =>
+  crewOutlook(days, p, from).filter((o) => o.short && !o.usual);
+
 // ---- What it says ------------------------------------------------------------------------------
 
 export interface ProfitPoint {
-  key: "weakest" | "recent" | "season" | "hours" | "labor" | "rent" | "closed";
+  key: "ahead" | "weakest" | "recent" | "season" | "hours" | "labor" | "rent" | "closed";
   tone: "good" | "warn" | "bad" | "neutral";
   title: string;
   detail: string;
@@ -327,6 +388,21 @@ export const about = (x: number) => {
   return `${x < 0 ? "−" : ""}$${r.toLocaleString("en-US")}`;
 };
 export const hourLabel = (h: number) => `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "am" : "pm"}`;
+
+/** What the week ahead says, when a day's forecast won't cover its crew. */
+export function outlookPoint(ahead: readonly CrewOutlook[]): ProfitPoint | null {
+  const short = ahead.filter((o) => o.short).sort((a, b) => b.over - a.over);
+  if (!short.length) return null;
+  const o = short[0];
+  const day = DAY_NAMES[weekday(o.date)];
+  return {
+    key: "ahead",
+    tone: "warn",
+    title: short.length === 1 ? `This ${day}'s forecast won't cover ${o.usual ? "a usual crew" : "the crew scheduled"}` : `${short.length} days in the week ahead won't cover their crew at the forecast`,
+    detail: `${short.length === 1 ? `It` : `The widest gap is ${day}: it`} is forecast at ${about(o.sales)}, which leaves about ${about(o.kept)} after food, drink and card fees. ${o.usual ? `A usual ${day} crew costs` : "The crew scheduled costs"} ${about(o.cost)}.`,
+    action: `${o.overHours != null ? `Trim about ${o.overHours} hours` : "Start one person later, or send one home early,"} on ${day}; as it stands the day needs ${about(o.needs)} in sales. The forecast is a best guess, so look again the day before.`,
+  };
+}
 
 /** Enough open days to say anything. */
 export const STORY_MIN_DAYS = 60;

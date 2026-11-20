@@ -1,13 +1,15 @@
 import "server-only";
 import { fixedTotal } from "@/domain/analytics";
-import { addDays, ISODate, parseISODate, toISODate } from "@/domain/dates";
-import { DAY_PROFIT_RULES, dayProfit, dayProfitStory, hourProfit, type DayProfit, type HourInput, type ProfitStory, type WeekdayHours } from "@/domain/dayProfit";
+import { addDays, dateRange, ISODate, parseISODate, toISODate } from "@/domain/dates";
+import { crewOutlook, DAY_PROFIT_RULES, dayProfit, dayProfitStory, hourProfit, type CrewOutlook, type DayProfit, type HourInput, type ProfitStory, type WeekdayHours } from "@/domain/dayProfit";
 import { realOpenDays } from "@/domain/forecastMethod";
 import { TYPICAL_COST_SHARE, unlinkedSales } from "@/domain/pnlStory";
 import { laborByHour, zonedTime } from "@/domain/timecards";
 import { db } from "../db";
 import { env } from "../env";
 import { getFixedCosts } from "./analytics";
+import { laborByDay } from "./budgets";
+import { dailySalesForecast } from "./forecasting";
 import { dailyKpis } from "./kpis";
 import { loadTimecards } from "./labor";
 import { getLaborRules } from "./labor-rules";
@@ -119,11 +121,31 @@ export async function computeDayProfitQuietly() {
 
 export interface DayProfitView extends StoredDayProfit {
   story: ProfitStory | null;
+  /** Today and the six days after: each day's forecast against its crew (scheduled, or the weekday's usual one). */
+  ahead: CrewOutlook[];
 }
+
+/** The next seven days: the live forecast, and the shifts scheduled if there are any. */
+async function weekAhead(profit: DayProfit): Promise<CrewOutlook[]> {
+  const today = businessToday();
+  const to = addDays(today, 7);
+  const dates = dateRange(today, to);
+  try {
+    const [forecast, shifts] = await Promise.all([dailySalesForecast(dates), laborByDay(today, to, "shifts")]);
+    const sales = new Map(forecast.map((f) => [f.date, f.qty]));
+    return crewOutlook(dates.map((date) => ({ date, sales: sales.get(date) ?? 0, cost: shifts.get(date)?.cost ?? 0, hours: shifts.get(date)?.hours ?? 0 })), profit, today);
+  } catch (e) {
+    console.error("profit by day: week ahead failed", e);
+    return [];
+  }
+}
+
+/** The kept copy as it stands, without working anything out: for pages that only borrow its figures. */
+export const keptDayProfit = () => readSettingJSON<StoredDayProfit>(KEY);
 
 /** The kept copy, worked out again when it's from another day or an older method. */
 export async function dayProfitView(): Promise<DayProfitView> {
   const kept = await readSettingJSON<StoredDayProfit>(KEY);
   const stored = !kept || kept.computedOn !== businessToday() || kept.rules !== DAY_PROFIT_RULES ? await computeDayProfit() : kept;
-  return { ...stored, story: dayProfitStory(stored.profit, stored.hours) };
+  return { ...stored, story: dayProfitStory(stored.profit, stored.hours), ahead: await weekAhead(stored.profit) };
 }

@@ -8,6 +8,7 @@ import { availabilityLabel, shiftLabel, shiftPaidHours } from "@/domain/schedule
 import { dayDate, money, pct, shortDate } from "@/lib/format";
 import type { ShiftView, WeekData, WeekIssue } from "@/server/services/scheduling";
 import { AlertTriangle, ChevronLeft, ChevronRight, CopyPlus, Eraser, Inbox, Plus, Send, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { clearDraftShifts, copyPreviousWeek, moveShift, publishSchedule } from "./actions";
 import { DemandChart } from "./demand-chart";
@@ -21,7 +22,8 @@ const OPEN = "open";
 const NEW_ID = "new";
 
 export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudges = {} }: { data: WeekData; today: string; prevWeek: string; nextWeek: string; thisWeek: string; nudges?: Record<string, Nudge> }) {
-  const { dates, positions, employees, issues, summary, timeOff, pendingTimeOff, opening } = data;
+  const { dates, positions, employees, issues, summary, timeOff, pendingTimeOff, opening, cover } = data;
+  const coverBy = new Map(cover.map((c) => [c.date, c]));
   const confirm = useConfirm();
   const [busy, start] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
@@ -255,6 +257,11 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
           <span>{d.sales ? money(d.sales, { whole: true }) : "—"}</span>
           <span>{money(d.cost, { whole: true })}</span>
         </div>
+        {coverBy.has(date) && (
+          <div className="num mt-0.5 text-[11px] font-medium text-warn" title="The forecast won't cover this crew: see the list under the schedule">
+            needs {money(coverBy.get(date)!.needs, { whole: true })}
+          </div>
+        )}
         <HoursBar hours={d.hours} required={d.requiredHours} max={maxHours} short={shortfall} />
       </div>
     );
@@ -411,6 +418,11 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
                       <span>{money(d.sales, { whole: true })} forecast</span>
                       <span>{money(d.cost, { whole: true })} labor</span>
                     </div>
+                    {coverBy.has(day) && (
+                      <p className="mt-1.5 text-xs font-medium text-warn">
+                        The forecast won&apos;t cover this crew: it needs {money(coverBy.get(day)!.needs, { whole: true })} in sales.
+                      </p>
+                    )}
                     <HoursBar hours={d.hours} required={d.requiredHours} max={Math.max(d.hours, d.requiredHours, 1)} short={d.requiredHours > 0 && d.hours < d.requiredHours * 0.9} />
                   </Card>
                 );
@@ -469,6 +481,37 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
               <DemandChart rows={data.demand[day] ?? []} />
             </Card></HelpZone>
           </section>
+
+          {/* Days the forecast won't cover */}
+          {cover.length > 0 && (
+            <HelpZone id="schedule.cover" className="mt-8"><section>
+              <div className="mb-3 flex items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-[0.95rem] font-semibold">Days the forecast won&apos;t cover</h2>
+                  <p className="mt-0.5 text-sm text-muted">
+                    Where the crew costs more than the day&apos;s forecast leaves after food, drink and card fees. A forecast is a best guess, so treat these as days to look at again, not orders.{" "}
+                    <Link href="/pnl/days" className="underline underline-offset-2 hover:text-ink">Profit by day</Link>
+                  </p>
+                </div>
+                <Badge tone="warn" className="shrink-0">{cover.length} to check</Badge>
+              </div>
+              <Card className="divide-y divide-border">
+                {cover.map((c) => (
+                  <button key={c.date} className="flex w-full items-start gap-3 px-4 py-3 text-left text-sm hover:bg-surface-2/60" onClick={() => setDayIdx(dates.indexOf(c.date))}>
+                    <Badge tone="warn" className="mt-px w-[4.6rem] justify-center">Check</Badge>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-ink">
+                        {dayDate(c.date)}: {c.overHours != null ? `trim about ${fmtH(c.overHours)}, or the day needs ${money(c.needs, { whole: true })} in sales` : `the day needs ${money(c.needs, { whole: true })} in sales to cover this crew`}
+                      </span>
+                      <span className="num block text-xs text-muted">
+                        A forecast of {money(c.sales, { whole: true })} leaves about {money(c.kept, { whole: true })} after food and drink; the crew costs {money(c.cost, { whole: true })}.
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </Card>
+            </section></HelpZone>
+          )}
 
           {/* Compliance */}
           <HelpZone id="schedule.compliance" className="mt-8"><section>

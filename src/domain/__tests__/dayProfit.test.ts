@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addDays, weekday } from "../dates";
-import { about, dayProfit, dayProfitStory, hourLabel, hourProfit, seasonOf, type HourInput, type ProfitDayInput } from "../dayProfit";
+import { about, crewOutlook, crewShortfalls, dayProfit, dayProfitStory, hourLabel, hourProfit, outlookPoint, seasonOf, type HourInput, type ProfitDayInput } from "../dayProfit";
 
 /** A year of days from a Monday: closed Tuesdays, each weekday with its own sales and crew. */
 const START = "2025-11-17"; // a Monday
@@ -170,6 +170,58 @@ describe("hourProfit", () => {
   it("doesn't flag a day whose last hour pays", () => {
     const good = rows.map((r) => (r.hour >= 20 ? { ...r, sales: 150 } : r));
     expect(hourProfit(good, p).find((x) => x.wd === 1)!.late).toBeNull();
+  });
+});
+
+describe("crewShortfalls", () => {
+  const days = year();
+  const p = dayProfit({ days, open: openOf(days) });
+  // The week after the history: a Monday, a closed Tuesday, a Saturday.
+  const mon = addDays(START, 364);
+
+  it("flags a day whose forecast leaves less than its crew costs", () => {
+    // Every weekday here keeps 67.5% of sales after food, drink and card fees.
+    const out = crewShortfalls([{ date: mon, sales: 600, cost: 450, hours: 22.5 }, { date: addDays(mon, 5), sales: 5000, cost: 1000, hours: 50 }], p);
+    expect(out.map((x) => x.date)).toEqual([mon]);
+    expect(out[0].kept).toBeCloseTo(405);
+    expect(out[0].needs).toBeCloseTo(450 / 0.675);
+    expect(out[0].over).toBeCloseTo(45);
+    // $45 of wages at $20 an hour is 2.25 hours: say 2.5.
+    expect(out[0].overHours).toBe(2.5);
+  });
+
+  it("lets a near miss go, and skips days with nothing to judge", () => {
+    expect(crewShortfalls([{ date: mon, sales: 650, cost: 450, hours: 22.5 }], p)).toEqual([]);
+    expect(crewShortfalls([{ date: mon, sales: 0, cost: 450, hours: 22.5 }, { date: mon, sales: 600, cost: 0, hours: 0 }], p)).toEqual([]);
+    // Days already gone aren't worth flagging.
+    expect(crewShortfalls([{ date: mon, sales: 600, cost: 450, hours: 22.5 }], p, addDays(mon, 1))).toEqual([]);
+  });
+
+  it("judges a day with no shifts yet against that weekday's usual crew", () => {
+    // A usual Monday crew is $450: a $600 forecast leaves $405, a $900 one $607.50.
+    const out = crewOutlook([{ date: mon, sales: 600, cost: 0, hours: 0 }, { date: addDays(mon, 7), sales: 900, cost: 0, hours: 0 }], p);
+    expect(out.map((o) => [o.usual, o.cost, o.short])).toEqual([[true, 450, true], [true, 450, false]]);
+    expect(out[0].overHours).toBeNull();
+    expect(out[1].over).toBeCloseTo(450 - 607.5);
+    // Nothing scheduled is nothing to trim on the schedule itself.
+    expect(crewShortfalls([{ date: mon, sales: 600, cost: 0, hours: 0 }], p)).toEqual([]);
+    // A weekday with no history has no usual crew to go on.
+    expect(crewOutlook([{ date: addDays(mon, 1), sales: 400, cost: 0, hours: 0 }], p)).toEqual([]);
+    const point = outlookPoint(out)!;
+    expect(point.title).toBe("This Monday's forecast won't cover a usual crew");
+    expect(point.action).toContain("needs $670 in sales");
+    expect(outlookPoint(out.slice(1))).toBeNull();
+    const two = outlookPoint(crewOutlook([{ date: mon, sales: 600, cost: 450, hours: 22.5 }, { date: addDays(mon, 2), sales: 500, cost: 450, hours: 22.5 }], p))!;
+    expect(two.title).toBe("2 days in the week ahead won't cover their crew at the forecast");
+    expect(two.detail).toContain("The widest gap is Wednesday");
+    expect(two.action).toContain("Trim about 5.5 hours on Wednesday");
+  });
+
+  it("falls back to the whole week's cost of goods for a weekday that's rarely open, and to nothing with no history", () => {
+    const tue = crewShortfalls([{ date: addDays(mon, 1), sales: 400, cost: 300, hours: 15 }], p);
+    expect(tue).toHaveLength(1);
+    expect(tue[0].kept).toBeCloseTo(270);
+    expect(crewShortfalls([{ date: mon, sales: 600, cost: 450, hours: 22.5 }], dayProfit({ days: [], open: new Set() }))).toEqual([]);
   });
 });
 

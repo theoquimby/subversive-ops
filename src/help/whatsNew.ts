@@ -69,6 +69,18 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 20 Nov · 1.47 (days the forecast won't cover the crew) ----
+  {
+    id: "2026-11-20.schedule-cover",
+    date: "2026-11-20",
+    title: "The week ahead: will it cover the crew?",
+    line: "See which coming days the crew costs more than the forecast leaves.",
+    icon: "pace",
+    area: "numbers",
+    href: "/pnl/days",
+    help: "pnl.days",
+    audience: "manager",
+  },
   // ---- 20 Nov · 1.46 (one-off days left out of profit by day) ----
   {
     id: "2026-11-20.profit-one-offs",

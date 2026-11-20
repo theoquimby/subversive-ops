@@ -24,6 +24,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.47",
+    date: "2026-11-20",
+    title: "The week ahead: will the forecast cover the crew?",
+    summary: "Profit by day now opens with the week ahead: each coming day's forecast against its crew. The Schedule lists any day where the shifts cost more than the forecast leaves, with about how many hours to trim.",
+    entries: ["2026-11-20.schedule-cover"],
+    fixed: [
+      "On Profit by day the crew is the shifts scheduled, or that weekday's usual wages when nothing is scheduled yet.",
+      "On the Schedule the week grid says \"needs $…\" under any such day.",
+      "It's a prompt, not a rule: it never blocks publishing, and past days aren't listed.",
+    ],
+  },
+  {
     version: "1.46",
     date: "2026-11-20",
     title: "Profit by day: one-off days left out",
