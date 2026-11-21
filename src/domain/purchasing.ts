@@ -74,3 +74,23 @@ export function wasteStamp(when: "today" | "yesterday", now: Date, timeZone: str
   if (when === "today") return now;
   return new Date(zonedMidnightUTC(todayIn(timeZone, now), timeZone).getTime() - 60_000);
 }
+
+/**
+ * The stamp for a waste entry sent from a phone. `at` is when the phone logged
+ * it (an entry can wait on the phone for signal); a phone clock ahead of the
+ * server's, or an entry days old, uses now instead.
+ */
+export function wasteLoggedAt(when: "today" | "yesterday", at: number | undefined, now: Date, timeZone: string): Date {
+  const ok = at != null && Number.isFinite(at) && at <= now.getTime() && now.getTime() - at < 2 * 86_400_000;
+  return wasteStamp(when, ok ? new Date(at) : now, timeZone);
+}
+
+/**
+ * Undo from the "Logged" message, on the phone that logged it: your own entry,
+ * just now; an entry logged for yesterday is stamped at the end of yesterday,
+ * so that one is allowed up to a day older. Managers can always.
+ */
+export function canUndoWasteEntry(w: { loggedBy: string | null; loggedAt: Date }, user: { name: string; role: string }, now = Date.now(), minutes = 15) {
+  if (user.role === "MANAGER") return true;
+  return w.loggedBy === user.name && now - w.loggedAt.getTime() < minutes * 60_000 + 86_400_000;
+}

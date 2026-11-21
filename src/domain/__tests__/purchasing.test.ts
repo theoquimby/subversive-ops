@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeIntoDraft, parseQty, pushRecent, receiptLine, stepQty, wasteStamp } from "../purchasing";
+import { canUndoWasteEntry, mergeIntoDraft, parseQty, pushRecent, receiptLine, stepQty, wasteLoggedAt, wasteStamp } from "../purchasing";
 
 describe("stepQty", () => {
   it("adds and takes away whole packs", () => {
@@ -100,6 +100,45 @@ describe("pushRecent", () => {
   it("copes with junk from storage", () => {
     expect(pushRecent(null, "a")).toEqual(["a"]);
     expect(pushRecent(["a", 3 as unknown as string], "b")).toEqual(["b", "a"]);
+  });
+});
+
+describe("wasteLoggedAt", () => {
+  const now = new Date("2026-11-20T14:30:00Z");
+  const tz = "America/New_York";
+  it("uses when the phone logged it", () => {
+    const at = now.getTime() - 3600_000;
+    expect(wasteLoggedAt("today", at, now, tz).getTime()).toBe(at);
+  });
+  it("a phone clock ahead of ours or days old falls back to now", () => {
+    expect(wasteLoggedAt("today", now.getTime() + 600_000, now, tz)).toEqual(now);
+    expect(wasteLoggedAt("today", now.getTime() - 5 * 86400_000, now, tz)).toEqual(now);
+    expect(wasteLoggedAt("today", undefined, now, tz)).toEqual(now);
+  });
+  it("yesterday is the day before the one it was logged on", () => {
+    // Logged offline at 11pm Nov 19 (New York), sent the next morning: yesterday is still Nov 18.
+    const at = new Date("2026-11-20T04:00:00Z").getTime();
+    expect(wasteLoggedAt("yesterday", at, now, tz).toISOString()).toBe("2026-11-19T04:59:00.000Z");
+  });
+});
+
+describe("canUndoWasteEntry", () => {
+  const now = new Date("2026-11-20T14:30:00Z").getTime();
+  const me = { name: "Line", role: "STAFF" };
+  it("your own entry, just logged", () => {
+    expect(canUndoWasteEntry({ loggedBy: "Line", loggedAt: new Date(now - 60_000) }, me, now)).toBe(true);
+  });
+  it("your own entry logged for yesterday", () => {
+    expect(canUndoWasteEntry({ loggedBy: "Line", loggedAt: new Date("2026-11-20T04:59:00Z") }, me, now)).toBe(true);
+  });
+  it("not someone else's", () => {
+    expect(canUndoWasteEntry({ loggedBy: "Sam", loggedAt: new Date(now - 60_000) }, me, now)).toBe(false);
+  });
+  it("not days later", () => {
+    expect(canUndoWasteEntry({ loggedBy: "Line", loggedAt: new Date(now - 3 * 86400_000) }, me, now)).toBe(false);
+  });
+  it("managers can", () => {
+    expect(canUndoWasteEntry({ loggedBy: "Sam", loggedAt: new Date(now - 3 * 86400_000) }, { name: "Max", role: "MANAGER" }, now)).toBe(true);
   });
 });
 

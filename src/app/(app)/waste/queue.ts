@@ -13,5 +13,5 @@ export type QueuedWaste = QueueItem & WasteEntry & { clientId: string };
 
 export const wasteQueue = createOfflineQueue<QueuedWaste>({
   key: "waste.queue.v1",
-  send: ({ clientId, mode, itemId, qty, unit, reason }) => logWasteEntry({ clientId, mode, itemId, qty, unit, reason }),
+  send: ({ clientId, mode, itemId, qty, unit, reason, when, at }) => logWasteEntry({ clientId, mode, itemId, qty, unit, reason, when, at }),
 });
