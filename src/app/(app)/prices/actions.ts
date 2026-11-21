@@ -35,15 +35,26 @@ export async function commitPriceSheet(args: { supplierId: string; filename: str
   return res;
 }
 
-const manualSchema = z.array(z.object({ productId: z.string(), price: z.number().nonnegative() })).max(500);
+const manualSchema = z.object({
+  entries: z.array(z.object({
+    productId: z.string().min(1).max(64),
+    price: z.number({ error: "One of the prices isn't a number." }).finite("One of the prices isn't a number.").nonnegative("Prices can't be below $0.").max(1_000_000, "One of the prices is too big. Check it."),
+  })).min(1, "Type at least one new price.").max(500, "Save up to 500 prices at a time."),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick the date the prices start.").optional(),
+});
 
-export async function saveManualPrices(entries: { productId: string; price: number }[], effectiveDate?: ISODate) {
+/** Prices typed on "Update prices by hand". Says what's wrong rather than failing. */
+export async function saveManualPrices(entries: { productId: string; price: number }[], effectiveDate?: ISODate): Promise<{ error?: string; saved: number }> {
   await requireUser("MANAGER");
-  const list = manualSchema.parse(entries);
-  const date = effectiveDate ?? businessToday();
-  for (const e of list) await recordManualPrice(e.productId, e.price, date);
+  const p = manualSchema.safeParse({ entries, date: effectiveDate });
+  if (!p.success) return { error: p.error.issues[0].message, saved: 0 };
+  const date = (p.data.date as ISODate | undefined) ?? businessToday();
+  const found = new Set((await db.supplierProduct.findMany({ where: { id: { in: p.data.entries.map((e) => e.productId) } }, select: { id: true } })).map((x) => x.id));
+  const missing = p.data.entries.filter((e) => !found.has(e.productId)).length;
+  if (missing) return { error: `${missing === 1 ? "One product was" : `${missing} products were`} removed since you started. Refresh the page and try again.`, saved: 0 };
+  for (const e of p.data.entries) await recordManualPrice(e.productId, e.price, date);
   revalidatePath("/", "layout");
-  return { saved: list.length };
+  return { saved: p.data.entries.length };
 }
 
 const baseSchema = z.enum(["g", "ml", "each"]);
