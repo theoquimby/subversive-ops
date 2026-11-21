@@ -2,13 +2,14 @@
 
 import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
+import { useToast } from "@/components/toast";
 import { Badge, Card, cx } from "@/components/ui";
 import { LINKABLE_PAGES, SHIFTS, weekdaysText } from "@/domain/checklists";
 import type { TemplateView } from "@/server/services/checklists";
-import { ArrowDown, ArrowUp, Check, Link2, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, CopyPlus, Link2, Trash2, X } from "lucide-react";
 import { useTransition } from "react";
 import { AddRow } from "../../team/team-client";
-import { addItem, addTemplate, deleteItem, deleteTemplate, moveItem, setItemField, setTemplateField, setTemplatePosition } from "../actions";
+import { addItem, addItems, addTemplate, deleteItem, deleteTemplate, duplicateTemplate, moveItem, setItemField, setTemplateField, setTemplatePosition } from "../actions";
 
 const ACTIVE = [{ value: "yes", label: "In use" }, { value: "no", label: "Off" }];
 const LINKS = [{ value: "", label: "No link" }, ...LINKABLE_PAGES.map((p) => ({ value: p.href, label: p.label }))];
@@ -28,7 +29,10 @@ export function ChecklistSetup({ templates, positions }: { templates: TemplateVi
 function TemplateCard({ t, positions }: { t: TemplateView; positions: { id: string; name: string }[] }) {
   const confirm = useConfirm();
   const [pending, start] = useTransition();
+  const [toast, show] = useToast();
   return (
+    <>
+    {toast}
     <Card className={cx("overflow-hidden", !t.active && "opacity-60", pending && "opacity-60")} data-tour="checklists.template">
       <div className="flex flex-col gap-1 border-b border-border px-2 py-2 sm:flex-row sm:items-start sm:gap-2">
         <div className="min-w-0 sm:flex-1">
@@ -45,6 +49,20 @@ function TemplateCard({ t, positions }: { t: TemplateView; positions: { id: stri
           <Badge>{t.items.filter((i) => i.active).length} steps</Badge>
           <div className="w-28"><GridSelect value={t.shift} options={SHIFTS} onSave={setTemplateField.bind(null, t.id, "shift")} ariaLabel={`${t.name} shift`} /></div>
           <div className="w-24"><GridSelect value={t.active ? "yes" : "no"} options={ACTIVE} onSave={setTemplateField.bind(null, t.id, "active")} ariaLabel={`${t.name} in use`} /></div>
+          <button
+            type="button"
+            aria-label={`Duplicate ${t.name}`}
+            title="Duplicate list"
+            disabled={pending}
+            onClick={() => start(async () => {
+              const r = await duplicateTemplate(t.id);
+              if (r.error) show(r.error, "bad");
+              else show(`Made “${r.name}”. It's Off until you turn it on.`);
+            })}
+            className="grid size-10 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-ink sm:size-8"
+          >
+            <CopyPlus className="size-3.5" />
+          </button>
           <button
             type="button"
             aria-label={`Delete ${t.name}`}
@@ -81,8 +99,18 @@ function TemplateCard({ t, positions }: { t: TemplateView; positions: { id: stri
           ))}
         </ol>
       )}
-      <AddRow placeholder="Add a step, e.g. Bleach the drains" label={`Add a step to ${t.name}`} onAdd={(title) => addItem(t.id, title)} />
+      <AddRow
+        placeholder="Add a step, e.g. Bleach the drains (or paste a list)"
+        label={`Add a step to ${t.name}`}
+        onAdd={(title) => addItem(t.id, title)}
+        onPasteLines={async (text) => {
+          const r = await addItems(t.id, text);
+          if (!r.error) show(`Added ${r.added} step${r.added === 1 ? "" : "s"}`);
+          return r;
+        }}
+      />
     </Card>
+    </>
   );
 }
 
@@ -110,9 +138,12 @@ function StepButtons({ id, first, last, title }: { id: string; first: boolean; l
   const [pending, start] = useTransition();
   const btn = "grid size-10 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-ink disabled:opacity-30 sm:size-7";
   return (
-    <div className={cx("flex shrink-0 items-center", pending && "opacity-50")}>
-      <button type="button" className={cx(btn, "hidden sm:grid")} aria-label={`Move ${title} up`} disabled={first || pending} onClick={() => start(async () => { await moveItem(id, -1); })}><ArrowUp className="size-3.5" /></button>
-      <button type="button" className={cx(btn, "hidden sm:grid")} aria-label={`Move ${title} down`} disabled={last || pending} onClick={() => start(async () => { await moveItem(id, 1); })}><ArrowDown className="size-3.5" /></button>
+    <div className={cx("flex shrink-0 items-start sm:items-center", pending && "opacity-50")}>
+      {/* Phones: up and down stacked, so they're big enough to tap and leave room for the step. */}
+      <div className="flex flex-col sm:flex-row">
+        <button type="button" className={btn} aria-label={`Move ${title} up`} disabled={first || pending} onClick={() => start(async () => { await moveItem(id, -1); })}><ArrowUp className="size-3.5" /></button>
+        <button type="button" className={btn} aria-label={`Move ${title} down`} disabled={last || pending} onClick={() => start(async () => { await moveItem(id, 1); })}><ArrowDown className="size-3.5" /></button>
+      </div>
       <button type="button" className={cx(btn, "hover:bg-bad-bg hover:text-bad")} aria-label={`Delete step ${title}`} disabled={pending} onClick={async () => {
         if (!(await confirm({ title: "Delete this step?", body: `${title}. Past ticks for it go too — set it to Off to keep them.`, confirmLabel: "Delete", danger: true }))) return;
         start(async () => { await deleteItem(id); });

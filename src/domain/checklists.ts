@@ -214,3 +214,26 @@ export const LINKABLE_PAGES: { href: string; label: string }[] = [
   { href: "/waste", label: "Log waste" },
   { href: "/count", label: "Counts" },
 ];
+
+/**
+ * Steps pasted as a list (from a doc, a text, a note): one per line, with
+ * bullets, numbers and tick boxes taken off and blank lines dropped.
+ */
+export function splitPastedSteps(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((l) => l.trim().replace(/^(?:[-*•·–]|\d{1,3}[.)]|\[\s?[xX]?\s?\]|[☐☑✓✔])\s*/u, "").trim())
+    .filter(Boolean)
+    .map((l) => l.slice(0, 160))
+    .slice(0, 100);
+}
+
+/** A name for a copied list that isn't taken: "Closing (copy)", then "Closing (copy 2)". */
+export function copyName(name: string, taken: readonly string[]): string {
+  const base = name.replace(/\s*\(copy(?: \d+)?\)$/, "");
+  const used = new Set(taken.map((t) => t.toLowerCase()));
+  for (let n = 1; ; n++) {
+    const candidate = `${base} (copy${n === 1 ? "" : ` ${n}`})`.slice(0, 80);
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+}

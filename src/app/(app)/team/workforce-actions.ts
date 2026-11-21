@@ -3,7 +3,9 @@
 import { parseISODate } from "@/domain/dates";
 import { ONBOARDING_KINDS, PROVIDERS, parseProvider } from "@/domain/onboarding";
 import { parseRecognition, shoutoutPoints, type RecognitionConfig } from "@/domain/recognition";
+import { parseAmount } from "@/lib/amount";
 import { requireUser } from "@/server/auth";
+import { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
 import { inBackground } from "@/server/services/notify";
 import { closeIfComplete, savePayrollProvider, startOnboarding } from "@/server/services/newHires";
@@ -29,6 +31,8 @@ const hire = z.object({
   positionIds: z.array(z.string()).min(1, "Pick at least one position."),
   startDate: z.string().regex(ISO, "Pick a start date."),
   templateId: z.string().optional(),
+  /** Base hourly rate as typed ("$16.50"); blank uses each position's rate. */
+  hourlyRate: z.string().trim().max(12).optional(),
 });
 
 /** Add a new person and start their checklist in one go. */
@@ -37,10 +41,13 @@ export async function addNewHire(input: z.input<typeof hire>): Promise<Res> {
   const p = hire.safeParse(input);
   if (!p.success) return { error: p.error.issues[0]?.message };
   const { name, email, phone, positionIds, startDate, templateId } = p.data;
+  const rate = p.data.hourlyRate ? parseAmount(p.data.hourlyRate) : null;
+  if (rate != null && (rate < 0 || rate > 500)) return { error: "Pay rate: an hourly amount, like 16.50." };
+  if (p.data.hourlyRate && rate == null) return { error: "Pay rate: an hourly amount, like 16.50." };
   const exists = await db.employee.findFirst({ where: { name: { equals: name, mode: "insensitive" }, active: true } });
   if (exists) return { error: `${exists.name} is already on the team — start their checklist from the list below.` };
   const emp = await db.employee.create({
-    data: { name, email: email || null, phone: phone?.trim() || null, startDate: parseISODate(startDate), positions: { create: positionIds.map((positionId) => ({ positionId })) } },
+    data: { name, email: email || null, phone: phone?.trim() || null, startDate: parseISODate(startDate), hourlyRate: rate == null ? null : new Prisma.Decimal(rate.toFixed(2)), positions: { create: positionIds.map((positionId) => ({ positionId })) } },
   });
   const r = await startOnboarding({ employeeId: emp.id, templateId: templateId || null, startDate, by: me.name });
   refresh();
