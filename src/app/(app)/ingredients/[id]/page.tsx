@@ -1,5 +1,5 @@
 import { LineChart } from "@/components/line-chart";
-import { Badge, Button, Card, Input, PageHeader, Section, Select } from "@/components/ui";
+import { Badge, Card, PageHeader, Section } from "@/components/ui";
 import { addDays } from "@/domain/dates";
 import { formatBase, STANDARD_UNITS_BY_BASE, type BaseUnit } from "@/domain/units";
 import { money, shortDate } from "@/lib/format";
@@ -12,17 +12,18 @@ import { businessToday } from "@/server/services/sales";
 import { countUnitsFor } from "@/server/services/inventory";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { addConversion, removeConversion, setPackSize, setPreferredProduct, unlinkProduct } from "../actions";
 import { IngredientForm } from "./ingredient-form";
 import { HelpTip, HelpZone } from "@/components/help";
 import { AllergenChips } from "./allergen-chips";
 import { AddPack } from "./add-pack";
+import { AddPrice } from "./add-price";
+import { AddUnitForm, PackForm, RemoveUnitButton } from "./unit-forms";
 
 export default async function IngredientPage({ params }: { params: Promise<{ id: string }> }) {
   await requireUser("MANAGER");
   const { id } = await params;
   const isNew = id === "new";
-  const [ing, categories, areas, allProducts] = await Promise.all([
+  const [ing, categories, areas, allProducts, suppliers] = await Promise.all([
     isNew ? null : db.ingredient.findUnique({
       where: { id },
       include: {
@@ -34,6 +35,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
     db.ingredient.findMany({ distinct: ["category"], select: { category: true } }),
     db.ingredient.findMany({ distinct: ["storageArea"], select: { storageArea: true } }),
     isNew ? [] : db.supplierProduct.findMany({ where: { active: true, OR: [{ ingredientId: null }, { ingredientId: { not: id } }] }, select: { id: true, sku: true, description: true, packText: true, supplier: { select: { name: true } }, ingredient: { select: { name: true } } }, orderBy: { description: "asc" } }),
+    isNew ? [] : db.supplier.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } }),
   ]);
   if (!isNew && !ing) notFound();
 
@@ -100,7 +102,14 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
         <div className="min-w-0 space-y-6 lg:col-span-3">
           <Section help="ingredients.boughtAs" title={<span className="inline-flex items-center gap-1.5">Bought as <HelpTip id="ingredients.boughtAs" /></span>} description="Supplier products linked to this ingredient: every pack it comes in. The one marked “Sets cost” prices recipes." className="mb-0">
             {ing.products.length === 0 ? (
-              <Card className="p-5 text-sm text-muted">Not linked to any supplier product yet. Link one from <Link href="/prices?filter=unlinked" className="text-ink underline">Prices</Link>.</Card>
+              <Card>
+                <AddPrice ingredientId={ing.id} name={ing.name} units={packUnits} defaultUnit={base === "g" ? "lb" : base === "ml" ? "gal" : "each"} suppliers={suppliers.map((x) => x.name)} />
+                {allProducts.length > 0 && (
+                  <div className="border-t border-border">
+                    <AddPack ingredientId={ing.id} products={allProducts.map((p) => ({ id: p.id, label: `${p.description}${p.packText ? ` · ${p.packText}` : ""}`, hint: `${p.supplier.name} #${p.sku}${p.ingredient ? ` · now on ${p.ingredient.name}` : ""}` }))} placeholder="Or link a product you already have…" />
+                  </div>
+                )}
+              </Card>
             ) : (
               <Card className="divide-y divide-border">
                 {ing.products.map((p) => {
@@ -122,23 +131,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
                           {price != null && pack ? <div className="text-xs text-muted">{money((price / pack) * disp.factor)} / {disp.unit}</div> : null}
                         </div>
                       </div>
-                      <form action={setPackSize.bind(null, p.id)} className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
-                          <span className="text-muted">1</span>
-                          <Input name="purchaseUnit" defaultValue={p.purchaseUnit} className="h-10 min-w-0 flex-1 sm:h-8 sm:w-20 sm:flex-none" aria-label="Purchase unit" />
-                          <span className="text-muted">=</span>
-                          <Input name="amount" type="number" step="any" min={0} defaultValue={pack ? Number((pack / (base === "g" ? 453.59237 : base === "ml" ? 3785.411784 : 1)).toFixed(3)) : ""} placeholder="?" className="num h-10 min-w-0 flex-1 text-right sm:h-8 sm:w-24 sm:flex-none" aria-label="Pack amount" />
-                          <Select name="unit" defaultValue={base === "g" ? "lb" : base === "ml" ? "gal" : "each"} className="h-10 w-24 shrink-0 sm:h-8" aria-label="Pack unit">
-                            {packUnits.map((u) => <option key={u}>{u}</option>)}
-                          </Select>
-                        </div>
-                        <Button size="sm" className="h-10 sm:h-8">Save pack</Button>
-                        {!pack && <span className="inline-flex items-center gap-1.5"><Badge tone="warn">Pack size needed for costing</Badge><HelpTip id="ingredients.packSize" /></span>}
-                        <span className="ml-auto flex gap-1">
-                          {!isPreferred && <Button size="sm" variant="ghost" className="h-10 sm:h-8" formAction={setPreferredProduct.bind(null, ing.id, p.id)}>Use for cost</Button>}
-                          <Button size="sm" variant="ghost" className="h-10 sm:h-8" formAction={unlinkProduct.bind(null, ing.id, p.id)}>Unlink</Button>
-                        </span>
-                      </form>
+                      <PackForm ingredientId={ing.id} productId={p.id} purchaseUnit={p.purchaseUnit} amount={pack ? Number((pack / (base === "g" ? 453.59237 : base === "ml" ? 3785.411784 : 1)).toFixed(3)) : null} defaultUnit={base === "g" ? "lb" : base === "ml" ? "gal" : "each"} units={packUnits} hasPack={!!pack} isPreferred={isPreferred} />
                     </div>
                   );
                 })}
@@ -189,23 +182,12 @@ export default async function IngredientPage({ params }: { params: Promise<{ id:
           <Section help="ingredients.customUnits" title={<span className="inline-flex items-center gap-1.5">Custom units <HelpTip id="ingredients.customUnits" /></span>} description={`For recipes and counts — e.g. 1 slice = 21 g. Base unit is ${base}.`} className="mb-0">
             <Card className="divide-y divide-border">
               {ing.conversions.map((c) => (
-                <form key={c.id} action={removeConversion.bind(null, ing.id, c.id)} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                <div key={c.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
                   <span>1 {c.unit} <span className="text-muted">=</span> <span className="num">{formatBase(c.baseQty.toNumber(), base)}</span></span>
-                  <Button size="sm" variant="ghost" className="h-10 sm:h-8">Remove</Button>
-                </form>
-              ))}
-              <form action={addConversion.bind(null, ing.id)} className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
-                <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
-                  <span className="text-muted">1</span>
-                  <Input name="unit" placeholder="slice" className="h-10 min-w-0 flex-1 sm:h-8 sm:w-28 sm:flex-none" required aria-label="Unit name" />
-                  <span className="text-muted">=</span>
-                  <Input name="amount" type="number" step="any" min={0} placeholder="21" className="num h-10 min-w-0 flex-1 text-right sm:h-8 sm:w-24 sm:flex-none" required aria-label="Amount" />
-                  <Select name="amountUnit" defaultValue={base} className="h-10 w-24 shrink-0 sm:h-8" aria-label="Amount unit">
-                    {STANDARD_UNITS_BY_BASE[base].map((u) => <option key={u}>{u}</option>)}
-                  </Select>
+                  <RemoveUnitButton ingredientId={ing.id} conversionId={c.id} unit={c.unit} usedBy={ing.recipeLines.filter((l) => l.recipe.active && l.unit.trim().toLowerCase() === c.unit.trim().toLowerCase()).length} />
                 </div>
-                <Button size="sm" className="h-10 w-full sm:h-8 sm:w-auto">Add unit</Button>
-              </form>
+              ))}
+              <AddUnitForm ingredientId={ing.id} base={base} units={STANDARD_UNITS_BY_BASE[base]} />
             </Card>
           </Section>
         </div>

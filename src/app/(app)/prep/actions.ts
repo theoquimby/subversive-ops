@@ -58,12 +58,48 @@ export async function prepAction(input: PrepActionForm): Promise<{ ok: true } | 
 const FIELDS = ["onList", "parBase", "shelfLifeDays", "rounding", "station", "unit"] as const;
 export type PrepField = (typeof FIELDS)[number];
 
+type PrepItem = Awaited<ReturnType<typeof loadPrepItems>>[number];
+
 export async function savePrepField(recipeId: string, field: PrepField, value: string): Promise<{ error?: string }> {
   await requireUser("MANAGER");
   if (!FIELDS.includes(field)) return { error: "Unknown field." };
   const items = await loadPrepItems();
   const item = items.find((i) => i.id === recipeId);
   if (!item) return { error: "That prep item isn't there any more." };
+  const r = await writePrepField(item, field, value);
+  if (!r.error) refresh();
+  return r;
+}
+
+/** Fields the setup table can set on many prep items at once. */
+const BULK_FIELDS = ["onList", "station", "shelfLifeDays", "rounding"] as const;
+const bulkPrep = z.object({ ids: z.array(z.string().min(1).max(64)).min(1).max(1000), field: z.enum(BULK_FIELDS), value: z.string().max(80) });
+const BULK_WORD: Record<(typeof BULK_FIELDS)[number], (v: string) => string> = {
+  onList: (v) => (v === "on" ? "Put on the prep list" : "Took off the prep list"),
+  station: (v) => (v.trim() ? `Moved to ${v.trim()}` : "Cleared the station on"),
+  shelfLifeDays: (v) => (v.trim() ? `Set keeps ${v.trim()} days on` : "Cleared keeps on"),
+  rounding: (v) => `Set rounding to ${v === "batch" ? "whole batches" : v === "half" ? "half batches" : "exact amounts"} on`,
+};
+
+/** One value for several prep items (Prep setup's bulk actions). The first problem is shown and nothing is half-saved. */
+export async function bulkSavePrepField(ids: string[], field: (typeof BULK_FIELDS)[number], value: string): Promise<{ error?: string; message?: string }> {
+  await requireUser("MANAGER");
+  const p = bulkPrep.safeParse({ ids, field, value });
+  if (!p.success) return { error: "Pick at least one prep item." };
+  const byId = new Map((await loadPrepItems()).map((i) => [i.id, i]));
+  const items = p.data.ids.flatMap((id) => byId.get(id) ?? []);
+  if (!items.length) return { error: "Those prep items aren't there any more." };
+  // Check the value once before writing any (the same value fails the same way for each).
+  const first = await writePrepField(items[0], p.data.field, p.data.value);
+  if (first.error) return first;
+  for (const item of items.slice(1)) await writePrepField(item, p.data.field, p.data.value);
+  refresh();
+  const n = items.length;
+  return { message: `${BULK_WORD[p.data.field](p.data.value)} ${n} prep item${n === 1 ? "" : "s"}.` };
+}
+
+async function writePrepField(item: PrepItem, field: PrepField, value: string): Promise<{ error?: string }> {
+  const recipeId = item.id;
   const v = String(value ?? "").trim();
   // A first save keeps the item's current on-list default (portions start off).
   const data: Prisma.PrepSettingUncheckedCreateInput = { recipeId, onList: item.settings.onList };
@@ -113,7 +149,6 @@ export async function savePrepField(recipeId: string, field: PrepField, value: s
   void _on;
   const update = field === "onList" ? { ...rest, onList: data.onList } : rest;
   await db.prepSetting.upsert({ where: { recipeId }, create: data, update });
-  refresh();
   return {};
 }
 

@@ -4,7 +4,7 @@
  */
 import { alcoholClash } from "./alcohol";
 import { fuzzyScore } from "./search";
-import { normalizeUnit, standardUnit, STANDARD_UNITS_BY_BASE } from "./units";
+import { normalizeUnit, standardUnit, STANDARD_UNITS_BY_BASE, type BaseUnit } from "./units";
 
 export interface QuickItem {
   id: string;
@@ -126,6 +126,17 @@ export function parseQuickLine(raw: string, items: QuickItem[]): ParsedLine | nu
   }
   const unitForItem = best ? (unit && best.units.map(normalizeUnit).includes(unit) ? best.units[best.units.map(normalizeUnit).indexOf(unit)] : unit ?? everydayUnit(best.units)) : unit ?? "each";
   return { raw, qty: qty ?? 1, unit: unitForItem, item: best, name, sure: !!best && allWordsIn(name, best.name) && !alcoholClash(name, best.name) };
+}
+
+/**
+ * How a typed line is measured, from its unit: "2 oz pepper jack" is weighed,
+ * "1 cup flour" by volume, "3 dozen eggs" counted. Null when no standard unit
+ * was typed ("pepper jack", "2 cheddar", "2 slices cheddar"), so a new
+ * ingredient's measure has to be asked.
+ */
+export function typedMeasure(raw: string): BaseUnit | null {
+  const { unit } = splitQtyUnit(raw);
+  return (unit && standardUnit(unit)?.base) || null;
 }
 
 /**

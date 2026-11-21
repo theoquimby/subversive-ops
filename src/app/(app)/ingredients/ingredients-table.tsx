@@ -4,12 +4,13 @@ import { BulkPick, BulkValue, DataTable, DetailRow, Sparkline, type Column, type
 import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
 import { Badge, cx, EmptyState, LinkButton } from "@/components/ui";
+import { ALLERGENS, allergenLabel } from "@/domain/allergens";
 import { money, qty as fmtQty, shortDate } from "@/lib/format";
 import { setIngredientField } from "@/server/actions/inline";
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { useMemo } from "react";
-import { archiveIngredients, bulkSetIngredients, bulkSetMinOnHand } from "./actions";
+import { archiveIngredients, bulkSetIngredients, bulkSetMinOnHand, bulkTagAllergen } from "./actions";
 import { ArchiveIngredientButton } from "./archive-buttons";
 import { MinOnHandCell } from "./min-on-hand-cell";
 
@@ -31,12 +32,16 @@ export interface IngredientRow {
   /** Minimum on hand, in the count unit. */
   par: number | null;
   hasSupplier: boolean;
+  /** Allergen ids tagged on it (see src/domain/allergens.ts). */
+  allergens: string[];
   recipes: string[];
   products: { id: string; supplier: string; description: string; sku: string; pack: string | null; unit: string; preferred: boolean }[];
   history: { date: string; price: number }[];
 }
 
 const below = (i: IngredientRow) => i.par != null && i.onHand != null && i.onHand < i.par;
+const ALLERGEN_OPTIONS = ALLERGENS.map((a) => ({ value: a.id, label: a.label }));
+const shortAllergen = (id: string) => ALLERGENS.find((a) => a.id === id)?.short ?? id;
 
 /** `areas`: storage areas in walking order (Counts → storage areas), plus any in use. */
 export function IngredientsTable({ rows, areas: areaNames }: { rows: IngredientRow[]; areas: string[] }) {
@@ -95,6 +100,15 @@ export function IngredientsTable({ rows, areas: areaNames }: { rows: IngredientR
         ),
     },
     { id: "par", header: "Min on hand", help: "ingredients.minOnHand", align: "right", edit: true, width: 120, sort: (i) => i.par, csv: (i) => i.par, cell: (i) => <MinOnHandCell id={i.id} value={i.par} unit={i.countUnit} /> },
+    {
+      id: "allergens",
+      header: "Allergens",
+      help: "ingredients.allergens",
+      width: 170,
+      sort: (i) => i.allergens.length ? i.allergens.map(shortAllergen).join(", ") : null,
+      csv: (i) => i.allergens.map(allergenLabel).join("; "),
+      cell: (i) => (i.allergens.length ? <span className="text-ink-2">{i.allergens.map(shortAllergen).join(", ")}</span> : <span className="text-muted">—</span>),
+    },
     { id: "recipes", header: "Used in", align: "right", firstDir: "desc", sort: (i) => i.recipes.length, csv: (i) => i.recipes.length, cell: (i) => (i.recipes.length ? <span className="text-ink-2">{i.recipes.length}</span> : <span className="text-muted">—</span>), defaultHidden: true },
     { id: "products", header: "Products", align: "right", firstDir: "desc", sort: (i) => i.products.length, csv: (i) => i.products.length, cell: (i) => <span className="text-ink-2">{i.products.length || "—"}</span>, defaultHidden: true },
   ], []);
@@ -102,6 +116,7 @@ export function IngredientsTable({ rows, areas: areaNames }: { rows: IngredientR
   const filters = useMemo<Filter<IngredientRow>[]>(() => [
     { id: "category", label: "Category", kind: "facet", values: (i) => i.category, param: "category" },
     { id: "storage", label: "Storage", kind: "facet", values: (i) => i.storage, options: areas.filter((a) => rows.some((r) => r.storage === a.value)), param: "storage" },
+    { id: "allergen", label: "Allergen", kind: "facet", values: (i) => (i.allergens.length ? i.allergens : ["none"]), options: [...ALLERGEN_OPTIONS, { value: "none", label: "None tagged" }], param: "allergen" },
     { id: "nosupplier", label: "No supplier", kind: "toggle", test: (i) => !i.hasSupplier, tone: "warn" },
     { id: "noprice", label: "No price", kind: "toggle", test: (i) => i.cost == null, tone: "warn" },
     { id: "below", label: "Below minimum", kind: "toggle", test: below, tone: "bad", param: "below" },
@@ -149,6 +164,10 @@ export function IngredientsTable({ rows, areas: areaNames }: { rows: IngredientR
           <BulkPick label="Storage" options={areas} allowNew newLabel="New area" disabled={api.pending} onPick={(v) => api.run(() => bulkSetIngredients(api.keys, "storageArea", v))} />
           <BulkValue label="Buffer" suffix="%" placeholder="10" disabled={api.pending} onApply={(v) => api.run(() => bulkSetIngredients(api.keys, "safetyPct", v || "10"))} />
           <BulkValue label="Min on hand" placeholder="blank clears" disabled={api.pending} onApply={(v) => api.run(() => bulkSetMinOnHand(api.keys, v))} />
+          <BulkPick label="Tag allergen" options={ALLERGEN_OPTIONS} disabled={api.pending} onPick={(v) => api.run(() => bulkTagAllergen(api.keys, v, true))} />
+          {api.rows.some((r) => r.allergens.length) && (
+            <BulkPick label="Untag allergen" options={ALLERGEN_OPTIONS.filter((a) => api.rows.some((r) => r.allergens.includes(a.value)))} disabled={api.pending} onPick={(v) => api.run(() => bulkTagAllergen(api.keys, v, false))} />
+          )}
           <button type="button" disabled={api.pending} className="inline-flex h-8 items-center rounded-lg px-2.5 text-sm font-medium text-bad hover:bg-bad-bg disabled:opacity-50" onClick={async () => {
             const used = api.rows.filter((r) => r.recipes.length).length;
             if (await confirm({ title: `Archive ${api.keys.length - used} ingredient${api.keys.length - used === 1 ? "" : "s"}?`, body: `They drop out of counts, ordering and this list; price history is kept.${used ? ` ${used} still in recipes will be skipped.` : ""}`, confirmLabel: "Archive", danger: true })) api.run(() => archiveIngredients(api.keys));
@@ -178,6 +197,7 @@ function IngredientDetail({ i }: { i: IngredientRow }) {
         <DetailRow label="Yield">{i.yieldPct}%</DetailRow>
         <DetailRow label="Order buffer">{i.bufferPct}%</DetailRow>
         <DetailRow label="Min on hand">{i.par == null ? "—" : `${i.par} ${i.countUnit}`}</DetailRow>
+        <DetailRow label="Allergens">{i.allergens.length ? i.allergens.map(allergenLabel).join(", ") : <span className="text-muted">None tagged</span>}</DetailRow>
       </section>
       <section>
         <div className="mb-2 text-xs font-medium text-muted">Price of the preferred product</div>

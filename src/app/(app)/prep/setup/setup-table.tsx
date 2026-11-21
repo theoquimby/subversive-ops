@@ -1,13 +1,15 @@
 "use client";
 
-import { DataTable, type Column, type Filter, type GroupBy } from "@/components/data-table";
+import { BulkPick, BulkValue, DataTable, type Column, type Filter, type GroupBy } from "@/components/data-table";
 import { GridCell, GridSelect } from "@/components/grid";
 import { HelpTip } from "@/components/help";
 import { Badge, cx } from "@/components/ui";
 import type { PrepRounding, PrepStatus } from "@/domain/prep";
+import { ArrowUpRight } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AutoSwitch, SaveStatus } from "../../settings/controls";
-import { saveCoverDays, savePrepField } from "../actions";
+import { bulkSavePrepField, saveCoverDays, savePrepField } from "../actions";
 
 export interface SetupRow {
   id: string;
@@ -53,7 +55,10 @@ function SetupDrawer({ r }: { r: SetupRow }) {
   );
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">One batch makes {r.batchText}{r.dailyText ? ` · about ${r.dailyText} used a service day` : ""}.</p>
+      <p className="text-sm text-muted">
+        One batch makes {r.batchText}{r.dailyText ? ` · about ${r.dailyText} used a service day` : ""}.{" "}
+        <Link href={`/menu/${r.id}`} className="font-medium text-ink-2 underline underline-offset-2 hover:text-ink">Open the recipe</Link>
+      </p>
       <div className="flex items-center justify-between gap-3">
         <div><div className="text-sm font-medium text-ink">On the prep list</div><div className="text-xs text-muted">Off for portions or things made to order.</div></div>
         {e.onList}
@@ -71,7 +76,17 @@ function SetupDrawer({ r }: { r: SetupRow }) {
 
 export function PrepSetupTable({ rows, stations }: { rows: SetupRow[]; stations: string[] }) {
   const columns = useMemo<Column<SetupRow>[]>(() => [
-    { id: "name", header: "Prep item", width: 200, hideable: false, sort: (r) => r.name, csv: (r) => r.name, cell: (r) => <div className="min-w-0"><div className={cx("truncate font-medium", !r.onList && "text-muted")}>{r.name}</div><div className="text-xs text-muted">Batch {r.batchText}</div></div> },
+    {
+      id: "name", header: "Prep item", width: 220, hideable: false, sort: (r) => r.name, csv: (r) => r.name,
+      cell: (r) => (
+        <div className="flex min-w-0 items-center gap-1">
+          <div className="min-w-0 flex-1"><div className={cx("truncate font-medium", !r.onList && "text-muted")}>{r.name}</div><div className="text-xs text-muted">Batch {r.batchText}</div></div>
+          <Link href={`/menu/${r.id}`} onClick={(e) => e.stopPropagation()} className="relative shrink-0 rounded-md p-1.5 text-muted after:absolute after:-inset-1 after:content-[''] hover:bg-surface-2 hover:text-ink" aria-label={`Open the ${r.name} recipe`}>
+            <ArrowUpRight className="size-4" />
+          </Link>
+        </div>
+      ),
+    },
     { id: "onList", header: "On list", help: "prep.setup.onList", width: 130, edit: true, sort: (r) => (r.onList ? 1 : 0), csv: (r) => (r.onList ? "yes" : "no"), cell: (r) => <div className="px-2">{editors(r, "prep").onList}</div> },
     { id: "station", header: "Station", help: "prep.setup.station", width: 140, edit: true, sort: (r) => r.station, csv: (r) => r.station, cell: (r) => editors(r, "prep").station },
     { id: "unit", header: "Counted in", help: "prep.setup.unit", width: 150, edit: true, sort: (r) => r.unitLabel, csv: (r) => r.unitLabel, cell: (r) => editors(r, "prep").unit },
@@ -108,6 +123,15 @@ export function PrepSetupTable({ rows, stations }: { rows: SetupRow[]; stations:
       tours={{ root: "prep.setup-table" }}
       drawer={(r) => <SetupDrawer r={r} />}
       drawerTitle={(r) => r.name}
+      rowHref={(r) => `/menu/${r.id}`}
+      bulkActions={(api) => (
+        <>
+          <BulkPick label="On list" options={[{ value: "on", label: "Put on the list" }, { value: "off", label: "Take off the list" }]} disabled={api.pending} onPick={(v) => api.run(() => bulkSavePrepField(api.keys, "onList", v))} />
+          <BulkPick label="Station" options={stations.map((s) => ({ value: s, label: s }))} allowNew newLabel="New station" disabled={api.pending} onPick={(v) => api.run(() => bulkSavePrepField(api.keys, "station", v))} />
+          <BulkValue label="Keeps" suffix="days" placeholder="blank clears" disabled={api.pending} onApply={(v) => api.run(() => bulkSavePrepField(api.keys, "shelfLifeDays", v))} />
+          <BulkPick label="Round to" options={ROUNDING} disabled={api.pending} onPick={(v) => api.run(() => bulkSavePrepField(api.keys, "rounding", v))} />
+        </>
+      )}
       card={(r) => ({
         title: r.name,
         subtitle: `${r.station || r.category} · batch ${r.batchText}`,

@@ -1,8 +1,9 @@
 "use client";
 
 import { Badge, Button, Card, cx, DatePicker, Field, LinkButton, Select, Table, Td, Th, Tr } from "@/components/ui";
+import { Checkbox } from "@/components/data-table";
 import { FileDrop, type FileDropHandle } from "@/components/file-drop";
-import type { ColumnMapping } from "@/domain/priceSheet";
+import { looksLikeMisread, MISREAD_CHANGE, type ColumnMapping } from "@/domain/priceSheet";
 import { money, signedPct } from "@/lib/format";
 import type { ImportPreview } from "@/server/services/priceImport";
 import { useRef, useState, useTransition } from "react";
@@ -26,6 +27,9 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ newProducts: number; priceChanges: number } | null>(null);
   const [pending, start] = useTransition();
+  // Rows unticked here are left out of the save (a misread price, a product you don't buy).
+  const [skip, setSkip] = useState<Set<string>>(new Set());
+  const toggle = (sku: string) => setSkip((cur) => { const next = new Set(cur); if (next.has(sku)) next.delete(sku); else next.add(sku); return next; });
 
   const runPreview = (override?: Partial<ColumnMapping>) =>
     start(async () => {
@@ -40,12 +44,13 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
       if (res.error) return setError(res.error);
       setPreview(res.preview!);
       setMapping(res.preview!.mapping);
+      setSkip(new Set());
     });
 
   const commit = () =>
     start(async () => {
       if (!preview) return;
-      const res = await commitPriceSheet({ supplierId, filename: fileRef.current?.file?.name ?? "upload", effectiveDate, mapping: mapping as ColumnMapping, rows: preview.rows });
+      const res = await commitPriceSheet({ supplierId, filename: fileRef.current?.file?.name ?? "upload", effectiveDate, mapping: mapping as ColumnMapping, rows: preview.rows.filter((r) => !skip.has(r.sku)) });
       setDone(res);
     });
 
@@ -65,6 +70,8 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
   }
 
   const d = preview?.diff;
+  const misreads = d ? d.changed.filter((c) => looksLikeMisread(c.changePct)) : [];
+  const ready = preview ? preview.rows.filter((r) => !skip.has(r.sku)).length : 0;
   return (
     <div className="space-y-6">
       <Card className="p-5">
@@ -119,20 +126,35 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
             <Count label="Rows skipped" n={preview!.errors.length} tone={preview!.errors.length ? "bad" : undefined} />
           </HelpZone>
 
+          {misreads.length > 0 && (
+            <p role="status" className="rounded-lg bg-warn-bg px-4 py-3 text-sm text-warn">
+              {misreads.length === 1 ? "One price changed" : `${misreads.length} prices changed`} by more than {Math.round(MISREAD_CHANGE * 100)}%. That&apos;s often a misread column or a different pack size. Check {misreads.length === 1 ? "it" : "them"} below and untick any that look wrong.
+            </p>
+          )}
+
           {d.changed.length > 0 && (
             <HelpZone id="prices.import.changes">
               <h2 className="mb-2 text-sm font-semibold">Price changes</h2>
               <Table>
-                <thead><tr><Th>Item</Th><Th align="right">Was</Th><Th align="right">Now</Th><Th align="right">Change</Th></tr></thead>
+                <thead><tr><Th className="w-12"><span className="sr-only">Save</span></Th><Th>Item</Th><Th align="right">Was</Th><Th align="right">Now</Th><Th align="right">Change</Th></tr></thead>
                 <tbody>
-                  {d.changed.map((c) => (
-                    <Tr key={c.row.sku}>
-                      <Td><div className="font-medium">{c.row.description}</div><div className="text-xs text-muted">#{c.row.sku} {c.row.packText && `· ${c.row.packText}`}</div></Td>
-                      <Td align="right" className="text-muted">{money(c.oldPrice)}</Td>
-                      <Td align="right">{money(c.row.price)}</Td>
-                      <Td align="right"><Badge tone={c.changePct > 0 ? "bad" : "good"}>{signedPct(c.changePct)}</Badge></Td>
-                    </Tr>
-                  ))}
+                  {d.changed.map((c) => {
+                    const off = skip.has(c.row.sku);
+                    return (
+                      <Tr key={c.row.sku} className={cx(off && "opacity-50")}>
+                        <Td className="w-12 px-1"><Checkbox checked={!off} onChange={() => toggle(c.row.sku)} label={`Save the new price for ${c.row.description}`} /></Td>
+                        <Td><div className={cx("font-medium", off && "line-through")}>{c.row.description}</div><div className="text-xs text-muted">#{c.row.sku} {c.row.packText && `· ${c.row.packText}`}{off && " · left out"}</div></Td>
+                        <Td align="right" className="text-muted">{money(c.oldPrice)}</Td>
+                        <Td align="right">{money(c.row.price)}</Td>
+                        <Td align="right">
+                          <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                            {looksLikeMisread(c.changePct) && <Badge tone="warn">Check this</Badge>}
+                            <Badge tone={c.changePct > 0 ? "bad" : "good"}>{signedPct(c.changePct)}</Badge>
+                          </span>
+                        </Td>
+                      </Tr>
+                    );
+                  })}
                 </tbody>
               </Table>
             </HelpZone>
@@ -142,8 +164,18 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
             <details className="group">
               <summary className="cursor-pointer text-sm font-semibold">New products <span className="num font-normal text-muted">{d.newProducts.length}</span></summary>
               <Table className="mt-2">
-                <tbody>{d.newProducts.slice(0, 200).map((r) => <Tr key={r.sku}><Td>{r.description}<span className="ml-2 text-xs text-muted">#{r.sku}</span></Td><Td align="right">{money(r.price)}</Td></Tr>)}</tbody>
+                <tbody>{d.newProducts.slice(0, 200).map((r) => {
+                  const off = skip.has(r.sku);
+                  return (
+                    <Tr key={r.sku} className={cx(off && "opacity-50")}>
+                      <Td className="w-12 px-1"><Checkbox checked={!off} onChange={() => toggle(r.sku)} label={`Add ${r.description}`} /></Td>
+                      <Td className={cx(off && "line-through")}>{r.description}<span className="ml-2 text-xs text-muted">#{r.sku}</span></Td>
+                      <Td align="right">{money(r.price)}</Td>
+                    </Tr>
+                  );
+                })}</tbody>
               </Table>
+              {d.newProducts.length > 200 && <p className="mt-2 text-xs text-muted">Showing the first 200. The other {d.newProducts.length - 200} are added too.</p>}
             </details>
           )}
           {preview!.errors.length > 0 && (
@@ -158,8 +190,8 @@ export function ImportWizard({ suppliers, today }: { suppliers: { id: string; na
 
           <div className={cx("sticky bottom-0 -mx-4 flex items-center justify-end gap-3 border-t border-border bg-bg/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8")}>
             <HelpZone id="prices.import.save" className="flex flex-1 items-center justify-end gap-3">
-            <span className="text-sm text-muted">{preview!.rows.length} rows ready</span>
-            <Button variant="primary" onClick={commit} disabled={pending || preview!.rows.length === 0}>{pending ? "Saving…" : "Save prices"}</Button>
+            <span className="text-sm text-muted">{ready} row{ready === 1 ? "" : "s"} ready{skip.size ? `, ${skip.size} left out` : ""}</span>
+            <Button variant="primary" onClick={commit} pending={pending && !!preview} disabled={ready === 0}>{pending ? "Saving…" : "Save prices"}</Button>
             </HelpZone>
           </div>
         </>

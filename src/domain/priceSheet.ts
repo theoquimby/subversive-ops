@@ -156,6 +156,10 @@ export interface PriceDiff {
   missing: CurrentProduct[];
 }
 
+/** A change this big (up or down) is more often a misread column or pack than a real price move. */
+export const MISREAD_CHANGE = 0.4;
+export const looksLikeMisread = (changePct: number) => Math.abs(changePct) > MISREAD_CHANGE;
+
 export function diffPrices(rows: ParsedRow[], current: CurrentProduct[]): PriceDiff {
   const bySku = new Map(current.map((c) => [c.sku, c]));
   const inSheet = new Set(rows.map((r) => r.sku));

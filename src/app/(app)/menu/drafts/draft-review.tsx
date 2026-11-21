@@ -1,10 +1,12 @@
 "use client";
 
 import { useConfirm } from "@/components/dialog";
+import { useUnsavedGuard } from "@/components/form-hooks";
 import { HelpTip, HelpZone } from "@/components/help";
 import { Badge, Button, Card, cx, EmptyState, Field, Input, Select, Textarea } from "@/components/ui";
-import { parseQuickLine, type QuickItem } from "@/domain/quickAdd";
+import { everydayUnit, parseQuickLine, typedMeasure, type ParsedLine, type QuickItem } from "@/domain/quickAdd";
 import { draftCost, type DraftItem, type DraftLine } from "@/domain/recipeDraft";
+import { leftOutText, linesLeftOut } from "@/domain/recipeEntry";
 import { STANDARD_UNITS_BY_BASE, standardUnit, type BaseUnit, type CustomConversion } from "@/domain/units";
 import { money, pct, qty as fmtQty } from "@/lib/format";
 import type { StoredDraft } from "@/server/services/recipe-drafts";
@@ -12,7 +14,8 @@ import { Camera, Check, ClipboardPaste, Plus, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
-import { acceptRecipeDraft, acceptRecipeDrafts, discardRecipeDrafts, draftEmptyRecipes, readRecipePhotos, readRecipeText } from "./actions";
+import { NewItemChoices } from "../new-item-choices";
+import { acceptRecipeDraft, acceptRecipeDrafts, discardRecipeDrafts, draftEmptyRecipes, readRecipePhotos, readRecipeText, type DraftEdit } from "./actions";
 
 export interface ReviewCatalog {
   items: { key: string; name: string; kind: "ingredient" | "recipe"; baseUnit: BaseUnit; units: string[]; conversions: CustomConversion[]; costPerBase: number | null }[];
@@ -23,7 +26,34 @@ type Msg = { error?: string; message?: string } | null;
 
 const YIELD_UNITS = [...STANDARD_UNITS_BY_BASE.ml, ...STANDARD_UNITS_BY_BASE.g, ...STANDARD_UNITS_BY_BASE.each];
 const KIND_LABEL = { MENU: "Menu item", MODIFIER: "Add-on", PREP: "Prep recipe" } as const;
+const KIND_OPTIONS = (Object.keys(KIND_LABEL) as (keyof typeof KIND_LABEL)[]).map((k) => ({ value: k, label: KIND_LABEL[k] }));
+const MEASURE_OPTIONS: { value: BaseUnit; label: string }[] = [{ value: "g", label: "By weight" }, { value: "ml", label: "By volume" }, { value: "each", label: "By count" }];
 const METHOD_LABEL = { similar: "Copied from a similar recipe", keywords: "From the name", ai: "Drafted by Claude", photo: "Read from a photo", text: "Read from your text" } as const;
+
+// ---- A draft as edited on its card ---------------------------------------------------------
+
+type EditLine = DraftLine & { k: string };
+type CardState = Omit<StoredDraft, "lines"> & { lines: EditLine[] };
+const newK = () => Math.random().toString(36).slice(2);
+/** The card as stored; line keys come from the draft so it can be rebuilt the same way on every render. */
+const initCard = (d: StoredDraft): CardState => ({ ...d, lines: d.lines.map((l, i) => ({ ...l, k: `${d.id}:${i}` })) });
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const newBase = (l: DraftLine): BaseUnit => l.newBaseUnit ?? standardUnit(l.unit)?.base ?? "each";
+
+/** What Accept sends: the card exactly as edited. */
+function toInput(d: CardState): DraftEdit {
+  const isPrep = d.kind === "PREP";
+  return {
+    name: d.name, kind: d.kind, category: d.category, menuPrice: isPrep ? null : d.menuPrice, yieldQty: d.yieldQty, yieldUnit: d.yieldUnit, notes: d.notes,
+    lines: d.lines.map((l) => ({ itemKey: l.itemKey, newName: l.itemKey ? null : l.newName?.trim() || null, newBaseUnit: l.itemKey ? null : newBase(l), qty: Number.isFinite(l.qty) ? l.qty : 0, unit: l.unit })),
+  };
+}
+
+/** Lines Accept leaves out (no item or name, or no amount), said on the card instead of dropped quietly. */
+function cardLeftOut(d: CardState, index: { byKey: Map<string, DraftItem> }): string | null {
+  const out = linesLeftOut(d.lines.map((l) => ({ ...l, ingredientId: l.itemKey ?? (l.newName?.trim() ? "new" : null), subRecipeId: null })));
+  return leftOutText(out, out.noAmount.map((l) => (l.itemKey ? index.byKey.get(l.itemKey)?.name : l.newName) ?? "a line"));
+}
 
 export function DraftReview({ drafts, catalog, ai, aiNote, emptyRecipes, forRecipe, targets }: {
   drafts: StoredDraft[];
@@ -40,10 +70,16 @@ export function DraftReview({ drafts, catalog, ai, aiNote, emptyRecipes, forReci
   const [msg, setMsg] = useState<Msg>(null);
   // Saved drafts leave the list on refresh; keep a line for each with a link to the recipe.
   const [saved, setSaved] = useState<{ id: string; recipeId: string; message: string }[]>([]);
+  // Cards someone has edited, by draft id. Untouched cards are rebuilt from the stored draft.
+  const [cards, setCards] = useState<Record<string, CardState>>({});
   const run = (fn: () => Promise<Msg>) => start(async () => { setMsg(null); const r = await fn(); setMsg(r); router.refresh(); });
+  const forget = (ids: string[]) => setCards((cur) => { const next = { ...cur }; for (const id of ids) delete next[id]; return next; });
 
   const index = useMemo(() => ({ byKey: new Map(catalog.items.map((i) => [i.key, { ...i, category: "", kind: i.kind } as DraftItem])) }), [catalog]);
-  const ids = drafts.map((d) => d.id);
+  const live = drafts.filter((d) => !saved.some((x) => x.id === d.id));
+  const cardOf = (d: StoredDraft) => cards[d.id] ?? initCard(d);
+  const edited = live.filter((d) => cards[d.id]).length;
+  useUnsavedGuard(edited > 0, { title: "Leave without accepting?", body: `Your edits to ${edited === 1 ? "a draft" : `${edited} drafts`} aren't saved. The drafts stay, but the edits will be lost.` });
 
   return (
     <div className="space-y-8">
@@ -62,25 +98,46 @@ export function DraftReview({ drafts, catalog, ai, aiNote, emptyRecipes, forReci
         </div>
       )}
 
-      {drafts.length === 0 ? (
-        <EmptyState title="No drafts waiting">
-          Draft recipes from <Link href="/sales/square-menu" className="underline underline-offset-2">Menu from Square</Link> (tick items → Draft recipes), from empty recipes, or from a photo or pasted recipe above.
-        </EmptyState>
+      {live.length === 0 ? (
+        saved.length ? null : (
+          <EmptyState title="No drafts waiting">
+            Draft recipes from <Link href="/sales/square-menu" className="underline underline-offset-2">Menu from Square</Link> (tick items → Draft recipes), from empty recipes, or from a photo or pasted recipe above.
+          </EmptyState>
+        )
       ) : (
         <HelpZone id="menu.drafts.review">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold">{drafts.length} draft{drafts.length === 1 ? "" : "s"} to review <HelpTip id="menu.drafts.review" /></h2>
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold">{live.length} draft{live.length === 1 ? "" : "s"} to review <HelpTip id="menu.drafts.review" /></h2>
             <div className="flex gap-2">
               <Button size="sm" variant="ghost" disabled={pending} onClick={async () => {
-                if (await confirm({ title: `Discard ${drafts.length} draft${drafts.length === 1 ? "" : "s"}?`, body: "Your recipes stay as they are.", confirmLabel: "Discard", danger: true })) run(() => discardRecipeDrafts(ids));
+                if (await confirm({ title: `Discard ${live.length} draft${live.length === 1 ? "" : "s"}?`, body: `Your recipes stay as they are.${edited ? " Your edits to the drafts go too." : ""}`, confirmLabel: "Discard", danger: true })) {
+                  const ids = live.map((d) => d.id);
+                  run(async () => { const r = await discardRecipeDrafts(ids); if (!r.error) forget(ids); return r; });
+                }
               }}>Discard all</Button>
-              <Button size="sm" variant="primary" disabled={pending} onClick={async () => {
-                if (await confirm({ title: `Accept ${drafts.length} draft${drafts.length === 1 ? "" : "s"} as they are?`, body: "Each becomes a recipe with these lines. Lines marked new add an ingredient with no price yet. You can change any recipe later.", confirmLabel: "Accept all" })) run(() => acceptRecipeDrafts(ids));
-              }}><Check className="size-3.5" />Accept all</Button>
+              <Button size="sm" variant="primary" pending={pending} onClick={async () => {
+                const body = `Each becomes a recipe with the lines on its card${edited ? ", including your edits" : ""}. Lines marked new add an ingredient with no price yet. You can change any recipe later.`;
+                if (!(await confirm({ title: `Accept ${live.length} draft${live.length === 1 ? "" : "s"}?`, body, confirmLabel: "Accept all" }))) return;
+                const list = live.map((d) => ({ id: d.id, input: toInput(cardOf(d)) }));
+                run(async () => { const r = await acceptRecipeDrafts(list); if (r.ids) forget(r.ids); return r; });
+              }}>{!pending && <Check className="size-3.5" />}Accept all</Button>
             </div>
           </div>
           <div className="space-y-4">
-            {drafts.filter((d) => !saved.some((x) => x.id === d.id)).map((d) => <DraftCard key={d.id} draft={d} catalog={catalog} index={index} target={(d.target.recipeId ? targets[d.target.recipeId] : null) ?? catalog.defaultTarget} onSaved={(recipeId, message) => setSaved((cur) => [...cur, { id: d.id, recipeId, message }])} />)}
+            {live.map((d) => (
+              <DraftCard
+                key={d.id}
+                draft={d}
+                d={cardOf(d)}
+                edited={!!cards[d.id]}
+                update={(fn) => setCards((cur) => ({ ...cur, [d.id]: fn(cur[d.id] ?? initCard(d)) }))}
+                catalog={catalog}
+                index={index}
+                target={(d.target.recipeId ? targets[d.target.recipeId] : null) ?? catalog.defaultTarget}
+                onSaved={(recipeId, message) => { setSaved((cur) => [...cur, { id: d.id, recipeId, message }]); forget([d.id]); }}
+                onDiscarded={() => forget([d.id])}
+              />
+            ))}
           </div>
         </HelpZone>
       )}
@@ -225,21 +282,30 @@ function Intake({ ai, aiNote, emptyRecipes, forRecipe, startOpen, onDone }: { ai
 
 // ---- One draft ----------------------------------------------------------------------------
 
-type EditLine = DraftLine & { k: string };
-const newK = () => Math.random().toString(36).slice(2);
-
-function DraftCard({ draft, catalog, index, target, onSaved }: { draft: StoredDraft; catalog: ReviewCatalog; index: { byKey: Map<string, DraftItem> }; target: number; onSaved: (recipeId: string, message: string) => void }) {
+function DraftCard({ draft, d, edited, update, catalog, index, target, onSaved, onDiscarded }: {
+  draft: StoredDraft;
+  d: CardState;
+  edited: boolean;
+  update: (fn: (cur: CardState) => CardState) => void;
+  catalog: ReviewCatalog;
+  index: { byKey: Map<string, DraftItem> };
+  target: number;
+  onSaved: (recipeId: string, message: string) => void;
+  onDiscarded: () => void;
+}) {
   const router = useRouter();
-  const [d, setD] = useState(() => ({ ...draft, lines: draft.lines.map((l) => ({ ...l, k: newK() })) as EditLine[] }));
+  const confirm = useConfirm();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<Msg>(null);
   const [quick, setQuick] = useState("");
+  const [quickMsg, setQuickMsg] = useState<string | null>(null);
 
   const isPrep = d.kind === "PREP";
   const cost = draftCost(d, index);
   const over = cost.foodCostPct != null && cost.foodCostPct > target;
-  const newLines = new Set(d.lines.filter((l) => !l.itemKey).map((l) => (l.newName ?? "").trim().toLowerCase())).size;
+  const newLines = new Set(d.lines.filter((l) => !l.itemKey && l.newName?.trim()).map((l) => (l.newName ?? "").trim().toLowerCase())).size;
   const priced = cost.lines.some((c) => c != null);
+  const leftOut = cardLeftOut(d, index);
 
   const options = useMemo(() => [
     ...catalog.items.filter((i) => i.kind === "ingredient").map((i) => ({ value: i.key, label: i.name, group: "Ingredients" })),
@@ -247,38 +313,60 @@ function DraftCard({ draft, catalog, index, target, onSaved }: { draft: StoredDr
   ], [catalog, draft.target.recipeId]);
   const quickItems = useMemo<QuickItem[]>(() => catalog.items.map((i) => ({ id: i.key, name: i.name, units: i.units })), [catalog]);
 
-  const setLine = (k: string, patch: Partial<EditLine>) => setD((cur) => ({ ...cur, lines: cur.lines.map((l) => (l.k === k ? { ...l, ...patch } : l)) }));
+  const set = (patch: Partial<CardState>) => update((cur) => ({ ...cur, ...patch }));
+  const setLine = (k: string, patch: Partial<EditLine>) => update((cur) => ({ ...cur, lines: cur.lines.map((l) => (l.k === k ? { ...l, ...patch } : l)) }));
   const pick = (l: EditLine, key: string) => {
     if (key.startsWith("new:")) return setLine(l.k, { itemKey: null });
     const it = index.byKey.get(key)!;
     setLine(l.k, { itemKey: key, unit: it.units.includes(l.unit) ? l.unit : it.units[0] });
   };
+  /** A new ingredient line is measured by weight, volume or count; the unit follows when it no longer fits. */
+  const setMeasure = (l: EditLine, base: BaseUnit) => setLine(l.k, { newBaseUnit: base, unit: standardUnit(l.unit)?.base === base ? l.unit : everydayUnit(STANDARD_UNITS_BY_BASE[base]) });
+
+  // Quick add: only sure matches go in by themselves; a guess or a miss asks first, like the recipe editor.
+  const preview = quick.trim() && !quick.includes("\n") ? parseQuickLine(quick, quickItems) : null;
+  const lineFrom = (p: ParsedLine): EditLine => ({ k: newK(), itemKey: p.item!.id, qty: p.qty, unit: p.unit, note: null });
+  const addLines = (lines: EditLine[]) => update((cur) => ({ ...cur, lines: [...cur.lines, ...lines] }));
   const addQuick = (t: string) => {
-    const parsed = t.split(/\r?\n/).map((x) => parseQuickLine(x, quickItems)).filter((p) => p?.item);
-    setD((cur) => ({ ...cur, lines: [...cur.lines, ...parsed.map((p) => ({ k: newK(), itemKey: p!.item!.id, qty: p!.qty, unit: p!.unit, note: null }))] }));
+    const parsed = t.split(/\r?\n/).map((x) => parseQuickLine(x, quickItems)).filter((p): p is ParsedLine => p != null);
+    const ok = parsed.filter((p) => p.item && p.sure);
+    const left = parsed.filter((p) => !(p.item && p.sure)).map((p) => p.raw.trim());
+    if (!ok.length && parsed.length === 1) return; // the choice is on screen under the box
+    addLines(ok.map(lineFrom));
+    setQuick(left.length && parsed.length > 1 ? left.join("\n") : "");
+    setQuickMsg(left.length ? `Added ${ok.length}. Not sure about ${left.length === 1 ? "this one" : `these ${left.length}`}, so ${left.length === 1 ? "it's" : "they're"} left in the box: add ${left.length === 1 ? "it" : "them"} one at a time.` : ok.length > 1 ? `Added ${ok.length} lines` : null);
+  };
+  const takeGuess = (p: ParsedLine) => { addLines([lineFrom(p)]); setQuick(""); setQuickMsg(null); };
+  /** A line for a new ingredient, made when the draft is accepted. */
+  const addNew = (p: ParsedLine, base?: BaseUnit) => {
+    const measured = typedMeasure(p.raw);
+    const b = base ?? measured ?? "each";
+    addLines([{ k: newK(), itemKey: null, newName: cap(p.name), newBaseUnit: b, qty: p.qty, unit: measured ? p.unit : everydayUnit(STANDARD_UNITS_BY_BASE[b]), note: null }]);
     setQuick("");
+    setQuickMsg(`${cap(p.name)} will be a new ingredient when you accept, with no price yet.`);
   };
 
   const accept = () => start(async () => {
     setMsg(null);
-    const r = await acceptRecipeDraft(draft.id, {
-      name: d.name, kind: d.kind, category: d.category, menuPrice: isPrep ? null : d.menuPrice, yieldQty: d.yieldQty, yieldUnit: d.yieldUnit, notes: d.notes,
-      lines: d.lines.map((l) => ({ itemKey: l.itemKey, newName: l.itemKey ? null : l.newName ?? null, newBaseUnit: l.itemKey ? null : l.newBaseUnit ?? (standardUnit(l.unit)?.base ?? "each"), qty: l.qty, unit: l.unit })),
-    });
+    const r = await acceptRecipeDraft(draft.id, toInput(d));
     if (r.error) return setMsg(r);
     onSaved(r.recipeId!, r.message ?? "Saved.");
     router.refresh();
   });
-  const discard = () => start(async () => { setMsg(await discardRecipeDrafts([draft.id])); router.refresh(); });
+  const discard = async () => {
+    if (edited && !(await confirm({ title: `Discard ${d.name || "this draft"}?`, body: "Your edits to it go too. Your recipes stay as they are.", confirmLabel: "Discard", danger: true }))) return;
+    start(async () => { const r = await discardRecipeDrafts([draft.id]); setMsg(r); if (!r.error) onDiscarded(); router.refresh(); });
+  };
 
   return (
     <Card className={cx("overflow-hidden", pending && "opacity-60")} data-draft={draft.id}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0 flex-1">
-          <Input aria-label="Recipe name" value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} className="h-9 max-w-md border-transparent px-1.5 text-base font-semibold hover:border-border focus:border-border-strong" />
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 px-1.5 text-xs text-muted">
-            <span>{KIND_LABEL[d.kind]} · {d.category}</span>
-            <span>· {draft.source}</span>
+          <Input aria-label="Recipe name" value={d.name} onChange={(e) => set({ name: e.target.value })} className="h-9 max-w-md border-transparent px-1.5 text-base font-semibold hover:border-border focus:border-border-strong" />
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 px-1.5 text-xs text-muted">
+            <Select aria-label="Type" value={d.kind} onChange={(e) => set({ kind: e.target.value as CardState["kind"] })} options={KIND_OPTIONS} className="w-36" />
+            <Input aria-label="Category" value={d.category} onChange={(e) => set({ category: e.target.value })} placeholder={isPrep ? "Prep" : "Food"} className="w-32" />
+            <span>{draft.source}</span>
             <Badge tone={d.method === "ai" || d.method === "photo" ? "good" : "neutral"}>{METHOD_LABEL[d.method]}</Badge>
             {draft.basis.length > 0 && <span className="min-w-0 truncate">from {draft.basis.slice(0, 2).join(", ")}</span>}
           </div>
@@ -310,7 +398,7 @@ function DraftCard({ draft, catalog, index, target, onSaved }: { draft: StoredDr
           {!isPrep && (
             <div>
               <div className="text-[0.75rem] text-muted">Price</div>
-              <Input aria-label="Menu price" type="number" inputMode="decimal" step="0.01" min={0} value={d.menuPrice ?? ""} placeholder="0.00" onChange={(e) => setD({ ...d, menuPrice: Number.isFinite(e.target.valueAsNumber) ? e.target.valueAsNumber : null })} className="num mt-0.5 h-8 w-24 text-right" />
+              <Input aria-label="Menu price" type="number" inputMode="decimal" step="0.01" min={0} value={d.menuPrice ?? ""} placeholder="0.00" onChange={(e) => set({ menuPrice: Number.isFinite(e.target.valueAsNumber) ? e.target.valueAsNumber : null })} className="num mt-0.5 h-8 w-24 text-right" />
             </div>
           )}
         </div>
@@ -324,16 +412,17 @@ function DraftCard({ draft, catalog, index, target, onSaved }: { draft: StoredDr
 
       {isPrep && (
         <div className="grid grid-cols-2 gap-3 border-b border-border px-4 py-3 sm:max-w-sm">
-          <Field label="Batch yield"><Input type="number" inputMode="decimal" step="any" min={0} value={Number.isFinite(d.yieldQty) ? d.yieldQty : ""} onChange={(e) => setD({ ...d, yieldQty: e.target.valueAsNumber })} className="num" /></Field>
-          <Field label="Unit"><Select value={d.yieldUnit} onChange={(e) => setD({ ...d, yieldUnit: e.target.value })} options={YIELD_UNITS.map((u) => ({ value: u, label: u }))} aria-label="Yield unit" /></Field>
+          <Field label="Batch yield"><Input type="number" inputMode="decimal" step="any" min={0} value={Number.isFinite(d.yieldQty) ? d.yieldQty : ""} onChange={(e) => set({ yieldQty: e.target.valueAsNumber })} className="num" /></Field>
+          <Field label="Unit"><Select value={d.yieldUnit} onChange={(e) => set({ yieldUnit: e.target.value })} options={YIELD_UNITS.map((u) => ({ value: u, label: u }))} aria-label="Yield unit" /></Field>
         </div>
       )}
 
       <div className="divide-y divide-border">
         {d.lines.map((l, i) => {
           const it = l.itemKey ? index.byKey.get(l.itemKey) : null;
-          const units = it ? it.units : [...new Set([l.unit, ...STANDARD_UNITS_BY_BASE[l.newBaseUnit ?? "each"]])];
+          const units = it ? it.units : [...new Set([l.unit, ...STANDARD_UNITS_BY_BASE[newBase(l)]])];
           const c = cost.lines[i];
+          const noAmount = !(l.qty > 0);
           return (
             <div key={l.k} className="grid grid-cols-[1fr_5rem_6rem_auto] items-center gap-2 px-4 py-2.5 sm:grid-cols-[1fr_6rem_7rem_5.5rem_auto]">
               <div className="col-span-4 sm:col-span-1">
@@ -341,25 +430,28 @@ function DraftCard({ draft, catalog, index, target, onSaved }: { draft: StoredDr
                   aria-label="Item"
                   value={l.itemKey ?? `new:${l.newName}`}
                   onChange={(e) => pick(l, e.target.value)}
-                  options={l.itemKey ? options : [{ value: `new:${l.newName}`, label: `New: ${l.newName}`, group: "New ingredient" }, ...options]}
+                  options={l.itemKey ? options : [{ value: `new:${l.newName}`, label: `New: ${l.newName || "(no name yet)"}`, group: "New ingredient" }, ...options]}
+                  searchable
                 />
               </div>
-              <Input aria-label="Quantity" type="number" inputMode="decimal" step="any" min={0} value={Number.isFinite(l.qty) ? l.qty : ""} onChange={(e) => setLine(l.k, { qty: e.target.valueAsNumber })} className="num text-right" />
+              <Input aria-label="Quantity" aria-invalid={noAmount || undefined} type="number" inputMode="decimal" step="any" min={0} value={Number.isFinite(l.qty) ? l.qty : ""} onChange={(e) => setLine(l.k, { qty: e.target.valueAsNumber })} className={cx("num text-right", noAmount && "border-warn")} />
               <Select aria-label="Unit" value={l.unit} onChange={(e) => setLine(l.k, { unit: e.target.value })} options={[...new Set([...units, l.unit])].map((u) => ({ value: u, label: u }))} />
               <div className={cx("num text-right text-sm", c == null && "text-warn")}>{c != null ? money(c) : !l.itemKey ? "new" : it?.costPerBase == null ? "No price" : "Unit"}</div>
-              <button type="button" onClick={() => setD((cur) => ({ ...cur, lines: cur.lines.filter((x) => x.k !== l.k) }))} className="relative rounded-md p-1.5 text-muted after:absolute after:-inset-1.5 after:content-[''] hover:bg-surface-2 hover:text-ink" aria-label="Remove line">
+              <button type="button" onClick={() => update((cur) => ({ ...cur, lines: cur.lines.filter((x) => x.k !== l.k) }))} className="relative rounded-md p-1.5 text-muted after:absolute after:-inset-1.5 after:content-[''] hover:bg-surface-2 hover:text-ink" aria-label="Remove line">
                 <X className="size-4" />
               </button>
-              {(l.note || !l.itemKey) && (
-                <div className="col-span-full -mt-1 text-xs text-muted">
-                  {!l.itemKey && <Badge tone="warn" className="mr-1.5">New ingredient · no price yet</Badge>}
-                  {l.note}
+              {!l.itemKey && (
+                <div className="col-span-full -mt-1 flex flex-wrap items-center gap-2 text-xs">
+                  <Badge tone="warn">New ingredient · no price yet</Badge>
+                  <Input aria-label="New ingredient name" value={l.newName ?? ""} onChange={(e) => setLine(l.k, { newName: e.target.value })} placeholder="Name it" className="min-w-0 flex-1 sm:max-w-64" />
+                  <Select aria-label="Measured by" value={newBase(l)} onChange={(e) => setMeasure(l, e.target.value as BaseUnit)} options={MEASURE_OPTIONS} className="w-32" />
                 </div>
               )}
+              {l.note && <div className="col-span-full -mt-1 text-xs text-muted">{l.note}</div>}
             </div>
           );
         })}
-        {d.lines.length === 0 && <p className="px-4 py-3 text-sm text-muted">No lines yet — add them below.</p>}
+        {d.lines.length === 0 && <p className="px-4 py-3 text-sm text-muted">No lines yet. Add them below.</p>}
       </div>
 
       <div className="border-t border-border px-4 py-3">
@@ -368,7 +460,7 @@ function DraftCard({ draft, catalog, index, target, onSaved }: { draft: StoredDr
           <textarea
             rows={1}
             value={quick}
-            onChange={(e) => setQuick(e.target.value)}
+            onChange={(e) => { setQuick(e.target.value); setQuickMsg(null); }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (quick.trim()) addQuick(quick); } }}
             onPaste={(e) => { const t = e.clipboardData.getData("text/plain"); if (t.includes("\n")) { e.preventDefault(); addQuick(t); } }}
             placeholder='Add a line: "2 slices bacon"'
@@ -376,22 +468,33 @@ function DraftCard({ draft, catalog, index, target, onSaved }: { draft: StoredDr
             className="block h-10 w-full resize-none rounded-lg border border-dashed border-border-strong bg-transparent py-2.5 pr-3 pl-9 text-sm placeholder:text-muted focus:border-ink-2 focus:border-solid focus:outline-none"
           />
         </div>
-        {quick.trim() && !quick.includes("\n") && (() => {
-          const p = parseQuickLine(quick, quickItems);
-          return <div className="mt-1.5 pl-1 text-xs text-muted">{p?.item ? <>↵ adds <span className="num text-ink">{fmtQty(p.qty)} {p.unit}</span> {p.item.name}</> : <span className="text-warn">No matching ingredient</span>}</div>;
-        })()}
+        {preview?.item && preview.sure ? (
+          <div className="mt-1.5 pl-1 text-xs text-muted">↵ adds <span className="num text-ink">{fmtQty(preview.qty)} {preview.unit}</span> {preview.item.name}</div>
+        ) : preview ? (
+          <div className="mt-2 rounded-lg bg-surface-2 px-3 py-2.5 text-sm">
+            <p className="text-ink-2">
+              {preview.item ? <>Not sure that&apos;s on the list. The closest is <b className="text-ink">{preview.item.name}</b>.</> : <>No ingredient called <b className="text-ink">{preview.name}</b> yet.</>}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {preview.item && <Button size="sm" onClick={() => takeGuess(preview)}>Use {preview.item.name}</Button>}
+              <NewItemChoices name={preview.name} measure={typedMeasure(quick)} primary={!preview.item} onIngredient={(base) => addNew(preview, base)} />
+            </div>
+          </div>
+        ) : quickMsg ? (
+          <div className="mt-1.5 pl-1 text-xs text-muted">{quickMsg}</div>
+        ) : null}
       </div>
 
       {d.notes && <details className="border-t border-border px-4 py-2 text-xs text-muted"><summary className="cursor-pointer py-1">Notes kept with the recipe</summary><p className="whitespace-pre-wrap pb-1">{d.notes}</p></details>}
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface-2/40 px-4 py-3">
-        <span className={cx("text-sm", msg?.error ? "text-bad" : "text-muted")}>
-          {msg?.error ?? (draft.target.recipeId ? "Fills the empty recipe" : draft.target.squareIds.length ? `Creates the recipe and links ${draft.target.squareIds.length} Square item${draft.target.squareIds.length === 1 ? "" : "s"}` : "Creates a new recipe")}
-          {newLines > 0 && !msg?.error ? ` · adds ${newLines} new ingredient${newLines === 1 ? "" : "s"}` : ""}
+        <span role={msg?.error ? "alert" : undefined} className={cx("min-w-0 text-sm", msg?.error ? "text-bad" : leftOut ? "text-warn" : "text-muted")}>
+          {msg?.error ?? leftOut ?? (draft.target.recipeId ? "Fills the empty recipe" : draft.target.squareIds.length ? `Creates the recipe and links ${draft.target.squareIds.length} Square item${draft.target.squareIds.length === 1 ? "" : "s"}` : "Creates a new recipe")}
+          {newLines > 0 && !msg?.error && !leftOut ? ` · adds ${newLines} new ingredient${newLines === 1 ? "" : "s"}` : ""}
         </span>
         <div className="flex gap-2">
           <Button variant="ghost" disabled={pending} onClick={discard}>Discard</Button>
-          <Button variant="primary" disabled={pending || !d.name.trim() || d.lines.length === 0} onClick={accept}><Check className="size-4" />Accept</Button>
+          <Button variant="primary" pending={pending} disabled={!d.name.trim() || d.lines.length === 0} onClick={accept}>{!pending && <Check className="size-4" />}Accept</Button>
         </div>
       </div>
     </Card>

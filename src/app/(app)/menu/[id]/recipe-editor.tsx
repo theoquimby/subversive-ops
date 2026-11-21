@@ -6,10 +6,14 @@ import { money, pct, qty, shortDate } from "@/lib/format";
 import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useConfirm } from "@/components/dialog";
-import { everydayUnit, parseQuickLine, type ParsedLine, type QuickItem } from "@/domain/quickAdd";
-import { archiveRecipe, createIngredientForRecipe, saveRecipe } from "../actions";
+import { useSaveShortcut, useUnsavedGuard } from "@/components/form-hooks";
+import { useToast } from "@/components/toast";
+import { everydayUnit, parseQuickLine, typedMeasure, type ParsedLine, type QuickItem } from "@/domain/quickAdd";
+import { leftOutText, linesLeftOut } from "@/domain/recipeEntry";
+import { archiveRecipe, createIngredientForRecipe, createPrepForRecipe, duplicateRecipe, saveRecipe } from "../actions";
+import { NewItemChoices } from "../new-item-choices";
 import { HelpTip, HelpZone } from "@/components/help";
 import { looksHouseMade, prepTwin } from "@/domain/linking";
 import type { SelectOption } from "@/components/select";
@@ -57,38 +61,10 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
   const [pending, start] = useTransition();
   const dirty = JSON.stringify(r) !== JSON.stringify(initial);
   const confirm = useConfirm();
-  const leaving = useRef(false);
-
+  const [toast, show] = useToast();
   // Warn before losing unsaved edits: tab close/reload, and in-app link clicks (sidebar, back link…).
-  useEffect(() => {
-    if (!dirty) return;
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (leaving.current) return;
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    const onClick = (e: MouseEvent) => {
-      if (leaving.current || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-      const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
-      if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return;
-      const url = new URL(a.href, location.href);
-      if (url.origin !== location.origin) return;
-      if (url.pathname === location.pathname && url.search === location.search) return; // same page / hash link
-      e.preventDefault();
-      e.stopPropagation();
-      void confirm({ title: "Leave without saving?", body: "Your changes to this recipe will be lost.", confirmLabel: "Leave", danger: true }).then((ok) => {
-        if (!ok) return;
-        leaving.current = true;
-        router.push(url.pathname + url.search + url.hash);
-      });
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    document.addEventListener("click", onClick, true);
-    return () => {
-      window.removeEventListener("beforeunload", onBeforeUnload);
-      document.removeEventListener("click", onClick, true);
-    };
-  }, [dirty, confirm, router]);
+  // Saving, archiving and duplicating move on through the router, which the guard doesn't stop.
+  useUnsavedGuard(dirty, { body: "Your changes to this recipe will be lost." });
 
   const archive = async () => {
     if (!r.id) return;
@@ -100,20 +76,19 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
     });
     if (!ok) return;
     start(async () => {
-      leaving.current = true;
       const res = await archiveRecipe(r.id!);
-      if (res?.error) {
-        leaving.current = false;
-        setError(res.error);
-      }
+      if (res?.error) setError(res.error);
     });
   };
 
-  // Ingredients added from this page (quick add's "New ingredient") join the list straight away.
+  // Ingredients and prep recipes added from this page (quick add's "New …") join the lists straight away.
   const [extra, setExtra] = useState<EditorCatalog["ingredients"]>([]);
+  const [extraRecipes, setExtraRecipes] = useState<EditorCatalog["recipes"]>([]);
   const ingredients = useMemo(() => [...catalog.ingredients, ...extra.filter((e) => !catalog.ingredients.some((c) => c.id === e.id))], [catalog, extra]);
+  const recipes = useMemo(() => [...catalog.recipes, ...extraRecipes.filter((e) => !catalog.recipes.some((c) => c.id === e.id))], [catalog, extraRecipes]);
   const ingById = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
-  const recById = useMemo(() => new Map(catalog.recipes.map((x) => [x.id, x])), [catalog]);
+  const recById = useMemo(() => new Map(recipes.map((x) => [x.id, x])), [recipes]);
+  const nameOf = (l: Line) => (l.ingredientId ? ingById.get(l.ingredientId)?.name : l.subRecipeId ? recById.get(l.subRecipeId)?.name : null) ?? "the line";
 
   const lineCost = (l: Line): { cost: number | null; error?: string } => {
     try {
@@ -136,8 +111,8 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
 
   // Quick add: "6 oz ground beef", or paste a whole ingredient list.
   const quickItems = useMemo<(QuickItem & { kind: "i" | "r" })[]>(
-    () => [...ingredients.map((i) => ({ id: i.id, name: i.name, units: i.units, kind: "i" as const })), ...catalog.recipes.map((x) => ({ id: x.id, name: x.name, units: x.units, kind: "r" as const }))],
-    [ingredients, catalog],
+    () => [...ingredients.map((i) => ({ id: i.id, name: i.name, units: i.units, kind: "i" as const })), ...recipes.map((x) => ({ id: x.id, name: x.name, units: x.units, kind: "r" as const }))],
+    [ingredients, recipes],
   );
   const [quick, setQuick] = useState("");
   const [quickMsg, setQuickMsg] = useState<string | null>(null);
@@ -160,21 +135,40 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
     setQuick("");
     setQuickMsg(null);
   };
-  /** Add what was typed as a new ingredient (no price yet), and the line with it. */
-  const newIngredient = (p: ParsedLine, typedUnit: boolean) =>
+  /** Add what was typed as a new ingredient (no price yet), and the line with it. `base`: weight, volume or count when no unit was typed. */
+  const newIngredient = (p: ParsedLine, base?: BaseUnit) =>
     startCreate(async () => {
-      const res = await createIngredientForRecipe({ name: p.name, unit: typedUnit ? p.unit : "" });
+      const measured = typedMeasure(p.raw);
+      const res = await createIngredientForRecipe({ name: p.name, unit: measured ? p.unit : "", base });
       if (res.error || !res.ingredient) return setQuickMsg(res.error ?? "Couldn't add it.");
       const ing = res.ingredient;
       setExtra((cur) => [...cur, { id: ing.id, name: ing.name, baseUnit: ing.baseUnit, costPerUsableBase: null, conversions: [], units: ing.units, packQtyBase: null, source: null }]);
       setR((cur) => ({ ...cur, lines: [...cur.lines, { key: newKey(), ingredientId: ing.id, subRecipeId: null, qty: p.qty, unit: res.unit ?? everydayUnit(ing.units) }] }));
       setQuick("");
-      setQuickMsg(`${ing.name} is on the ingredient list now, with no price yet. Add one on its page or on Prices to cost this line.`);
+      setQuickMsg(`${ing.name} is on the ingredient list now, with no price yet. Tap “Add a price” under its line to cost it.`);
+    });
+  /** Add what was typed as a new prep recipe made here (one batch, no ingredients yet), and the line with it. */
+  const newPrep = (p: ParsedLine) =>
+    startCreate(async () => {
+      const measured = typedMeasure(p.raw);
+      const res = await createPrepForRecipe({ name: p.name, unit: measured ? p.unit : "" });
+      if (res.error || !res.recipe) return setQuickMsg(res.error ?? "Couldn't add it.");
+      const rec = res.recipe;
+      setExtraRecipes((cur) => [...cur, { id: rec.id, name: rec.name, baseUnit: rec.baseUnit, costPerBase: null, units: rec.units, batchCost: null, yieldQty: rec.yieldQty, yieldUnit: rec.yieldUnit }]);
+      setR((cur) => ({ ...cur, lines: [...cur.lines, { key: newKey(), ingredientId: null, subRecipeId: rec.id, qty: p.qty, unit: res.unit ?? rec.units[0] }] }));
+      setQuick("");
+      setQuickMsg(`${rec.name} is a prep recipe now, one batch of ${qty(rec.yieldQty)} ${rec.yieldUnit} for now. After you save, open it to add its ingredients and the real batch size.`);
     });
   /** An empty line, to pick the item from the list. */
   const addBlank = () => setR((cur) => ({ ...cur, lines: [...cur.lines, { key: newKey(), ingredientId: null, subRecipeId: null, qty: 1, unit: "" }] }));
-  // Was a unit typed? ("2 oz pepper jack" yes, "pepper jack" no.)
-  const typedUnit = (raw: string) => /\d\s*[a-z]/i.test(raw);
+  /** Take a line out, with a moment to put it back. */
+  const removeLine = (key: string) => {
+    const idx = r.lines.findIndex((x) => x.key === key);
+    if (idx < 0) return;
+    const line = r.lines[idx];
+    setR((cur) => ({ ...cur, lines: cur.lines.filter((x) => x.key !== key) }));
+    show(`Removed ${nameOf(line)}`, "good", { label: "Undo", onClick: () => setR((cur) => ({ ...cur, lines: cur.lines.some((x) => x.key === key) ? cur.lines : [...cur.lines.slice(0, idx), line, ...cur.lines.slice(idx)] })) });
+  };
 
   const costs = r.lines.map(lineCost);
   const total = costs.reduce((s, c) => s + (c.cost ?? 0), 0);
@@ -210,10 +204,10 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
     };
     return [
       ...ingredients.map((i) => ({ value: `i:${i.id}`, label: i.name, badge: "Ingredient", group: "Ingredients", hint: preview(i.baseUnit, i.costPerUsableBase, i.conversions) })),
-      ...catalog.recipes.map((x) => ({ value: `r:${x.id}`, label: x.name, badge: "Prep recipe", group: "Prep recipes (made here)", hint: preview(x.baseUnit, x.costPerBase) })),
+      ...recipes.map((x) => ({ value: `r:${x.id}`, label: x.name, badge: "Prep recipe", group: "Prep recipes (made here)", hint: preview(x.baseUnit, x.costPerBase) })),
     ];
   };
-  const preps = useMemo(() => catalog.recipes.map((x) => ({ id: x.id, name: x.name })), [catalog]);
+  const preps = useMemo(() => recipes.map((x) => ({ id: x.id, name: x.name })), [recipes]);
   /** Swap an ingredient line for the prep recipe of the same thing, keeping the amount when the unit converts. */
   const swapToPrep = (key: string, recId: string) => {
     const rec = recById.get(recId)!;
@@ -221,25 +215,52 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
     updateLine(key, { ingredientId: null, subRecipeId: recId, unit: rec.units.includes(l.unit) || canConvert(l.unit, rec.baseUnit) ? l.unit : rec.units[0] });
   };
 
+  // Lines a save leaves out (no item picked, or no amount), said before saving rather than dropped quietly.
+  const leftOut = linesLeftOut(r.lines);
+  const leftOutMsg = leftOutText(leftOut, leftOut.noAmount.map(nameOf));
+  const noAmountKeys = new Set(leftOut.noAmount.map((l) => l.key));
+
+  /** Save; the recipe's id on success, null (with the error shown) when it didn't. */
+  const persist = async (): Promise<string | null> => {
+    setError(null);
+    const res = await saveRecipe(r.id, {
+      name: r.name,
+      kind: r.kind,
+      category: r.category,
+      menuPrice: isPrep ? null : r.menuPrice,
+      yieldQty: r.yieldQty,
+      yieldUnit: r.yieldUnit,
+      yieldBase: r.yieldBase,
+      targetFoodCostPct: r.targetFoodCostPct,
+      notes: r.notes,
+      lines: r.lines.filter((l) => (l.ingredientId || l.subRecipeId) && l.qty > 0).map(({ ingredientId, subRecipeId, qty, unit }) => ({ ingredientId, subRecipeId, qty, unit })),
+    });
+    if (res.error) {
+      setError(res.error);
+      return null;
+    }
+    return res.id ?? r.id;
+  };
   const save = () =>
     start(async () => {
-      setError(null);
-      const res = await saveRecipe(r.id, {
-        name: r.name,
-        kind: r.kind,
-        category: r.category,
-        menuPrice: isPrep ? null : r.menuPrice,
-        yieldQty: r.yieldQty,
-        yieldUnit: r.yieldUnit,
-        yieldBase: r.yieldBase,
-        targetFoodCostPct: r.targetFoodCostPct,
-        notes: r.notes,
-        lines: r.lines.filter((l) => (l.ingredientId || l.subRecipeId) && l.qty > 0).map(({ ingredientId, subRecipeId, qty, unit }) => ({ ingredientId, subRecipeId, qty, unit })),
-      });
-      if (res.error) return setError(res.error);
-      if (!r.id && res.id) router.replace(`/menu/${res.id}`);
+      const id = await persist();
+      if (!id) return;
+      if (!r.id) router.replace(`/menu/${id}`);
       else router.refresh();
     });
+  useSaveShortcut(save, dirty && !pending && !!r.name.trim());
+
+  /** A copy with every line, named "… (copy)", opened to edit. Unsaved changes are saved first so the copy has them. */
+  const duplicate = async () => {
+    if (!r.id) return;
+    if (dirty && !(await confirm({ title: "Save and duplicate?", body: "Your changes are saved first, so the copy has them too.", confirmLabel: "Save and duplicate" }))) return;
+    start(async () => {
+      if (dirty && !(await persist())) return;
+      const res = await duplicateRecipe(r.id!);
+      if (res.error || !res.id) return setError(res.error ?? "Couldn't duplicate it.");
+      router.push(`/menu/${res.id}`);
+    });
+  };
 
   return (
     <div className={cx(dirty || error ? "pb-24" : "pb-2")}>
@@ -299,16 +320,16 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
               return (
                 <div key={l.key} className="grid grid-cols-[1fr_5rem_6rem_auto] items-center gap-2 px-4 py-2.5 sm:grid-cols-[1fr_6rem_7rem_5.5rem_auto]">
                   <Select aria-label="Item" value={l.ingredientId ? `i:${l.ingredientId}` : l.subRecipeId ? `r:${l.subRecipeId}` : ""} onChange={(e) => pickItem(l.key, e.target.value)} options={itemOptions(l)} searchable placeholder="Choose an ingredient or prep recipe…" className="col-span-4 sm:col-span-1" />
-                  <Input aria-label="Quantity" type="number" inputMode="decimal" step="any" min={0} value={Number.isFinite(l.qty) ? l.qty : ""} onChange={(e) => updateLine(l.key, { qty: e.target.valueAsNumber })} className="num text-right" />
+                  <Input aria-label="Quantity" aria-invalid={noAmountKeys.has(l.key) || undefined} type="number" inputMode="decimal" step="any" min={0} value={Number.isFinite(l.qty) ? l.qty : ""} onChange={(e) => updateLine(l.key, { qty: e.target.valueAsNumber })} className={cx("num text-right", noAmountKeys.has(l.key) && "border-warn")} />
                   <Select aria-label="Unit" value={l.unit} onChange={(e) => updateLine(l.key, { unit: e.target.value })}>
                     {(units ?? []).map((u) => <option key={u} value={u}>{u}</option>)}
                     {units && !units.includes(l.unit) && <option value={l.unit}>{l.unit}</option>}
                   </Select>
                   <div className={cx("num text-right text-sm", c.cost == null && "text-warn")}>{c.cost != null ? money(c.cost) : c.error ?? "—"}</div>
-                  <button type="button" onClick={() => setR((cur) => ({ ...cur, lines: cur.lines.filter((x) => x.key !== l.key) }))} className="relative rounded-md p-1.5 text-muted after:absolute after:-inset-1.5 after:content-[''] hover:bg-surface-2 hover:text-ink" aria-label="Remove line">
+                  <button type="button" onClick={() => removeLine(l.key)} className="relative rounded-md p-1.5 text-muted after:absolute after:-inset-1.5 after:content-[''] hover:bg-surface-2 hover:text-ink" aria-label="Remove line">
                     <X className="size-4" />
                   </button>
-                  <CostSource line={l} cost={c.cost} ing={l.ingredientId ? ingById.get(l.ingredientId) : undefined} rec={l.subRecipeId ? recById.get(l.subRecipeId) : undefined} />
+                  <CostSource line={l} cost={c.cost} ing={l.ingredientId ? ingById.get(l.ingredientId) : undefined} rec={l.subRecipeId ? recById.get(l.subRecipeId) : undefined} newTab={dirty} />
                   {l.ingredientId && <HouseMadeHint name={ingById.get(l.ingredientId)?.name ?? ""} twin={prepTwin(ingById.get(l.ingredientId)?.name ?? "", preps)} onUse={(id) => swapToPrep(l.key, id)} />}
                 </div>
               );
@@ -336,12 +357,10 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
                 <p className="text-ink-2">
                   {preview.item ? <>Not sure that&apos;s on the list. The closest is <b className="text-ink">{preview.item.name}</b>.</> : <>No ingredient called <b className="text-ink">{preview.name}</b> yet.</>}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   {preview.item && <Button size="sm" onClick={() => takeGuess(preview)}>Use {preview.item.name}</Button>}
-                  <Button size="sm" variant={preview.item ? "ghost" : "secondary"} disabled={creating} onClick={() => newIngredient(preview, typedUnit(quick))}>
-                    <Plus className="size-3.5" />{creating ? "Adding…" : `New ingredient “${preview.name.charAt(0).toUpperCase() + preview.name.slice(1)}”`}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => { addBlank(); setQuick(""); }}>Pick from the list</Button>
+                  <NewItemChoices name={preview.name} measure={typedMeasure(quick)} busy={creating} primary={!preview.item} onIngredient={(base) => newIngredient(preview, base)} onPrep={() => newPrep(preview)} />
+                  <Button size="sm" variant="ghost" disabled={creating} onClick={() => { addBlank(); setQuick(""); }}>Pick from the list</Button>
                 </div>
               </div>
             ) : quickMsg ? (
@@ -387,9 +406,14 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
           )}
           <Field label="Notes"><Input value={r.notes ?? ""} onChange={(e) => update({ notes: e.target.value || null })} placeholder="Plating, portioning…" /></Field>
           {r.id && (
-            <button type="button" className="-mx-2 -my-2 rounded-md px-2 py-2 text-xs text-muted hover:text-bad disabled:opacity-50" disabled={pending} onClick={archive}>
-              Archive recipe
-            </button>
+            <div className="-mx-2 -my-2 flex flex-wrap gap-1">
+              <button type="button" className="rounded-md px-2 py-2 text-xs text-muted hover:text-ink disabled:opacity-50" disabled={pending} onClick={duplicate}>
+                Duplicate recipe
+              </button>
+              <button type="button" className="rounded-md px-2 py-2 text-xs text-muted hover:text-bad disabled:opacity-50" disabled={pending} onClick={archive}>
+                Archive recipe
+              </button>
+            </div>
           )}
         </Card></HelpZone>
       </div>
@@ -398,14 +422,15 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
       {(dirty || error) && (
         <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
           <HelpZone id="menu.editor.save" className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-8">
-            <span className={cx("text-sm", error ? "text-bad" : "text-muted")}>{error ?? "Unsaved changes"}</span>
-            <div className="flex gap-2">
+            <span role={error ? "alert" : undefined} className={cx("min-w-0 text-sm", error ? "text-bad" : leftOutMsg ? "text-warn" : "text-muted")}>{error ?? leftOutMsg ?? (r.name.trim() ? "Unsaved changes" : "Give the recipe a name to save it")}</span>
+            <div className="flex shrink-0 gap-2">
               <Button type="button" variant="ghost" onClick={() => { setR(initial); setError(null); }} disabled={pending}>Discard</Button>
-              <Button type="button" variant="primary" onClick={save} disabled={pending || !r.name.trim()}>{pending ? "Saving…" : "Save"}</Button>
+              <Button type="button" variant="primary" onClick={save} pending={pending} disabled={!r.name.trim()} title="Save (Ctrl+S)">{pending ? "Saving…" : "Save"}</Button>
             </div>
           </HelpZone>
         </div>
       )}
+      {toast}
     </div>
   );
 }
@@ -524,7 +549,7 @@ function CostBreakdown({ rows, total, isPrep, menuPrice, target, yieldText, onCl
  * used and when it was set, and what that works out to per unit. Tap to open
  * the ingredient (or prep recipe) and change it.
  */
-function CostSource({ line, cost, ing, rec }: { line: Line; cost: number | null; ing?: EditorCatalog["ingredients"][number]; rec?: EditorCatalog["recipes"][number] }) {
+function CostSource({ line, cost, ing, rec, newTab }: { line: Line; cost: number | null; ing?: EditorCatalog["ingredients"][number]; rec?: EditorCatalog["recipes"][number]; newTab?: boolean }) {
   if (!ing && !rec) return null;
   const perUnit = cost != null && line.qty > 0 ? `${money(cost / line.qty)} ${/^(each|ea)$/i.test(line.unit) ? "each" : `per ${line.unit}`}` : null;
   const cls = "col-span-full -mt-1 flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-xs text-muted hover:text-ink";
@@ -540,8 +565,9 @@ function CostSource({ line, cost, ing, rec }: { line: Line; cost: number | null;
   const src = ing!.source;
   if (!src) {
     return (
-      <Link href={`/ingredients/${ing!.id}`} className={cx(cls, "text-warn")}>
-        No price yet — link a supplier product or add a price →
+      // With unsaved changes here, the ingredient opens in a new tab so this recipe isn't lost.
+      <Link href={`/ingredients/${ing!.id}#add-price`} target={newTab ? "_blank" : undefined} className={cx(cls, "text-warn")}>
+        No price yet. <span className="font-medium underline underline-offset-2">Add a price</span>{newTab ? " (opens in a new tab)" : ""} →
       </Link>
     );
   }
