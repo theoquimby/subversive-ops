@@ -3,12 +3,14 @@
 import { BulkPick, DataTable, DetailRow, Sparkline, type Column, type Filter, type FilterOption, type GroupBy } from "@/components/data-table";
 import { useConfirm } from "@/components/dialog";
 import { GridCell, GridSelect } from "@/components/grid";
-import { Badge, Button, cx, EmptyState, LinkButton } from "@/components/ui";
+import { Badge, Button, cx, EmptyState, LinkButton, Select } from "@/components/ui";
 import { addDays } from "@/domain/dates";
+import { inferPackQty } from "@/domain/priceSheet";
+import type { BaseUnit } from "@/domain/units";
 import { money, shortDate, signedPct } from "@/lib/format";
 import { linkProductToIngredient, setProductPrice } from "@/server/actions/inline";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { createIngredientsFromProducts, linkProduct, linkProducts, setProductsActive } from "./actions";
 
 export interface PriceRow {
@@ -36,16 +38,49 @@ export interface PriceRow {
 
 const changeBadge = (c: number | null) => (c == null ? <span className="text-muted">—</span> : <Badge tone={c > 0 ? "bad" : "good"}>{signedPct(c)}</Badge>);
 
+const MEASURES: { value: BaseUnit; label: string; word: string }[] = [
+  { value: "g", label: "By weight", word: "weight" },
+  { value: "ml", label: "By volume", word: "volume" },
+  { value: "each", label: "By count", word: "count" },
+];
+/** The measure the pack text points to ("50 LB" is weight), if any. */
+const likelyMeasure = (packText: string | null) => MEASURES.find((m) => inferPackQty(packText, m.value) != null)?.value ?? null;
+
+/** "+ New": make an ingredient from this product, measured by weight, volume or count (the pack's own measure is marked). */
+function NewIngredientPick({ p }: { p: PriceRow }) {
+  const [pending, start] = useTransition();
+  const [value, setValue] = useState("");
+  const likely = likelyMeasure(p.packText);
+  return (
+    <Select
+      value={value}
+      placeholder={pending ? "Adding…" : "+ New"}
+      disabled={pending}
+      variant="cell"
+      className="w-24 shrink-0"
+      aria-label={`New ingredient from ${p.description}, measured by`}
+      options={MEASURES.map((m) => ({ value: m.value, label: `New, ${m.label.toLowerCase()}`, hint: m.value === likely ? "the pack says so" : undefined }))}
+      onChange={(e) => {
+        const base = e.target.value;
+        setValue(base);
+        start(async () => {
+          const fd = new FormData();
+          fd.set("ingredientId", "__new");
+          fd.set("newBase", base);
+          await linkProduct(p.id, fd);
+          setValue("");
+        });
+      }}
+    />
+  );
+}
+
 function LinkCell({ p, ingredients }: { p: PriceRow; ingredients: FilterOption[] }) {
   if (p.ingredientId) return <Link href={`/ingredients/${p.ingredientId}`} className="text-ink-2 hover:text-ink hover:underline">{p.ingredient}</Link>;
   return (
     <div className="flex items-center gap-1">
       <GridSelect value="" options={[{ value: "", label: "Link to ingredient…" }, ...ingredients]} onSave={linkProductToIngredient.bind(null, p.id)} ariaLabel={`Link ${p.description}`} className="max-w-48 min-w-0 border-border text-warn" />
-      <form action={linkProduct.bind(null, p.id)} className="shrink-0">
-        <input type="hidden" name="ingredientId" value="__new" />
-        <input type="hidden" name="newBase" value="g" />
-        <Button size="sm" variant="ghost" title="Create a new ingredient from this product">+ New</Button>
-      </form>
+      <NewIngredientPick p={p} />
     </div>
   );
 }
@@ -170,10 +205,11 @@ export function PricesTable({ rows, ingredients, hiddenView, today }: { rows: Pr
         <>
           {!hiddenView && <BulkPick label="Link to ingredient" options={ingredients} disabled={api.pending} onPick={(id) => api.run(() => linkProducts(api.keys, id))} />}
           {!hiddenView && api.rows.some((r) => !r.ingredientId) && (
-            <Button size="sm" disabled={api.pending} onClick={async () => {
+            <BulkPick label="New ingredient each" options={MEASURES.map((m) => ({ value: m.value, label: m.label }))} disabled={api.pending} onPick={async (base) => {
               const n = api.rows.filter((r) => !r.ingredientId).length;
-              if (await confirm({ title: `Create ${n} ingredient${n === 1 ? "" : "s"}?`, body: "One per product not linked yet, named after it and counted in grams. Fix units afterwards on Ingredients.", confirmLabel: "Create" })) api.run(() => createIngredientsFromProducts(api.keys));
-            }}>New ingredient each</Button>
+              const m = MEASURES.find((x) => x.value === base)!;
+              if (await confirm({ title: `Create ${n} ingredient${n === 1 ? "" : "s"}, measured by ${m.word}?`, body: `One per product not linked yet, named after it. Anything measured another way can be changed afterwards on its ingredient page.`, confirmLabel: "Create" })) api.run(() => createIngredientsFromProducts(api.keys, m.value));
+            }} />
           )}
           {hiddenView ? (
             <Button size="sm" disabled={api.pending} onClick={() => api.run(() => setProductsActive(api.keys, true))}>Restore</Button>

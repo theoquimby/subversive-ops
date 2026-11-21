@@ -46,6 +46,8 @@ export async function saveManualPrices(entries: { productId: string; price: numb
   return { saved: list.length };
 }
 
+const baseSchema = z.enum(["g", "ml", "each"]);
+
 /** Link a supplier product to an existing ingredient, or create the ingredient on the spot. */
 export async function linkProduct(productId: string, form: FormData) {
   await requireUser("MANAGER");
@@ -53,7 +55,7 @@ export async function linkProduct(productId: string, form: FormData) {
   let ingredientId = String(form.get("ingredientId") ?? "");
   if (ingredientId === "__new") {
     const name = String(form.get("newName") ?? "").trim() || product.description;
-    const baseUnit = (String(form.get("newBase") ?? "g") as BaseUnit);
+    const baseUnit = baseSchema.catch("g").parse(form.get("newBase"));
     const existing = await db.ingredient.findUnique({ where: { name } });
     ingredientId = existing?.id ?? (await db.ingredient.create({ data: { name, baseUnit } })).id;
   }
@@ -103,10 +105,13 @@ export async function linkProducts(ids: string[], ingredientId: string): Promise
 }
 
 /** One new ingredient per product, named after it (or linked to an ingredient that already has that name). */
-export async function createIngredientsFromProducts(ids: string[], baseUnit: BaseUnit = "g"): Promise<BulkResult> {
+export async function createIngredientsFromProducts(ids: string[], base: BaseUnit = "g"): Promise<BulkResult> {
   await requireUser("MANAGER");
   const p = productIds.safeParse(ids);
   if (!p.success) return { error: "Pick at least one product." };
+  const b = baseSchema.safeParse(base);
+  if (!b.success) return { error: "Pick weight, volume or count." };
+  const baseUnit = b.data;
   const products = await db.supplierProduct.findMany({ where: { id: { in: p.data }, ingredientId: null } });
   let created = 0;
   for (const product of products) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseQuickLine, QuickItem } from "../quickAdd";
+import { parseQuickLine, QuickItem, typedMeasure } from "../quickAdd";
 
 const items: QuickItem[] = [
   { id: "beef", name: "Ground beef 80/20", units: ["g", "kg", "oz", "lb"] },
@@ -64,5 +64,20 @@ describe("parseQuickLine", () => {
     expect(cider.name).toBe("cider");
     expect(parseQuickLine("12 oz hard cider", bar)!).toMatchObject({ sure: true, item: { id: "hc" } });
     expect(parseQuickLine("1.5 oz bourbon", bar)!).toMatchObject({ sure: true, item: { id: "bourbon" } });
+  });
+});
+
+describe("typedMeasure", () => {
+  it.each([
+    ["2 oz pepper jack", "g"],
+    ["6oz beef", "g"],
+    ["1 1/2 cups flour", "ml"],
+    ["aioli 1 tbsp", "ml"],
+    ["3 dozen eggs", "each"],
+    ["2 cheddar", null],
+    ["pepper jack", null],
+    ["2 slices cheddar", null],
+  ])("%s", (raw, want) => {
+    expect(typedMeasure(raw)).toBe(want);
   });
 });

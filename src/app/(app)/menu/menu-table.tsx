@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
-import { archiveRecipes, bulkSetRecipes } from "./actions";
+import { archiveRecipes, bulkSetRecipes, duplicateRecipes } from "./actions";
 import { draftEmptyRecipes } from "./drafts/actions";
 
 export interface MenuRow {
@@ -166,6 +166,7 @@ export function MenuTable({ rows }: { rows: MenuRow[] }) {
           )}
           <BulkPick label="Category" options={categories} allowNew newLabel="New category" disabled={api.pending} onPick={(v) => api.run(() => bulkSetRecipes(api.keys, "category", v))} />
           <BulkValue label="Target" suffix="%" placeholder="default" disabled={api.pending} onApply={(v) => api.run(() => bulkSetRecipes(api.keys, "targetFoodCostPct", v))} />
+          <button type="button" disabled={api.pending} className="inline-flex h-8 items-center rounded-lg border border-border-strong px-2.5 text-sm font-medium hover:bg-surface-2 disabled:opacity-50" onClick={() => api.run(() => duplicateRecipes(api.keys))}>Duplicate</button>
           <button type="button" disabled={api.pending} className="inline-flex h-8 items-center rounded-lg px-2.5 text-sm font-medium text-bad hover:bg-bad-bg disabled:opacity-50" onClick={async () => {
             if (await confirm({ title: `Archive ${api.keys.length} recipe${api.keys.length === 1 ? "" : "s"}?`, body: "They leave the menu, costing and ordering. Restore them any time from Archived.", confirmLabel: "Archive", danger: true })) api.run(() => archiveRecipes(api.keys));
           }}>Archive</button>

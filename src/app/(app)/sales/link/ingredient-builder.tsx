@@ -1,10 +1,12 @@
 "use client";
 
 import { Button, Input, Select } from "@/components/ui";
-import { everydayUnit, parseQuickLine, type ParsedLine, type QuickItem } from "@/domain/quickAdd";
+import { everydayUnit, parseQuickLine, typedMeasure, type ParsedLine, type QuickItem } from "@/domain/quickAdd";
+import type { BaseUnit } from "@/domain/units";
 import { Plus, X } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
-import { createIngredientForRecipe } from "../../menu/actions";
+import { createIngredientForRecipe, createPrepForRecipe } from "../../menu/actions";
+import { NewItemChoices } from "../../menu/new-item-choices";
 
 /**
  * Ingredient lines for a recipe being created, without leaving the page: type
@@ -50,15 +52,23 @@ export function IngredientBuilder({ parts, lines, onChange }: { parts: Part[]; l
     const part = partOf(preview);
     if (part && preview.sure) add(part, preview.qty, preview.unit);
   };
-  const addNew = (p: ParsedLine) =>
+  const addNew = (p: ParsedLine, base?: BaseUnit) =>
     start(async () => {
-      const typedUnit = /\d\s*[a-z]/i.test(text);
-      const res = await createIngredientForRecipe({ name: p.name, unit: typedUnit ? p.unit : "" });
+      const res = await createIngredientForRecipe({ name: p.name, unit: typedMeasure(p.raw) ? p.unit : "", base });
       if (res.error || !res.ingredient) return setMsg(res.error ?? "Couldn't add it.");
       const part: Part = { id: res.ingredient.id, kind: "i", name: res.ingredient.name, units: res.ingredient.units };
       setExtra((x) => [...x, part]);
       add(part, p.qty, res.unit ?? everydayUnit(part.units));
       setMsg(`${part.name} is on the ingredient list now, with no price yet.`);
+    });
+  const addPrep = (p: ParsedLine) =>
+    start(async () => {
+      const res = await createPrepForRecipe({ name: p.name, unit: typedMeasure(p.raw) ? p.unit : "" });
+      if (res.error || !res.recipe) return setMsg(res.error ?? "Couldn't add it.");
+      const part: Part = { id: res.recipe.id, kind: "r", name: res.recipe.name, units: res.recipe.units };
+      setExtra((x) => [...x, part]);
+      add(part, p.qty, res.unit ?? part.units[0]);
+      setMsg(`${part.name} is a prep recipe now, one batch of ${res.recipe.yieldQty} ${res.recipe.yieldUnit} for now. Add its ingredients on Menu costs later.`);
     });
 
   return (
@@ -102,7 +112,7 @@ export function IngredientBuilder({ parts, lines, onChange }: { parts: Part[]; l
         <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-2 px-3 py-2 text-sm">
           <span className="text-ink-2">{preview.item ? <>Not sure. The closest is <b className="text-ink">{preview.item.name}</b>.</> : <>No ingredient called <b className="text-ink">{preview.name}</b> yet.</>}</span>
           {preview.item && <Button size="sm" onClick={() => add(partOf(preview)!, preview.qty, preview.unit)}>Use {preview.item.name}</Button>}
-          <Button size="sm" variant="ghost" disabled={creating} onClick={() => addNew(preview)}><Plus className="size-3.5" />{creating ? "Adding…" : `New ingredient “${preview.name.charAt(0).toUpperCase() + preview.name.slice(1)}”`}</Button>
+          <NewItemChoices name={preview.name} measure={typedMeasure(text)} busy={creating} primary={!preview.item} onIngredient={(base) => addNew(preview, base)} onPrep={() => addPrep(preview)} />
         </div>
       ) : msg ? (
         <p className="pl-1 text-xs text-muted">{msg}</p>
