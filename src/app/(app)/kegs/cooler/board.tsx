@@ -10,6 +10,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { sendOrQueue } from "../queue";
+import { Sheet } from "../../count/item-sheet";
+import { useToast } from "@/components/toast";
 
 interface Spot { id: string; area: string; name: string }
 
@@ -18,7 +20,7 @@ interface Spot { id: string; area: string; name: string }
  * color (full = solid, empty = outline). Filter by beer, or "Find the next…"
  * to light up the oldest full keg of it. On a tablet or desktop, drag a tile
  * to another spot (or tap a tile, then tap a spot); on a phone it's a list
- * grouped by spot. The beers offered are core beers always (a core beer with
+ * grouped by spot, and tapping a keg opens a sheet to pick the spot it went to. The beers offered are core beers always (a core beer with
  * nothing in here shows 0), others while there's beer in stock.
  */
 export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer, manager }: { areas: string[]; boardAreas: string[]; spots: Spot[]; kegs: BoardKeg[]; beers: { id: string; name: string; color: string; retired?: boolean }[]; initialBeer: string | null; manager: boolean }) {
@@ -27,7 +29,7 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
   const [find, setFind] = useState<string>(initialBeer ?? "");
   const [picked, setPicked] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [toast, show] = useToast();
   const [pending, start] = useTransition();
   const shownAreas = boardAreas.length ? boardAreas : areas.slice(0, 1);
   const [area, setArea] = useState(shownAreas[0] ?? "");
@@ -48,14 +50,21 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
   ];
   const elsewhere = kegs.filter((k) => !k.area || !shownAreas.includes(k.area));
 
-  const move = (kegId: string, spotId: string | null) => {
+  // Phone: the keg tapped in the list, to move it from a sheet.
+  const [moving, setMoving] = useState<BoardKeg | null>(null);
+  const move = (kegId: string, spotId: string | null, toArea = area) => {
     const k = kegs.find((x) => x.id === kegId);
-    if (!k || (k.spotId === spotId && k.area === area)) { setPicked(null); return; }
+    setMoving(null);
+    if (!k || (k.spotId === spotId && k.area === toArea)) { setPicked(null); return; }
     start(async () => {
-      const r = await sendOrQueue({ kegId, action: "MOVE", area, spotId, label: `Moved ${k.beer ?? displayCode(k.code)}` });
+      const r = await sendOrQueue({ kegId, action: "MOVE", area: toArea, spotId, label: `Moved ${k.beer ?? displayCode(k.code)}` });
       setPicked(null);
-      if ("error" in r) setMsg(r.error);
-      else { setMsg(r.queued ? "Saved on this device; it sends when there's signal." : `Moved ${k.beer ?? displayCode(k.code)}.`); router.refresh(); }
+      if ("error" in r) show(r.error, "bad");
+      else {
+        const to = spotId ? spots.find((s) => s.id === spotId)?.name : toArea;
+        show(r.queued ? "Saved on this device. It sends when there's signal." : `Moved ${k.beer ?? displayCode(k.code)}${to ? ` to ${to}` : ""}.`, r.queued ? "queued" : "good");
+        router.refresh();
+      }
     });
   };
 
@@ -107,7 +116,7 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
         </div>
       )}
 
-      {msg && <p className="text-sm text-ink-2">{msg}</p>}
+      {toast}
       {picked && <p className="rounded-xl bg-surface-2 px-4 py-2.5 text-sm">Tap the spot it moved to. <button className="ml-2 font-medium underline" onClick={() => setPicked(null)}>Cancel</button></p>}
 
       {/* Tablet/desktop: spots side by side, drag or tap to move */}
@@ -138,7 +147,7 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
           <section key={c.key}>
             <h3 className="mb-1.5 flex items-center justify-between px-1 text-xs font-semibold text-ink-2">{c.name}<span className="num font-normal text-muted">{c.kegs.filter(visible).length}</span></h3>
             <ShowMore limit={10} noun={["keg", "kegs"]} className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-              {nextFirst(c.kegs.filter(visible), nextId).map((k) => <KegRow key={k.id} k={k} highlight={k.id === nextId} />)}
+              {nextFirst(c.kegs.filter(visible), nextId).map((k) => <KegRow key={k.id} k={k} highlight={k.id === nextId} onTap={() => setMoving(k)} />)}
             </ShowMore>
           </section>
         ))}
@@ -149,11 +158,40 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
         <section>
           <h3 className="mb-1.5 flex items-center justify-between px-1 text-xs font-semibold text-ink-2">Elsewhere<span className="num font-normal text-muted">{elsewhere.filter(visible).length}</span></h3>
           <ShowMore limit={10} noun={["keg", "kegs"]} className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-            {nextFirst(elsewhere.filter(visible), nextId).map((k) => <KegRow key={k.id} k={k} highlight={k.id === nextId} showArea />)}
+            {nextFirst(elsewhere.filter(visible), nextId).map((k) => <KegRow key={k.id} k={k} highlight={k.id === nextId} showArea onTap={() => setMoving(k)} />)}
           </ShowMore>
         </section>
       )}
       {manager && <p className="text-xs text-muted">Spots are set on <Link className="underline" href="/kegs/setup#spots">Kegs → Setup</Link>.</p>}
+
+      {moving && (
+        <Sheet title={<>{moving.beer ?? "Empty keg"} <span className="num text-sm font-normal text-muted">{displayCode(moving.code)}</span></>} label="Move this keg" onClose={() => setMoving(null)}>
+          <div className="space-y-4 pb-2">
+            <p className="text-sm text-muted">Now in {[moving.area, spots.find((s) => s.id === moving.spotId)?.name ?? (moving.area ? "no spot" : null)].filter(Boolean).join(" · ") || "no spot"}. Tap where it went.</p>
+            {shownAreas.map((a) => {
+              const here = spots.filter((s) => s.area === a);
+              const options = [...here.map((s) => ({ id: s.id as string | null, name: s.name })), { id: null, name: here.length ? "No spot" : a }];
+              return (
+                <section key={a}>
+                  {shownAreas.length > 1 && <h3 className="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">{a}</h3>}
+                  <div className="grid grid-cols-2 gap-2">
+                    {options.map((o) => {
+                      const current = moving.area === a && (moving.spotId ?? null) === o.id;
+                      return (
+                        <button key={o.id ?? "none"} type="button" disabled={pending || current} onClick={() => move(moving.id, o.id, a)}
+                          className={cx("min-h-12 rounded-xl border px-3 text-left text-sm font-medium transition-colors duration-120 active:bg-surface-2", current ? "border-ink bg-surface-2 text-ink" : "border-border-strong text-ink-2")}>
+                          {o.name}{current && <span className="block text-xs font-normal text-muted">here now</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+            <Link href={`/kegs/k/${moving.code}`} className="flex min-h-11 items-center justify-center rounded-xl text-sm font-medium text-ink-2 hover:bg-surface-2">Open the keg</Link>
+          </div>
+        </Sheet>
+      )}
     </div>
   );
 }
@@ -194,17 +232,18 @@ function KegTile({ k, dim, highlight, picked, draggable, onPick }: { k: BoardKeg
   );
 }
 
-function KegRow({ k, highlight, showArea }: { k: BoardKeg; highlight: boolean; showArea?: boolean }) {
+/** A keg in the phone list. Tap it to move it to another spot (or open it from there). */
+function KegRow({ k, highlight, showArea, onTap }: { k: BoardKeg; highlight: boolean; showArea?: boolean; onTap: () => void }) {
   const c = beerColor(k.color);
   const full = isFull(k.status);
   return (
-    <Link href={`/kegs/k/${k.code}`} className={cx("flex min-h-14 items-center gap-3 px-3.5 py-2.5 transition-colors duration-120 active:bg-surface-2", highlight && "bg-good-bg")}>
+    <button type="button" onClick={onTap} aria-label={`${k.beer ?? "Empty keg"} ${displayCode(k.code)}: move or open`} className={cx("flex min-h-14 w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors duration-120 active:bg-surface-2", highlight && "bg-good-bg")}>
       <span className="h-8 w-5 shrink-0 rounded-md border-2" style={full ? { background: c.bg, borderColor: c.bg } : { borderColor: c.bg, borderStyle: "dashed" }} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{k.beer ?? "Empty keg"}{highlight && <span className="ml-2 text-xs font-semibold text-good">Take this one</span>}</div>
         <div className="num truncate text-xs text-muted">{[showArea ? k.area : null, k.spotNote, kegSizeInfo(k.sizeId).short, STATUS_META[k.status].short, k.filledOn ? `filled ${shortDate(k.filledOn)}` : null].filter(Boolean).join(" · ")}</div>
       </div>
       <span className="num shrink-0 text-xs text-muted">{displayCode(k.code)}</span>
-    </Link>
+    </button>
   );
 }
