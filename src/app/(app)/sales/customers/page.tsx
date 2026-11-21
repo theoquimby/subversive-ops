@@ -526,11 +526,11 @@ export default async function CustomersPage() {
               </div>
             )}
           </Chapter>
-        ) : pb?.deniedAt ? (
+        ) : !pb || pb.deniedAt ? (
           <Card id="places" className="mt-4 scroll-mt-24 p-4 sm:p-5">
             <h3 className="text-base font-semibold tracking-tight text-ink">A map of where people come from is ready to go</h3>
             <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-2">
-              It needs one more permission from Square, to read the postal code on each payer&apos;s Square profile. On the Square page press <b>Reconnect</b>, sign in to Square and press <b>Allow</b>. The map then fills in here by itself, and What&apos;s new says when it&apos;s ready.
+              It needs one more permission from Square, to read the postal code on each payer&apos;s Square profile. On the Square page press <b>Reconnect</b>, sign in to Square and press <b>Allow</b>. The map then fills in here by itself over the next few minutes (or overnight), and What&apos;s new says when it&apos;s ready.
             </p>
             <div className="mt-3">
               <LinkButton href="/settings/square" size="sm">Open the Square page</LinkButton>

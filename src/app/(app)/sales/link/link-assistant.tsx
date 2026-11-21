@@ -148,7 +148,7 @@ function CoverageCard({ c, plan, unlinkedCount, neverSold }: { c: LinkAssistant[
                 </li>
               ))}
             </ol>
-            <p className="mt-2 text-xs text-muted">All of it done: about {pct(plan.after, 0)} of sales with a cost behind it.</p>
+            <p className="mt-2 text-xs text-muted">{reachText(plan, c)}</p>
           </div>
         )}
         {(neverSold > 0 || c.skipped > 0) && (
@@ -162,6 +162,17 @@ function CoverageCard({ c, plan, unlinkedCount, neverSold }: { c: LinkAssistant[
       </Card>
     </HelpZone>
   );
+}
+
+/** Which steps get past the target: "Steps 1 to 3 get you past 90%." Checking links doesn't move the share. */
+function reachText(plan: LinkAssistant["plan"], c: LinkAssistant["coverage"]): string {
+  let at = plan.withSkipped;
+  for (let i = 0; i < plan.steps.length; i++) {
+    const st = plan.steps[i];
+    if (st.key !== "check") at += st.share;
+    if (at >= c.target) return i === 0 ? `Step 1 gets you past ${pct(c.target, 0)}.` : `Steps 1 to ${i + 1} get you past ${pct(c.target, 0)}; the rest is the long tail.`;
+  }
+  return `All of it done: about ${pct(plan.after, 0)} of sales with a cost behind it.`;
 }
 
 // ---- Links to check --------------------------------------------------------------------------------
