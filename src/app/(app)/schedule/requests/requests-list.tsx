@@ -35,6 +35,8 @@ export function RequestsList({ timeOff, recentOff }: { timeOff: Off[]; recentOff
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [openUp, setOpenUp] = useState<Record<string, boolean>>({});
   const [hours, setHours] = useState<Record<string, string>>({});
+  // Deny asks for an optional reason first (sent with their message).
+  const [denying, setDenying] = useState<Record<string, string | undefined>>({});
   const run = (fn: () => Promise<{ error?: string; ok?: string }>) =>
     start(async () => {
       const r = await fn();
@@ -73,11 +75,23 @@ export function RequestsList({ timeOff, recentOff }: { timeOff: Off[]; recentOff
                         </div>
                       )}
                     </div>
-                    {decide(
+                    {denying[r.id] === undefined && decide(
                       () => run(() => decideTimeOff(r.id, true, { openShifts: open, hours: r.type !== "UNPAID" && h.trim() ? Number(h) : null })),
-                      () => run(() => decideTimeOff(r.id, false)),
+                      () => setDenying((d) => ({ ...d, [r.id]: "" })),
                     )}
                   </div>
+                  {denying[r.id] !== undefined && (
+                    <form
+                      className="mt-3 flex flex-col gap-2 rounded-lg bg-bad-bg/40 p-3 sm:flex-row sm:items-center"
+                      onSubmit={(e) => { e.preventDefault(); run(() => decideTimeOff(r.id, false, { reason: denying[r.id] })); }}
+                    >
+                      <Input autoFocus aria-label={`Reason for denying ${r.name}'s time off (optional)`} placeholder="Reason (optional), e.g. two people already off that weekend" value={denying[r.id]} onChange={(e) => setDenying((d) => ({ ...d, [r.id]: e.target.value }))} maxLength={300} className="sm:flex-1" />
+                      <div className="flex justify-end gap-1.5">
+                        <Button type="button" size="sm" variant="ghost" className="max-sm:h-10" disabled={pending} onClick={() => setDenying((d) => ({ ...d, [r.id]: undefined }))}>Cancel</Button>
+                        <Button type="submit" size="sm" variant="danger" className="max-sm:h-10" pending={pending}><X className="size-4" /> Deny</Button>
+                      </div>
+                    </form>
+                  )}
 
                   {r.coverage.length > 0 && (
                     <div className="mt-3 overflow-hidden rounded-lg border border-border">

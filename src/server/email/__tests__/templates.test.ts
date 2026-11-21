@@ -88,6 +88,11 @@ describe("email templates", () => {
     });
   });
 
+  it("a time-off denial carries the manager's reason when there is one", () => {
+    expect(shiftUpdatePush({ kind: "timeOff", approved: false, startDate: "2026-11-26", endDate: "2026-11-26", reason: "Two people are already off" }).body).toContain("The reason: Two people are already off. Talk to a manager");
+    expect(shiftUpdatePush({ kind: "timeOff", approved: false, startDate: "2026-11-26", endDate: "2026-11-26" }).body).not.toContain("The reason");
+  });
+
   it("weekly brief subject counts what needs you", () => {
     expect(SAMPLES["weekly-brief"].render().subject).toBe("Week of Nov 16: 3 things need you");
   });

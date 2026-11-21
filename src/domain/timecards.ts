@@ -63,6 +63,24 @@ export function parseClock(raw: string): number | null {
   return h * 60 + min;
 }
 
+/**
+ * A whole hour of the day typed as a time ("10p", "22:00", "midnight") or as
+ * the old 24-hour number ("22"). A bare 1 to 11 means evening. Null unless
+ * it's on the hour.
+ */
+export function parseLatestHour(raw: string): number | null {
+  const s = raw.trim().toLowerCase().replace(/\s+/g, "");
+  if (!s) return null;
+  if (/^\d{1,2}$/.test(s)) {
+    const h = Number(s);
+    if (h > 24) return null;
+    return h >= 1 && h <= 11 ? h + 12 : h;
+  }
+  const m = parseClock(s);
+  if (m == null || m % 60 !== 0) return null;
+  return m / 60;
+}
+
 export const formatClock = (minutes: number) => {
   const m = ((minutes % 1440) + 1440) % 1440;
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;

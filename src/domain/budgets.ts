@@ -40,6 +40,17 @@ export function copyTargets(source: WeekTarget | undefined, weeks: ISODate[], ex
   return out;
 }
 
+/**
+ * Sales targets taken from the forecast: this week and weeks ahead whose
+ * sales target is blank get the forecast, rounded to the nearest $50. Other
+ * targets on those weeks stay as they are.
+ */
+export function forecastSalesTargets(rows: readonly (WeekTarget & { when: "past" | "current" | "future"; sales_forecast: number | null })[]): WeekTarget[] {
+  return rows
+    .filter((r) => r.when !== "past" && r.sales == null && r.sales_forecast != null && r.sales_forecast > 0)
+    .map((r) => ({ weekStart: r.weekStart, sales: Math.round(r.sales_forecast! / 50) * 50, foodCostPct: r.foodCostPct, laborPct: r.laborPct }));
+}
+
 export type Rag = "good" | "warn" | "bad" | "none";
 
 export interface RagBands {
