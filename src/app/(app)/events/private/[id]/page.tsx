@@ -4,7 +4,7 @@ import { EVENT_TYPE_LABEL } from "@/domain/privateEvents";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { emailReady } from "@/server/integrations/email";
-import { getPrivateEvent, quoteCatalog } from "@/server/services/privateEvents";
+import { clashesFor, getPrivateEvent, quoteCatalog } from "@/server/services/privateEvents";
 import { businessToday } from "@/server/services/sales";
 import { isSquareConnected } from "@/server/services/square";
 import { notFound } from "next/navigation";
@@ -29,6 +29,7 @@ export default async function PrivateEventPage({ params }: { params: Promise<{ i
   if (!ev) notFound();
   const today = businessToday();
   const r = ev.row;
+  const clashes = r.stage === "LOST" ? [] : await clashesFor({ id: r.id, date: r.date, space: r.space, startTime: r.startTime, endTime: r.endTime, type: r.type });
 
   return (
     <>
@@ -44,7 +45,7 @@ export default async function PrivateEventPage({ params }: { params: Promise<{ i
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-8">
-          <DetailsCard row={r} spaces={ev.config.spaces} owners={users} today={today} />
+          <DetailsCard row={r} spaces={ev.config.spaces} owners={users} today={today} clashes={clashes} />
           <HelpZone id="events.private.quote" tour="private.quote">
             <QuoteBuilder ev={ev} catalog={catalog} />
           </HelpZone>

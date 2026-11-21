@@ -4,15 +4,15 @@ import { DataTable, type Column, type Filter, type GroupBy } from "@/components/
 import { GridCell, GridSelect } from "@/components/grid";
 import { Badge, Button, Card, cx, DatePicker, Input, Select } from "@/components/ui";
 import { addDays, WEEKDAYS } from "@/domain/dates";
-import { displayTime } from "@/domain/events";
+import { displayTime, parseClockTime } from "@/domain/events";
 import { EVENT_TYPE_LABEL, EVENT_TYPES, nextStage, OPEN_STAGES, PATH, STAGE_LABEL, STAGE_TONE, STAGES, type Stage } from "@/domain/privateEvents";
 import { money, shortDate } from "@/lib/format";
 import type { PrivateEventRow } from "@/server/services/privateEvents";
-import { ArrowRight, Plus } from "lucide-react";
+import { AlertTriangle, ArrowRight, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
-import { addInquiry, setPrivateEventField, setStage } from "./actions";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { addInquiry, checkClashes, setPrivateEventField, setStage } from "./actions";
 
 const TYPE_OPTIONS = EVENT_TYPES.map((t) => ({ value: t, label: EVENT_TYPE_LABEL[t] }));
 const STAGE_OPTIONS = STAGES.map((s) => ({ value: s, label: STAGE_LABEL[s] }));
@@ -47,12 +47,57 @@ export function nextStep(r: PrivateEventRow, today: string): { text: string; ton
 
 // ---- New inquiry ----------------------------------------------------------------------
 
+export type Clash = { id: string; title: string; space: string | null; startTime: string | null; endTime: string | null };
+
+/** "Heads up: the Patio already has Smith party that day, 6pm–9pm." Never blocks. */
+export function ClashWarning({ clashes }: { clashes: Clash[] }) {
+  if (!clashes.length) return null;
+  return (
+    <div role="status" className="flex items-start gap-2 rounded-lg bg-warn-bg/60 px-3 py-2 text-sm text-ink">
+      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
+      <div className="min-w-0">
+        <span className="font-medium">Heads up: that space is already booked then.</span>{" "}
+        {clashes.map((c, i) => (
+          <span key={c.id}>
+            {i > 0 && "; "}
+            <Link href={`/events/private/${c.id}`} className="underline underline-offset-2 hover:text-ink-2">{c.title}</Link>
+            <span className="text-ink-2">{c.space ? `, ${c.space}` : ""}{c.startTime ? `, ${displayTime(c.startTime)}${c.endTime ? `–${displayTime(c.endTime)}` : ""}` : ", time not set"}</span>
+          </span>
+        ))}
+        . You can still save it.
+      </div>
+    </div>
+  );
+}
+
+/** Live clash check while a date, space and times are being filled in. */
+export function useClashes(q: { id?: string; date: string; space: string; startTime: string; endTime: string; type: string }) {
+  const [clashes, setClashes] = useState<Clash[]>([]);
+  const { id, date, space, startTime, endTime, type } = q;
+  useEffect(() => {
+    if (!date || !space) return setClashes([]);
+    let live = true;
+    const t = setTimeout(() => {
+      checkClashes({ id, date, space, startTime, endTime, type }).then((r) => live && setClashes(r.clashes ?? []));
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [id, date, space, startTime, endTime, type]);
+  return clashes;
+}
+
+/** "7p" → "7pm" once the box is left; anything unreadable stays as typed. */
+const tidyTime = (raw: string) => {
+  const t = parseClockTime(raw);
+  return t ? displayTime(t) : raw;
+};
+
 export function NewInquiry({ spaces, today }: { spaces: string[]; today: string }) {
   const router = useRouter();
-  const [f, setF] = useState({ clientName: "", company: "", contact: "", date: "", headcount: "", type: "PARTY", space: "", notes: "" });
+  const [f, setF] = useState({ clientName: "", company: "", contact: "", date: "", startTime: "", endTime: "", headcount: "", type: "PARTY", space: "", notes: "" });
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
+  const clashes = useClashes({ date: f.date, space: f.space, startTime: parseClockTime(f.startTime) ? f.startTime : "", endTime: parseClockTime(f.endTime) ? f.endTime : "", type: f.type });
   const submit = () =>
     start(async () => {
       setError(null);
@@ -62,10 +107,12 @@ export function NewInquiry({ spaces, today }: { spaces: string[]; today: string 
     });
   return (
     <Card className="p-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_10rem_6rem]">
-        <Input value={f.clientName} onChange={set("clientName")} placeholder="Client name" aria-label="Client name" autoComplete="off" onKeyDown={(e) => e.key === "Enter" && submit()} />
-        <Input value={f.contact} onChange={set("contact")} placeholder="Email or phone" aria-label="Email or phone" autoComplete="off" inputMode="email" />
-        <DatePicker value={f.date} onChange={set("date")} aria-label="Date" min={today} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_10rem_5.5rem_5.5rem_6rem]">
+        <Input value={f.clientName} onChange={set("clientName")} placeholder="Client name" aria-label="Client name" autoComplete="off" onKeyDown={(e) => e.key === "Enter" && submit()} className="col-span-2" />
+        <Input value={f.contact} onChange={set("contact")} placeholder="Email or phone" aria-label="Email or phone" autoComplete="off" inputMode="email" className="col-span-2 lg:col-span-1" />
+        <div className="col-span-2 sm:col-span-1"><DatePicker value={f.date} onChange={set("date")} aria-label="Date" min={today} /></div>
+        <Input value={f.startTime} onChange={set("startTime")} onBlur={() => setF((x) => ({ ...x, startTime: tidyTime(x.startTime) }))} placeholder="Start, 7p" aria-label="Start time" autoComplete="off" className="num" />
+        <Input value={f.endTime} onChange={set("endTime")} onBlur={() => setF((x) => ({ ...x, endTime: tidyTime(x.endTime) }))} placeholder="End, 11p" aria-label="End time" autoComplete="off" className="num" />
         <Input value={f.headcount} onChange={set("headcount")} placeholder="Guests" aria-label="Guests" inputMode="numeric" className="num" />
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_12rem_12rem_minmax(0,1.3fr)_auto]">
@@ -77,6 +124,7 @@ export function NewInquiry({ spaces, today }: { spaces: string[]; today: string 
           <Plus className="size-4" /> {pending ? "Adding…" : "Add inquiry"}
         </Button>
       </div>
+      {clashes.length > 0 && <div className="mt-3"><ClashWarning clashes={clashes} /></div>}
       <div className="mt-2 min-h-5 text-sm text-bad" role="alert">{error}</div>
     </Card>
   );
