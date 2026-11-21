@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import { Check, Plus, X } from "lucide-react";
 import { Button, cx, DatePicker, Input, Textarea } from "@/components/ui";
-import { CHIPS, SHIFTS, parseItems, type ShiftKind } from "@/domain/shiftNotes";
+import { CHIPS, SHIFTS, parseItems, resumeDraftPrompt, type ShiftKind } from "@/domain/shiftNotes";
+import { parseAmount } from "@/lib/amount";
 import type { ShiftNoteView } from "@/server/services/shiftNotes";
 import { saveNote, type NoteForm } from "./actions";
 
@@ -48,8 +49,14 @@ function fromNote(n: ShiftNoteView): State {
 
 const blank = (date: string, shift: ShiftKind): State => ({ date, shift, tags: [], items: [], itemDraft: "", compsAmount: "", comps: "", drawer: "", drawerAmount: "", cash: "", issues: "", maintenance: "", notes: "" });
 
+/** The over/short amount as typed ("5", "$5.25"); null when it isn't a positive number. */
+const drawerAmountOf = (s: State) => {
+  const n = parseAmount(s.drawerAmount);
+  return n == null || Math.abs(n) < 0.005 ? null : Math.abs(n);
+};
+
 function toForm(s: State): NoteForm {
-  const amount = s.drawerAmount.replace(/[$\s]/g, "");
+  const amount = drawerAmountOf(s);
   return {
     date: s.date,
     shift: s.shift,
@@ -58,7 +65,7 @@ function toForm(s: State): NoteForm {
     comps: s.comps,
     compsAmount: s.compsAmount,
     cash: s.cash,
-    cashOverShort: s.drawer === "even" ? "0" : s.drawer && amount ? `${s.drawer === "short" ? "-" : ""}${amount}` : "",
+    cashOverShort: s.drawer === "even" ? "0" : s.drawer && amount != null ? `${s.drawer === "short" ? "-" : ""}${amount}` : "",
     maintenance: s.maintenance,
     notes: s.notes,
     tags: s.tags,
@@ -77,6 +84,13 @@ export function NoteComposer({ today, defaultDate, defaultShift, usual, note, on
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
   const loaded = useRef(false);
+  // The first save pass runs in the same commit as the load and would see the
+  // blank form: skip it so the stored draft isn't wiped before it's read back.
+  const justLoaded = useRef(false);
+  // An unsent draft from another day, offered back rather than dropped.
+  const [offer, setOffer] = useState<State | null>(null);
+  const [askAmount, setAskAmount] = useState(false);
+  const amountRef = useRef<HTMLInputElement>(null);
   const set = (patch: Partial<State>) => {
     setSaved(false);
     setS((x) => ({ ...x, ...patch }));
@@ -90,21 +104,30 @@ export function NoteComposer({ today, defaultDate, defaultShift, usual, note, on
       const raw = localStorage.getItem(DRAFT_KEY);
       if (raw) {
         const d = JSON.parse(raw) as State;
-        if (d && d.date === defaultDate && !isBlank(d)) setS({ ...blank(defaultDate, defaultShift), ...d });
+        if (d && !isBlank(d)) {
+          justLoaded.current = true;
+          if (d.date === defaultDate) setS({ ...blank(defaultDate, defaultShift), ...d });
+          else setOffer({ ...blank(d.date, defaultShift), ...d });
+        }
       }
     } catch {
       /* storage blocked: start empty */
     }
   }, [note, defaultDate, defaultShift]);
   useEffect(() => {
-    if (note || !loaded.current) return;
+    // While the old draft is on offer, leave it where it is.
+    if (note || !loaded.current || offer) return;
+    if (justLoaded.current) {
+      justLoaded.current = false;
+      return;
+    }
     try {
       if (isBlank(s)) localStorage.removeItem(DRAFT_KEY);
       else localStorage.setItem(DRAFT_KEY, JSON.stringify(s));
     } catch {
       /* ignore */
     }
-  }, [s, note]);
+  }, [s, note, offer]);
 
   const toggleTag = (t: string) => set({ tags: s.tags.includes(t) ? s.tags.filter((x) => x !== t) : [...s.tags, t] });
   const addItems = (raw: string) => {
@@ -120,6 +143,11 @@ export function NoteComposer({ today, defaultDate, defaultShift, usual, note, on
 
   const submit = () => {
     setError(null);
+    if ((s.drawer === "over" || s.drawer === "short") && drawerAmountOf(s) == null) {
+      setAskAmount(true);
+      amountRef.current?.focus();
+      return;
+    }
     start(async () => {
       // No signal (walk-in): keep the draft on this phone rather than lose it.
       const r = await saveNote(note?.id ?? null, toForm(s)).catch(() => ({ error: note ? "No signal — that didn't save. Try again when you're back in range." : "No signal. Your note is kept on this phone — tap Save again when you're back in range." }));
@@ -144,6 +172,18 @@ export function NoteComposer({ today, defaultDate, defaultShift, usual, note, on
 
   return (
     <div className="space-y-5">
+      {offer && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-warn/40 bg-warn-bg/50 px-4 py-3 text-sm" role="status">
+          <span className="min-w-0 flex-1">
+            <span className="font-medium text-ink">{resumeDraftPrompt(offer.date, today)}</span>
+            <span className="block text-xs text-ink-2">It wasn&apos;t sent. Pick it up where you left off, or start fresh.</span>
+          </span>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="ghost" className="max-sm:h-10" onClick={() => setOffer(null)}>Discard it</Button>
+            <Button type="button" size="sm" variant="primary" className="max-sm:h-10" onClick={() => { setS(offer); setOffer(null); }}>Resume</Button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <div role="radiogroup" aria-label="Shift" className="grid grid-cols-3 gap-0.5 rounded-lg border border-border-strong bg-surface p-0.5">
           {SHIFTS.map((x) => (
@@ -241,7 +281,7 @@ export function NoteComposer({ today, defaultDate, defaultShift, usual, note, on
                     type="button"
                     role="radio"
                     aria-checked={s.drawer === d}
-                    onClick={() => set({ drawer: s.drawer === d ? "" : d })}
+                    onClick={() => { setAskAmount(false); set({ drawer: s.drawer === d ? "" : d }); }}
                     className={cx("h-9 rounded-md px-2.5 text-sm capitalize transition-colors sm:h-7", s.drawer === d ? (d === "short" ? "bg-bad-bg font-medium text-bad" : "bg-primary font-medium text-primary-ink") : "text-ink-2 hover:bg-surface-2")}
                   >
                     {d}
@@ -251,10 +291,11 @@ export function NoteComposer({ today, defaultDate, defaultShift, usual, note, on
               {(s.drawer === "over" || s.drawer === "short") && (
                 <div className="relative w-24 shrink-0">
                   <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted">$</span>
-                  <Input inputMode="decimal" value={s.drawerAmount} onChange={(e) => set({ drawerAmount: e.target.value })} placeholder="0" className="num pl-6" aria-label={`Amount ${s.drawer}`} autoFocus />
+                  <Input ref={amountRef} inputMode="decimal" value={s.drawerAmount} onChange={(e) => { setAskAmount(false); set({ drawerAmount: e.target.value }); }} placeholder="0" className={cx("num pl-6", askAmount && "border-bad")} aria-label={`Amount ${s.drawer}`} aria-invalid={askAmount || undefined} autoFocus />
                 </div>
               )}
             </div>
+            {askAmount && <p role="alert" className="mt-1 text-xs font-medium text-bad">How much {s.drawer}? Type the amount, then save.</p>}
             <Input value={s.cash} onChange={(e) => set({ cash: e.target.value })} placeholder="Drawer note (float, safe drop…)" aria-label="Drawer note" className="mt-2" />
           </Group>
         )}

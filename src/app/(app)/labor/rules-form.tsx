@@ -11,12 +11,13 @@
 import { GridCell, GridSelect } from "@/components/grid";
 import { DatePicker } from "@/components/ui";
 import { LaborRules, ruleLevel, ruleOn, RULE_IDS, RULES } from "@/domain/labor";
+import { clockLabel } from "@/domain/timecards";
 import { useState, useTransition } from "react";
 import { saveLaborRule, savePayPeriod, saveRuleSetting } from "./actions";
 
 type NumericKey = Parameters<typeof saveLaborRule>[0];
 
-const GROUPS: { title: string; rows: { key: NumericKey; label: string; hint: string; prefix?: string; suffix?: string; pct?: boolean }[] }[] = [
+const GROUPS: { title: string; rows: { key: NumericKey; label: string; hint: string; prefix?: string; suffix?: string; pct?: boolean; time?: boolean }[] }[] = [
   {
     title: "Pay",
     rows: [
@@ -37,7 +38,7 @@ const GROUPS: { title: string; rows: { key: NumericKey; label: string; hint: str
       { key: "minRestHours", label: "Rest between shifts", hint: "Less than this is flagged as a clopen.", suffix: "h" },
       { key: "maxShiftHours", label: "Longest shift", hint: "Longer shifts and timecards are flagged.", suffix: "h" },
       { key: "minorMaxDailyHours", label: "Minors: hours per day", hint: "Under-18s, non-school days.", suffix: "h" },
-      { key: "minorLatestHour", label: "Minors: latest finish", hint: "Hour of day, 24h clock (22 = 10pm).", suffix: ":00" },
+      { key: "minorLatestHour", label: "Minors: latest finish", hint: "Type a time, like 10p.", time: true },
     ],
   },
   {
@@ -69,7 +70,11 @@ export function LaborRulesForm({ rules }: { rules: LaborRules }) {
                     <div className="text-sm font-medium text-ink">{r.label}</div>
                     <div className="text-xs text-muted">{r.hint}</div>
                   </div>
-                  <GridCell grid="labor-rules" col="value" type="number" prefix={r.prefix} suffix={r.suffix} value={r.pct ? Math.round(v * 10000) / 100 : v} onSave={saveLaborRule.bind(null, r.key)} ariaLabel={r.label} />
+                  {r.time ? (
+                    <GridCell grid="labor-rules" col="value" value={v === 24 ? "midnight" : clockLabel(v * 60)} placeholder="10pm" onSave={saveLaborRule.bind(null, r.key)} ariaLabel={r.label} align="right" />
+                  ) : (
+                    <GridCell grid="labor-rules" col="value" type="number" prefix={r.prefix} suffix={r.suffix} value={r.pct ? Math.round(v * 10000) / 100 : v} onSave={saveLaborRule.bind(null, r.key)} ariaLabel={r.label} />
+                  )}
                 </div>
               );
             })}

@@ -27,15 +27,17 @@ const done = () => {
  * and paid leave (SICK/PTO) gets its hours fixed: the hours given, else the
  * hours they were scheduled, worked out before their shifts are opened up.
  */
-export async function decideTimeOff(id: string, approve: boolean, opts: { openShifts?: boolean; hours?: number | null } = {}): Promise<Res> {
+export async function decideTimeOff(id: string, approve: boolean, opts: { openShifts?: boolean; hours?: number | null; reason?: string } = {}): Promise<Res> {
   await requireUser("MANAGER");
   const r = await db.timeOffRequest.findUnique({ where: { id } });
   if (!r || r.status !== "PENDING") return { error: "That request was already handled." };
   if (!approve) {
+    // An optional word on why goes out with the "not approved" message (it isn't stored).
+    const reason = typeof opts.reason === "string" ? opts.reason.trim().slice(0, 300) || null : null;
     await db.timeOffRequest.update({ where: { id }, data: { status: "DENIED" } });
     done();
-    after(() => notifyTimeOffDecided(id).then(() => undefined));
-    return { ok: "Time off denied." };
+    after(() => notifyTimeOffDecided(id, reason).then(() => undefined));
+    return { ok: reason ? "Time off denied. They'll get your reason with the message." : "Time off denied." };
   }
   if (opts.hours != null && (!Number.isFinite(opts.hours) || opts.hours < 0 || opts.hours > 400)) return { error: "Hours should be 0–400." };
   const hours = r.type === "UNPAID" ? null : opts.hours ?? (await requestHours(r));

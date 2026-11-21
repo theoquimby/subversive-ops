@@ -113,6 +113,32 @@ const money = (n: number) => `$${(Math.round(Math.abs(n) * 100) / 100).toLocaleS
 /** Maintenance chips picked on the note. */
 export const maintenanceTags = (n: Pick<NoteLike, "tags">) => n.tags.filter((t) => chipKind(t) === "maintenance");
 
+/**
+ * What to fill the Upkeep repair form with from a note: the first line of
+ * the maintenance text (or the maintenance chips) as the title. Null when
+ * the note has nothing to fix.
+ */
+export function repairFromNote(n: Pick<NoteLike, "date" | "shift" | "authorName" | "maintenance" | "tags">): { title: string; date: ISODate; note: string } | null {
+  const typed = n.maintenance?.trim() ?? "";
+  const chips = maintenanceTags(n);
+  if (!typed && !chips.length) return null;
+  const first = typed.split(/\r?\n/)[0].trim();
+  const title = (first || chips.join(", ")).slice(0, 120);
+  const who = `From ${n.authorName}'s ${shiftLabel(n.shift).toLowerCase()} note`;
+  return { title, date: n.date, note: typed ? `${who}: ${typed}` : `${who}.` };
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "Resume your Tue note?" for an unsent draft from another day. */
+export function resumeDraftPrompt(draftDate: ISODate, today: ISODate): string {
+  const back = Math.round((Date.parse(today) - Date.parse(draftDate)) / 86_400_000);
+  if (back === 1) return "Resume yesterday's note?";
+  const d = new Date(`${draftDate}T00:00:00Z`);
+  const label = back > 1 && back < 7 ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()] : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  return `Resume your ${label} note?`;
+}
+
 /** Something a manager should follow up on: an issue, maintenance (typed or a chip), or a drawer short. */
 export function needsFollowUp(n: NoteLike, cashShortAt = 5): boolean {
   if (n.handledAt) return false;

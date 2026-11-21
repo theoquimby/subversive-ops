@@ -22,6 +22,8 @@ export interface CardRow {
   cost: number;
   source: "SQUARE" | "MANUAL";
   open: boolean;
+  /** Still open from an earlier business day: a missed clock-out, not someone on shift. */
+  missing?: boolean;
   /** Changed in Ops; the Square sync keeps our version. */
   edited: boolean;
 }
@@ -73,12 +75,13 @@ export function TimecardGrid({ cards, employees, positions, days, defaultDay, lo
             />
           );
           return (
-            <tbody key={c.id} className="transition-colors hover:bg-surface-2/60">
+            <tbody key={c.id} id={`tc-${c.id}`} className="scroll-mt-24 transition-colors hover:bg-surface-2/60 target:bg-warn-bg/50">
               {/* Phone: name and day get their own line so they aren't cut off. */}
               <tr className="sm:hidden">
                 <td colSpan={4} className="px-0.5 pt-2">
                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">{person}</div>
+                    {c.missing && <Badge tone="bad" className="shrink-0">Missing clock-out</Badge>}
                     <span className="shrink-0 pr-2 text-xs text-muted">{dayOf(c.date)}</span>
                   </div>
                 </td>
@@ -87,6 +90,7 @@ export function TimecardGrid({ cards, employees, positions, days, defaultDay, lo
                 <td className={cx(td, "hidden sm:table-cell")}>
                   <div className="flex items-center gap-1">
                     <div className="min-w-32 flex-1">{person}</div>
+                    {c.missing && <Badge tone="bad" className="shrink-0">Missing clock-out</Badge>}
                     {c.source === "SQUARE" && <Badge className="hidden xl:inline-flex" tone="neutral">{c.edited ? "Square · edited" : "Square"}</Badge>}
                   </div>
                 </td>
@@ -100,7 +104,7 @@ export function TimecardGrid({ cards, employees, positions, days, defaultDay, lo
                   <GridCell grid="tc" col="in" value={c.inLabel} onSave={setTimecardField.bind(null, c.id, "clockIn")} ariaLabel={`Clock in: ${who}`} />
                 </td>
                 <td className={td}>
-                  <GridCell grid="tc" col="out" value={c.outLabel} placeholder="On shift" onSave={setTimecardField.bind(null, c.id, "clockOut")} ariaLabel={`Clock out: ${who}`} className={c.open ? "[&_input]:placeholder:text-good" : undefined} />
+                  <GridCell grid="tc" col="out" value={c.outLabel} placeholder={c.missing ? "Missing" : "On shift"} onSave={setTimecardField.bind(null, c.id, "clockOut")} ariaLabel={`Clock out: ${who}`} className={c.missing ? "[&_input]:placeholder:font-medium [&_input]:placeholder:text-bad" : c.open ? "[&_input]:placeholder:text-good" : undefined} />
                 </td>
                 <td className={cx(td, "hidden md:table-cell")}>
                   <GridCell grid="tc" col="break" type="number" suffix="m" value={c.breakMinutes} onSave={setTimecardField.bind(null, c.id, "breakMinutes")} ariaLabel={`Unpaid break minutes: ${who}`} />
@@ -226,7 +230,7 @@ function LockedCards({ cards, employees, positions, days }: { cards: CardRow[]; 
               <td className={cx(td, "hidden px-3 lg:table-cell")}>{label(positions, c.positionId)}</td>
               <td className={cx(td, "hidden px-3 sm:table-cell")}>{label(days, c.date)}</td>
               <td className={cx(td, "num px-3")}>{c.inLabel}</td>
-              <td className={cx(td, "num px-3", !c.outLabel && "text-warn")}>{c.outLabel ?? "Open"}</td>
+              <td className={cx(td, "num px-3", !c.outLabel && (c.missing ? "font-medium text-bad" : "text-warn"))}>{c.outLabel ?? (c.missing ? "Missing clock-out" : "Open")}</td>
               <td className={cx(td, "num hidden px-3 text-right md:table-cell")}>{c.breakMinutes}m</td>
               <td className={cx(td, "num px-3 text-right")}>{c.hours.toFixed(2)}</td>
               <td className={cx(td, "num hidden px-3 text-right sm:table-cell", c.rate == null && "text-warn")}>{c.rate == null ? "No rate" : money(c.cost)}</td>

@@ -9,6 +9,7 @@ import {
   intensityFromSlider, localParts, parseAvailability, ScheduledShift, ScheduleSummary, splitLongBlocks, staffVsDemand, summarizeSchedule, weekDates, weekStartOf, zonedInstant,
 } from "@/domain/schedule";
 import { startLabel } from "@/domain/showWindow";
+import { lastShiftDefaults, type ShiftDefaults } from "@/domain/shiftEntry";
 import { db, num } from "../db";
 import { env } from "../env";
 import { keptDayProfit } from "./dayProfit";
@@ -485,6 +486,16 @@ export async function employeeForUser(userId: string) {
 }
 
 export { toView as shiftView };
+
+/** Each person's latest shift (last 8 weeks, up to `before`): what a new shift for them starts from. */
+export async function recentShiftDefaults(before: Date): Promise<Record<string, ShiftDefaults>> {
+  const rows = await db.shift.findMany({
+    where: { employeeId: { not: null }, start: { lt: before, gte: new Date(before.getTime() - 56 * 86_400_000) } },
+    orderBy: { start: "desc" },
+    distinct: ["employeeId"],
+  });
+  return lastShiftDefaults(rows.map(toView));
+}
 
 /** Does `employeeId` already work during [start, end)? */
 export async function hasOverlap(employeeId: string, start: Date, end: Date, exceptShiftId?: string) {

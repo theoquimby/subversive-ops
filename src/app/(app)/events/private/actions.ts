@@ -10,6 +10,7 @@ import { emailReady, isEmail, sendEmail } from "@/server/integrations/email";
 import { createQuickPayLink } from "@/server/integrations/square-checkout";
 import { friendlySquareError } from "@/server/integrations/square-http";
 import {
+  clashesFor,
   createInquiry,
   deletePayment,
   deletePrivateEvent,
@@ -70,6 +71,8 @@ const inquirySchema = z.object({
   company: z.string().trim().max(120).optional().default(""),
   contact: z.string().trim().max(160).optional().default(""),
   date: isoDate.or(z.literal("")).optional().default(""),
+  startTime: z.string().trim().max(12).optional().default(""),
+  endTime: z.string().trim().max(12).optional().default(""),
   headcount: z.string().trim().max(6).optional().default(""),
   type: z.string().optional().default("PARTY"),
   space: z.string().max(60).optional().default(""),
@@ -83,6 +86,10 @@ export async function addInquiry(input: z.input<typeof inquirySchema>): Promise<
   const d = v.data;
   const head = d.headcount ? Number(d.headcount.replace(/[^\d]/g, "")) : 0;
   if (!Number.isFinite(head) || head > 5000) return { error: "Headcount is a number of guests." };
+  const startTime = parseClockTime(d.startTime);
+  if (startTime === undefined) return { error: "Start: use a time like 7p or 18:30." };
+  const endTime = parseClockTime(d.endTime);
+  if (endTime === undefined) return { error: "End: use a time like 11p or 22:30." };
   // One box for email or phone: whichever it looks like.
   const email = isEmail(d.contact) ? d.contact : null;
   const phone = !email && d.contact ? d.contact : null;
@@ -92,6 +99,8 @@ export async function addInquiry(input: z.input<typeof inquirySchema>): Promise<
     clientEmail: email,
     clientPhone: phone,
     date: d.date || null,
+    startTime,
+    endTime,
     headcount: head,
     type: isEventType(d.type) ? d.type : "PARTY",
     space: d.space || null,
@@ -100,6 +109,24 @@ export async function addInquiry(input: z.input<typeof inquirySchema>): Promise<
   });
   refresh();
   return { id };
+}
+
+const clashSchema = z.object({
+  id: z.string().max(40).optional(),
+  date: isoDate,
+  space: z.string().max(60),
+  startTime: z.string().max(12).optional().default(""),
+  endTime: z.string().max(12).optional().default(""),
+  type: z.string().max(20).optional().default("PARTY"),
+});
+
+/** Other bookings in the same space that date at overlapping times (times as typed, "7p"). A warning, never a block. */
+export async function checkClashes(input: z.input<typeof clashSchema>): Promise<{ error?: string; clashes?: Awaited<ReturnType<typeof clashesFor>> }> {
+  await requireUser("MANAGER");
+  const v = clashSchema.safeParse(input);
+  if (!v.success) return { clashes: [] };
+  const d = v.data;
+  return { clashes: await clashesFor({ id: d.id, date: d.date, space: d.space || null, startTime: parseClockTime(d.startTime) ?? null, endTime: parseClockTime(d.endTime) ?? null, type: d.type }) };
 }
 
 // ---- Fields ---------------------------------------------------------------------------

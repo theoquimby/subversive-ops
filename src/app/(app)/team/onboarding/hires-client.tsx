@@ -1,11 +1,12 @@
 "use client";
 
 import { HelpTip, HelpZone } from "@/components/help";
+import { useConfirm } from "@/components/dialog";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, cx, DatePicker, Input, Section, Select } from "@/components/ui";
 import { KIND_LABEL, PROVIDERS, type HireState, type OnboardingKind, type PayrollProvider, type Progress } from "@/domain/onboarding";
 import { shortDate } from "@/lib/format";
-import { Check, ChevronDown, KeyRound, Plus, UserPlus } from "lucide-react";
+import { Check, ChevronDown, Copy, KeyRound, Plus, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { inviteEmployee } from "../actions";
@@ -116,7 +117,41 @@ export function HiresBoard({ today, active, done, suggest, positions, templates,
   );
 }
 
+/** The new login, shown once, big enough to read out, with a copy button. */
+function PinReveal({ name, pin, onDone }: { name: string; pin: string; onDone?: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`Login: ${name}\nPIN: ${pin}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* the browser won't copy here: they can read it off the screen */
+    }
+  };
+  return (
+    <div className="rounded-xl border border-good/30 bg-good-bg/50 px-4 py-3" role="status">
+      <div className="text-xs font-medium text-good">Login made. It&apos;s shown once: give it to them now.</div>
+      <div className="mt-2 flex flex-wrap items-end gap-x-6 gap-y-2">
+        <div>
+          <div className="text-xs text-muted">Login</div>
+          <div className="text-base font-medium">{name}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted">PIN</div>
+          <div className="num text-2xl font-semibold tracking-[0.2em]">{pin}</div>
+        </div>
+        <div className="ml-auto flex gap-2">
+          <Button size="sm" className="max-sm:h-10" onClick={copy}>{copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />} {copied ? "Copied" : "Copy"}</Button>
+          {onDone && <Button size="sm" variant="primary" className="max-sm:h-10" onClick={onDone}>Done</Button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HireCard({ h, pending, run }: { h: Hire; pending: boolean; run: (fn: () => Promise<Res>, after?: () => void) => void }) {
+  const confirm = useConfirm();
   const [open, setOpen] = useState(h.state === "overdue");
   const [login, setLogin] = useState<{ name: string; pin: string } | null>(null);
   const [ticks, setTicks] = useState<Record<string, boolean>>({});
@@ -181,11 +216,22 @@ function HireCard({ h, pending, run }: { h: Hire; pending: boolean; run: (fn: ()
                 <KeyRound className="size-3.5" aria-hidden /> Make a login
               </Button>
             ) : login ? (
-              <span className="text-sm">Login: <span className="font-medium">{login.name}</span> · PIN <span className="num font-semibold">{login.pin}</span> <span className="text-muted">— give it to them; it&apos;s shown once.</span></span>
+              <div className="w-full"><PinReveal name={login.name} pin={login.pin} /></div>
             ) : <span />}
             <span className="flex gap-1.5">
               <Button size="sm" variant="ghost" className="max-sm:h-10" disabled={pending} onClick={() => run(() => setHireStatus(h.id, "DONE"))}>Mark done</Button>
-              <Button size="sm" variant="ghost" className="text-bad max-sm:h-10" disabled={pending} onClick={() => run(() => setHireStatus(h.id, "CANCELLED"))}>Remove</Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-bad max-sm:h-10"
+                disabled={pending}
+                onClick={async () => {
+                  if (!(await confirm({ title: `Remove ${h.name}'s checklist?`, body: "They stay on the team. Their onboarding checklist and its progress go.", confirmLabel: "Remove", danger: true }))) return;
+                  run(() => setHireStatus(h.id, "CANCELLED"));
+                }}
+              >
+                Remove
+              </Button>
             </span>
           </div>
         </div>
@@ -195,7 +241,33 @@ function HireCard({ h, pending, run }: { h: Hire; pending: boolean; run: (fn: ()
 }
 
 function AddHire({ positions, templates, today, pending, onDone, run }: { positions: { id: string; name: string }[]; templates: { id: string; name: string }[]; today: string; pending: boolean; onDone: () => void; run: (fn: () => Promise<Res>, after?: () => void) => void }) {
-  const [f, setF] = useState({ name: "", email: "", phone: "", positionIds: [] as string[], startDate: today, templateId: "" });
+  const [f, setF] = useState({ name: "", email: "", phone: "", positionIds: [] as string[], startDate: today, templateId: "", hourlyRate: "" });
+  const [makeLogin, setMakeLogin] = useState(true);
+  const [loginName, setLoginName] = useState("");
+  const [login, setLogin] = useState<{ name: string; pin: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, start] = useTransition();
+  const busy = pending || saving;
+  const add = () =>
+    start(async () => {
+      setError(null);
+      const r = await addNewHire(f);
+      if (r.error || !r.id) return setError(r.error ?? "That didn't save. Try again.");
+      if (!makeLogin) return run(async () => ({ ok: r.ok }), onDone);
+      const l = await inviteEmployee(r.id, (loginName || f.name).trim());
+      if (l.error || !l.pin || !l.name) {
+        run(async () => ({ ok: `${f.name.trim()} added. The login wasn't made (${l.error ?? "try again"}): use Make a login on their card.` }), onDone);
+        return;
+      }
+      setLogin({ name: l.name, pin: l.pin });
+    });
+  if (login) {
+    return (
+      <div className="mb-4 animate-rise-in motion-reduce:animate-none">
+        <PinReveal name={login.name} pin={login.pin} onDone={onDone} />
+      </div>
+    );
+  }
   return (
     <Card className="mb-4 animate-rise-in p-4 motion-reduce:animate-none">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -203,6 +275,10 @@ function AddHire({ positions, templates, today, pending, onDone, run }: { positi
         <DatePicker aria-label="Start date" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} className="max-sm:h-12" />
         <Input aria-label="Email" placeholder="Email (for notifications)" inputMode="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} className="max-sm:h-12" />
         <Input aria-label="Phone" placeholder="Phone (optional)" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} className="max-sm:h-12" />
+        <div className="relative">
+          <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted">$</span>
+          <Input aria-label="Pay rate per hour" placeholder="Pay rate / hour (optional)" inputMode="decimal" value={f.hourlyRate} onChange={(e) => setF({ ...f, hourlyRate: e.target.value })} className="num pl-6 max-sm:h-12" />
+        </div>
       </div>
       <div className="mt-3">
         <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">Positions</div>
@@ -220,10 +296,18 @@ function AddHire({ positions, templates, today, pending, onDone, run }: { positi
       {templates.length > 1 && (
         <div className="mt-3 max-w-xs"><Select aria-label="Checklist" value={f.templateId} onChange={(e) => setF({ ...f, templateId: e.target.value })} options={[{ value: "", label: "Best match for their position" }, ...templates.map((t) => ({ value: t.id, label: t.name }))]} className="max-sm:h-12" /></div>
       )}
-      <p className="mt-3 text-xs text-muted">Don&apos;t put SSNs, bank details or tax IDs here — those go straight into your payroll provider.</p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button type="button" role="switch" aria-checked={makeLogin} onClick={() => setMakeLogin((v) => !v)} className="flex min-h-10 items-center gap-2.5 text-sm">
+          <span className={cx("relative h-6 w-10 shrink-0 rounded-full transition-colors duration-120", makeLogin ? "bg-good" : "bg-border-strong")}><span className={cx("absolute top-0.5 size-5 rounded-full bg-white shadow transition-[left] duration-120", makeLogin ? "left-[1.1rem]" : "left-0.5")} /></span>
+          <span><span className="font-medium text-ink">Make a login now</span><span className="block text-xs text-muted">A staff login with a PIN, shown once, so they can open their checklist.</span></span>
+        </button>
+        {makeLogin && <Input aria-label="Login name" placeholder={f.name.trim() ? `Login name: ${f.name.trim()}` : "Login name (their name)"} value={loginName} onChange={(e) => setLoginName(e.target.value)} autoComplete="off" className="max-sm:h-12 sm:w-56" />}
+      </div>
+      <p className="mt-3 text-xs text-muted">Don&apos;t put SSNs, bank details or tax IDs here. Those go straight into your payroll provider.</p>
+      {error && <p role="alert" className="mt-2 text-sm text-bad">{error}</p>}
       <div className="mt-3 flex justify-end gap-2">
         <Button variant="ghost" className="max-sm:h-11" onClick={onDone}>Cancel</Button>
-        <Button variant="primary" className="max-sm:h-12" disabled={pending || !f.name.trim()} onClick={() => run(() => addNewHire(f), onDone)}><Plus className="size-4" aria-hidden /> Add and start checklist</Button>
+        <Button variant="primary" className="max-sm:h-12" pending={saving} disabled={busy || !f.name.trim()} onClick={add}><Plus className="size-4" aria-hidden /> Add and start checklist</Button>
       </div>
     </Card>
   );

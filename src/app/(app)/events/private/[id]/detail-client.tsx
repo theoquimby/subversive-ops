@@ -11,7 +11,8 @@ import { businessDateOf, money, pct, shortDate } from "@/lib/format";
 import type { PrivateEventDetail, PrivateEventRow, quoteCatalog } from "@/server/services/privateEvents";
 import { Check, Copy, ExternalLink, Mail, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { ClashWarning, type Clash } from "../pipeline-client";
 import {
   addPayment,
   addQuoteLine,
@@ -195,7 +196,7 @@ function Cell(props: Omit<React.ComponentProps<typeof GridCell>, "onSave"> & { o
   );
 }
 
-export function DetailsCard({ row: r, spaces, owners, today }: { row: PrivateEventRow; spaces: SpaceOption[]; owners: { id: string; name: string }[]; today: string }) {
+export function DetailsCard({ row: r, spaces, owners, today, clashes = [] }: { row: PrivateEventRow; spaces: SpaceOption[]; owners: { id: string; name: string }[]; today: string; clashes?: Clash[] }) {
   const space = spaces.find((s) => s.name === r.space);
   const over = space?.capacity != null && r.headcount > space.capacity;
   return (
@@ -221,6 +222,7 @@ export function DetailsCard({ row: r, spaces, owners, today }: { row: PrivateEve
           </div>
         </Row>
         <Row label="Space"><SelectField value={r.space ?? ""} label="Space" options={[{ value: "", label: "Not set" }, ...spaces.map((s) => ({ value: s.name, label: `${s.name}${s.capacity ? ` · up to ${s.capacity}` : ""}` }))]} onSave={save(r.id, "space")} /></Row>
+        {clashes.length > 0 && <div className="border-b border-border px-3 py-2"><ClashWarning clashes={clashes} /></div>}
         <Row label="Owner"><SelectField value={r.ownerId ?? ""} label="Owner" options={[{ value: "", label: "Nobody" }, ...owners.map((o) => ({ value: o.id, label: o.name }))]} onSave={save(r.id, "ownerId")} /></Row>
         <Row label="Follow up on" help="events.private.followup"><DateField value={r.followUpOn} label="Follow up on" min={today} onSave={save(r.id, "followUpOn")} /></Row>
         <Row label="Notes"><NotesField id={r.id} field="notes" value={r.notes ?? ""} placeholder="Allergies, cake, music, who to call on the day…" /></Row>
@@ -543,6 +545,14 @@ export function PaymentsCard({ ev, today, square, canEmail }: { ev: PrivateEvent
   const [link, setLink] = useState<string | null>(ev.share.paymentLinkUrl);
   const [pending, start] = useTransition();
   const id = ev.row.id;
+  // After a payment, the form moves on to what's owed next (the balance after the deposit), amount filled in.
+  const justPaid = useRef(false);
+  useEffect(() => {
+    if (!justPaid.current) return;
+    justPaid.current = false;
+    setKind(which === "deposit" ? "DEPOSIT" : "BALANCE");
+    setAmount(owed > 0.005 ? owed.toFixed(2) : "");
+  }, [which, owed, ev.payments.length]);
 
   return (
     <Panel title="Payments" help="events.private.payments">
@@ -593,6 +603,7 @@ export function PaymentsCard({ ev, today, square, canEmail }: { ev: PrivateEvent
                 const r = await addPayment(id, { amount, kind: kind as "DEPOSIT", method: method as "CARD", paidOn });
                 setMsg(r);
                 if (!r.error) {
+                  justPaid.current = true;
                   setAmount("");
                   router.refresh();
                 }

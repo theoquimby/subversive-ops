@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CheckCircle2, Pencil, Trash2, Undo2 } from "lucide-react";
+import { CheckCircle2, Pencil, Trash2, Undo2, Wrench } from "lucide-react";
 import { useConfirm } from "@/components/dialog";
-import { Button, Card, cx } from "@/components/ui";
-import { chipKind, needsFollowUp, noteHighlights, shiftLabel, type ShiftKind } from "@/domain/shiftNotes";
+import { Button, Card, cx, LinkButton } from "@/components/ui";
+import { chipKind, needsFollowUp, noteHighlights, repairFromNote, shiftLabel, type ShiftKind } from "@/domain/shiftNotes";
 import { businessDateTime, dayDate } from "@/lib/format";
 import type { ShiftNoteView } from "@/server/services/shiftNotes";
 import { markHandled, removeNote } from "./actions";
@@ -26,6 +26,9 @@ export function NoteCard({ note, viewer, today, usual, compact = false, showDate
   const lines = noteHighlights(view);
   const follow = needsFollowUp(view);
   const pace = note.tags.filter((t) => chipKind(t) !== "maintenance");
+  // Upkeep is for managers; the repair form opens filled in from the note.
+  const repair = manager ? repairFromNote(note) : null;
+  const repairHref = repair ? `/upkeep?${new URLSearchParams({ repair: "1", title: repair.title, date: repair.date, note: repair.note })}` : null;
 
   const del = async () => {
     // Ask first, outside any transition; then delete.
@@ -88,12 +91,13 @@ export function NoteCard({ note, viewer, today, usual, compact = false, showDate
       )}
 
       {manager && (follow || note.handledAt) && (
-        <div className="mt-3 border-t border-border pt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
           {note.handledAt ? (
             <Button variant="ghost" size="sm" className="-ml-2 h-10 sm:h-8" onClick={() => handle(false)} disabled={pending}><Undo2 className="size-3.5" />Not handled yet</Button>
           ) : (
             <Button variant="secondary" size="sm" className="h-10 sm:h-8" onClick={() => handle(true)} disabled={pending}><CheckCircle2 className="size-3.5" />Mark handled</Button>
           )}
+          {repairHref && !compact && <LinkButton href={repairHref} variant="ghost" size="sm" className="h-10 sm:h-8"><Wrench className="size-3.5" />Log as repair</LinkButton>}
         </div>
       )}
       {error && <p className="mt-2 text-xs text-bad">{error}</p>}

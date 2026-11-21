@@ -7,6 +7,7 @@ import { Badge, Button, Card, cx, DatePicker, Field, Input, Select, Textarea } f
 import { shortDate } from "@/lib/format";
 import type { UpkeepLogView } from "@/server/services/upkeep";
 import { Check, Plus, Wrench, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Sheet } from "../team/training/sheet";
 import { deleteLog, logRepair, markFixed, setLogCost } from "./actions";
@@ -58,27 +59,36 @@ function LogRow({ l }: { l: UpkeepLogView }) {
 const KINDS = [{ value: "repair", label: "Repair — something broke" }, { value: "service", label: "Service visit" }, { value: "note", label: "Note" }];
 
 /** "Log a repair": what broke, when, what it cost, and whether it's out of action. */
-export function RepairButton({ equipment, today }: { equipment: { value: string; label: string; group?: string }[]; today: string }) {
-  const [open, setOpen] = useState(false);
+export function RepairButton({ equipment, today, prefill }: { equipment: { value: string; label: string; group?: string }[]; today: string; prefill?: Prefill }) {
+  const [open, setOpen] = useState(!!prefill);
   const [toast, show] = useToast();
+  const router = useRouter();
+  const close = () => {
+    setOpen(false);
+    // Drop the note's details from the address so a reload doesn't open the form again.
+    if (prefill) router.replace("/upkeep", { scroll: false });
+  };
   return (
     <>
       {toast}
       <Button size="sm" variant="primary" className="h-10 sm:h-8" onClick={() => setOpen(true)} data-tour="upkeep.repair"><Plus className="size-4" />Log a repair</Button>
-      {open && <RepairSheet equipment={equipment} today={today} onClose={() => setOpen(false)} onSaved={(m) => show(m)} />}
+      {open && <RepairSheet equipment={equipment} today={today} prefill={prefill} onClose={close} onSaved={(m) => show(m)} />}
     </>
   );
 }
 
-function RepairSheet({ equipment, today, onClose, onSaved }: { equipment: { value: string; label: string; group?: string }[]; today: string; onClose: () => void; onSaved: (m: string) => void }) {
+type Prefill = { title: string; date?: string; note: string };
+
+function RepairSheet({ equipment, today, prefill, onClose, onSaved }: { equipment: { value: string; label: string; group?: string }[]; today: string; prefill?: Prefill; onClose: () => void; onSaved: (m: string) => void }) {
   const [kind, setKind] = useState("repair");
-  const [equipmentId, setEquipmentId] = useState("");
-  const [title, setTitle] = useState("");
-  const [date, setDate] = useState(today);
+  // A named piece of equipment in the note's title is picked for you.
+  const [equipmentId, setEquipmentId] = useState(() => (prefill ? equipment.find((e) => prefill.title.toLowerCase().includes(e.label.toLowerCase()))?.value ?? "" : ""));
+  const [title, setTitle] = useState(prefill?.title ?? "");
+  const [date, setDate] = useState(prefill?.date && prefill.date <= today ? prefill.date : today);
   const [cost, setCost] = useState("");
   const [vendor, setVendor] = useState("");
   const [down, setDown] = useState(false);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(prefill?.note ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const save = () =>

@@ -228,11 +228,11 @@ export function notifyShiftChanged(shiftId: string, before?: ShiftSnapshot | nul
 }
 
 /** Call after a time-off request is approved or denied. */
-export function notifyTimeOffDecided(requestId: string) {
+export function notifyTimeOffDecided(requestId: string, reason?: string | null) {
   return safely("shiftChanges", async () => {
     const r = await db.timeOffRequest.findUnique({ where: { id: requestId }, include: { employee: { select: { name: true, email: true, userId: true } } } });
     if (!r || r.status === "PENDING") return [];
-    const update: ShiftUpdate = { kind: "timeOff", approved: r.status === "APPROVED", startDate: toISODate(r.startDate), endDate: toISODate(r.endDate), note: r.note };
+    const update: ShiftUpdate = { kind: "timeOff", approved: r.status === "APPROVED", startDate: toISODate(r.startDate), endDate: toISODate(r.endDate), note: r.note, reason: reason ?? null };
     return [{ to: employeeRecipient(r.employee), email: shiftUpdateEmail({ name: r.employee.name, update, baseUrl: appUrl() }), push: { ...shiftUpdatePush(update), url: "/my/shifts#time-off", tag: `timeoff-${r.id}` } }];
   });
 }

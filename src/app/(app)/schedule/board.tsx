@@ -10,8 +10,11 @@ import type { ShiftView, WeekData, WeekIssue } from "@/server/services/schedulin
 import { AlertTriangle, ChevronLeft, ChevronRight, CopyPlus, Eraser, Inbox, Plus, Send, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { clearDraftShifts, copyPreviousWeek, moveShift, publishSchedule } from "./actions";
+import { clearDraftShifts, moveShift, publishSchedule, removeNewShifts } from "./actions";
+import { CopyWeekPanel } from "./copy-week-panel";
 import { DemandChart } from "./demand-chart";
+import { useToast, type ToastAction } from "@/components/toast";
+import type { ShiftDefaults } from "@/domain/shiftEntry";
 import { GeneratePanel } from "./generate-panel";
 import { ShiftEditor } from "./shift-editor";
 import { ForecastNudge, type Nudge } from "./forecast-nudge";
@@ -21,23 +24,22 @@ const fmtH = (h: number) => `${Number(h.toFixed(1))}h`;
 const OPEN = "open";
 const NEW_ID = "new";
 
-export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudges = {} }: { data: WeekData; today: string; prevWeek: string; nextWeek: string; thisWeek: string; nudges?: Record<string, Nudge> }) {
+export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudges = {}, recent = {} }: { data: WeekData; today: string; prevWeek: string; nextWeek: string; thisWeek: string; nudges?: Record<string, Nudge>; recent?: Record<string, ShiftDefaults> }) {
   const { dates, positions, employees, issues, summary, timeOff, pendingTimeOff, opening, cover } = data;
   const coverBy = new Map(cover.map((c) => [c.date, c]));
   const confirm = useConfirm();
   const [busy, start] = useTransition();
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, show] = useToast();
   const [editing, setEditing] = useState<{ id: string; anchor: HTMLElement | null } | null>(null);
   const [creating, setCreating] = useState<{ shift: ShiftView; anchor: HTMLElement | null } | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [copying, setCopying] = useState(false);
   const [dayIdx, setDayIdx] = useState(() => Math.max(0, dates.indexOf(today)));
   const [moved, setMoved] = useState<Record<string, { employeeId: string | null; date: string }>>({});
   useEffect(() => setMoved({}), [data.shifts]);
 
-  const showToast = useCallback((m: string) => {
-    setToast(m);
-    window.setTimeout(() => setToast((t) => (t === m ? null : t)), 3200);
-  }, []);
+  const showToast = useCallback((m: string, action?: ToastAction) => show(m, "good", action), [show]);
+  const showError = useCallback((m: string) => show(m, "bad"), [show]);
 
   const shifts = useMemo(() => data.shifts.map((s) => (moved[s.id] ? { ...s, ...moved[s.id] } : s)), [data.shifts, moved]);
   const posMap = useMemo(() => new Map(positions.map((p) => [p.id, p])), [positions]);
@@ -77,32 +79,65 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
   // Opens the editor in "new" mode; nothing is written until Save.
   const quickAdd = (employeeId: string | null, date: string, anchor: HTMLElement | null = null) => {
     const emp = employees.find((e) => e.id === employeeId);
-    const positionId = emp?.positionIds[0] ?? positions[0]?.id;
-    if (!positionId) return showToast("Add a position on the Team page first.");
+    // Someone's last shift (times and position) is the best guess for their next one.
+    const last = employeeId ? recent[employeeId] : undefined;
+    const lastPos = last && positions.some((p) => p.id === last.positionId) && (!emp?.positionIds.length || emp.positionIds.includes(last.positionId)) ? last.positionId : undefined;
+    const positionId = lastPos ?? emp?.positionIds[0] ?? positions[0]?.id;
+    if (!positionId) return showError("Add a position on the Team page first.");
     const o = opening[weekday(date)];
-    const startMin = o ? Math.max(0, o[0] - 1) * 60 : 16 * 60;
-    const endMin = o ? Math.min(startMin + 6 * 60, (o[1] + 1) * 60) : 22 * 60;
+    const startMin = last?.startMin ?? (o ? Math.max(0, o[0] - 1) * 60 : 16 * 60);
+    const endMin = last?.endMin ?? Math.max(o ? Math.min(startMin + 6 * 60, (o[1] + 1) * 60) : 22 * 60, startMin + 4 * 60);
     setEditing(null);
     setCreating({
-      shift: { id: NEW_ID, employeeId, positionId, date, startMin, endMin: Math.max(endMin, startMin + 4 * 60), breakMinutes: 0, notes: null, published: false },
+      shift: { id: NEW_ID, employeeId, positionId, date, startMin, endMin, breakMinutes: last?.breakMinutes ?? 0, notes: null, published: false },
       anchor,
     });
   };
 
+  const unmove = (id: string) =>
+    setMoved((m) => {
+      const { [id]: _, ...rest } = m;
+      void _;
+      return rest;
+    });
   const drop = (id: string, employeeId: string | null, date: string) => {
     const s = shifts.find((x) => x.id === id);
     if (!s || (s.employeeId === employeeId && s.date === date)) return;
+    const from = { employeeId: s.employeeId, date: s.date };
     setMoved((m) => ({ ...m, [id]: { employeeId, date } }));
     start(async () => {
       const r = await moveShift(id, { employeeId, date, startMin: s.startMin, endMin: s.endMin });
       if (r.error) {
-        showToast(r.error);
-        setMoved((m) => {
-          const { [id]: _, ...rest } = m;
-          void _;
-          return rest;
-        });
+        showError(r.error);
+        unmove(id);
+        return;
       }
+      const who = employeeId ? empName.get(employeeId) ?? "them" : "open shifts";
+      showToast(`Moved to ${who}, ${dayDate(date)}`, {
+        label: "Undo",
+        onClick: () => {
+          setMoved((m) => ({ ...m, [id]: from }));
+          start(async () => {
+            const back = await moveShift(id, { ...from, startMin: s.startMin, endMin: s.endMin });
+            if (back.error) { showError(back.error); unmove(id); }
+            else showToast("Moved back");
+          });
+        },
+      });
+    });
+  };
+
+  const copied = (created: number, ids: string[], from: string, skipped: number) => {
+    const note = skipped ? ` (${skipped} already here skipped)` : "";
+    if (!created) return showToast(`Nothing new to copy${note}.`);
+    showToast(`Copied ${created} shift${created === 1 ? "" : "s"} from ${shortDate(from)} as drafts${note}.`, {
+      label: "Undo",
+      onClick: () =>
+        start(async () => {
+          const r = await removeNewShifts(ids);
+          if (r.error) showError(r.error);
+          else showToast(`Removed the ${r.removed} copied shift${r.removed === 1 ? "" : "s"}.`);
+        }),
     });
   };
 
@@ -120,8 +155,8 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
     }
     start(async () => {
       const r = await publishSchedule(data.monday, override);
-      if (r.error) showToast(r.error);
-      else if (r.blockers) showToast(`${r.blockers} must-fix problems — check the list below.`);
+      if (r.error) showError(r.error);
+      else if (r.blockers) showError(`${r.blockers} must-fix problems. Check the list below.`);
       else showToast(`Published ${r.published} shift${r.published === 1 ? "" : "s"}. The team can see them in their app.`);
     });
   };
@@ -291,13 +326,13 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
           </LinkButton>
           {!pastWeek && (
             <>
-              <Button size="sm" variant="ghost" className="hidden md:inline-flex" disabled={busy} onClick={() => start(async () => { const r = await copyPreviousWeek(data.monday); showToast(r.error ?? `Copied ${r.created} shifts from last week as drafts.`); })}>
-                <CopyPlus className="size-4" strokeWidth={1.75} /> Copy last week
+              <Button size="sm" variant="ghost" className="max-sm:h-10" disabled={busy} onClick={() => setCopying(true)}>
+                <CopyPlus className="size-4" strokeWidth={1.75} /> Copy a week
               </Button>
               {drafts > 0 && (
-                <Button size="sm" variant="ghost" className="hidden md:inline-flex" disabled={busy} onClick={async () => {
+                <Button size="sm" variant="ghost" className="max-sm:h-10" disabled={busy} onClick={async () => {
                   if (!(await confirm({ title: `Delete ${drafts} draft shift${drafts === 1 ? "" : "s"}?`, body: "Published shifts stay.", confirmLabel: "Delete drafts", danger: true }))) return;
-                  start(async () => { const r = await clearDraftShifts(data.monday); showToast(r.error ?? `Removed ${r.removed} drafts.`); });
+                  start(async () => { const r = await clearDraftShifts(data.monday); if (r.error) showError(r.error); else showToast(`Removed ${r.removed} drafts.`); });
                 }}>
                   <Eraser className="size-4" strokeWidth={1.75} /> Clear drafts
                 </Button>
@@ -606,6 +641,9 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
           issues={issues}
           hoursByEmployee={hoursBy}
           timeOff={timeOff}
+          opening={opening}
+          weekDates={dates}
+          weekShifts={shifts}
           onClose={() => setEditing(null)}
           onToast={showToast}
         />
@@ -621,16 +659,16 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
           issues={[]}
           hoursByEmployee={hoursBy}
           timeOff={timeOff}
+          opening={opening}
+          weekDates={dates}
+          weekShifts={shifts}
           onClose={() => setCreating(null)}
           onToast={showToast}
         />
       )}
-      {generating && <GeneratePanel monday={data.monday} positions={positions} laborTarget={data.laborTarget} autoDraft={data.autoDraft} onClose={() => setGenerating(false)} onDone={showToast} />}
-      {toast && (
-        <div role="status" className="fixed inset-x-0 bottom-4 z-[80] flex justify-center px-4 pb-[env(safe-area-inset-bottom)]">
-          <div className="rounded-xl bg-primary px-4 py-2.5 text-sm text-primary-ink shadow-xl">{toast}</div>
-        </div>
-      )}
+      {generating && <GeneratePanel monday={data.monday} positions={positions} laborTarget={data.laborTarget} autoDraft={data.autoDraft} onClose={() => setGenerating(false)} onDone={(m) => showToast(m)} />}
+      {copying && <CopyWeekPanel monday={data.monday} onClose={() => setCopying(false)} onDone={copied} />}
+      {toast}
     </>
   );
 }

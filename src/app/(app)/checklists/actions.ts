@@ -1,6 +1,6 @@
 "use server";
 
-import { asShift, LINKABLE_PAGES, parseWeekdays, runDateFor } from "@/domain/checklists";
+import { asShift, copyName, LINKABLE_PAGES, parseWeekdays, runDateFor, splitPastedSteps } from "@/domain/checklists";
 import { parseISODate } from "@/domain/dates";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
@@ -135,6 +135,42 @@ export async function addItem(templateId: string, title: string): R {
   const max = await db.checklistItem.aggregate({ where: { templateId }, _max: { sort: true } });
   await db.checklistItem.create({ data: { templateId, title: t, sort: (max._max.sort ?? 0) + 1 } });
   refresh();
+}
+
+/** Several steps at once (pasted as a list), added at the end in order. */
+export async function addItems(templateId: string, text: string): Promise<{ error?: string; added?: number }> {
+  await requireUser("MANAGER");
+  const titles = splitPastedSteps(z.string().max(20_000).catch("").parse(text));
+  if (!titles.length) return { error: "Nothing to add" };
+  const t = await db.checklistTemplate.findUnique({ where: { id: templateId }, select: { id: true } });
+  if (!t) return { error: "That list was deleted. Reload the page." };
+  const max = (await db.checklistItem.aggregate({ where: { templateId }, _max: { sort: true } }))._max.sort ?? 0;
+  await db.checklistItem.createMany({ data: titles.map((title, i) => ({ templateId, title, sort: max + 1 + i })) });
+  refresh();
+  return { added: titles.length };
+}
+
+/** Copy a list with all its steps. The copy starts Off so it can be changed before staff see it. */
+export async function duplicateTemplate(id: string): Promise<{ error?: string; name?: string }> {
+  await requireUser("MANAGER");
+  const t = await db.checklistTemplate.findUnique({ where: { id }, include: { items: { orderBy: [{ sort: "asc" }, { id: "asc" }] } } });
+  if (!t) return { error: "That list was deleted. Reload the page." };
+  const names = (await db.checklistTemplate.findMany({ select: { name: true } })).map((x) => x.name);
+  const name = copyName(t.name, names);
+  const max = await db.checklistTemplate.aggregate({ _max: { sort: true } });
+  await db.checklistTemplate.create({
+    data: {
+      name,
+      shift: t.shift,
+      positionIds: t.positionIds,
+      weekdays: t.weekdays,
+      active: false,
+      sort: (max._max.sort ?? 0) + 1,
+      items: { create: t.items.map((s, i) => ({ title: s.title, detail: s.detail, href: s.href, weekdays: s.weekdays, active: s.active, sort: i })) },
+    },
+  });
+  refresh();
+  return { name };
 }
 
 const itemFields = z.enum(["title", "detail", "href", "weekdays", "active"]);

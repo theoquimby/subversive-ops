@@ -261,6 +261,45 @@ export function isBuyout(e: { space: string | null; type: string }, spaces: read
   return space ? space.buyout : e.type === "BUYOUT";
 }
 
+export interface ClashBooking {
+  id: string;
+  title: string;
+  date: ISODate | null;
+  space: string | null;
+  /** "18:00"; null when not set yet. */
+  startTime: string | null;
+  endTime: string | null;
+  type: string;
+  stage: Stage;
+}
+
+const hhmm = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+/** [start, end) in minutes; a finish at or before the start runs past midnight. No times = the whole day. */
+function span(b: ClashBooking): [number, number] {
+  if (!b.startTime || !b.endTime) return [0, 48 * 60];
+  const s = hhmm(b.startTime);
+  let e = hhmm(b.endTime);
+  if (e <= s) e += 24 * 60;
+  return [s, e];
+}
+
+/**
+ * Other bookings that already hold `target`'s space on its date at
+ * overlapping times. A buyout holds every space. Lost bookings don't count.
+ * For a warning only: two parties can share a day on purpose.
+ */
+export function bookingClashes(target: ClashBooking, others: readonly ClashBooking[], spaces: readonly SpaceOption[]): ClashBooking[] {
+  if (!target.date || !target.space) return [];
+  const [ts, te] = span(target);
+  const tBuyout = isBuyout(target, spaces);
+  return others.filter((o) => {
+    if (o.id === target.id || o.stage === "LOST" || o.date !== target.date || !o.space) return false;
+    if (o.space !== target.space && !tBuyout && !isBuyout(o, spaces)) return false;
+    const [os, oe] = span(o);
+    return os < te && ts < oe;
+  });
+}
+
 export interface PrivateEventConfig {
   spaces: SpaceOption[];
   taxPct: number;

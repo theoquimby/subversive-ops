@@ -9,7 +9,7 @@ type Shift = Omit<ScheduleShift, "hours" | "notes">;
 export type ShiftUpdate =
   | { kind: "changed"; before: Shift | null; after: Shift | null; /** false when the previous state is unknown: "updated" rather than "added". */ added?: boolean }
   | { kind: "swap"; role: "requester" | "taker"; approved: boolean; shift: Shift; otherName: string | null }
-  | { kind: "timeOff"; approved: boolean; startDate: ISODate; endDate: ISODate; note?: string | null };
+  | { kind: "timeOff"; approved: boolean; startDate: ISODate; endDate: ISODate; note?: string | null; /** The manager's reason, when they gave one. */ reason?: string | null };
 
 export interface ShiftUpdateEmail {
   name: string;
@@ -53,7 +53,7 @@ function content(u: ShiftUpdate): { subject: string; title: string; status?: { l
       const when = range(u.startDate, u.endDate);
       return u.approved
         ? { subject: `Time off approved: ${shortDate(u.startDate)}${u.startDate !== u.endDate ? `–${shortDate(u.endDate)}` : ""}`, title: "Your time off is approved", status: { label: "Approved", tone: "good" }, lines: ["You won't be scheduled on these days."], rows: [{ title: when, detail: u.note ?? undefined }] }
-        : { subject: `Time off not approved: ${shortDate(u.startDate)}${u.startDate !== u.endDate ? `–${shortDate(u.endDate)}` : ""}`, title: "Your time off wasn't approved", status: { label: "Not approved", tone: "bad" }, lines: ["Talk to a manager if you need these days — a swap may still work."], rows: [{ title: when, detail: u.note ?? undefined }] };
+        : { subject: `Time off not approved: ${shortDate(u.startDate)}${u.startDate !== u.endDate ? `–${shortDate(u.endDate)}` : ""}`, title: "Your time off wasn't approved", status: { label: "Not approved", tone: "bad" }, lines: [...(u.reason ? [`The reason: ${u.reason}${/[.!?]$/.test(u.reason) ? "" : "."}`] : []), "Talk to a manager if you need these days — a swap may still work."], rows: [{ title: when, detail: u.note ?? undefined }] };
     }
   }
 }
@@ -88,5 +88,5 @@ export function shiftUpdateEmail(e: ShiftUpdateEmail): RenderedEmail {
 /** Short version for push notifications. */
 export function shiftUpdatePush(u: ShiftUpdate): { title: string; body: string } {
   const c = content(u);
-  return { title: c.title, body: [c.rows[0] ? `${c.rows[0].title}${c.rows[0].value ? ` · ${c.rows[0].value.replace(/<[^>]+>/g, "")}` : ""}` : "", ...c.lines].filter(Boolean).join(". ") };
+  return { title: c.title, body: [c.rows[0] ? `${c.rows[0].title}${c.rows[0].value ? ` · ${c.rows[0].value.replace(/<[^>]+>/g, "")}` : ""}` : "", ...c.lines].filter(Boolean).join(". ").replace(/([.!?])\. /g, "$1 ") };
 }

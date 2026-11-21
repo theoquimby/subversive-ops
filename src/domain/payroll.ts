@@ -33,6 +33,36 @@ export function payPeriodFor(date: ISODate, rules: Pick<LaborRules, "payPeriod" 
   return { start, end: addDays(start, 13) };
 }
 
+export interface PeriodPick {
+  label: string;
+  /** What else this range is, when two picks would be the same dates. */
+  hint?: string;
+  from: ISODate;
+  to: ISODate;
+}
+
+/**
+ * One-tap date ranges for pages that work by pay period (tips): last week,
+ * this pay period and the last one. With weekly pay those are the same weeks,
+ * so it's last week and this week.
+ */
+export function periodPicks(today: ISODate, rules: Pick<LaborRules, "payPeriod" | "payPeriodAnchor">): PeriodPick[] {
+  const lastMonday = addDays(mondayOf(today), -7);
+  const thisP = payPeriodFor(today, rules);
+  const lastP = payPeriodFor(addDays(thisP.start, -1), rules);
+  if (rules.payPeriod !== "BIWEEKLY") {
+    return [
+      { label: "Last week", hint: "last pay period", from: lastMonday, to: addDays(lastMonday, 6) },
+      { label: "This week", hint: "this pay period", from: thisP.start, to: thisP.end },
+    ];
+  }
+  return [
+    { label: "Last week", from: lastMonday, to: addDays(lastMonday, 6) },
+    { label: "This pay period", from: thisP.start, to: thisP.end },
+    { label: "Last pay period", from: lastP.start, to: lastP.end },
+  ];
+}
+
 /** Mondays of the workweeks in a period (overtime is always per workweek). */
 export function periodWeeks(p: PeriodRange): ISODate[] {
   const out: ISODate[] = [];

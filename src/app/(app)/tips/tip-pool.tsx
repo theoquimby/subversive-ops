@@ -7,6 +7,7 @@ import { HelpTip, HelpZone } from "@/components/help";
 import { Badge, Button, Card, cx, DatePicker, LinkButton, Stat } from "@/components/ui";
 import { planTips, PoolWarning, TipInputs, TipKind, TipMode, TipValue } from "@/domain/tipSources";
 import { perHour, TipMethod } from "@/domain/tips";
+import type { PeriodPick } from "@/domain/payroll";
 import { money, shortDate } from "@/lib/format";
 import type { TipShareRow } from "@/server/services/tips";
 import { Download, Lock, RotateCcw, Trash2 } from "lucide-react";
@@ -27,6 +28,10 @@ interface Props {
   saved: { id: string; total: number; method: TipMethod; cardMode: TipMode; cashMode: TipMode; finalized: boolean; legacy: boolean } | null;
   periods: { id: string; start: string; end: string; total: number; method: TipMethod; finalized: boolean; people: number }[];
   lastSync: string | null;
+  /** Last week, this pay period, last pay period. */
+  picks?: PeriodPick[];
+  /** An unsaved split choice carried over from before the dates changed. */
+  carry?: { method?: TipMethod; cardMode?: TipMode; cashMode?: TipMode };
 }
 
 const fmtH = (h: number) => Number(h.toFixed(2)).toLocaleString("en-US");
@@ -46,13 +51,16 @@ function Toggle<T extends string>({ label, value, options, onChange, disabled }:
   );
 }
 
-export function TipPool({ from, to, shares, excludedHours, inputs, names, coverage, warnings, saved, periods, lastSync }: Props) {
+export function TipPool({ from, to, shares, excludedHours, inputs, names, coverage, warnings, saved, periods, lastSync, picks = [], carry = {} }: Props) {
   const router = useRouter();
   const confirm = useConfirm();
   const [pending, start] = useTransition();
-  const [method, setMethod] = useState<TipMethod>(saved?.method ?? "POINTS");
-  const [cardMode, setCardMode] = useState<TipMode>(saved?.cardMode ?? "POOL");
-  const [cashMode, setCashMode] = useState<TipMode>(saved?.cashMode ?? "POOL");
+  // A finalized pool keeps its own split; otherwise a choice carried over from the last dates wins.
+  const keep = saved?.finalized ? {} : carry;
+  const base = { method: saved?.method ?? "POINTS", cardMode: saved?.cardMode ?? "POOL", cashMode: saved?.cashMode ?? "POOL" } as const;
+  const [method, setMethod] = useState<TipMethod>(keep.method ?? base.method);
+  const [cardMode, setCardMode] = useState<TipMode>(keep.cardMode ?? base.cardMode);
+  const [cashMode, setCashMode] = useState<TipMode>(keep.cashMode ?? base.cashMode);
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const locked = !!saved?.finalized;
 
@@ -69,7 +77,16 @@ export function TipPool({ from, to, shares, excludedHours, inputs, names, covera
   const dirty = !saved || saved.total !== plan.total || saved.method !== method || saved.cardMode !== cardMode || saved.cashMode !== cashMode;
   const edited = inputs.lines.reduce((a, l) => a + Number(l.card.manual) + Number(l.cash.manual), 0) + Number(inputs.pooledCard.manual) + Number(inputs.pooledCash.manual);
 
-  const go = (f: string, t: string) => router.push(`/tips?from=${f}&to=${t < f ? f : t}`);
+  const go = (f: string, t: string) => {
+    // Bring along split choices that haven't been saved, so changing the dates doesn't undo them.
+    const q = new URLSearchParams({ from: f, to: t < f ? f : t });
+    if (!locked) {
+      if (method !== base.method) q.set("method", method);
+      if (cardMode !== base.cardMode) q.set("card", cardMode);
+      if (cashMode !== base.cashMode) q.set("cash", cashMode);
+    }
+    router.push(`/tips?${q}`);
+  };
   const saveValue = (kind: TipKind, employeeId: string | null) => async (value: string) => {
     const r = await setTipValue({ from, to, method, cardMode, cashMode, kind, employeeId, value });
     if (!r.error) setMsg(null);
@@ -108,6 +125,26 @@ export function TipPool({ from, to, shares, excludedHours, inputs, names, covera
   return (
     <div className="flex flex-col gap-8">
       <HelpZone id="tips.period"><Card className="p-4 sm:p-5">
+        {picks.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-1.5" role="group" aria-label="Quick dates">
+            {picks.map((p) => {
+              const on = p.from === from && p.to === to;
+              return (
+                <button
+                  key={p.label}
+                  type="button"
+                  aria-pressed={on}
+                  title={p.hint ? `Also the ${p.hint}` : undefined}
+                  onClick={() => !on && go(p.from, p.to)}
+                  className={cx("inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3.5 text-sm sm:min-h-8", on ? "border-ink bg-primary text-primary-ink" : "border-border-strong text-ink-2 hover:bg-surface-2")}
+                >
+                  {p.label}
+                  <span className={cx("num text-xs", on ? "text-primary-ink/75" : "text-muted")}>{shortDate(p.from)} – {shortDate(p.to)}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">From</div>

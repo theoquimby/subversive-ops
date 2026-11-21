@@ -4,6 +4,7 @@ import type { AttentionItem } from "@/domain/attention";
 import { addDays, ISODate, parseISODate, toISODate, weekday } from "@/domain/dates";
 import {
   BOOKED_STAGES,
+  bookingClashes,
   CALENDAR_STAGES,
   canMove,
   defaultDueDates,
@@ -355,6 +356,25 @@ export async function createInquiry(i: { clientName: string; company?: string | 
     },
   });
   return e.id;
+}
+
+export interface BookingClash {
+  id: string;
+  title: string;
+  space: string | null;
+  startTime: string | null;
+  endTime: string | null;
+}
+
+/** Bookings already holding this space (or the whole place) that date at overlapping times. For a warning. */
+export async function clashesFor(t: { id?: string; date: ISODate | null; space: string | null; startTime: string | null; endTime: string | null; type: string }): Promise<BookingClash[]> {
+  if (!t.date || !t.space) return [];
+  const [rows, cfg] = await Promise.all([
+    db.privateEvent.findMany({ where: { date: parseISODate(t.date), stage: { not: "LOST" } }, select: { id: true, clientName: true, company: true, date: true, space: true, startTime: true, endTime: true, type: true, stage: true } }),
+    getPrivateEventConfig(),
+  ]);
+  const others = rows.map((r) => ({ id: r.id, title: titleOf(r), date: r.date ? toISODate(r.date) : null, space: r.space, startTime: r.startTime, endTime: r.endTime, type: r.type, stage: r.stage as Stage }));
+  return bookingClashes({ ...t, id: t.id ?? "", title: "", stage: "INQUIRY" }, others, cfg.spaces).map((c) => ({ id: c.id, title: c.title, space: c.space, startTime: c.startTime, endTime: c.endTime }));
 }
 
 async function facts(id: string) {

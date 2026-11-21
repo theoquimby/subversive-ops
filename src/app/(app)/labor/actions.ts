@@ -3,7 +3,7 @@
 import { businessDate } from "@/domain/dates";
 import { LaborRules, RULE_IDS, RuleId, RuleSetting } from "@/domain/labor";
 import { ADJUSTMENT_KINDS, AdjustmentKind, payPeriodFor, signedAdjustment } from "@/domain/payroll";
-import { localMinutes, parseClock, zonedTime } from "@/domain/timecards";
+import { localMinutes, parseClock, parseLatestHour, zonedTime } from "@/domain/timecards";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { env } from "@/server/env";
@@ -252,6 +252,14 @@ export async function saveLaborRule(field: NumericRule, raw: string): R {
   await requireUser("MANAGER");
   const limits = RULE_LIMITS[field];
   if (!limits) return { error: "Unknown rule" };
+  if (field === "minorLatestHour") {
+    // Typed as a time: "10p", "22:00" or the old "22".
+    const h = parseLatestHour(raw);
+    if (h == null) return { error: "A time on the hour, like 10p" };
+    await saveLaborRules({ minorLatestHour: h });
+    done();
+    return;
+  }
   const n = Number(raw.replace(/[$%,\s]/g, ""));
   if (!raw.trim() || !Number.isFinite(n) || n < limits[0] || n > limits[1]) return { error: `Enter ${limits[0]}–${limits[1]}` };
   await saveLaborRules({ [field]: limits[2] === "pct" ? n / 100 : n });

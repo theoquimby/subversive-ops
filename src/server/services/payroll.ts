@@ -36,6 +36,27 @@ async function scheduledHoursLookup(employeeIds: string[], from: ISODate, to: IS
   return (employeeId: string, date: ISODate) => m.get(`${employeeId}|${date}`) ?? 0;
 }
 
+/**
+ * The scheduled end of each card's shift (same person, same day; published
+ * shifts first), as minutes after that day's midnight. For fixing a missed
+ * clock-out in one tap.
+ */
+export async function scheduledEnds(cards: { id: string; employeeId: string; date: ISODate }[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!cards.length) return out;
+  const dates = cards.map((c) => c.date).sort();
+  const rows = await db.shift.findMany({
+    where: { employeeId: { in: [...new Set(cards.map((c) => c.employeeId))] }, start: { gte: instantAt(dates[0], 0), lt: instantAt(addDays(dates[dates.length - 1], 1), 0) } },
+    orderBy: [{ published: "desc" }, { end: "desc" }],
+  });
+  const views = rows.map(shiftView);
+  for (const c of cards) {
+    const s = views.find((v) => v.employeeId === c.employeeId && v.date === c.date);
+    if (s) out.set(c.id, s.endMin);
+  }
+  return out;
+}
+
 /** Hours a leave request is worth: its own hours, else the person's scheduled hours on those days. */
 export async function requestHours(r: { employeeId: string; startDate: Date; endDate: Date; hours: Prisma.Decimal | null }) {
   const from = toISODate(r.startDate);

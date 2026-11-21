@@ -28,8 +28,11 @@ import { FocusPicker } from "../_overview/focus-picker";
 
 type Result = void | { error?: string } | undefined;
 
-/** "Type a name, press Enter" row under a grid. */
-export function AddRow({ placeholder, onAdd, label }: { placeholder: string; onAdd: (name: string) => Promise<Result>; label: string }) {
+/**
+ * "Type a name, press Enter" row under a grid. With `onPasteLines`, pasting
+ * several lines adds one row per line.
+ */
+export function AddRow({ placeholder, onAdd, label, onPasteLines }: { placeholder: string; onAdd: (name: string) => Promise<Result>; label: string; onPasteLines?: (text: string) => Promise<Result> }) {
   const [v, setV] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -55,6 +58,19 @@ export function AddRow({ placeholder, onAdd, label }: { placeholder: string; onA
         value={v}
         onChange={(e) => setV(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
+        onPaste={(e) => {
+          const text = e.clipboardData.getData("text");
+          if (!onPasteLines || !/\S[^\n]*\r?\n[^\n]*\S/.test(text)) return;
+          e.preventDefault();
+          start(async () => {
+            const r = await onPasteLines(text);
+            if (r && r.error) setError(r.error);
+            else {
+              setError(null);
+              ref.current?.focus();
+            }
+          });
+        }}
         placeholder={placeholder}
         aria-label={label}
         disabled={pending}

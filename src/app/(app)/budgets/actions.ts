@@ -1,9 +1,9 @@
 "use server";
 
-import { copyTargets, parseMoney, parsePct, weekStartOf, weekStarts } from "@/domain/budgets";
+import { copyTargets, forecastSalesTargets, parseMoney, parsePct, weekStartOf, weekStarts } from "@/domain/budgets";
 import { addDays } from "@/domain/dates";
 import { requireUser } from "@/server/auth";
-import { loadTargets, saveTarget, saveTargets } from "@/server/services/budgets";
+import { budgetGrid, loadTargets, saveTarget, saveTargets } from "@/server/services/budgets";
 import { businessToday } from "@/server/services/sales";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -37,6 +37,17 @@ export async function copyLastWeek() {
   if (rows.length) await saveTargets(rows);
   refresh();
   return { changed: rows.length };
+}
+
+/** Blank sales targets for this week and the next 8 take the sales forecast (rounded to $50). Weeks already set keep their numbers. */
+export async function fillFromForecast() {
+  await requireUser("MANAGER");
+  const { rows } = await budgetGrid(0, 8);
+  const next = forecastSalesTargets(rows);
+  if (!rows.some((r) => r.when !== "past" && (r.sales_forecast ?? 0) > 0)) return { error: "There's no sales forecast for these weeks yet." };
+  if (next.length) await saveTargets(next);
+  refresh();
+  return { changed: next.length };
 }
 
 /** Fill the next 8 weeks from this week's targets (or the latest week that has some). Weeks already set keep their numbers. */
