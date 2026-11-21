@@ -150,3 +150,27 @@ export async function archiveRecipes(ids: string[]): Promise<BulkResult> {
   if (!done && kept.length) return { error: `Still used inside other recipes: ${kept.slice(0, 3).join(", ")}.` };
   return { message: `Archived ${recipesWord(done)}.${kept.length ? ` Kept ${kept.length} used inside other recipes.` : ""}` };
 }
+
+const newIngredientSchema = z.object({ name: z.string().trim().min(1).max(120), unit: z.string().trim().max(20) });
+
+/**
+ * "New ingredient" from a recipe's quick add: when what's typed isn't on the
+ * ingredient list yet. Measured by weight, volume or count from the unit typed
+ * ("2 oz pepper jack" is weighed). It has no price until one is added on Prices
+ * or its own page; an ingredient of that name that already exists is used instead.
+ */
+export async function createIngredientForRecipe(input: z.input<typeof newIngredientSchema>): Promise<{ error?: string; ingredient?: { id: string; name: string; baseUnit: "g" | "ml" | "each"; units: string[] }; unit?: string }> {
+  await requireUser("MANAGER");
+  const p = newIngredientSchema.safeParse(input);
+  if (!p.success) return { error: "Type a name for the ingredient." };
+  const { standardUnit, STANDARD_UNITS_BY_BASE } = await import("@/domain/units");
+  const name = p.data.name.charAt(0).toUpperCase() + p.data.name.slice(1);
+  const std = p.data.unit ? standardUnit(p.data.unit) : null;
+  const existing = await db.ingredient.findFirst({ where: { name: { equals: name, mode: "insensitive" } }, include: { conversions: true } });
+  const ing = existing ?? (await db.ingredient.create({ data: { name, baseUnit: std?.base ?? "each" }, include: { conversions: true } }));
+  const units = [...STANDARD_UNITS_BY_BASE[ing.baseUnit], ...ing.conversions.map((c) => c.unit)];
+  revalidatePath("/ingredients");
+  // Keep the unit typed when it fits; a count word like "slices" becomes "each" on a new count ingredient.
+  const unit = std && std.base === ing.baseUnit ? p.data.unit : units[0];
+  return { ingredient: { id: ing.id, name: ing.name, baseUnit: ing.baseUnit, units }, unit };
+}

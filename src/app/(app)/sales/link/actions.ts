@@ -102,6 +102,8 @@ const newRecipe = z.object({
   kind: z.enum(["MENU", "MODIFIER"]),
   category: z.string().trim().max(80),
   menuPrice: z.number().min(0).max(10_000).nullable(),
+  /** Ingredient lines added while creating (an ingredient or a prep recipe each). */
+  lines: z.array(z.object({ ingredientId: z.string().min(1).max(64).nullable(), subRecipeId: z.string().min(1).max(64).nullable(), qty: z.number().positive().max(100_000), unit: z.string().trim().min(1).max(20) })).max(60).default([]),
 });
 
 /** Create a menu recipe (or add-on) from a Square item, link it, and return its id so the builder can open. */
@@ -113,12 +115,19 @@ export async function createRecipeForItem(squareId: string, input: z.input<typeo
   if (!m) return { error: "That Square item is gone. Reload." };
   const clash = await db.recipe.findUnique({ where: { name: p.data.name }, select: { id: true, kind: true, active: true } });
   if (clash) return { error: `There's already a recipe called “${p.data.name}”. Pick it from the list instead, or use another name.` };
+  const lines = p.data.lines.filter((l) => !!l.ingredientId !== !!l.subRecipeId);
   const recipe = await db.recipe.create({
-    data: { name: p.data.name, kind: p.data.kind, category: p.data.category || (p.data.kind === "MODIFIER" ? "Add-ons" : "Food"), menuPrice: p.data.menuPrice == null ? null : new Prisma.Decimal(p.data.menuPrice.toFixed(2)) },
+    data: {
+      name: p.data.name,
+      kind: p.data.kind,
+      category: p.data.category || (p.data.kind === "MODIFIER" ? "Add-ons" : "Food"),
+      menuPrice: p.data.menuPrice == null ? null : new Prisma.Decimal(p.data.menuPrice.toFixed(2)),
+      lines: { create: lines.map((l, i) => ({ ingredientId: l.ingredientId, subRecipeId: l.subRecipeId, qty: new Prisma.Decimal(l.qty.toFixed(4)), unit: l.unit, sort: i })) },
+    },
   });
   const r = await writeLinks([{ squareId, to: { recipeId: recipe.id, ignored: false, unitCost: null, costClass: null } }], user.name);
   refresh();
-  return { message: `Created ${recipe.name} and linked it. Add its ingredients next.`, batch: r.batch, recipeId: recipe.id };
+  return { message: lines.length ? `Created ${recipe.name} with ${lines.length} ingredient${lines.length === 1 ? "" : "s"} and linked it.` : `Created ${recipe.name} and linked it. Add its ingredients next.`, batch: r.batch, recipeId: recipe.id };
 }
 
 const beerSchema = z.object({

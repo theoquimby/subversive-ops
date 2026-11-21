@@ -152,6 +152,7 @@ Rules:
 - Use a unit listed for that item. Portions should be realistic for a pub kitchen; follow the house recipes shown as examples (same buns, sauces, sides, packaging).
 - Beer recipes are PREP with the batch size as yield in bbl (or hl): grain in lb, hops in oz or g, yeast in each (packs) or g, water treatment in g.
 - Don't invent allergen claims. Don't add garnish you can't see or infer.
+- Never swap a plain ingredient for an alcoholic one that shares a word: cider, apple cider and ginger beer are not hard cider or beer. In a cocktail, only the spirits, wine or beer the dish names are alcoholic (a Cider and Bourbon is plain cider plus bourbon). If the list only has the alcoholic version, set isNew=true for the plain one.
 - If you can't read a line in a photo, leave it out and say so in notes.`;
 
 function catalogText(ctx: DraftContext) {

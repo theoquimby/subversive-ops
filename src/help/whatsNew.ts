@@ -78,6 +78,30 @@ export interface WhatsNewEntry {
 export type WhatsNewData = "guestPlaces";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 20 Nov · 1.49 (ingredients as you create; the linking tour) ----
+  {
+    id: "2026-11-20.create-with-ingredients",
+    date: "2026-11-20",
+    title: "Add ingredients as you create",
+    line: "Create recipe on Link your sales takes the ingredients too: created, costed and linked in one go.",
+    icon: "draft",
+    area: "numbers",
+    href: "/sales/link#items",
+    help: "menu.editor.quickAdd",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-20.linking-tour",
+    date: "2026-11-20",
+    title: "A tour of linking your sales",
+    line: "Two minutes on what to do first. Tours are always under Help → Guided tours.",
+    icon: "learn",
+    area: "numbers",
+    href: "/sales/link",
+    tour: "linking",
+    help: "sales.link",
+    audience: "manager",
+  },
   // ---- 20 Nov · 1.48 (linking clean-up; the customer map, shown once it has data) ----
   {
     id: "2026-11-20.link-cleanup",

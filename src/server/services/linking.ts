@@ -26,6 +26,7 @@ import {
 } from "@/domain/linking";
 import { cleanupPlan, isBackOnMenu, WEAK_NAME_MATCH, type CleanupPlan } from "@/domain/linkCleanup";
 import { isRevenueClass, type RevenueClass } from "@/domain/revenueClass";
+import { STANDARD_UNITS_BY_BASE } from "@/domain/units";
 import { db, num } from "../db";
 import { buildContext, loadCostingSnapshot, safeCost } from "./costing";
 import { classSettings } from "./insights";
@@ -258,12 +259,26 @@ export async function linkAssistant() {
     beerGroups: groups,
     flagged,
     recipes: recipes.filter((r) => r.kind !== "PREP").map((r) => ({ id: r.id, name: r.name, kind: r.kind, category: r.category, menuPrice: r.menuPrice, cost: r.cost, incomplete: r.incomplete, lines: r.lines })),
+    // What a new recipe can be built from on this page: every ingredient and prep recipe, with its units.
+    parts: await recipeParts(),
     history,
     neverSold: mappings.filter((m) => !isSettled(stateOf(m)) && !byId.get(m.squareId)?.sales && !meta[m.squareId]?.deleted).length,
   };
 }
 
 export type LinkAssistant = Awaited<ReturnType<typeof linkAssistant>>;
+
+/** Ingredients and prep recipes, with the units each can be measured in, for building a recipe as it's created. */
+export async function recipeParts(): Promise<{ id: string; kind: "i" | "r"; name: string; units: string[] }[]> {
+  const [ings, preps] = await Promise.all([
+    db.ingredient.findMany({ where: { active: true }, select: { id: true, name: true, baseUnit: true, conversions: { select: { unit: true } } }, orderBy: { name: "asc" } }),
+    db.recipe.findMany({ where: { active: true, kind: "PREP" }, select: { id: true, name: true, yieldBase: true }, orderBy: { name: "asc" } }),
+  ]);
+  return [
+    ...ings.map((i) => ({ id: i.id, kind: "i" as const, name: i.name, units: [...STANDARD_UNITS_BY_BASE[i.baseUnit], ...i.conversions.map((c) => c.unit)] })),
+    ...preps.map((r) => ({ id: r.id, kind: "r" as const, name: r.name, units: STANDARD_UNITS_BY_BASE[r.yieldBase] })),
+  ];
+}
 
 /** Coverage only (for small hints elsewhere). */
 export async function linkCoverage(): Promise<Coverage> {

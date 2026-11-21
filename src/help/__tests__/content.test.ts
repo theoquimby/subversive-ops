@@ -62,6 +62,7 @@ describe("tours", () => {
   it("map pages to tours", () => {
     expect(tourForPath("/")?.id).toBe("overview");
     expect(tourForPath("/menu/abc")?.id).toBe("menu");
+    expect(tourForPath("/sales/link")?.id).toBe("linking");
     expect(tourForPath("/waste")?.id).toBe("counting");
     expect(tourForPath("/settings")).toBeUndefined();
   });

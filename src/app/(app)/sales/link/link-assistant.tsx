@@ -18,9 +18,10 @@ import { useMemo, useState, useTransition } from "react";
 import { draftSquareItems } from "../../menu/drafts/actions";
 import { applyLinks, confirmLinks, costBeerPours, createRecipeForItem, skipItems, undoLinks, unskipItems, type LinkResult } from "./actions";
 import { rejectSuggestions } from "../square-menu/actions";
+import { IngredientBuilder, type BuiltLine, type Part } from "./ingredient-builder";
 
 type Recipe = LinkAssistant["recipes"][number];
-type Data = Pick<LinkAssistant, "coverage" | "plan" | "unlinked" | "skipped" | "beerGroups" | "flagged" | "recipes" | "history" | "neverSold">;
+type Data = Pick<LinkAssistant, "coverage" | "plan" | "unlinked" | "skipped" | "beerGroups" | "flagged" | "recipes" | "parts" | "history" | "neverSold">;
 type Show = (text: string, tone?: "good" | "bad" | "queued", action?: { label: string; onClick: () => void }) => void;
 
 const whole = (n: number) => money(n, { whole: true });
@@ -67,7 +68,7 @@ export function LinkAssistantView({ data }: { data: Data }) {
       <CoverageCard c={data.coverage} plan={data.plan} unlinkedCount={data.unlinked.length} neverSold={data.neverSold} />
 
       {data.flagged.length > 0 && (
-        <HelpZone id="sales.link.check">
+        <HelpZone id="sales.link.check" tour="sales.link-check">
           <div id="check" className="scroll-mt-24">
             <Section title={<span className="inline-flex items-center gap-1.5">Check these links <HelpTip id="sales.link.check" /></span>} description="Links whose names hardly agree, or whose cost looks wrong for the price. A wrong link is worse than none: fix it, or say it's right and it stops showing here.">
               <Card className="divide-y divide-border">
@@ -89,7 +90,7 @@ export function LinkAssistantView({ data }: { data: Data }) {
 
       <HelpZone id="sales.link.items" tour="sales.link-items">
         <div id="items" className="scroll-mt-24">
-          <ItemList rows={list} recipes={data.recipes} recipeById={recipeById} guarded={guarded} run={run} show={show} pending={pending} neverSold={data.neverSold} />
+          <ItemList rows={list} recipes={data.recipes} parts={data.parts} recipeById={recipeById} guarded={guarded} run={run} show={show} pending={pending} neverSold={data.neverSold} />
         </div>
       </HelpZone>
 
@@ -301,9 +302,10 @@ function EffectLine({ effect, price, compact }: { effect: Effect; price: number 
 
 const PAGE = 15;
 
-function ItemList({ rows, recipes, recipeById, guarded, run, show, pending, neverSold }: {
+function ItemList({ rows, recipes, parts, recipeById, guarded, run, show, pending, neverSold }: {
   rows: AssistantRow[];
   recipes: Recipe[];
+  parts: Part[];
   recipeById: Map<string, Recipe>;
   guarded: (e: Effect | null, what: string, fn: () => Promise<LinkResult>) => Promise<void>;
   run: (fn: () => Promise<LinkResult>, after?: (r: LinkResult) => void) => void;
@@ -331,7 +333,7 @@ function ItemList({ rows, recipes, recipeById, guarded, run, show, pending, neve
       ) : (
         <>
           <div className="space-y-3">
-            {shown.map((r) => <ItemCard key={r.squareId} r={r} recipes={recipes} recipeById={recipeById} guarded={guarded} run={run} show={show} pending={pending} />)}
+            {shown.map((r) => <ItemCard key={r.squareId} r={r} recipes={recipes} parts={parts} recipeById={recipeById} guarded={guarded} run={run} show={show} pending={pending} />)}
             {filtered.length === 0 && <Card className="p-5 text-center text-sm text-muted">No items match “{q}”.</Card>}
           </div>
           {filtered.length > n && (
@@ -346,9 +348,10 @@ function ItemList({ rows, recipes, recipeById, guarded, run, show, pending, neve
 
 type Panel = null | "pick" | "create" | "other";
 
-function ItemCard({ r, recipes, recipeById, guarded, run, show, pending }: {
+function ItemCard({ r, recipes, parts, recipeById, guarded, run, show, pending }: {
   r: AssistantRow;
   recipes: Recipe[];
+  parts: Part[];
   recipeById: Map<string, Recipe>;
   guarded: (e: Effect | null, what: string, fn: () => Promise<LinkResult>) => Promise<void>;
   run: (fn: () => Promise<LinkResult>, after?: (r: LinkResult) => void) => void;
@@ -409,7 +412,7 @@ function ItemCard({ r, recipes, recipeById, guarded, run, show, pending }: {
       </div>
 
       {panel === "pick" && <PickPanel r={r} recipes={recipes} recipeById={recipeById} guarded={guarded} pending={pending} />}
-      {panel === "create" && <CreatePanel r={r} run={run} show={show} pending={pending} />}
+      {panel === "create" && <CreatePanel r={r} parts={parts} run={run} show={show} pending={pending} />}
       {panel === "other" && <OtherPanel r={r} guarded={guarded} run={run} pending={pending} />}
     </Card>
   );
@@ -443,7 +446,10 @@ function PickPanel({ r, recipes, recipeById, guarded, pending }: { r: AssistantR
   );
 }
 
-function CreatePanel({ r, run, show, pending }: { r: AssistantRow; run: (fn: () => Promise<LinkResult>, after?: (r: LinkResult) => void) => void; show: Show; pending: boolean }) {
+function CreatePanel({ r, parts, run, show, pending }: { r: AssistantRow; parts: Part[]; run: (fn: () => Promise<LinkResult>, after?: (r: LinkResult) => void) => void; show: Show; pending: boolean }) {
+  const [lines, setLines] = useState<BuiltLine[]>([]);
+  const ready = lines.filter((l) => l.qty > 0);
+  const payload = () => ready.map((l) => ({ ingredientId: l.part.kind === "i" ? l.part.id : null, subRecipeId: l.part.kind === "r" ? l.part.id : null, qty: l.qty, unit: l.unit }));
   const router = useRouter();
   const [name, setName] = useState(r.baseName.replace(/\s*\*+\s*/g, " ").trim());
   const [kind, setKind] = useState<"MENU" | "MODIFIER">(r.modifier ? "MODIFIER" : "MENU");
@@ -460,15 +466,24 @@ function CreatePanel({ r, run, show, pending }: { r: AssistantRow; run: (fn: () 
         <Field label="Category"><Input value={category} onChange={(e) => setCategory(e.target.value)} /></Field>
         <Field label="Menu price"><Input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="0.00" className="num" /></Field>
       </div>
+      <div>
+        <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">Ingredients {ready.length ? <span className="font-normal text-muted">· {ready.length}</span> : <span className="font-normal text-muted">(add them here, or after)</span>}</div>
+        <IngredientBuilder parts={parts} lines={lines} onChange={setLines} />
+      </div>
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" className="h-10 sm:h-9" disabled={pending || !valid} onClick={() => run(() => createRecipeForItem(r.squareId, { name: name.trim(), kind, category: category.trim(), menuPrice: price.trim() === "" ? null : n }), (res) => { const id = (res as { recipeId?: string }).recipeId; if (id) router.push(`/menu/${id}`); })}>
-          <Plus className="size-4" />Create and add ingredients
+        {ready.length > 0 && (
+          <Button variant="primary" className="h-10 sm:h-9" disabled={pending || !valid} onClick={() => run(() => createRecipeForItem(r.squareId, { name: name.trim(), kind, category: category.trim(), menuPrice: price.trim() === "" ? null : n, lines: payload() }))}>
+            <Check className="size-4" />Create with {ready.length} ingredient{ready.length === 1 ? "" : "s"} and link
+          </Button>
+        )}
+        <Button variant={ready.length ? "secondary" : "primary"} className="h-10 sm:h-9" disabled={pending || !valid} onClick={() => run(() => createRecipeForItem(r.squareId, { name: name.trim(), kind, category: category.trim(), menuPrice: price.trim() === "" ? null : n, lines: payload() }), (res) => { const id = (res as { recipeId?: string }).recipeId; if (id) router.push(`/menu/${id}`); })}>
+          <Plus className="size-4" />{ready.length ? "Create and open the recipe" : "Create and add ingredients"}
         </Button>
         <Button className="h-10 sm:h-9" disabled={drafting} onClick={() => startDraft(async () => { const res = await draftSquareItems([r.squareId]); if (res.error) show(res.error, "bad"); else router.push("/menu/drafts"); })}>
           <Sparkles className="size-4" />{drafting ? "Drafting…" : "Draft ingredients for me"}
         </Button>
       </div>
-      <p className="text-xs text-muted">Create links it now and opens the recipe so you can add ingredients; it counts at $0 until you do. A draft suggests the lines from your similar recipes and nothing is saved until you approve it.</p>
+      <p className="text-xs text-muted">Add ingredients here and it's created, costed and linked in one go, without leaving this page. Or create it now and add them on the recipe page; it counts at $0 until you do. A draft suggests the lines from your similar recipes and nothing is saved until you approve it.</p>
     </div>
   );
 }

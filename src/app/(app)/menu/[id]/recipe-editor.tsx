@@ -8,8 +8,8 @@ import { Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useConfirm } from "@/components/dialog";
-import { parseQuickLine, type QuickItem } from "@/domain/quickAdd";
-import { archiveRecipe, saveRecipe } from "../actions";
+import { everydayUnit, parseQuickLine, type ParsedLine, type QuickItem } from "@/domain/quickAdd";
+import { archiveRecipe, createIngredientForRecipe, saveRecipe } from "../actions";
 import { HelpTip, HelpZone } from "@/components/help";
 import { looksHouseMade, prepTwin } from "@/domain/linking";
 import type { SelectOption } from "@/components/select";
@@ -109,7 +109,10 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
     });
   };
 
-  const ingById = useMemo(() => new Map(catalog.ingredients.map((i) => [i.id, i])), [catalog]);
+  // Ingredients added from this page (quick add's "New ingredient") join the list straight away.
+  const [extra, setExtra] = useState<EditorCatalog["ingredients"]>([]);
+  const ingredients = useMemo(() => [...catalog.ingredients, ...extra.filter((e) => !catalog.ingredients.some((c) => c.id === e.id))], [catalog, extra]);
+  const ingById = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
   const recById = useMemo(() => new Map(catalog.recipes.map((x) => [x.id, x])), [catalog]);
 
   const lineCost = (l: Line): { cost: number | null; error?: string } => {
@@ -133,29 +136,45 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
 
   // Quick add: "6 oz ground beef", or paste a whole ingredient list.
   const quickItems = useMemo<(QuickItem & { kind: "i" | "r" })[]>(
-    () => [...catalog.ingredients.map((i) => ({ id: i.id, name: i.name, units: i.units, kind: "i" as const })), ...catalog.recipes.map((x) => ({ id: x.id, name: x.name, units: x.units, kind: "r" as const }))],
-    [catalog],
+    () => [...ingredients.map((i) => ({ id: i.id, name: i.name, units: i.units, kind: "i" as const })), ...catalog.recipes.map((x) => ({ id: x.id, name: x.name, units: x.units, kind: "r" as const }))],
+    [ingredients, catalog],
   );
   const [quick, setQuick] = useState("");
   const [quickMsg, setQuickMsg] = useState<string | null>(null);
+  const [creating, startCreate] = useTransition();
   const preview = quick.includes("\n") ? null : parseQuickLine(quick, quickItems);
+  const lineFor = (p: Pick<ParsedLine, "qty" | "unit">, it: QuickItem & { kind: "i" | "r" }) => ({ key: newKey(), ingredientId: it.kind === "i" ? it.id : null, subRecipeId: it.kind === "r" ? it.id : null, qty: p.qty, unit: p.unit });
+  /** Add lines that matched for sure. A guess or a miss is never added without asking: one line shows the choice, a pasted list names them. */
   const addQuick = (text: string) => {
     const parsed = text.split(/\r?\n/).map((l) => parseQuickLine(l, quickItems)).filter((p): p is NonNullable<typeof p> => p != null);
-    const ok = parsed.filter((p) => p.item);
-    const missed = parsed.filter((p) => !p.item).map((p) => p.raw.trim());
-    setR((cur) => ({
-      ...cur,
-      lines: [
-        ...cur.lines,
-        ...ok.map((p) => {
-          const it = p.item as QuickItem & { kind: "i" | "r" };
-          return { key: newKey(), ingredientId: it.kind === "i" ? it.id : null, subRecipeId: it.kind === "r" ? it.id : null, qty: p.qty, unit: p.unit };
-        }),
-      ],
-    }));
-    setQuick("");
-    setQuickMsg(missed.length ? `Couldn't match: ${missed.join(", ")}` : ok.length > 1 ? `Added ${ok.length} lines` : null);
+    const ok = parsed.filter((p) => p.item && p.sure);
+    const left = parsed.filter((p) => !(p.item && p.sure)).map((p) => p.raw.trim());
+    if (!ok.length && parsed.length === 1) return; // the choice is on screen under the box
+    setR((cur) => ({ ...cur, lines: [...cur.lines, ...ok.map((p) => lineFor(p, p.item as QuickItem & { kind: "i" | "r" }))] }));
+    setQuick(left.length && parsed.length > 1 ? left.join("\n") : "");
+    setQuickMsg(left.length ? `Added ${ok.length}. Not sure about ${left.length === 1 ? "this one" : `these ${left.length}`}, so ${left.length === 1 ? "it's" : "they're"} left in the box: add ${left.length === 1 ? "it" : "them"} one at a time.` : ok.length > 1 ? `Added ${ok.length} lines` : null);
   };
+  /** Use the closest guess anyway. */
+  const takeGuess = (p: ParsedLine) => {
+    setR((cur) => ({ ...cur, lines: [...cur.lines, lineFor(p, p.item as QuickItem & { kind: "i" | "r" })] }));
+    setQuick("");
+    setQuickMsg(null);
+  };
+  /** Add what was typed as a new ingredient (no price yet), and the line with it. */
+  const newIngredient = (p: ParsedLine, typedUnit: boolean) =>
+    startCreate(async () => {
+      const res = await createIngredientForRecipe({ name: p.name, unit: typedUnit ? p.unit : "" });
+      if (res.error || !res.ingredient) return setQuickMsg(res.error ?? "Couldn't add it.");
+      const ing = res.ingredient;
+      setExtra((cur) => [...cur, { id: ing.id, name: ing.name, baseUnit: ing.baseUnit, costPerUsableBase: null, conversions: [], units: ing.units, packQtyBase: null, source: null }]);
+      setR((cur) => ({ ...cur, lines: [...cur.lines, { key: newKey(), ingredientId: ing.id, subRecipeId: null, qty: p.qty, unit: res.unit ?? everydayUnit(ing.units) }] }));
+      setQuick("");
+      setQuickMsg(`${ing.name} is on the ingredient list now, with no price yet. Add one on its page or on Prices to cost this line.`);
+    });
+  /** An empty line, to pick the item from the list. */
+  const addBlank = () => setR((cur) => ({ ...cur, lines: [...cur.lines, { key: newKey(), ingredientId: null, subRecipeId: null, qty: 1, unit: "" }] }));
+  // Was a unit typed? ("2 oz pepper jack" yes, "pepper jack" no.)
+  const typedUnit = (raw: string) => /\d\s*[a-z]/i.test(raw);
 
   const costs = r.lines.map(lineCost);
   const total = costs.reduce((s, c) => s + (c.cost ?? 0), 0);
@@ -171,10 +190,10 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
     const [type, id] = value.split(":");
     if (type === "i") {
       const ing = ingById.get(id)!;
-      updateLine(key, { ingredientId: id, subRecipeId: null, unit: ing.units.includes(currentUnit(key)) ? currentUnit(key) : ing.units[0] });
+      updateLine(key, { ingredientId: id, subRecipeId: null, unit: ing.units.includes(currentUnit(key)) ? currentUnit(key) : everydayUnit(ing.units) });
     } else {
       const rec = recById.get(id)!;
-      updateLine(key, { ingredientId: null, subRecipeId: id, unit: rec.units.includes(currentUnit(key)) ? currentUnit(key) : rec.units[0] });
+      updateLine(key, { ingredientId: null, subRecipeId: id, unit: rec.units.includes(currentUnit(key)) ? currentUnit(key) : everydayUnit(rec.units) });
     }
   };
   const currentUnit = (key: string) => r.lines.find((l) => l.key === key)?.unit ?? "";
@@ -190,7 +209,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
       try { return `${money(toBase(l.qty, l.unit, base, conv) * perBase)} for ${qty(l.qty)} ${l.unit}`; } catch { return "unit changes"; }
     };
     return [
-      ...catalog.ingredients.map((i) => ({ value: `i:${i.id}`, label: i.name, badge: "Ingredient", group: "Ingredients", hint: preview(i.baseUnit, i.costPerUsableBase, i.conversions) })),
+      ...ingredients.map((i) => ({ value: `i:${i.id}`, label: i.name, badge: "Ingredient", group: "Ingredients", hint: preview(i.baseUnit, i.costPerUsableBase, i.conversions) })),
       ...catalog.recipes.map((x) => ({ value: `r:${x.id}`, label: x.name, badge: "Prep recipe", group: "Prep recipes (made here)", hint: preview(x.baseUnit, x.costPerBase) })),
     ];
   };
@@ -302,7 +321,7 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
                 rows={1}
                 value={quick}
                 onChange={(e) => { setQuick(e.target.value); setQuickMsg(null); }}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (quick.trim()) addQuick(quick); } }}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (quick.trim() && !creating) addQuick(quick); } }}
                 onPaste={(e) => { const t = e.clipboardData.getData("text/plain"); if (t.includes("\n")) { e.preventDefault(); addQuick(t); } }}
                 placeholder='Add an ingredient: "6 oz ground beef"'
                 className="block h-10 w-full resize-none rounded-lg border border-dashed border-border-strong bg-transparent py-2.5 pr-9 pl-9 text-sm placeholder:text-muted focus:border-ink-2 focus:border-solid focus:outline-none"
@@ -310,13 +329,26 @@ export function RecipeEditor({ initial, catalog }: { initial: EditorRecipe; cata
               />
               <span className="absolute top-1/2 right-3 flex -translate-y-1/2"><HelpTip id="menu.editor.quickAdd" /></span>
             </div>
-            {preview?.item ? (
+            {preview?.item && preview.sure ? (
               <div className="mt-1.5 pl-1 text-xs text-muted">↵ adds <span className="num text-ink">{preview.qty} {preview.unit}</span> {preview.item.name}</div>
-            ) : quick.trim() ? (
-              <div className="mt-1.5 pl-1 text-xs text-warn">No matching ingredient</div>
+            ) : preview && quick.trim() ? (
+              <div className="mt-2 rounded-lg bg-surface-2 px-3 py-2.5 text-sm">
+                <p className="text-ink-2">
+                  {preview.item ? <>Not sure that&apos;s on the list. The closest is <b className="text-ink">{preview.item.name}</b>.</> : <>No ingredient called <b className="text-ink">{preview.name}</b> yet.</>}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {preview.item && <Button size="sm" onClick={() => takeGuess(preview)}>Use {preview.item.name}</Button>}
+                  <Button size="sm" variant={preview.item ? "ghost" : "secondary"} disabled={creating} onClick={() => newIngredient(preview, typedUnit(quick))}>
+                    <Plus className="size-3.5" />{creating ? "Adding…" : `New ingredient “${preview.name.charAt(0).toUpperCase() + preview.name.slice(1)}”`}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => { addBlank(); setQuick(""); }}>Pick from the list</Button>
+                </div>
+              </div>
             ) : quickMsg ? (
               <div className="mt-1.5 pl-1 text-xs text-muted">{quickMsg}</div>
-            ) : null}
+            ) : (
+              <button type="button" onClick={addBlank} className="mt-1.5 pl-1 text-xs text-muted underline underline-offset-2 hover:text-ink">Or pick from the list</button>
+            )}
           </HelpZone>
         </Card></HelpZone>
 

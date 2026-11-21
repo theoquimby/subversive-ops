@@ -16,6 +16,7 @@
  */
 
 import { splitQtyUnit } from "./quickAdd";
+import { alcoholClash, alcoholWord } from "./alcohol";
 import { BaseUnit, canConvert, CustomConversion, normalizeUnit, standardUnit, toBase } from "./units";
 
 // ---- Types ------------------------------------------------------------------------
@@ -164,6 +165,8 @@ export function matchItem(phrase: string, ix: ItemIndex, minConfidence = 0.55): 
   let best: { item: DraftItem; confidence: number; score: number } | null = null;
   for (const item of ix.items) {
     if (NON_FOOD.test(item.category)) continue;
+    // "cider" is never "Hard cider" (nor the other way round): a shared word isn't the same drink.
+    if (alcoholClash(phrase, item.name)) continue;
     if (item.name.toLowerCase() === exact) return { item, confidence: 1 };
     const t = ix.tokens.get(item.key)!;
     const common = q.filter((w) => t.some((x) => sameWord(w, x)));
@@ -676,7 +679,9 @@ export function resolveAiDraft(ai: AiDraft, ix: ItemIndex, method: DraftMethod, 
     if (item) {
       if (lines.some((x) => x.itemKey === item.key)) continue;
       const u = chooseUnit(item, l.unit);
-      lines.push({ itemKey: item.key, qty: round(l.qty, 4), unit: u.unit, note: [l.note || null, u.changed ? `check the amount (Claude said ${l.qty} ${l.unit})` : null].filter(Boolean).join(" · ") || null });
+      // An alcoholic version picked for a dish that doesn't say so (Cider and Bourbon → Hard cider): flag it.
+      const hard = alcoholWord(item.name) === "hard" && alcoholWord(`${ai.name} ${base?.name ?? ""}`) !== "hard" ? `${item.name} is alcoholic; the dish doesn't say hard, so check it isn't plain` : null;
+      lines.push({ itemKey: item.key, qty: round(l.qty, 4), unit: u.unit, note: [hard, l.note || null, u.changed ? `check the amount (Claude said ${l.qty} ${l.unit})` : null].filter(Boolean).join(" · ") || null });
     } else {
       const base = standardUnit(l.unit)?.base ?? "each";
       lines.push({ itemKey: null, newName: l.item.trim(), newBaseUnit: base, qty: round(l.qty, 4), unit: standardUnit(l.unit) ? normalizeUnit(l.unit) : "each", note: l.note || null });

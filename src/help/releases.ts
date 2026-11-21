@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.49",
+    date: "2026-11-20",
+    title: "Ingredients: add them as you create, no wrong guesses",
+    summary: "Create recipe on Link your sales now takes the ingredients too, so a dish is created, costed and linked in one go. Adding ingredients never swaps in a different thing on its own, and anything missing can be added on the spot.",
+    entries: ["2026-11-20.create-with-ingredients", "2026-11-20.linking-tour"],
+    fixed: [
+      "Quick add no longer guesses: \"1 brioche bun\" used to become Burger bun. Now it says it isn't sure and offers the closest, a new ingredient, or the full list.",
+      "Plain cider is never matched to hard cider (or beer to NA beer), in quick add and in recipe drafts. A draft that picks a hard version for a dish that doesn't say so is flagged on the line.",
+      "Typing just a name adds an everyday amount: 1 fl oz of mayonnaise, not 1 ml.",
+      "Tours are under Help → Guided tours, and the Help menu on a page offers that page's tour. Link your sales and Menu from Square now have one.",
+    ],
+  },
+  {
     version: "1.48",
     date: "2026-11-20",
     title: "Linking clean-up, and where customers come from",

@@ -2,8 +2,9 @@
  * Parse free-text recipe lines like "6 oz ground beef", "1 1/2 cups flour",
  * "2 slices cheddar", "aioli 1 tbsp" into qty + unit + best-matching item.
  */
+import { alcoholClash } from "./alcohol";
 import { fuzzyScore } from "./search";
-import { normalizeUnit, standardUnit } from "./units";
+import { normalizeUnit, standardUnit, STANDARD_UNITS_BY_BASE } from "./units";
 
 export interface QuickItem {
   id: string;
@@ -16,6 +17,31 @@ export interface ParsedLine {
   qty: number;
   unit: string;
   item: QuickItem | null;
+  /** The name as typed, without the amount: what a new ingredient would be called. */
+  name: string;
+  /** Every word typed is in the item's name ("mayo" → Mayonnaise). When false, `item` is only the closest guess. */
+  sure: boolean;
+}
+
+const STANDARD = new Set(Object.values(STANDARD_UNITS_BY_BASE).flat());
+
+/**
+ * The unit for a line where none was typed: the item's own unit if it has one
+ * (slice, bun), else ounces or fluid ounces rather than 1 g or 1 ml.
+ */
+export function everydayUnit(units: readonly string[]): string {
+  const own = units.find((u) => !STANDARD.has(u));
+  if (own) return own;
+  if (units[0] === "g" && units.includes("oz")) return "oz";
+  if (units[0] === "ml" && units.includes("fl oz")) return "fl oz";
+  return units[0] ?? "each";
+}
+
+/** Every word typed (bar tiny ones) starts a word in the name: "ground beef", "mayo", "beef ground". */
+function allWordsIn(typed: string, name: string): boolean {
+  const words = typed.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1);
+  const nameWords = name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  return words.length > 0 && words.every((w) => nameWords.some((n) => n.startsWith(w) || (w.length > 3 && n.startsWith(w.replace(/e?s$/, "")))));
 }
 
 const UNIT_ALIASES: Record<string, string> = {
@@ -80,11 +106,13 @@ export function parseQuickLine(raw: string, items: QuickItem[]): ParsedLine | nu
   const known = new Set(items.flatMap((i) => i.units.map(normalizeUnit)));
   const { qty, unit, name } = extract(text.split(/\s+/), known);
   if (!name) return null;
+  // The best whole-word match wins over a loose one ("brioche bun" mustn't become whatever fuzzes closest).
+  const whole = items.filter((it) => allWordsIn(name, it.name) && !alcoholClash(name, it.name));
 
   let best: QuickItem | null = null;
   let bestScore = -Infinity;
-  for (const it of items) {
-    const s = fuzzyScore(name, it.name);
+  for (const it of whole.length ? whole : items) {
+    const s = fuzzyScore(name, it.name) ?? (whole.length ? 0 : null);
     if (s != null && s > bestScore) { best = it; bestScore = s; }
   }
   // Fall back to word overlap when characters don't line up in order ("beef ground").
@@ -96,8 +124,8 @@ export function parseQuickLine(raw: string, items: QuickItem[]): ParsedLine | nu
       if (hits > bestHits) { best = it; bestHits = hits; }
     }
   }
-  const unitForItem = best ? (unit && best.units.map(normalizeUnit).includes(unit) ? best.units[best.units.map(normalizeUnit).indexOf(unit)] : unit ?? best.units[0]) : unit ?? "each";
-  return { raw, qty: qty ?? 1, unit: unitForItem, item: best };
+  const unitForItem = best ? (unit && best.units.map(normalizeUnit).includes(unit) ? best.units[best.units.map(normalizeUnit).indexOf(unit)] : unit ?? everydayUnit(best.units)) : unit ?? "each";
+  return { raw, qty: qty ?? 1, unit: unitForItem, item: best, name, sure: !!best && allWordsIn(name, best.name) && !alcoholClash(name, best.name) };
 }
 
 /**

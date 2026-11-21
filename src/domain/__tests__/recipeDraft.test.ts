@@ -70,6 +70,21 @@ describe("matchItem", () => {
     expect(matchItem("garlic aioli", ix)?.item.name).toBe("Garlic Aioli");
     expect(matchItem("swiss", ix)?.item.name).toBe("Swiss cheese, sliced");
   });
+  it("never matches plain cider to hard cider, or the other way round", () => {
+    const bar = indexItems([...items, ing("hc", "Indian Ladder Hard Cider", "Beer & cider", "ml", 0.006), ing("bourbon", "Bourbon", "Spirits", "ml", 0.03), ing("nabeer", "Athletic NA beer", "Beer & cider", "each", 1.2)], examples);
+    expect(matchItem("cider", bar)).toBeNull();
+    expect(matchItem("apple cider", bar)).toBeNull();
+    expect(matchItem("hard cider", bar)?.item.name).toBe("Indian Ladder Hard Cider");
+    expect(matchItem("bourbon", bar)?.item.name).toBe("Bourbon");
+    expect(matchItem("beer", bar)?.item.name).not.toBe("Athletic NA beer");
+    // Claude picking the hard one for a Cider and Bourbon is flagged on the line.
+    const d = resolveAiDraft({ name: "Cider and Bourbon", kind: "MENU", category: "Cocktails", yieldQty: 1, yieldUnit: "each", notes: "", lines: [
+      { item: "Indian Ladder Hard Cider", isNew: false, qty: 8, unit: "fl oz", note: "" },
+      { item: "Bourbon", isNew: false, qty: 1.5, unit: "fl oz", note: "" },
+    ] }, bar, "ai");
+    expect(d.lines[0].note).toMatch(/alcoholic; the dish doesn't say hard/);
+    expect(d.lines[1].note).toBeNull();
+  });
   it("returns null for things Max doesn't buy, and skips cleaning supplies", () => {
     expect(matchItem("2-row pale malt", ix)).toBeNull();
     expect(matchItem("cascade hops", ix)).toBeNull();

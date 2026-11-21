@@ -318,7 +318,7 @@ For a prep recipe you see **batch cost** and **yield** instead, because prep isn
     area: "menu",
     route: "/menu",
     title: "Quick add",
-    body: "Type a quantity, unit and ingredient — like \"6 oz ground beef\" — and press Enter. Paste a whole list (one per line) to add every line at once.",
+    body: "Type a quantity, unit and ingredient, like \"6 oz ground beef\", and press Enter. If it isn't sure, it asks: use the closest, add a new ingredient, or pick from the list.",
     article: `Quick add understands lines like:
 
 - \`6 oz ground beef\`
@@ -326,9 +326,14 @@ For a prep recipe you see **batch cost** and **yield** instead, because prep isn
 - \`1 brioche bun\`
 - \`30 ml house aioli\` (prep recipes work too)
 
-Names are matched loosely, so "grnd beef" finds "Ground beef". Before you press Enter, the line underneath shows exactly what will be added.
+Before you press Enter, the line underneath shows exactly what will be added. Leave out the unit and it picks an everyday one: 1 fl oz of mayonnaise, not 1 ml.
 
-**Paste a list** from a recipe card, an email or a spreadsheet — one ingredient per line — and every line that matches is added. Anything it couldn't match is listed so you can add it by hand.`,
+**When it isn't sure.** Every word you type has to be in the ingredient's name for it to add the line straight away. Otherwise it never guesses quietly: "1 brioche bun" shows "the closest is Burger bun" with three choices:
+- **Use** the closest one, if it is the same thing.
+- **New ingredient**: adds what you typed to the ingredient list (weighed, measured or counted, from the unit you typed) and adds the line. It has no price until you add one on its page or on Prices.
+- **Pick from the list**: an empty line with the full, searchable list.
+
+**Paste a list** from a recipe card, an email or a spreadsheet, one ingredient per line. Every line it's sure of is added; the rest stay in the box to add one at a time.`,
     related: ["menu.editor.units", "ingredients.customUnits"],
     keywords: ["paste", "type", "fast", "ingredient list"],
   },
