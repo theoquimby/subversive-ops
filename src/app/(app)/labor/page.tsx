@@ -2,13 +2,13 @@ import { HelpZone } from "@/components/help";
 import { Badge, Card, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
 import { addDays, dateRange } from "@/domain/dates";
 import { payPeriodFor, PayrollException, PayrollRow, PayrollSnapshot, periodDays } from "@/domain/payroll";
-import { blockCost, blockHours, clockLabel, localMinutes } from "@/domain/timecards";
+import { blockCost, blockHours, clockLabel, formatClock, localMinutes } from "@/domain/timecards";
 import { dayDate, money, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { env } from "@/server/env";
 import { loadTeam } from "@/server/services/labor";
 import { getLaborRules } from "@/server/services/labor-rules";
-import { computePayroll, findPayPeriod, recentPayPeriods } from "@/server/services/payroll";
+import { computePayroll, findPayPeriod, recentPayPeriods, scheduledEnds } from "@/server/services/payroll";
 import { businessToday } from "@/server/services/sales";
 import { isSquareConnected } from "@/server/services/square";
 import { refreshIfStale } from "@/server/services/square-sync";
@@ -18,6 +18,7 @@ import { AdjustmentsGrid, ApprovalBar, LevelBadge, PeriodPicker } from "./payrol
 import { SquareSyncButton } from "./square-sync-button";
 import { TimecardGrid } from "./timecard-grid";
 import { ProductivityLine } from "./productivity";
+import { MissingOutFix } from "./missing-out";
 
 export const metadata = { title: "Timecards" };
 
@@ -59,9 +60,19 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
       cost: blockCost(b, rules.employerBurdenPct, now),
       source: c.source,
       open: !c.clockOut,
+      // A card from an earlier business day that's still open: they forgot to clock out.
+      missing: !c.clockOut && c.date < today,
       edited: c.manuallyEdited,
     };
   });
+  const missingCards = cards.filter((c) => !c.clockOut && c.date < today);
+  const missingBy = new Set(missingCards.map((c) => c.employeeId));
+  const ends = approved ? new Map<string, number>() : await scheduledEnds(missingCards.map((c) => ({ id: c.id, employeeId: c.employeeId, date: c.date })));
+  const fixFor = (e: PayrollException) => {
+    if (e.kind !== "missing-clock-out" || !e.cardId) return undefined;
+    const end = ends.get(e.cardId);
+    return { cardId: e.cardId, scheduled: end == null ? null : { value: formatClock(end), label: clockLabel(end) } };
+  };
 
   const total = rows.reduce(
     (a, r) => ({ hours: a.hours + r.regularHours + r.overtimeHours, ot: a.ot + r.overtimeHours, gross: a.gross + r.gross, tips: a.tips + r.tips, spread: a.spread + r.spreadHours }),
@@ -106,14 +117,14 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
             <Card className="px-4 py-5 text-sm text-muted">{cards.length ? "Nothing to check. Every card has a clock-out and a rate." : "No timecards in this period yet."}</Card>
           ) : (
             <Card className="divide-y divide-border">
-              {exceptions.slice(0, SHOW_EXCEPTIONS).map((e, i) => <ExceptionRow key={i} e={e} />)}
+              {exceptions.slice(0, SHOW_EXCEPTIONS).map((e, i) => <ExceptionRow key={i} e={e} fix={fixFor(e)} />)}
               {exceptions.length > SHOW_EXCEPTIONS && (
                 <details className="group">
                   <summary className="flex min-h-11 cursor-pointer list-none items-center px-4 text-sm text-ink-2 hover:bg-surface-2/60 group-open:border-b group-open:border-border">
                     Show {exceptions.length - SHOW_EXCEPTIONS} more
                   </summary>
                   <div className="divide-y divide-border">
-                    {exceptions.slice(SHOW_EXCEPTIONS).map((e, i) => <ExceptionRow key={i} e={e} />)}
+                    {exceptions.slice(SHOW_EXCEPTIONS).map((e, i) => <ExceptionRow key={i} e={e} fix={fixFor(e)} />)}
                   </div>
                 </details>
               )}
@@ -164,7 +175,7 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
                   <Td>
                     <span className="font-medium">{r.name}</span>
                     {r.missingRate && <Badge tone="warn" className="ml-2">No rate</Badge>}
-                    {r.openCards > 0 && <Badge tone="good" className="ml-2">On shift</Badge>}
+                    {missingBy.has(r.employeeId) ? <Badge tone="bad" className="ml-2">Missing clock-out</Badge> : r.openCards > 0 && <Badge tone="good" className="ml-2">On shift</Badge>}
                     {(r.sickHours > 0 || r.ptoHours > 0) && <span className="block text-xs text-muted">{[r.sickHours ? `${r.sickHours}h sick` : "", r.ptoHours ? `${r.ptoHours}h PTO` : "", r.callInHours ? `${r.callInHours}h call-in` : ""].filter(Boolean).join(" · ")}</span>}
                   </Td>
                   <Td align="right">{(r.regularHours + r.overtimeHours).toFixed(2)}</Td>
@@ -212,15 +223,17 @@ export default async function LaborPage({ searchParams }: { searchParams: Promis
 
 const SHOW_EXCEPTIONS = 8;
 
-function ExceptionRow({ e }: { e: PayrollException }) {
+function ExceptionRow({ e, fix }: { e: PayrollException; fix?: { cardId: string; scheduled: { value: string; label: string } | null } }) {
   return (
     <div className="flex items-start gap-3 px-4 py-3 text-sm">
       <LevelBadge level={e.level} />
-      <span className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1">
         <span className="font-medium">{e.name}</span>
         {e.date && <span className="text-muted"> · {dayDate(e.date)}</span>}
+        {e.cardId && <a href={`#tc-${e.cardId}`} className="ml-2 text-xs text-ink-2 underline underline-offset-2 hover:text-ink">See the card</a>}
         <span className="block text-ink-2">{e.message}</span>
-      </span>
+        {fix && <MissingOutFix cardId={fix.cardId} who={`${e.name}${e.date ? `, ${dayDate(e.date)}` : ""}`} scheduled={fix.scheduled} />}
+      </div>
     </div>
   );
 }
