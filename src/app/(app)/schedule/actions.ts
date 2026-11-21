@@ -10,6 +10,7 @@ import { after } from "next/server";
 import { notifySchedulePublished, notifyShiftChanged, shiftSnapshot } from "@/server/services/notify";
 import { z } from "zod";
 import { parseImpactPct } from "@/domain/events";
+import { planWeekCopy } from "@/domain/shiftEntry";
 import { setManualAdjustment } from "@/server/services/forecasting";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -146,22 +147,95 @@ export async function clearDraftShifts(monday: string): Promise<Res & { removed?
   return { removed: n };
 }
 
-/** Copy last week's shifts into this week as drafts (same local times). */
-export async function copyPreviousWeek(monday: string): Promise<Res & { created?: number }> {
+const weekRange = (monday: string) => ({ start: { gte: instantAt(monday, 0), lt: instantAt(addDays(monday, 7), 0) } });
+
+/** What copying `from`'s week onto `to`'s week would add, skipping shifts already there. */
+async function weekCopyPlan(from: string, to: string) {
+  const src = weekStartOf(from);
+  const dst = weekStartOf(to);
+  const [source, existing] = await Promise.all([db.shift.findMany({ where: weekRange(src), orderBy: { start: "asc" } }), db.shift.findMany({ where: weekRange(dst) })]);
+  const days = Math.round((Date.parse(dst) - Date.parse(src)) / 86_400_000);
+  const plan = planWeekCopy(
+    source.map((s) => ({ ...shiftView(s), notes: s.notes })),
+    existing.map((s) => shiftView(s)),
+    days,
+  );
+  return { ...plan, total: source.length };
+}
+
+/** How many shifts a copy would add, for the confirm step. */
+export async function previewWeekCopy(from: string, to: string): Promise<Res & { create?: number; skipped?: number; total?: number }> {
   await requireUser("MANAGER");
-  if (!isoDate.safeParse(monday).success) return { error: "Bad week." };
-  const wk = weekStartOf(monday);
-  const prev = await db.shift.findMany({ where: { start: { gte: instantAt(addDays(wk, -7), 0), lt: instantAt(wk, 0) } } });
-  if (!prev.length) return { error: "Last week has no shifts to copy." };
-  await db.shift.createMany({
-    data: prev.map((s) => {
-      const v = shiftView(s);
-      const date = addDays(v.date, 7);
-      return { employeeId: s.employeeId, positionId: s.positionId, start: instantAt(date, v.startMin), end: instantAt(date, v.endMin), breakMinutes: s.breakMinutes, notes: s.notes, published: false };
-    }),
+  if (!isoDate.safeParse(from).success || !isoDate.safeParse(to).success) return { error: "Bad week." };
+  if (weekStartOf(from) === weekStartOf(to)) return { error: "Pick a different week to copy from." };
+  const p = await weekCopyPlan(from, to);
+  return { create: p.create.length, skipped: p.skipped, total: p.total };
+}
+
+/**
+ * Copy one week's shifts onto another as drafts (same local times). Shifts the
+ * target already has (same person, day and start) are skipped, so a second
+ * click can't double the week. Returns the new ids for Undo.
+ */
+export async function copyWeek(from: string, to: string): Promise<Res & { created?: number; skipped?: number; ids?: string[] }> {
+  await requireUser("MANAGER");
+  if (!isoDate.safeParse(from).success || !isoDate.safeParse(to).success) return { error: "Bad week." };
+  if (weekStartOf(from) === weekStartOf(to)) return { error: "Pick a different week to copy from." };
+  const p = await weekCopyPlan(from, to);
+  if (!p.total) return { error: "That week has no shifts to copy." };
+  const rows = await db.shift.createManyAndReturn({
+    data: p.create.map((s) => ({ employeeId: s.employeeId, positionId: s.positionId, start: instantAt(s.date, s.startMin), end: instantAt(s.date, s.endMin), breakMinutes: s.breakMinutes, notes: s.notes, published: false })),
+    select: { id: true },
   });
   done();
-  return { created: prev.length };
+  return { created: rows.length, skipped: p.skipped, ids: rows.map((r) => r.id) };
+}
+
+/** Undo: delete shifts just created. Only drafts go; anything published since stays. */
+export async function removeNewShifts(ids: string[]): Promise<Res & { removed?: number }> {
+  await requireUser("MANAGER");
+  const p = z.array(z.string().min(1)).max(2000).safeParse(ids);
+  if (!p.success) return { error: "Nothing to undo." };
+  const r = await db.shift.deleteMany({ where: { id: { in: p.data }, published: false } });
+  done();
+  return { removed: r.count };
+}
+
+/** Copy one shift onto other days (same times). Days where the person already works then are skipped. */
+export async function copyShiftTo(id: string, dates: string[]): Promise<Res & { ids?: string[]; skipped?: string[] }> {
+  await requireUser("MANAGER");
+  const d = z.array(isoDate).min(1).max(14).safeParse(dates);
+  if (!d.success) return { error: "Pick a day to copy to." };
+  const s = await db.shift.findUnique({ where: { id } });
+  if (!s) return { error: "That shift was deleted." };
+  const v = shiftView(s);
+  const ids: string[] = [];
+  const skipped: string[] = [];
+  for (const date of [...new Set(d.data)]) {
+    const start = instantAt(date, v.startMin);
+    const end = instantAt(date, v.endMin);
+    if (s.employeeId && (await hasOverlap(s.employeeId, start, end))) {
+      skipped.push(date);
+      continue;
+    }
+    const row = await db.shift.create({ data: { employeeId: s.employeeId, positionId: s.positionId, start, end, breakMinutes: s.breakMinutes, notes: s.notes } });
+    ids.push(row.id);
+  }
+  done();
+  return { ids, skipped };
+}
+
+/** Undo a delete: put the shift back as it was (published or draft). */
+export async function restoreShift(input: z.input<typeof shiftInput> & { published: boolean }): Promise<Res> {
+  await requireUser("MANAGER");
+  const p = shiftInput.safeParse(input);
+  if (!p.success) return { error: p.error.issues[0]?.message ?? "Check the shift." };
+  const s = p.data;
+  const row = await db.shift.create({
+    data: { employeeId: s.employeeId, positionId: s.positionId, start: instantAt(s.date, s.startMin), end: instantAt(s.date, s.endMin), breakMinutes: s.breakMinutes, notes: s.notes || null, published: input.published === true },
+  });
+  done();
+  return { id: row.id };
 }
 
 /** The slider setting whose plan fits the week's labor % budget. */
