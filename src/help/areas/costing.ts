@@ -310,7 +310,7 @@ For a prep recipe you see **batch cost** and **yield** instead, because prep isn
     area: "menu",
     route: "/menu",
     title: "Recipe lines",
-    body: "One line per ingredient or prep recipe, with quantity and unit. Under each line is where its cost comes from: the supplier item and price, or the prep recipe's batch cost. Add lines with quick add underneath, or Or pick from the list for the full searchable list.",
+    body: "One line per ingredient or prep recipe, with quantity and unit, and where its cost comes from underneath. Add lines with quick add, or Or pick from the list. Removed one by mistake? Undo in the message puts it back.",
     related: ["menu.editor.units", "ingredients.yield"],
   },
   {
@@ -330,7 +330,8 @@ Before you press Enter, the line underneath shows exactly what will be added. Le
 
 **When it isn't sure.** Every word you type has to be in the ingredient's name for it to add the line straight away. Otherwise it never guesses quietly: "1 brioche bun" shows "the closest is Burger bun" with three choices:
 - **Use** the closest one, if it is the same thing.
-- **New ingredient**: adds what you typed to the ingredient list (weighed, measured or counted, from the unit you typed) and adds the line. It has no price until you add one on its page or on Prices.
+- **New ingredient**: adds what you typed to the ingredient list and adds the line. It's weighed, measured or counted from the unit you typed; with no unit, pick **by weight**, **by volume** or **by count**. It has no price until you add one: **No price yet** on the line opens its **Add a price** form.
+- **New prep recipe**: for a sauce or batch you make here. It adds a one-batch prep recipe with that name and the line, without leaving this recipe; fill in its ingredients later.
 - **Pick from the list**: an empty line with the full, searchable list.
 
 **Paste a list** from a recipe card, an email or a spreadsheet, one ingredient per line. Every line it's sure of is added; the rest stay in the box to add one at a time.`,
@@ -399,7 +400,7 @@ Before you press Enter, the line underneath shows exactly what will be added. Le
     area: "menu",
     route: "/menu",
     title: "Save or discard",
-    body: "Shows when the recipe has unsaved changes. Save keeps them and re-costs the recipe; Discard puts it back how it was.",
+    body: "Nothing changes until you press Save (⌘S or Ctrl+S works). The bar names any line left out because it has no amount. Duplicate under Details copies the whole recipe to start a variant.",
   },
   {
     id: "menu.page",
@@ -428,7 +429,7 @@ export const ingredients: HelpEntry[] = [
     route: "/ingredients",
     tour: "ingredients",
     title: "Ingredients",
-    body: "Every ingredient in one spreadsheet-style grid. Click a cell to edit; Enter moves down, Tab moves across, and you can paste a column from Excel.",
+    body: "Every ingredient, edited in place. The Allergens column shows what each is tagged with; filter by allergen (or None tagged), then tick rows to Tag or Untag several at once.",
     article: `### Columns
 - **Ingredient** — the name. The ↗ arrow opens its full page.
 - **Category** and **Storage** — storage area groups the count sheet (walk-in, dry storage, bar…).
@@ -542,7 +543,7 @@ Allowed range: 0–200%.`,
     area: "ingredients",
     route: "/ingredients",
     title: "Bought as",
-    body: "Every pack this ingredient comes in: a case of #10 cans, single jugs. \"Sets cost\" prices recipes. Add another pack with \"Also bought as\"; counts and orders can use any of them.",
+    body: "What you buy this as, and the price per usable unit after trim. No supplier product yet? Use Add a price: the supplier, what you buy, how much is in one, and what it costs. That's enough to cost every recipe using it.",
     related: ["ingredients.packSize", "prices.link", "ordering.builder.packs", "count.units"],
     keywords: ["preferred product", "supplier product"],
   },
@@ -563,7 +564,7 @@ Example: \`1 case = 6 gal\`. Then a $54 case is $9/gal.`,
     area: "ingredients",
     route: "/ingredients",
     title: "Custom units",
-    body: "Name your own units for recipes and counts, like 1 slice = 21 g or 1 tub = 5 lb.",
+    body: "Units like slice, bun or scoop, each set to an amount of the ingredient, so recipes and counts can use them. Removing one asks first and says how many recipe lines use it.",
     related: ["menu.editor.units", "ingredients.countIn"],
     keywords: ["conversion", "slice", "portion"],
   },
@@ -645,7 +646,7 @@ To bring in a distributor's full list, use **Import price sheet**. For a local f
     area: "prices",
     route: "/prices",
     title: "Linking products to ingredients",
-    body: "A supplier product only affects recipe costs once it's linked to an ingredient. Pick the ingredient from the list, or \"+ New\" to create one from the product.",
+    body: "Which ingredient each supplier product is. + New makes a new ingredient from the product and asks whether it's measured by weight, volume or count.",
     article: `After an import, new products show up under **Not linked**. For each one:
 
 - **Link to ingredient…** — pick the ingredient it is. Several products can link to one ingredient (say, two brands of fryer oil); the ingredient page decides which sets cost.
@@ -755,7 +756,7 @@ Products you have on file that aren't in this sheet keep their last price — no
     area: "prices",
     route: "/prices/update",
     title: "Update prices by hand",
-    body: "For local suppliers and anything not on a price sheet. Type new prices next to the ones that changed; only those are saved.",
+    body: "Type new prices for one supplier or several: what you type stays when you switch supplier (and on this device for a week), and one Save saves them all. Search finds an item by name or number.",
     article: `Pick the supplier, type the new price next to anything that changed, and press **Save**. The % change appears as you type, and blank fields are left alone.
 
 Set **Effective** if the prices started on a different day than today.`,
@@ -767,7 +768,7 @@ Set **Effective** if the prices started on a different day than today.`,
     area: "prices",
     route: "/prices/import",
     title: "Price changes",
-    body: "Every product whose price moved, with the old price, the new one and the change. Red is up, green is down.",
+    body: "Every price that would change. Untick any row to leave it out. Changes over 40% are marked Check this: usually a misread column or a different pack size.",
   },
   {
     id: "prices.import.done",
@@ -782,7 +783,7 @@ Set **Effective** if the prices started on a different day than today.`,
     area: "prices",
     route: "/prices/update",
     title: "Pick a supplier",
-    body: "Shows that supplier's active products. Switch supplier to update another one's prices.",
+    body: "Pick a supplier to see its items. The number on a supplier says how many prices you've typed for it and not saved yet.",
   },
   {
     id: "prices.manual.list",

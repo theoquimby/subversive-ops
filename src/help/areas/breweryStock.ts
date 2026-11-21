@@ -53,7 +53,7 @@ Only ingredients on the brewery side show here, and they never show in kitchen c
     area: "brewery",
     route: "/brewery/stock/count",
     title: "Count brewing stock",
-    body: "Type what's on the shelf for each brewing ingredient, in any unit that fits, then save once. Blank rows are left as they are; what you've typed is kept if the page reloads.",
+    body: "Count what's in the brewery store. What you type stays on this device, even with no signal, until it's saved. Enter moves to the next line.",
     related: ["brewery.stock"],
   },
   {

@@ -923,7 +923,7 @@ Account names must match your chart of accounts exactly. Nothing is paid or post
     area: "invoices",
     route: "/invoices/new",
     title: "Save and check",
-    body: "Saves the invoice and matches it against the order straight away. A possible duplicate is flagged with a link to the one already saved.",
+    body: "Saves the invoice for review. What you type is kept on this device as you go: leave or lose signal and you'll be offered Resume your draft when you come back. ⌘S or Ctrl+S saves.",
   },
   {
     id: "invoices.toApprove",
@@ -969,7 +969,7 @@ Account names must match your chart of accounts exactly. Nothing is paid or post
     area: "invoices",
     route: "/invoices",
     title: "One invoice",
-    body: "The supplier, invoice number, match status and date, with the photo beside the lines. Link any new lines, check the flagged ones, then approve or request a credit from the buttons at the top.",
+    body: "One supplier invoice: the photo, the lines read from it, and what each matched. Fix a line in place, Add 5 to type several at once, and remove one with Undo if it was a mistake. Approve when it's right.",
     related: ["invoices.match", "invoices.approve"],
   },
   {

@@ -107,7 +107,7 @@ This is the real yield for draft costing: if it's well under the yield on [Draft
     article: `- **Find the next keg of…** picks the oldest full keg of that beer (cold before just-filled) and lights it up, with its spot written out.
 - **Filter by beer** fades everything else. With many beers, the first dozen chips show and **Show more beers** has the rest; a beer opened from its own page comes first.
 - On a phone, each spot lists its first 10 kegs, the one to take next at the top; **Show more kegs** has the rest.
-- **Move a keg:** drag the tile to another spot, or tap the tile, then tap the spot. On a phone, open the keg and press **Moved to…**
+- **Move a keg:** drag the tile to another spot, or tap the tile, then tap the spot. On a phone, tap the keg and pick the spot it went to
 - Spots are set by a manager on [Setup](/kegs/setup).`,
     audience: "all",
     tour: "kegs",

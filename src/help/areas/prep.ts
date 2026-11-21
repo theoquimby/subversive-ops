@@ -113,7 +113,7 @@ Count the things that matter most before prep starts — the list is only as goo
     area: "prep",
     route: "/prep/setup",
     title: "Prep setup",
-    body: "One row per prep recipe: on the list or not, station, the unit it's counted in, par, how long it keeps and how amounts round. Everything saves as you type.",
+    body: "Pars, shelf life, rounding and station for each prep item, edited in place like a spreadsheet. Tick rows to set several at once. Each row opens its recipe, for the batch size.",
     tour: "prep",
     related: ["prep.setup.par", "prep.setup.shelfLife", "prep.setup.unit", "prep.cover"],
     keywords: ["prep settings", "par levels", "shelf life", "stations"],

@@ -43,7 +43,7 @@ Lines marked **New ingredient** add an ingredient with no price yet. Link a supp
     area: "menu",
     route: "/menu/drafts",
     title: "Reviewing a draft",
-    body: "Check the lines, amounts and units. The cost updates as you change them. The grey note under a line says why it's there (e.g. \"in place of American cheese\"). Accept saves the recipe; Discard throws the draft away.",
+    body: "Check the lines, amounts and units; the cost updates as you go. Type, category and a new ingredient's name and measure can be changed. Accept saves one; Accept all saves every card as you've edited it.",
     related: ["menu.drafts", "menu.editor.summary", "menu.editor.units"],
     keywords: ["accept", "discard", "edit draft"],
   },
