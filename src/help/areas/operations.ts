@@ -992,8 +992,11 @@ Each day shows what moved it: the season (once there's a year of history), the w
 
 Square marks each card it sees. Ops keeps a scrambled copy of that mark for each day a card paid here, the day, and the amount before tips. That is enough to tell a regular from a one-time visitor. No name, card number, email or phone is read or kept, and the scrambled copy can't be turned back into a card.
 
+**Where they come from.** With Square's Customers permission, Ops also keeps one postal code per scrambled card: the one on the Square customer profile behind its payments, or on the card when it was typed in. It goes back a year, and new cards are added each night. Square only has an address for some people (online orders, sign-ups, what staff add), so the map shows the ones it knows and says how many that is. Until the permission is given, the page says what to press.
+
 **What it shows**
 
+- **Where they come from** (once Square shares postal codes): a map with a bubble per town, close to home or across the region, for everyone, locals or visitors, and how far each group travels.
 - **Regulars**: cards seen on four or more days in the last 12 months, how many there are, and how much of card sales they bring.
 - **First-timers who come back**: of cards seen for the first time in the last two years, the share seen again within a month, three months and a year.
 - **Regulars gone quiet**: regulars of the year before who've been away far longer than is usual for them (at least two months, and two and a half times their own usual gap), and what they spent that year.
@@ -1275,7 +1278,7 @@ Groups with only a handful of days are greyed, because a few days can't tell you
     area: "sales",
     route: "/sales/square-menu",
     title: "Still to match",
-    body: "Square items that aren't linked to a recipe or ignored yet, so their sales don't count toward costing and ordering. Some may have a suggested match below.",
+    body: "Square items that sold in the last four weeks with nothing linked yet. Old specials that haven't sold show as Not selling lately and don't count here; they need nothing until they sell again.",
   },
   {
     id: "sales.squareMenu.driftCount",

@@ -10,7 +10,7 @@ import type { OrderDiscount } from "../integrations/square";
 import { friendlySquareError, SquareClient } from "../integrations/square-http";
 import { listPayments, listRefunds } from "../integrations/square-payments";
 import { logSquareError, requireSquareClient, writeSettingJSON } from "./square";
-import { storeGuestVisits } from "./guests";
+import { storeGuestPlacesQuietly, storeGuestVisits } from "./guests";
 import { storeSquareTips } from "./tips";
 import { ignoredSquareIds } from "./sales";
 import { settingValue } from "./setting-read";
@@ -90,6 +90,8 @@ export async function syncPayments(from: ISODate, toExclusive: ISODate, client?:
 
   // Who came in: one anonymous mark per card per day, from the same payments (see services/guests.ts).
   await storeGuestVisits(payments, dates).catch((e) => logSquareError("sales", `Card visits: ${friendlySquareError(e)}`).catch(() => undefined));
+  // And where any new card comes from (quietly does nothing until Square gives the Customers permission).
+  await storeGuestPlacesQuietly(payments.filter((p) => p.status === "COMPLETED"), c);
 
   let fees: ReturnType<typeof feeDays> | null = null;
   try {

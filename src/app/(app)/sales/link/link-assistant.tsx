@@ -11,16 +11,16 @@ import { classLabel, REVENUE_CLASSES, type RevenueClass } from "@/domain/revenue
 import { fuzzyFilter } from "@/domain/search";
 import { money, pct, qty, relativeTime } from "@/lib/format";
 import type { AssistantRow, BeerGroupView, HistoryEntry, LinkAssistant } from "@/server/services/linking";
-import { AlertTriangle, Beer, Check, ChevronDown, Plus, Search, Sparkles, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Beer, Check, ChevronDown, Clock, Plus, Search, Sparkles, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { draftSquareItems } from "../../menu/drafts/actions";
-import { applyLinks, costBeerPours, createRecipeForItem, undoLinks, type LinkResult } from "./actions";
+import { applyLinks, confirmLinks, costBeerPours, createRecipeForItem, skipItems, undoLinks, unskipItems, type LinkResult } from "./actions";
 import { rejectSuggestions } from "../square-menu/actions";
 
 type Recipe = LinkAssistant["recipes"][number];
-type Data = Pick<LinkAssistant, "coverage" | "unlinked" | "beerGroups" | "flagged" | "recipes" | "history" | "neverSold">;
+type Data = Pick<LinkAssistant, "coverage" | "plan" | "unlinked" | "skipped" | "beerGroups" | "flagged" | "recipes" | "history" | "neverSold">;
 type Show = (text: string, tone?: "good" | "bad" | "queued", action?: { label: string; onClick: () => void }) => void;
 
 const whole = (n: number) => money(n, { whole: true });
@@ -64,34 +64,36 @@ export function LinkAssistantView({ data }: { data: Data }) {
   return (
     <div className={cx(pending && "cursor-progress")}>
       {toast}
-      <CoverageCard c={data.coverage} unlinkedCount={data.unlinked.length} />
-      <SureMatches rows={list} run={run} pending={pending} />
-      {data.beerGroups.length > 0 && <BeerSection groups={data.beerGroups} run={run} pending={pending} />}
-
-      <HelpZone id="sales.link.items" tour="sales.link-items">
-        <ItemList rows={list} recipes={data.recipes} recipeById={recipeById} guarded={guarded} run={run} show={show} pending={pending} neverSold={data.neverSold} />
-      </HelpZone>
+      <CoverageCard c={data.coverage} plan={data.plan} unlinkedCount={data.unlinked.length} neverSold={data.neverSold} />
 
       {data.flagged.length > 0 && (
         <HelpZone id="sales.link.check">
-          <Section title={<span className="inline-flex items-center gap-1.5">Check these links <HelpTip id="sales.link.check" /></span>} description="Linked items whose cost looks wrong for the price: under 5%, over 80%, or a different size.">
-            <Card className="divide-y divide-border">
-              {data.flagged.map((r) => (
-                <div key={r.squareId} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium break-words">{r.name} <span className="font-normal text-muted">→ {r.recipeName ?? describeLink(r.state)}</span></div>
-                    <EffectLine effect={r.effect!} price={r.price} />
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    {r.state.recipeId && <Link href={`/menu/${r.state.recipeId}`} className="inline-flex h-10 items-center rounded-lg border border-border-strong px-3 text-sm font-medium hover:bg-surface-2 sm:h-8">Open recipe</Link>}
-                    <Button size="sm" variant="ghost" className="h-10 sm:h-8" disabled={pending} onClick={() => run(() => applyLinks([{ squareId: r.squareId, to: UNLINKED }]))}>Unlink</Button>
-                  </div>
-                </div>
-              ))}
-            </Card>
-          </Section>
+          <div id="check" className="scroll-mt-24">
+            <Section title={<span className="inline-flex items-center gap-1.5">Check these links <HelpTip id="sales.link.check" /></span>} description="Links whose names hardly agree, or whose cost looks wrong for the price. A wrong link is worse than none: fix it, or say it's right and it stops showing here.">
+              <Card className="divide-y divide-border">
+                {data.flagged.map((r) => <CheckRow key={r.squareId} r={r} recipes={data.recipes} recipeById={recipeById} guarded={guarded} run={run} pending={pending} />)}
+              </Card>
+            </Section>
+          </div>
         </HelpZone>
       )}
+
+      <div id="sure" className="scroll-mt-24">
+        <SureMatches rows={list} run={run} pending={pending} />
+      </div>
+      {data.beerGroups.length > 0 && (
+        <div id="beer" className="scroll-mt-24">
+          <BeerSection groups={data.beerGroups} run={run} pending={pending} />
+        </div>
+      )}
+
+      <HelpZone id="sales.link.items" tour="sales.link-items">
+        <div id="items" className="scroll-mt-24">
+          <ItemList rows={list} recipes={data.recipes} recipeById={recipeById} guarded={guarded} run={run} show={show} pending={pending} neverSold={data.neverSold} />
+        </div>
+      </HelpZone>
+
+      {data.skipped.length > 0 && <SkippedList rows={data.skipped} run={run} pending={pending} />}
 
       <HelpZone id="sales.link.history">
         <History entries={data.history} run={run} pending={pending} />
@@ -104,26 +106,116 @@ const describeLink = (s: LinkState) => (s.ignored ? "left out of sales" : s.unit
 
 // ---- Coverage ---------------------------------------------------------------------------------
 
-function CoverageCard({ c, unlinkedCount }: { c: LinkAssistant["coverage"]; unlinkedCount: number }) {
+function CoverageCard({ c, plan, unlinkedCount, neverSold }: { c: LinkAssistant["coverage"]; plan: LinkAssistant["plan"]; unlinkedCount: number; neverSold: number }) {
   const share = c.share ?? 0;
-  const done = c.share != null && c.share >= c.target;
+  const skip = c.total > 0 ? c.skipped / c.total : 0;
+  const done = c.share != null && share + skip >= c.target;
   return (
     <HelpZone id="sales.link.coverage" tour="sales.link-coverage" className="mb-8">
       <Card className="p-4 sm:p-5">
         <div className="text-sm text-ink-2">
           Linked: <span className={cx("num text-2xl font-semibold tracking-tight", done ? "text-good" : "text-ink")}>{c.share == null ? "—" : pct(share, 0)}</span> of last 30 days&apos; sales <span className="whitespace-nowrap text-muted">→ {pct(c.target, 0)} target <HelpTip id="sales.link.coverage" /></span>
         </div>
-        <div className="relative mt-3 h-2.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)} aria-label="Share of sales linked">
-          <div className={cx("h-full rounded-full transition-[width] duration-500 ease-motion", done ? "bg-good" : "bg-ink")} style={{ width: `${Math.min(100, share * 100)}%` }} />
+        <div className="relative mt-3 flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)} aria-label="Share of sales linked">
+          <div className={cx("h-full rounded-l-full transition-[width] duration-500 ease-motion", done ? "bg-good" : "bg-ink", skip <= 0 && "rounded-r-full")} style={{ width: `${Math.min(100, share * 100)}%` }} />
+          {skip > 0 && <div className="h-full rounded-r-full bg-[repeating-linear-gradient(135deg,var(--ink-2)_0_1.5px,transparent_1.5px_5px)] opacity-60" style={{ width: `${Math.min(100, skip * 100)}%` }} title="Skipped for now" />}
           <div className="absolute top-0 h-full w-0.5 bg-ink-2/60" style={{ left: `${c.target * 100}%` }} aria-hidden />
         </div>
         <p className="mt-2 text-sm text-muted">
           {c.total <= 0 ? "No Square sales in the last 30 days yet." : done
-            ? <>{whole(c.linked)} of {whole(c.total)} has a cost behind it. Target reached{unlinkedCount ? ` — ${unlinkedCount} smaller item${unlinkedCount === 1 ? "" : "s"} left if you want them` : ""}.</>
-            : <>{whole(c.linked)} of {whole(c.total)} has a cost behind it. Link about <span className="font-medium text-ink">{whole(c.toTarget)}</span> more to reach {pct(c.target, 0)} — the biggest sellers below get you there fastest.</>}
+            ? <>{whole(c.linked)} of {whole(c.total)} has a cost behind it{c.skipped > 0 ? `, and ${whole(c.skipped)} of specials are skipped for now` : ""}. Target reached{unlinkedCount ? ` — ${unlinkedCount} smaller item${unlinkedCount === 1 ? "" : "s"} left if you want them` : ""}.</>
+            : <>{whole(c.linked)} of {whole(c.total)} has a cost behind it{c.skipped > 0 ? `, and ${whole(c.skipped)} of specials are skipped for now (shaded)` : ""}. About <span className="font-medium text-ink">{whole(c.toTarget)}</span> more reaches {pct(c.target, 0)}.</>}
         </p>
+
+        {plan.steps.length > 0 && (
+          <div className="mt-5 border-t border-border pt-4">
+            <h2 className="text-sm font-semibold text-ink">What to do, in order</h2>
+            <ol className="mt-2 divide-y divide-border">
+              {plan.steps.map((s, i) => (
+                <li key={s.key}>
+                  <a href={s.href} className="group -mx-2 flex items-start gap-3 rounded-lg px-2 py-2.5 hover:bg-surface-2/60">
+                    <span className={cx("num mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold", s.key === "check" ? "bg-warn-bg text-warn" : "bg-surface-2 text-ink-2")}>{i + 1}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-ink">{s.title}</span>
+                      <span className="block text-xs leading-relaxed text-muted">{s.detail}</span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="num block text-sm font-semibold text-ink">{whole(s.dollars)}</span>
+                      <span className="num block text-[11px] text-muted">{s.key === "check" ? "to look at" : `${pct(s.share, 0)} of sales`}</span>
+                    </span>
+                    <ArrowRight className="mt-1 size-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" aria-hidden />
+                  </a>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-2 text-xs text-muted">All of it done: about {pct(plan.after, 0)} of sales with a cost behind it.</p>
+          </div>
+        )}
+        {(neverSold > 0 || c.skipped > 0) && (
+          <p className="mt-4 flex items-start gap-2 rounded-lg bg-surface-2 px-3 py-2.5 text-sm text-ink-2">
+            <Clock className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+            <span>
+              Specials you aren&apos;t running don&apos;t count: {neverSold > 0 ? `${qty(neverSold, 0)} Square item${neverSold === 1 ? " hasn't" : "s haven't"} sold in 30 days and stay out of the way here` : "anything that hasn't sold in 30 days stays out of the way here"}. Nothing to delete in Square. A special that is selling but you don&apos;t want to cost yet: press <b>Skip for now</b> on it. It counts at a typical cost, and comes back only if it starts selling most weeks.
+            </span>
+          </p>
+        )}
       </Card>
     </HelpZone>
+  );
+}
+
+// ---- Links to check --------------------------------------------------------------------------------
+
+function CheckRow({ r, recipes, recipeById, guarded, run, pending }: { r: AssistantRow; recipes: Recipe[]; recipeById: Map<string, Recipe>; guarded: (e: Effect | null, what: string, fn: () => Promise<LinkResult>) => Promise<void>; run: (fn: () => Promise<LinkResult>) => void; pending: boolean }) {
+  const [change, setChange] = useState(false);
+  return (
+    <div className="px-4 py-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="text-sm font-medium break-words">{r.name} <span className="font-normal text-muted">→ {r.recipeName ?? describeLink(r.state)}</span></div>
+          <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-warn">
+            {r.checkReasons.map((x) => <span key={x} className="inline-flex items-center gap-1"><AlertTriangle className="size-3" />{x}</span>)}
+          </div>
+          {r.effect && <EffectLine effect={r.effect} price={r.price} />}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button size="sm" className="h-10 sm:h-8" disabled={pending} onClick={() => run(() => confirmLinks([{ squareId: r.squareId, recipeId: r.state.recipeId ?? "each" }]))}><Check className="size-3.5" />Looks right</Button>
+          <Button size="sm" className={cx("h-10 sm:h-8", change && "bg-surface-2")} onClick={() => setChange((x) => !x)} aria-expanded={change}>Change</Button>
+          {r.state.recipeId && <Link href={`/menu/${r.state.recipeId}`} className="inline-flex h-10 items-center rounded-lg px-3 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink sm:h-8">Open recipe</Link>}
+          <Button size="sm" variant="ghost" className="h-10 sm:h-8" disabled={pending} onClick={() => run(() => applyLinks([{ squareId: r.squareId, to: UNLINKED }]))}>Unlink</Button>
+        </div>
+      </div>
+      {change && <PickPanel r={r} recipes={recipes} recipeById={recipeById} guarded={guarded} pending={pending} />}
+    </div>
+  );
+}
+
+// ---- Skipped for now -------------------------------------------------------------------------------
+
+function SkippedList({ rows, run, pending }: { rows: AssistantRow[]; run: (fn: () => Promise<LinkResult>) => void; pending: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Section title="Skipped for now" description={`${rows.length} special${rows.length === 1 ? "" : "s"} you didn't want to cost yet, ${whole(rows.reduce((s, r) => s + r.sales30, 0))} of the last 30 days. They count at a typical cost and come back to the list if they start selling most weeks.`}>
+      <Card className="overflow-hidden">
+        <button type="button" onClick={() => setOpen((o) => !o)} className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm font-medium hover:bg-surface-2/60" aria-expanded={open}>
+          {open ? "Hide them" : `Show ${rows.length}`}
+          <ChevronDown className={cx("size-4 shrink-0 text-muted transition-transform", open && "rotate-180")} />
+        </button>
+        {open && (
+          <div className="divide-y divide-border border-t border-border">
+            {rows.map((r) => (
+              <div key={r.squareId} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <div className="min-w-0">
+                  <div className="text-sm break-words">{r.name}</div>
+                  <div className="text-xs text-muted">{whole(r.sales30)} · sold on {r.days30} of the last 30 days</div>
+                </div>
+                <Button size="sm" variant="ghost" className="h-10 shrink-0 sm:h-8" disabled={pending} onClick={() => run(() => unskipItems([r.squareId]))}>Bring back</Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </Section>
   );
 }
 
@@ -264,6 +356,7 @@ function ItemCard({ r, recipes, recipeById, guarded, run, show, pending }: {
           <div className="mt-0.5 text-xs text-muted">
             {r.modifier ? "Add-on" : KIND_LABEL[r.kind]}{r.category ? ` · ${r.category}` : ""} · {r.price != null ? money(r.price) : "price varies"} · {qty(r.qty30, 0)} sold{r.deleted ? " · removed from Square" : ""}
           </div>
+          {r.backOnMenu && <div className="mt-1 text-xs font-medium text-warn">Skipped earlier, but it&apos;s sold on {r.days30} of the last 30 days: it looks like it&apos;s on the menu again.</div>}
         </div>
         <div className="shrink-0 text-right">
           <div className="num text-sm font-semibold">{whole(r.sales30)}</div>
@@ -294,6 +387,11 @@ function ItemCard({ r, recipes, recipeById, guarded, run, show, pending }: {
         <Button className={cx("h-10 sm:h-9", panel === "pick" && "bg-surface-2")} onClick={() => toggle("pick")} aria-expanded={panel === "pick"}>{best ? "Pick another" : "Pick a recipe"}</Button>
         <Button className={cx("h-10 sm:h-9", panel === "create" && "bg-surface-2")} onClick={() => toggle("create")} aria-expanded={panel === "create"}><Plus className="size-4" />Create recipe</Button>
         <Button variant={notRecipe ? "secondary" : "ghost"} className={cx("h-10 sm:h-9", panel === "other" && "bg-surface-2")} onClick={() => toggle("other")} aria-expanded={panel === "other"}>Not a recipe</Button>
+        {!notRecipe && (
+          <Button variant="ghost" className="h-10 sm:h-9" disabled={pending} onClick={() => run(() => skipItems([r.squareId]))} title="A special you don't want to cost yet: it counts at a typical cost and comes back if it starts selling most weeks">
+            <Clock className="size-4" />Skip for now
+          </Button>
+        )}
         {best && !notRecipe && bandOf(best.confidence) !== "high" && (
           <Button variant="ghost" className="h-10 sm:h-9" disabled={pending} onClick={() => run(async () => { const res = await rejectSuggestions([{ squareId: r.squareId, recipeId: best.recipeId }]); return { error: res.error, message: `Won't suggest ${best.recipeName} for this again.` }; })}>Not {best.recipeName}</Button>
         )}

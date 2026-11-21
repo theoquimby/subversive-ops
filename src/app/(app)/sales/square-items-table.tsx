@@ -11,17 +11,21 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import { acceptSuggestions, applySquarePrices, createRecipesFromSquare, ignoreItems, rejectSuggestions, unignoreItems } from "./square-menu/actions";
 import { draftSquareItems } from "../menu/drafts/actions";
-import { setLinkFromGrid } from "./link/actions";
+import { setLinkFromGrid, skipItems, unskipItems } from "./link/actions";
 
 export type { SquareItemRow };
 
-type Status = "suggested" | "open" | "linked" | "bought" | "ignored" | "removed";
-export const statusOf = (r: SquareItemRow): Status => (r.deleted ? "removed" : r.recipeId ? "linked" : r.ignored ? "ignored" : r.unitCost != null ? "bought" : r.suggestion ? "suggested" : "open");
+type Status = "suggested" | "open" | "linked" | "bought" | "skipped" | "resting" | "ignored" | "removed";
+/** An unmatched item that hasn't sold in four weeks is resting (an old special): nothing to do until it sells again. */
+export const statusOf = (r: SquareItemRow): Status =>
+  r.deleted ? "removed" : r.recipeId ? "linked" : r.ignored ? "ignored" : r.unitCost != null ? "bought" : r.skipped ? "skipped" : r.sold <= 0 ? "resting" : r.suggestion ? "suggested" : "open";
 const STATUS: Record<Status, { label: string; tone: "good" | "warn" | "neutral" | "bad" }> = {
   suggested: { label: "Suggested match", tone: "warn" },
   open: { label: "Not matched", tone: "warn" },
   linked: { label: "Linked", tone: "good" },
   bought: { label: "Cost each", tone: "good" },
+  skipped: { label: "Skipped for now", tone: "neutral" },
+  resting: { label: "Not selling lately", tone: "neutral" },
   ignored: { label: "Ignored", tone: "neutral" },
   removed: { label: "Removed from Square", tone: "neutral" },
 };
@@ -189,6 +193,8 @@ export function SquareItemsTable({ id, rows, recipes, showSold = true, defaultFi
         const withSugg = api.rows.filter((r) => r.suggestion && !r.recipeId);
         const unlinked = api.rows.filter((r) => !r.recipeId && !r.deleted);
         const ignored = api.rows.filter((r) => r.ignored);
+        const skippable = api.rows.filter((r) => !r.recipeId && !r.ignored && r.unitCost == null && !r.deleted && !r.skipped);
+        const skipped = api.rows.filter((r) => r.skipped);
         const drifting = api.rows.filter((r) => r.drift && !r.drift.conflict && r.price != null);
         const draftable = api.rows.filter((r) => !r.deleted && !r.ignored && (!r.recipeId || r.recipeEmpty));
         return (
@@ -207,6 +213,8 @@ export function SquareItemsTable({ id, rows, recipes, showSold = true, defaultFi
             {drifting.length > 0 && <Button size="sm" disabled={api.pending} onClick={() => api.run(() => applySquarePrices(drifting.map((r) => ({ recipeId: r.recipeId!, price: r.price! }))))}>Use Square price ({drifting.length})</Button>}
             {unlinked.some((r) => !r.ignored) && <Button size="sm" variant="ghost" disabled={api.pending} onClick={() => api.run(() => ignoreItems(unlinked.filter((r) => !r.ignored).map((r) => r.squareId)))}>Ignore</Button>}
             {ignored.length > 0 && <Button size="sm" variant="ghost" disabled={api.pending} onClick={() => api.run(() => unignoreItems(ignored.map((r) => r.squareId)))}>Un-ignore</Button>}
+            {skippable.length > 0 && <Button size="sm" variant="ghost" disabled={api.pending} onClick={() => api.run(() => skipItems(skippable.map((r) => r.squareId)))}>Skip for now ({skippable.length})</Button>}
+            {skipped.length > 0 && <Button size="sm" variant="ghost" disabled={api.pending} onClick={() => api.run(() => unskipItems(skipped.map((r) => r.squareId)))}>Bring back ({skipped.length})</Button>}
           </>
         );
       }}

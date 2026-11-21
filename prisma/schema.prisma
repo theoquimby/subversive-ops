@@ -1679,6 +1679,19 @@ model GuestItem {
   @@id([date, guest, squareId])
 }
 
+/// Where a card's payer lives, as far as Square can say: the postal code on the Square customer profile its
+/// payments are tied to, or on the card when it was typed in. The same scrambled card mark as GuestVisit;
+/// no name, street, email or phone. `postal` is null when Square had none (asked again after a while).
+model GuestPlace {
+  guest     String   @id
+  postal    String?
+  /// "profile" | "card" | "none"
+  source    String
+  checkedOn DateTime @db.Date
+
+  @@index([postal])
+}
+
 /// Per day: how many completed payments there were and how many carried a card that can be recognised again.
 model GuestDay {
   date             DateTime @id @db.Date

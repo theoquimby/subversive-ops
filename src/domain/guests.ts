@@ -100,7 +100,7 @@ export const QUIET_GAPS = 2.5;
 /** Days away after which a regular who came on `days` days in a year counts as gone quiet. */
 export const quietAfter = (days: number) => Math.max(QUIET_DAYS, Math.round((QUIET_GAPS * 365) / Math.max(1, days)));
 /** Bumped when the way any figure is worked out changes, so the kept copy is counted again at once. */
-export const GUEST_RULES = 6;
+export const GUEST_RULES = 7;
 /** First-timers are followed for return over the last two years. */
 const COHORT_DAYS = 730;
 /** A card first seen this recently hasn't had time to show what it is. */

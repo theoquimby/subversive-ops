@@ -1,12 +1,15 @@
 import { Chapter, InShort, Numbers } from "@/components/chapter";
-import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, Card, EmptyState, LinkButton, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
+import { BANDS as DISTANCE_BANDS, FAR_MILES, milesLabel, placesPoint, placesReady, type GuestPlaces } from "@/domain/places";
+import { placeMaps } from "@/server/geo";
 import { BANDS, KINDS, REGULAR_DAYS, type CategoryMix, type GuestPoint, type ItemPick, type RhythmCell } from "@/domain/guests";
 import { mondayOf } from "@/domain/pnl";
 import { money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { guestView } from "@/server/services/guests";
 import { ColourKey, Columns, LeanRows, PairBars, ShareBars, Waffle, type Col, type SharePart, type VizTone, type WafflePart } from "./charts";
-import { LoadHistory } from "./load-history";
+import { LoadHistory, LoadPlaces } from "./load-history";
+import { PlacesMap, type MapTown, type MapViewData } from "./places-map";
 
 export const metadata = { title: "Customers" };
 /** Loading years of card payments from Square runs in half-minute stretches. */
@@ -24,6 +27,29 @@ const REGULAR_OPEN_DAYS = 26;
 
 const BAND_TONE: Record<(typeof BANDS)[number]["key"], VizTone> = { once: "rest", few: "back-1", regular: "back-2", core: "back-3" };
 const KIND_TONE: Record<(typeof KINDS)[number]["key"], VizTone> = { local: "local", visitor: "visitor", occasional: "rest", new: "rest" };
+
+const DISTANCE_TONE: VizTone[] = ["far-1", "far-2", "far-3", "far-4"];
+const MAP_TOWNS = 600;
+
+/** The two maps, the towns on them, and what each leaves out. */
+function mapData(p: GuestPlaces, home: { lat: number; lon: number }) {
+  const towns = p.towns.slice(0, MAP_TOWNS);
+  const views = placeMaps(home, towns);
+  const onAny = new Set(views.flatMap((v) => v.towns.map((t) => t.key)));
+  const people = (keys: Set<string>) => towns.filter((t) => !keys.has(t.key)).reduce((s, t) => s + t.people.all, 0);
+  const farList = p.far.slice(0, 6).map((f) => `${qty(f.people, 0)} from ${f.state}`).join(", ");
+  const data: MapViewData[] = views.map((v) => {
+    const here = new Set(v.towns.map((t) => t.key));
+    const left = people(here);
+    const note =
+      v.key === "near"
+        ? `${qty(left, 0)} more cards come from farther away: switch to ${views.find((x) => x.key === "region")?.label ?? "the region"}.`
+        : `${qty(left, 0)} cards come from more than about ${FAR_MILES} miles away${farList ? `: ${farList}` : ""}${p.far.length > 6 ? ", and more" : ""}.`;
+    return { ...v, outside: left > 0 ? { people: left, note } : null };
+  });
+  const mapTowns: MapTown[] = towns.filter((t) => onAny.has(t.key)).map((t) => ({ key: t.key, name: t.name, state: t.state, miles: t.miles, people: { all: t.people.all, local: t.people.local, visitor: t.people.visitor, occasional: t.people.occasional } }));
+  return { views: data, towns: mapTowns };
+}
 
 /** A typical open day per weekday or month: sales, local and visitor cards, and locals' share of the money. */
 function RhythmTable({ first, cells, name }: { first: string; cells: RhythmCell[]; name: (key: number) => string }) {
@@ -266,9 +292,31 @@ export default async function CustomersPage() {
       ]
     : [];
 
+  // Where they come from: drawn once enough cards have a postal code behind them.
+  const places = v.places;
+  const placesOk = placesReady(places);
+  const placePoint = places ? placesPoint(places) : null;
+  const pb = v.placesBackfill;
+  const map = placesOk && places ? mapData(places, v.home) : null;
+  const bandTotal = (k: "local" | "visitor") => places?.bands.reduce((s, b) => s + b.people[k], 0) ?? 0;
+  const distanceParts: SharePart[] = places
+    ? DISTANCE_BANDS.map((b, i) => {
+        const band = places.bands.find((x) => x.key === b.key)!;
+        const share = (k: "local" | "visitor") => (bandTotal(k) ? band.people[k] / bandTotal(k) : 0);
+        return { key: b.key, label: b.label, tone: DISTANCE_TONE[i], readout: `${b.label} from the taproom: ${p0(share("local"))} of local cards and ${p0(share("visitor"))} of visitor cards (${qty(band.people.all, 0)} cards in all).` };
+      })
+    : [];
+  const distanceRows = places
+    ? (["local", "visitor"] as const).map((k) => ({
+        label: k === "local" ? `Locals · ${qty(bandTotal(k), 0)} cards` : `Visitors · ${qty(bandTotal(k), 0)} cards`,
+        shares: Object.fromEntries(places.bands.map((b) => [b.key, bandTotal(k) ? b.people[k] / bandTotal(k) : 0])),
+      }))
+    : [];
+
   // The findings in the order the page tells them, for the list at the top.
   const contents = [
     point("kinds") && { id: "who", point: point("kinds")! },
+    placePoint && placesOk && { id: "places", point: placePoint },
     point("weekdays") && { id: "weekdays", point: point("weekdays")! },
     point("season") && { id: "season", point: point("season")! },
     point("orders") && { id: "orders", point: point("orders")! },
@@ -424,6 +472,89 @@ export default async function CustomersPage() {
             lead={`The blue slice widens on the way down: locals are ${p0(s.kinds.local.guestShare)} of the cards and ${p0(s.kinds.local.salesShare)} of the money. The pink one narrows: visitors are ${p0(s.kinds.visitor.guestShare)} and ${p0(s.kinds.visitor.salesShare)}.`}
           />
         </Chapter>
+
+        {placesOk && places && map ? (
+          <Chapter
+            id="places"
+            point={placePoint ?? undefined}
+            title="Where they come from"
+            className="mt-4"
+            numbers={
+              <>
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th>Town</Th>
+                      <Th align="right">Miles</Th>
+                      <Th align="right">Cards</Th>
+                      <Th align="right">Locals</Th>
+                      <Th align="right" className="hidden sm:table-cell">Visitors</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {places.towns.slice(0, 20).map((t) => (
+                      <Tr key={t.key}>
+                        <Td><span className="font-medium text-ink">{t.key}</span></Td>
+                        <Td align="right" className="num text-ink-2">{qty(t.miles, 0)}</Td>
+                        <Td align="right" className="num font-medium text-ink">{qty(t.people.all, 0)}</Td>
+                        <Td align="right" className="num text-ink-2">{qty(t.people.local, 0)}</Td>
+                        <Td align="right" className="num hidden text-ink-2 sm:table-cell">{qty(t.people.visitor, 0)}</Td>
+                      </Tr>
+                    ))}
+                  </tbody>
+                </Table>
+                <p className="mt-2 text-xs text-muted">
+                  Cards seen in the last 12 months whose payer Square has a postal code for: {qty(places.placed, 0)} of {qty(places.guests, 0)} ({p0(places.placed / Math.max(1, places.guests))}). The postal code comes from the Square customer profile tied to the card&apos;s payments, or from the card itself when it was typed in. Square fills in profiles from online orders, sign-ups and what staff add, so people who only ever tap a card are under-counted. A town is where its postal codes are; distances are as the crow flies.
+                  {places.unknown > 0 && ` ${qty(places.unknown, 0)} have a postal code from abroad or one the list doesn't know, so they aren't on the map.`}
+                </p>
+              </>
+            }
+          >
+            <PlacesMap views={map.views} towns={map.towns} homeLabel="The taproom" />
+            <div className="mt-6">
+              <h4 className="mb-2 text-sm font-medium text-ink">How far they come</h4>
+              <ShareBars
+                parts={distanceParts}
+                rows={distanceRows}
+                ariaLabel="Local and visitor cards by how far from the taproom they live"
+                lead={`${places.median.local != null ? `Half of locals live within ${milesLabel(places.median.local)}. ` : ""}${places.median.visitor != null ? `Half of visitors come from ${milesLabel(places.median.visitor)} or more.` : ""} The darker, the farther.`}
+              />
+            </div>
+            {pb && !pb.finishedAt && !pb.deniedAt && (
+              <div className="mt-4 border-t border-border pt-3">
+                <LoadPlaces through={pb.next} />
+              </div>
+            )}
+          </Chapter>
+        ) : pb?.deniedAt ? (
+          <Card id="places" className="mt-4 scroll-mt-24 p-4 sm:p-5">
+            <h3 className="text-base font-semibold tracking-tight text-ink">A map of where people come from is ready to go</h3>
+            <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-2">
+              It needs one more permission from Square, to read the postal code on each payer&apos;s Square profile. On the Square page press <b>Reconnect</b>, sign in to Square and press <b>Allow</b>. The map then fills in here by itself, and What&apos;s new says when it&apos;s ready.
+            </p>
+            <div className="mt-3">
+              <LinkButton href="/settings/square" size="sm">Open the Square page</LinkButton>
+            </div>
+          </Card>
+        ) : pb && !pb.finishedAt ? (
+          <Card id="places" className="mt-4 scroll-mt-24 p-4 sm:p-5">
+            <h3 className="text-base font-semibold tracking-tight text-ink">Working out where people come from</h3>
+            <p className="mt-1.5 mb-3 max-w-2xl text-sm leading-relaxed text-ink-2">
+              Square is sharing postal codes now. Ops is going back through last year&apos;s payments to find one for each card; the map appears here as soon as there are enough{places ? ` (${qty(places.placed, 0)} cards so far)` : ""}.
+            </p>
+            <LoadPlaces through={pb.next} />
+          </Card>
+        ) : pb?.finishedAt && places && !placesOk ? (
+          <Card id="places" className="mt-4 scroll-mt-24 p-4 sm:p-5">
+            <h3 className="text-base font-semibold tracking-tight text-ink">Too few postal codes for a map</h3>
+            <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-2">
+              Square has a postal code for only {qty(places.placed, 0)} of last year&apos;s {qty(places.guests, 0)} cards, too few to say where people come from. Asking for a ZIP at the till for a week, or a sign-up list, would fill it in.
+            </p>
+            <div className="mt-3">
+              <LinkButton href="/sales/customers/places" size="sm">See what Square knows</LinkButton>
+            </div>
+          </Card>
+        ) : null}
       </Section>
 
       {rhythm && (dayCols.length > 0 || monthCols.length > 0) && (

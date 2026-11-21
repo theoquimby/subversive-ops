@@ -24,6 +24,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.48",
+    date: "2026-11-20",
+    title: "Linking clean-up, and where customers come from",
+    summary: "Link your sales now opens with the clean-up as numbered steps, biggest first, and specials can be skipped for now. A map of where customers come from is ready, and fills in once Square is reconnected.",
+    entries: ["2026-11-20.link-cleanup", "2026-11-20.customer-map"],
+    fixed: [
+      "Old specials that haven't sold in four weeks show as Not selling lately on Menu from Square and no longer count as still to match. Nothing needs deleting in Square.",
+      "Skip for now: a special that's selling but you don't want to cost yet counts at a typical cost, and comes back to the list if it starts selling most weeks.",
+      "Check these links now also catches links whose names hardly agree, with Looks right, Change and Unlink on each.",
+      "The customer map needs Square's Customers permission: press Reconnect on Settings → Square, then Allow. It then works back through the last year by itself.",
+    ],
+  },
+  {
     version: "1.47",
     date: "2026-11-20",
     title: "The week ahead: will the forecast cover the crew?",

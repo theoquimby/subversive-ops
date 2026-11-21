@@ -4,6 +4,7 @@ import {
   beerGroups,
   classifyItem,
   coverage,
+  linkNameMatch,
   defaultCostClass,
   describeState,
   isSettled,
@@ -192,6 +193,21 @@ describe("coverage", () => {
     expect(c.toTarget).toBeCloseTo(200);
     expect(c.unlinkedItems).toBe(1);
     expect(coverage([]).share).toBeNull();
+    // A skipped special isn't costed, but counts towards the target and leaves the to-do.
+    const k = coverage([
+      { state: { ...UNLINKED, recipeId: "r" }, sales: 600 },
+      { state: UNLINKED, sales: 300, skipped: true },
+      { state: UNLINKED, sales: 100 },
+    ]);
+    expect(k.share).toBeCloseTo(0.6);
+    expect(k.skipped).toBe(300);
+    expect(k.unlinkedItems).toBe(1);
+    expect(k.toTarget).toBeCloseTo(0);
+  });
+
+  it("scores how well a link's names agree", () => {
+    expect(linkNameMatch({ name: "Wings (6) · Lemon Pepper", baseName: "Wings (6)" }, "Wings (6)")).toBeGreaterThan(0.9);
+    expect(linkNameMatch({ name: "Slaughterhouse Burger", baseName: "Slaughterhouse Burger" }, "Greek Salad")).toBeLessThan(0.45);
   });
 });
 

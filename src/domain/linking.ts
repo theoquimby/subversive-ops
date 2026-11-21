@@ -326,24 +326,31 @@ export interface Coverage {
   total: number;
   share: number | null;
   target: number;
-  /** More dollars to link to reach the target (0 once there). */
+  /** More dollars to link to reach the target (0 once there). Skipped specials count towards it. */
   toTarget: number;
   unlinkedItems: number;
+  /** Sales of items skipped for now (specials nobody wants to cost yet): estimated at a typical cost. */
+  skipped: number;
 }
 
 /** How much of the period's item sales has a cost behind it. Items left out of sales don't count either way. */
-export function coverage(rows: readonly { state: LinkState; sales: number }[], target = COVERAGE_TARGET): Coverage {
-  let linked = 0, total = 0, unlinkedItems = 0;
+export function coverage(rows: readonly { state: LinkState; sales: number; skipped?: boolean }[], target = COVERAGE_TARGET): Coverage {
+  let linked = 0, total = 0, unlinkedItems = 0, skipped = 0;
   for (const r of rows) {
     if (r.state.ignored) continue;
     const s = Math.max(0, r.sales);
     total += s;
     if (r.state.recipeId || r.state.unitCost != null) linked += s;
+    else if (r.skipped) skipped += s;
     else if (s > 0) unlinkedItems++;
   }
   const share = total > 0 ? linked / total : null;
-  return { linked, total, share, target, toTarget: share == null ? 0 : Math.max(0, target * total - linked), unlinkedItems };
+  return { linked, total, share, target, toTarget: share == null ? 0 : Math.max(0, target * total - linked - skipped), unlinkedItems, skipped };
 }
+
+/** How well a Square item's name agrees with a recipe's (0 to 1), the same reading suggestions use. */
+export const linkNameMatch = (item: Pick<LinkItem, "name" | "baseName">, recipeName: string) =>
+  Math.max(matchConfidence(item.baseName, recipeName), matchConfidence(item.name, recipeName), nameScore(item.name, recipeName), nameScore(item.baseName, recipeName));
 
 // ---- Words for the history ------------------------------------------------------------------
 

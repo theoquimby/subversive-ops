@@ -4,7 +4,8 @@ import { kegSize, planDraftBeer, pourRecipeName } from "@/domain/draftBeer";
 import { REVENUE_CLASSES } from "@/domain/revenueClass";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { undoBatch, writeLinks, type LinkWrite } from "@/server/services/linking";
+import { confirmLinks as keepConfirmed, setSkipped, undoBatch, writeLinks, type LinkWrite } from "@/server/services/linking";
+import { businessToday } from "@/server/services/sales";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -31,6 +32,43 @@ const state = z.object({
 const writesSchema = z.array(z.object({ squareId: z.string().min(1).max(128), to: state })).min(1).max(1000);
 
 const items = (n: number) => `${n} item${n === 1 ? "" : "s"}`;
+
+const idList = z.array(z.string().min(1).max(128)).min(1).max(1000);
+
+/**
+ * "Skip for now": specials nobody wants to cost yet. They leave the to-do,
+ * count at a typical cost, and come back once they sell most weeks again.
+ */
+export async function skipItems(input: string[]): Promise<LinkResult> {
+  await requireUser("MANAGER");
+  const p = idList.safeParse(input);
+  if (!p.success) return { error: "Pick at least one item." };
+  await setSkipped(p.data, true, businessToday());
+  refresh();
+  return { message: `Skipped ${items(p.data.length)} for now. ${p.data.length === 1 ? "It comes" : "They come"} back here if ${p.data.length === 1 ? "it starts" : "they start"} selling most weeks.` };
+}
+
+/** Undo "Skip for now": back on the list to link. */
+export async function unskipItems(input: string[]): Promise<LinkResult> {
+  await requireUser("MANAGER");
+  const p = idList.safeParse(input);
+  if (!p.success) return { error: "Pick at least one item." };
+  await setSkipped(p.data, false, businessToday());
+  refresh();
+  return { message: `${items(p.data.length)} back on the list to link.` };
+}
+
+const confirmSchema = z.array(z.object({ squareId: z.string().min(1).max(128), recipeId: z.string().min(1).max(64) })).min(1).max(200);
+
+/** "Looks right": a link someone has checked stops being flagged (until it's linked to something else). */
+export async function confirmLinks(input: z.input<typeof confirmSchema>): Promise<LinkResult> {
+  await requireUser("MANAGER");
+  const p = confirmSchema.safeParse(input);
+  if (!p.success) return { error: "Nothing to confirm." };
+  await keepConfirmed(p.data);
+  refresh();
+  return { message: p.data.length === 1 ? "Marked as right." : `Marked ${p.data.length} links as right.` };
+}
 
 /** Link, leave out, or set a bought-in cost for Square items. Logged as one batch for Undo. */
 export async function applyLinks(input: z.input<typeof writesSchema>): Promise<LinkResult> {

@@ -5,7 +5,8 @@ import { cache } from "react";
 import { db } from "../db";
 import { env } from "../env";
 import { businessDate } from "@/domain/dates";
-import { unseenEntries, whatsNewFor, type WhatsNewEntry, type WhatsNewSeen } from "@/help/whatsNew";
+import { PLACES_READY_KEY } from "@/domain/places";
+import { unseenEntries, whatsNewFor, type WhatsNewData, type WhatsNewEntry, type WhatsNewSeen } from "@/help/whatsNew";
 
 /**
  * What's new, per person. What someone has seen is kept in the Setting table
@@ -49,10 +50,16 @@ export interface WhatsNewState {
   unseen: string[];
 }
 
+/** Which of the data What's new cards can wait for is there now (one small lookup per render). */
+export const whatsNewData = cache(async (): Promise<(d: WhatsNewData) => boolean> => {
+  const placesReady = !!(await db.setting.findUnique({ where: { key: PLACES_READY_KEY }, select: { key: true } }));
+  return (d) => (d === "guestPlaces" ? placesReady : true);
+});
+
 /** The entries this person may see and which of them are new to them. Read once per render. */
 export const whatsNewState = cache(async (userId: string, role: "MANAGER" | "STAFF"): Promise<WhatsNewState> => {
-  const [seen, user] = await Promise.all([whatsNewSeen(userId), db.user.findUnique({ where: { id: userId }, select: { createdAt: true } })]);
-  const entries = whatsNewFor(role, hasAppRoute);
+  const [seen, user, hasData] = await Promise.all([whatsNewSeen(userId), db.user.findUnique({ where: { id: userId }, select: { createdAt: true } }), whatsNewData()]);
+  const entries = whatsNewFor(role, hasAppRoute, hasData);
   const joined = user ? businessDate(user.createdAt, env.BUSINESS_TIMEZONE) : "";
   return { entries, unseen: unseenEntries(entries, seen, joined).map((e) => e.id) };
 });

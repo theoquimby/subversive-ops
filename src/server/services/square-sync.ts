@@ -8,7 +8,7 @@ import { friendlySquareError } from "../integrations/square-http";
 import { fetchMerchant } from "../integrations/square-auth";
 import { syncSquareTeam, syncSquareTimecards } from "./labor";
 import { businessToday, syncCatalog, syncSales } from "./sales";
-import { backfillGuestItems, backfillGuests, computeGuestsQuietly, guestBackfill, guestItemsBackfill, syncGuestItemsQuietly } from "./guests";
+import { backfillGuestItems, backfillGuestPlaces, backfillGuests, computeGuestsQuietly, guestBackfill, guestItemsBackfill, syncGuestItemsQuietly } from "./guests";
 import { computeDayProfitQuietly } from "./dayProfit";
 import { syncPaymentsQuietly } from "./square-money";
 import { isSquareConnected, logSquareError, readSettingJSON, recordSquareSync, requireSquareClient, squareStreams, SquareStream, withSquareLock, writeSettingJSON } from "./square";
@@ -47,6 +47,8 @@ export async function dailySync() {
   await syncGuestItemsQuietly(addDays(today, -3), addDays(today, 1));
   const items = await guestItemsBackfill();
   if (items && !items.finishedAt) await backfillGuestItems(60_000).catch(() => undefined);
+  // Where cards come from: more of last year each night (one quick "no" while Square lacks the Customers permission).
+  await backfillGuestPlaces(60_000).catch(() => undefined);
   await computeGuestsQuietly();
   // Profit by day reads a year of everything: work it out now so the page opens at once.
   await computeDayProfitQuietly();

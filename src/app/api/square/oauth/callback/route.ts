@@ -2,10 +2,13 @@ import { timingSafeEqual } from "node:crypto";
 import { getSession } from "@/server/auth";
 import { friendlySquareError } from "@/server/integrations/square-http";
 import { connectWithOAuthCode, logSquareError } from "@/server/services/square";
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
+import { backfillGuestPlaces, computeGuestsQuietly } from "@/server/services/guests";
 import { getBackfill, startBackfill } from "@/server/services/square-sync";
 
 export const dynamic = "force-dynamic";
+/** Room for the first stretch of placing cards, which runs after the redirect. */
+export const maxDuration = 60;
 
 const STATE_COOKIE = "so_square_state";
 const BACK_COOKIE = "so_square_back";
@@ -46,6 +49,11 @@ export async function GET(req: NextRequest) {
     const r = await connectWithOAuthCode(code);
     // Start bringing in history straight away; the Square page carries it on.
     if (!(await getBackfill())) await startBackfill("all").catch(() => undefined);
+    // A new permission may have come with it (Customers): start placing cards straight away, after the redirect.
+    after(async () => {
+      const r = await backfillGuestPlaces(45_000).catch(() => null);
+      if (r && !r.denied) await computeGuestsQuietly();
+    });
     back.pathname = "/settings/square";
     back.searchParams.delete("open");
     return done({ connected: r.merchantName });

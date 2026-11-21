@@ -11,6 +11,10 @@
  *
  * `requiresRoute`: for a feature still landing — the entry only shows while
  * that page exists in the app.
+ *
+ * `requiresData`: for a feature that has nothing to show until something
+ * outside Ops happens (a permission granted, data loaded). The entry stays
+ * hidden until then, and pops up as new when it appears.
  */
 
 import type { Area } from "@/lib/areas";
@@ -66,9 +70,38 @@ export interface WhatsNewEntry {
   audience: WhatsNewAudience;
   /** Only shown while this page exists (features still landing). */
   requiresRoute?: string;
+  /** Only shown once this data is there (see `WhatsNewData`). */
+  requiresData?: WhatsNewData;
 }
 
+/** Data a What's new card can wait for. `guestPlaces`: enough cards placed for the map of where customers come from. */
+export type WhatsNewData = "guestPlaces";
+
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 20 Nov · 1.48 (linking clean-up; the customer map, shown once it has data) ----
+  {
+    id: "2026-11-20.link-cleanup",
+    date: "2026-11-20",
+    title: "Linking clean-up, step by step",
+    line: "Link your sales lists what to do first, biggest payoff first. Specials can be skipped for now.",
+    icon: "checklist",
+    area: "numbers",
+    href: "/sales/link",
+    help: "sales.link",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-20.customer-map",
+    date: "2026-11-20",
+    title: "Where your customers come from",
+    line: "A map of the towns your locals and visitors come from, and how far they travel.",
+    icon: "insights",
+    area: "numbers",
+    href: "/sales/customers#places",
+    help: "sales.customers",
+    audience: "manager",
+    requiresData: "guestPlaces",
+  },
   // ---- 20 Nov · 1.47 (days the forecast won't cover the crew) ----
   {
     id: "2026-11-20.schedule-cover",
@@ -1317,10 +1350,11 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   },
 ];
 
-/** Entries a role may see, newest first. `hasRoute` filters features still landing. */
-export function whatsNewFor(role: "MANAGER" | "STAFF", hasRoute: (route: string) => boolean = () => true): WhatsNewEntry[] {
+/** Entries a role may see, newest first. `hasRoute` filters features still landing, `hasData` ones waiting for data. */
+export function whatsNewFor(role: "MANAGER" | "STAFF", hasRoute: (route: string) => boolean = () => true, hasData: (data: WhatsNewData) => boolean = () => true): WhatsNewEntry[] {
   return WHATS_NEW.filter((e) => (role === "MANAGER" ? e.audience !== "staff" : e.audience !== "manager"))
     .filter((e) => !e.requiresRoute || hasRoute(e.requiresRoute))
+    .filter((e) => !e.requiresData || hasData(e.requiresData))
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 

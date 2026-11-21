@@ -4,14 +4,14 @@ import { RELEASES } from "@/help/releases";
 import { showMeHref, whatsNewFor } from "@/help/whatsNew";
 import { shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
-import { hasAppRoute } from "@/server/services/whatsNew";
+import { hasAppRoute, whatsNewData } from "@/server/services/whatsNew";
 import { OpenWhatsNew } from "./open-whats-new";
 
 export const metadata = { title: "Release notes" };
 
 export default async function ReleaseNotesPage() {
   const me = await requireUser();
-  const visible = new Map(whatsNewFor(me.role, hasAppRoute).map((e) => [e.id, e]));
+  const visible = new Map(whatsNewFor(me.role, hasAppRoute, await whatsNewData()).map((e) => [e.id, e]));
   const releases = RELEASES.map((r) => ({ ...r, cards: r.entries.map((id) => visible.get(id)).filter((e) => e !== undefined) }))
     .filter((r) => r.cards.length || (me.role === "MANAGER" && r.fixed?.length));
 

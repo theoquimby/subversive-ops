@@ -102,6 +102,8 @@ export interface SquareItemRow {
   archived: boolean;
   deleted: boolean;
   sold: number;
+  /** Skipped for now on Link your sales (a special nobody wants to cost yet). */
+  skipped: boolean;
   suggestion: { recipeId: string; recipeName: string; confidence: number } | null;
   /** Linked to a recipe that has no ingredient lines yet. */
   recipeEmpty?: boolean;
@@ -112,9 +114,10 @@ export interface SquareItemRow {
 
 /** Every Square item with its link, suggestion, price gap and 4-week sales, for the Square items table. */
 export async function squareItemRows() {
-  const [r, volume] = await Promise.all([
+  const [r, volume, skippedOn] = await Promise.all([
     squareMenuReview(),
     db.dailySale.groupBy({ by: ["squareId"], _sum: { qty: true }, where: { date: { gte: new Date(`${addDays(businessToday(), -28)}T00:00:00Z`) } } }),
+    readSettingJSON<Record<string, string>>("linking.skipped"),
   ]);
   const sold = new Map(volume.map((v) => [v.squareId, v._sum.qty?.toNumber() ?? 0]));
   const sugg = new Map(r.suggestions.map((s) => [s.squareId, s]));
@@ -137,11 +140,21 @@ export async function squareItemRows() {
       archived: i.archived,
       deleted: i.deleted,
       sold: sold.get(i.squareId) ?? 0,
+      skipped: !!skippedOn?.[i.squareId] && !i.recipeId && !i.ignored && i.unitCost == null,
       suggestion: s ? { recipeId: s.recipeId, recipeName: s.recipeName, confidence: s.confidence } : null,
       recipeEmpty: !!i.recipeId && r.emptyRecipes.has(i.recipeId),
       menuPrice: i.recipeId ? menuPrice.get(i.recipeId) ?? null : null,
       drift: d ? { diff: d.diff, conflict: d.conflict } : null,
     };
   });
-  return { review: r, rows, recipes: r.recipes.map((x) => ({ id: x.id, name: x.name, kind: x.kind })) };
+  // What's actually left to match: unlinked items that sold in the last four weeks and aren't skipped.
+  // Old specials that haven't sold don't count; they wait quietly until they sell again.
+  const open = rows.filter((x) => !x.deleted && !x.recipeId && !x.ignored && x.unitCost == null && !x.skipped);
+  const toMatch = open.filter((x) => x.sold > 0);
+  return {
+    review: r,
+    rows,
+    recipes: r.recipes.map((x) => ({ id: x.id, name: x.name, kind: x.kind })),
+    toMatch: { items: toMatch.length, suggested: toMatch.filter((x) => x.suggestion).length, resting: open.length - toMatch.length, skipped: rows.filter((x) => x.skipped).length },
+  };
 }

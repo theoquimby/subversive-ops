@@ -8,6 +8,7 @@ import {
   defaultCostClass,
   isSettled,
   linkEffect,
+  linkNameMatch,
   rankCandidates,
   safeToBulk,
   sameState,
@@ -23,6 +24,7 @@ import {
   type LinkRecipe,
   type LinkState,
 } from "@/domain/linking";
+import { cleanupPlan, isBackOnMenu, WEAK_NAME_MATCH, type CleanupPlan } from "@/domain/linkCleanup";
 import { isRevenueClass, type RevenueClass } from "@/domain/revenueClass";
 import { db, num } from "../db";
 import { buildContext, loadCostingSnapshot, safeCost } from "./costing";
@@ -30,6 +32,7 @@ import { classSettings } from "./insights";
 import { kegConfig } from "./kegs";
 import { businessToday, squareCatalogMeta } from "./sales";
 import { loadRejected } from "./square-menu";
+import { readSettingJSON, writeSettingJSON } from "./square";
 
 /**
  * The "Link your sales" assistant: every Square item that sold in the last 30
@@ -38,6 +41,31 @@ import { loadRejected } from "./square-menu";
  */
 
 export const LINK_WINDOW_DAYS = 30;
+
+// ---- Skipped for now, and links someone has looked at ------------------------------------------
+
+/** Specials nobody wants to cost yet: Square id → the day they were skipped. */
+const SKIPPED_KEY = "linking.skipped";
+/** Links someone checked and said look right: Square id → the recipe they're right for. */
+const CONFIRMED_KEY = "linking.confirmed";
+
+export const loadSkipped = async () => (await readSettingJSON<Record<string, string>>(SKIPPED_KEY)) ?? {};
+export const loadConfirmed = async () => (await readSettingJSON<Record<string, string>>(CONFIRMED_KEY)) ?? {};
+
+export async function setSkipped(ids: string[], skip: boolean, today: string) {
+  const cur = await loadSkipped();
+  for (const id of ids) {
+    if (skip) cur[id] = today;
+    else delete cur[id];
+  }
+  await writeSettingJSON(SKIPPED_KEY, cur);
+}
+
+export async function confirmLinks(pairs: { squareId: string; recipeId: string }[]) {
+  const cur = await loadConfirmed();
+  for (const p of pairs) cur[p.squareId] = p.recipeId;
+  await writeSettingJSON(CONFIRMED_KEY, cur);
+}
 
 export interface AssistantRow extends LinkItem {
   sales30: number;
@@ -53,6 +81,13 @@ export interface AssistantRow extends LinkItem {
   unitCostHint: number | null;
   costClassHint: RevenueClass;
   deleted: boolean;
+  /** Days it sold on in the last 30. */
+  days30: number;
+  /** Skipped for now (a special nobody wants to cost yet), and whether it's selling most weeks again. */
+  skipped: boolean;
+  backOnMenu: boolean;
+  /** Why a link is worth a second look; empty when it isn't. */
+  checkReasons: string[];
 }
 
 export interface BeerGroupView extends BeerGroup {
@@ -112,14 +147,14 @@ export async function linkRecipes(): Promise<LinkRecipe[]> {
 export async function linkAssistant() {
   const today = businessToday();
   const from = addDays(today, -LINK_WINDOW_DAYS);
-  const [mappings, meta, recipes, cls, beers, sales, rejected, history, cfg, kegs] = await Promise.all([
+  const [mappings, meta, recipes, cls, beers, sales, rejected, history, cfg, kegs, skippedOn, confirmed] = await Promise.all([
     db.squareMapping.findMany({ select: { squareId: true, squareName: true, squareType: true, recipeId: true, ignored: true, unitCost: true, costClass: true, beerId: true, recipe: { select: { name: true } } } }),
     squareCatalogMeta(),
     linkRecipes(),
     classSettings(),
     // Each beer with the Square items linked to it (matched by id before name) and its keg ingredient.
     db.beer.findMany({ where: { active: true }, select: { id: true, name: true, squareNames: true, recipeId: true, ingredientId: true, squareItems: { select: { squareId: true } } } }).then((bs) => bs.map(({ squareItems, ...b }) => ({ ...b, squareIds: squareItems.map((s) => s.squareId) }))),
-    db.dailySale.groupBy({ by: ["squareId"], _sum: { qty: true, netSales: true }, where: { date: { gte: new Date(`${from}T00:00:00Z`) } } }),
+    db.dailySale.groupBy({ by: ["squareId"], _sum: { qty: true, netSales: true }, _count: { _all: true }, where: { date: { gte: new Date(`${from}T00:00:00Z`) } } }),
     loadRejected(),
     linkHistory(),
     kegConfig(),
@@ -127,8 +162,10 @@ export async function linkAssistant() {
       where: { active: true, baseUnit: "ml", conversions: { some: { unit: "keg" } } },
       select: { id: true, name: true, yieldPct: true, conversions: { where: { unit: "keg" }, select: { baseQty: true } }, preferredProduct: { select: { prices: { orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }], take: 1, select: { price: true } } } } },
     }),
+    loadSkipped(),
+    loadConfirmed(),
   ]);
-  const byId = new Map(sales.map((s) => [s.squareId, { qty: s._sum.qty?.toNumber() ?? 0, sales: s._sum.netSales?.toNumber() ?? 0 }]));
+  const byId = new Map(sales.map((s) => [s.squareId, { qty: s._sum.qty?.toNumber() ?? 0, sales: s._sum.netSales?.toNumber() ?? 0, days: s._count._all }]));
   const recipeById = new Map(recipes.map((r) => [r.id, r]));
 
   const rows: AssistantRow[] = [];
@@ -155,6 +192,16 @@ export async function linkAssistant() {
     } else if (state.unitCost != null) {
       effect = unitCostEffect(item, state.unitCost);
     }
+    // A link worth a second look: the cost looks wrong for the price, or the names hardly agree
+    // (how a wrong suggestion gets accepted). Once someone says it's right, it stays quiet.
+    const checkReasons: string[] = [];
+    const sure = state.recipeId ? confirmed[m.squareId] === state.recipeId : state.unitCost != null && confirmed[m.squareId] === "each";
+    if (!state.ignored && !sure) {
+      if (effect && suspicious(effect)) checkReasons.push("The cost looks wrong for the price");
+      if (state.recipeId && m.recipe?.name && linkNameMatch(item, m.recipe.name) < WEAK_NAME_MATCH) checkReasons.push("The names don't match much");
+    }
+    const days30 = s?.days ?? 0;
+    const wasSkipped = !isSettled(state) && !!skippedOn[m.squareId];
     rows.push({
       ...item,
       sales30: sold,
@@ -167,6 +214,10 @@ export async function linkAssistant() {
       unitCostHint: suggestUnitCost(kind, item.price),
       costClassHint: state.costClass ?? defaultCostClass(kind, item, cls.map),
       deleted,
+      days30,
+      skipped: wasSkipped && !isBackOnMenu(days30),
+      backOnMenu: wasSkipped && isBackOnMenu(days30),
+      checkReasons,
     });
   }
   rows.sort((a, b) => b.sales30 - a.sales30 || a.name.localeCompare(b.name));
@@ -175,7 +226,8 @@ export async function linkAssistant() {
   // A Square name that isn't a beer yet can only find a keg ingredient by its "(keg)" name.
   const kegById = new Map(kegs.map((k) => [k.id, k]));
   const kegByName = new Map(kegs.map((k) => [k.name.toLowerCase(), k]));
-  const unlinked = rows.filter((r) => !isSettled(r.state));
+  const unlinked = rows.filter((r) => !isSettled(r.state) && !r.skipped);
+  const skipped = rows.filter((r) => r.skipped);
   const groups: BeerGroupView[] = beerGroups(unlinked, beers, cfg.pours).map((g) => {
     const beer = g.beerId ? beers.find((b) => b.id === g.beerId) : undefined;
     const k = beer ? (beer.ingredientId ? kegById.get(beer.ingredientId) : undefined) : kegByName.get(`${g.beer.trim()} (keg)`.toLowerCase());
@@ -184,18 +236,30 @@ export async function linkAssistant() {
     return { ...g, kegCost: k?.preferredProduct?.prices[0]?.price.toNumber() ?? null, kegSizeId: sizeId, yieldPct: k ? k.yieldPct.toNumber() : 0.9 };
   });
 
-  const cov: Coverage = coverage(rows.map((r) => ({ state: r.state, sales: r.sales30 })));
+  const cov: Coverage = coverage(rows.map((r) => ({ state: r.state, sales: r.sales30, skipped: r.skipped })));
+  const flagged = rows.filter((r) => r.checkReasons.length > 0);
+  const pours = new Set(groups.flatMap((g) => g.pours.map((p) => p.squareId)));
+  const plan: CleanupPlan = cleanupPlan({
+    items: unlinked.map((r) => ({ squareId: r.squareId, name: r.name, kind: r.kind, sales30: r.sales30, sure: !!r.candidates[0]?.safe, beer: pours.has(r.squareId) })),
+    beers: groups.length,
+    check: { items: flagged.length, dollars: flagged.reduce((s, r) => s + r.sales30, 0) },
+    total: cov.total,
+    linked: cov.linked,
+    skipped: cov.skipped,
+  });
   return {
     today,
     from,
     coverage: cov,
+    plan,
     rows,
     unlinked,
+    skipped,
     beerGroups: groups,
-    flagged: rows.filter((r) => r.effect && suspicious(r.effect) && !r.state.ignored),
+    flagged,
     recipes: recipes.filter((r) => r.kind !== "PREP").map((r) => ({ id: r.id, name: r.name, kind: r.kind, category: r.category, menuPrice: r.menuPrice, cost: r.cost, incomplete: r.incomplete, lines: r.lines })),
     history,
-    neverSold: mappings.filter((m) => !isSettled(stateOf(m)) && !byId.get(m.squareId)?.sales).length,
+    neverSold: mappings.filter((m) => !isSettled(stateOf(m)) && !byId.get(m.squareId)?.sales && !meta[m.squareId]?.deleted).length,
   };
 }
 

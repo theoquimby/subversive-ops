@@ -71,6 +71,18 @@ describe("what's new", () => {
     expect(without).toBe(withAll - WHATS_NEW.filter((e) => e.requiresRoute && e.audience !== "staff").length);
   });
 
+  it("keeps an entry waiting for data hidden until it's there, then shows it as new", () => {
+    const waiting = WHATS_NEW.filter((e) => e.requiresData && e.audience !== "staff");
+    expect(waiting.map((e) => e.id)).toContain("2026-11-20.customer-map");
+    const before = whatsNewFor("MANAGER", () => true, () => false);
+    const after = whatsNewFor("MANAGER", () => true, () => true);
+    expect(before.some((e) => e.id === "2026-11-20.customer-map")).toBe(false);
+    expect(after.length - before.length).toBe(waiting.length);
+    // Someone who has seen everything else still gets it as new once it appears.
+    const seen = { ids: before.map((e) => e.id), at: "2026-11-20T12:00:00Z" };
+    expect(unseenEntries(after, seen, "2020-01-01").map((e) => e.id)).toEqual(waiting.map((e) => e.id));
+  });
+
   it("lists newest first and groups by date", () => {
     const list = whatsNewFor("MANAGER");
     for (let i = 1; i < list.length; i++) expect(list[i - 1].date >= list[i].date).toBe(true);

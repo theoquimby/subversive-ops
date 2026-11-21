@@ -10,6 +10,13 @@ export const linking: HelpEntry[] = [
     body: "Gives every Square item a cost so profit, food cost and ordering are exact: a recipe, a keg for draft beer, or a cost each for things you buy in. Biggest sellers first, each link shows its cost before saving, and anything can be undone.",
     article: `Until a Square item is linked, its sales are costed at a typical 30% on the Overview and P&L, and it doesn't count toward prep or ordering. This page gets you linked fastest, biggest sellers first.
 
+### What to do, in order
+The card at the top lists the clean-up as numbered steps, each with how much of the last 30 days' sales it gives a cost to. Tap a step to jump to where it's done. Links that may be wrong always come first; then the biggest: usually keg costs for draft beer, sure matches, cans and bottles, and recipes for the kitchen and bar.
+
+### Specials
+- **Specials you aren't running** need nothing. Anything that hasn't sold in 30 days stays out of the way here, so there's nothing to delete in Square.
+- **A special that's selling but you don't want to cost yet**: press **Skip for now**. It counts at a typical cost and leaves the list. If it starts selling most weeks again (8 or more of the last 30 days), it comes back with a note. **Skipped for now**, at the bottom, lists them with **Bring back**.
+
 ### For each item
 - **Accept** links it to the suggested recipe. The suggestion shows how sure it is (Sure, Likely, Maybe) and why: same name, same price, same category.
 - **Pick another** opens a searchable list of recipes, each with its cost and what share of this item's price that is.
@@ -33,7 +40,7 @@ Pours are grouped by beer. Type what a keg costs once and every pour gets a cost
     area: "sales",
     route: "/sales/link",
     title: "How much is linked",
-    body: "The share of the last 30 days' Square item sales that has a cost behind it (a recipe or a cost each), against a 90% target. Items left out of sales don't count either way.",
+    body: "The share of the last 30 days' Square item sales that has a cost behind it (a recipe or a cost each), against a 90% target. Specials skipped for now are shaded and count towards the target. Below it, the clean-up in order, biggest first.",
     related: ["sales.link", "overview.foodCost"],
     keywords: ["coverage", "linked %", "target"],
   },
@@ -50,7 +57,7 @@ Pours are grouped by beer. Type what a keg costs once and every pour gets a cost
     area: "sales",
     route: "/sales/link",
     title: "Still to link",
-    body: "Square items that sold in the last 30 days with no cost behind them, biggest first. Accept the suggestion, pick another recipe, create one, or mark it as bought in or not a sale.",
+    body: "Square items that sold in the last 30 days with no cost behind them, biggest first. Accept the suggestion, pick another recipe, create one, mark it as bought in or not a sale, or Skip for now if it's a special you don't want to cost yet.",
     related: ["sales.link", "sales.link.check"],
   },
   {
@@ -67,7 +74,7 @@ Pours are grouped by beer. Type what a keg costs once and every pour gets a cost
     area: "sales",
     route: "/sales/link",
     title: "Check these links",
-    body: "Linked items whose cost looks wrong for the price: under 5% (the recipe may be missing ingredients), over 80% (check portions and units), or a different size than the recipe. Open the recipe or unlink it.",
+    body: "Links worth a second look: the names hardly agree (how a wrong suggestion slips in), or the cost looks wrong for the price. Looks right stops it showing; Change picks another recipe; Unlink takes it off.",
     related: ["sales.link", "menu.editor.lines"],
   },
   {

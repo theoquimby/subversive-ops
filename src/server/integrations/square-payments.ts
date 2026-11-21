@@ -37,7 +37,9 @@ interface RawPayment {
   total_money?: Money;
   amount_money?: Money;
   tip_money?: Money;
-  card_details?: { card?: { fingerprint?: string } };
+  card_details?: { card?: { fingerprint?: string; billing_address?: { postal_code?: string } } };
+  billing_address?: { postal_code?: string };
+  customer_id?: string;
   team_member_id?: string;
   employee_id?: string;
   order_id?: string;
@@ -57,6 +59,12 @@ export interface SquarePayment extends PaymentTip, FeePayment {
   amountCents: number;
   /** A one-way scramble of Square's marker for the card; null for cash and anything without one. */
   cardKey: string | null;
+  /**
+   * For where-people-come-from only (services/guests.ts), never stored as they are: the Square
+   * profile the payment is tied to, and the postal code the card itself carried (typed-in cards).
+   */
+  customerId: string | null;
+  postal: string | null;
 }
 
 /** The same card always gives the same key; the key can't be turned back into the marker or the card. */
@@ -85,6 +93,8 @@ export async function listPayments(client: SquareClient, startISO: string, endIS
           orderId: p.order_id ?? null,
           amountCents: p.amount_money?.amount ?? Math.max(0, (p.total_money?.amount ?? 0) - (p.tip_money?.amount ?? 0)),
           cardKey: cardKeyOf(p.card_details?.card?.fingerprint),
+          customerId: p.customer_id ?? null,
+          postal: normalPostal(p.billing_address?.postal_code) ?? normalPostal(p.card_details?.card?.billing_address?.postal_code),
         });
       }
       cursor = page.cursor;

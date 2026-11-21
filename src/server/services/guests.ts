@@ -1,15 +1,19 @@
 import "server-only";
-import { addDays, businessDate, dateRange, ISODate, parseISODate, toISODate, zonedMidnightUTC } from "@/domain/dates";
+import { addDays, businessDate, dateRange, daysBetween, ISODate, parseISODate, toISODate, zonedMidnightUTC } from "@/domain/dates";
+import { cardsToPlace, guestPlaces, PLACES_READY_KEY, placeFor, placesReady, type CardPayment, type GuestPlaces, type PlaceRow, type PlaceSource } from "@/domain/places";
 import { GUEST_RULES, guestDays, guestItems, guestOrders, guestRhythm, guestStory, guestSummary, LOCAL_MONTHS, QUIET_DAYS, VISITOR_MAX_DAYS, VISITOR_SPAN_DAYS, type GuestAgg, type GuestOrders, type GuestRhythm, type OrderRow, type RhythmKind, type RhythmRow, type GuestPayment, type GuestStory, type GuestSummary } from "@/domain/guests";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { env } from "../env";
-import { friendlySquareError, type SquareClient } from "../integrations/square-http";
+import { profilePlaces } from "../integrations/square-customers";
+import { friendlySquareError, SquareError, type SquareClient } from "../integrations/square-http";
+import { placeInfo } from "../geo";
+import { location } from "./forecasting";
 import { listOrders } from "../integrations/square";
 import { listPayments } from "../integrations/square-payments";
 import { firstSaleDate } from "./forecastScore";
 import { businessToday, ignoredSquareIds, squareCatalogMeta } from "./sales";
-import { isSquareConnected, readSettingJSON, requireSquareClient, writeSettingJSON } from "./square";
+import { isSquareConnected, readSettingJSON, requireSquareClient, withSquareLock, writeSettingJSON } from "./square";
 
 /**
  * Who comes back, from Square card payments. Each card on each business day is
@@ -161,6 +165,148 @@ export async function backfillGuestItems(budgetMs = 35_000): Promise<{ state: Gu
   }
 }
 
+// ---- Where they come from ------------------------------------------------------------------------
+// The postal code on the Square profile behind a card's payments (or on a typed-in card), kept against
+// the same scrambled card mark. Needs the Customers permission; until Square gives it, nothing is kept.
+
+const PLACES_BACKFILL_KEY = "guests.placesBackfill";
+/** Places are looked up for the last year of payments: the Customers page talks about the last 12 months. */
+const PLACE_DAYS = 365;
+const UPSERT_CHUNK = 400;
+const DENIED_PAUSE_MS = 6 * 3_600_000;
+
+export interface PlacesBackfill extends GuestBackfill {
+  /** When Square last said no: the connection hasn't been given the Customers permission yet. */
+  deniedAt: string | null;
+}
+
+export const placesBackfill = () => readSettingJSON<PlacesBackfill>(PLACES_BACKFILL_KEY);
+
+/** Square's answer when the connection lacks the Customers permission. */
+export const isPermissionDenied = (e: unknown) => e instanceof SquareError && (e.status === 403 || e.code === "INSUFFICIENT_SCOPES");
+
+/**
+ * Look up and keep where the cards in these payments come from, for any card
+ * not placed yet (or asked a while ago, with nothing found). Only the postal
+ * code and where it came from are kept. Throws Square's 403 when the
+ * permission is missing.
+ */
+export async function storeGuestPlaces(payments: readonly CardPayment[], client: SquareClient): Promise<number> {
+  const keys = [...new Set(payments.flatMap((p) => (p.cardKey ? [p.cardKey] : [])))];
+  if (!keys.length) return 0;
+  const today = businessToday();
+  const rows = await db.guestPlace.findMany({ where: { guest: { in: keys } } });
+  const known = new Map(rows.map((r) => [r.guest, { postal: r.postal, source: r.source as PlaceSource, checkedOn: toISODate(r.checkedOn) }]));
+  const want = cardsToPlace(payments, known, today, daysBetween);
+  if (!want.size) return 0;
+  const ids = [...new Set([...want.values()].flatMap((w) => w.customerIds))];
+  const profiles = ids.length ? await profilePlaces(client, ids) : new Map();
+  const checkedOn = parseISODate(today);
+  const fresh: { guest: string; postal: string | null; source: PlaceSource; checkedOn: Date }[] = [];
+  const again: typeof fresh = [];
+  for (const [guest, w] of want) (known.has(guest) ? again : fresh).push({ guest, ...placeFor(w, profiles), checkedOn });
+  if (fresh.length) await db.guestPlace.createMany({ data: fresh, skipDuplicates: true });
+  for (let i = 0; i < again.length; i += UPSERT_CHUNK) {
+    await db.$transaction(again.slice(i, i + UPSERT_CHUNK).map(({ guest, ...d }) => db.guestPlace.update({ where: { guest }, data: d })));
+  }
+  return want.size;
+}
+
+/** The nightly touch-up, from the payments the nightly pass already read. Quiet: a missing permission is expected. */
+export async function storeGuestPlacesQuietly(payments: readonly CardPayment[], client: SquareClient) {
+  try {
+    // Square said no lately: don't ask again on every 15-minute top-up (the nightly catch-up asks each night).
+    const state = await placesBackfill();
+    if (state?.deniedAt && Date.now() - Date.parse(state.deniedAt) < DENIED_PAUSE_MS) return null;
+    return await storeGuestPlaces(payments, client);
+  } catch (e) {
+    if (!isPermissionDenied(e)) console.error("guest places failed", friendlySquareError(e));
+    return null;
+  }
+}
+
+/**
+ * Work back through the last year of payments, a week at a time, newest first,
+ * placing every card. Picks up where it stopped. When Square says the
+ * permission is missing it records that and stops; the next call tries again,
+ * so once someone reconnects Square it carries on by itself. Never throws.
+ */
+export async function backfillGuestPlaces(budgetMs = 35_000): Promise<{ state: PlacesBackfill | null; denied?: boolean; error?: string }> {
+  // One at a time: two people with the page open, or the nightly run, mustn't work over the same weeks.
+  const r = await withSquareLock(() => placesStretch(budgetMs), budgetMs + 30_000, "guests.places.lock");
+  return r ?? { state: await placesBackfill() };
+}
+
+async function placesStretch(budgetMs: number): Promise<{ state: PlacesBackfill | null; denied?: boolean; error?: string }> {
+  const started = Date.now();
+  let state = await placesBackfill();
+  try {
+    if (!(await isSquareConnected())) return { state, error: "Square isn't connected." };
+    const today = businessToday();
+    if (!state) {
+      const first = await firstSaleDate();
+      if (!first) return { state: null, error: "There are no sales on file yet." };
+      const yearAgo = addDays(today, -PLACE_DAYS);
+      state = { from: first > yearAgo ? first : yearAgo, next: addDays(today, 1), startedAt: new Date().toISOString(), finishedAt: null, lastError: null, deniedAt: null };
+      await writeSettingJSON(PLACES_BACKFILL_KEY, state);
+    }
+    if (state.finishedAt) return { state };
+    const c = await requireSquareClient();
+    while (state.next > state.from && Date.now() - started < budgetMs) {
+      const weekBefore: ISODate = addDays(state.next, -7);
+      const chunkFrom: ISODate = weekBefore > state.from ? weekBefore : state.from;
+      const payments = await listPayments(c, zonedMidnightUTC(chunkFrom, tz()).toISOString(), zonedMidnightUTC(state.next, tz()).toISOString());
+      await storeGuestPlaces(payments.filter((p) => p.status === "COMPLETED"), c);
+      state = { ...state, next: chunkFrom, lastError: null, deniedAt: null };
+      await writeSettingJSON(PLACES_BACKFILL_KEY, state);
+    }
+    if (state.next <= state.from) {
+      state = { ...state, finishedAt: new Date().toISOString() };
+      await writeSettingJSON(PLACES_BACKFILL_KEY, state);
+    }
+    return { state };
+  } catch (e) {
+    if (isPermissionDenied(e)) {
+      if (state) {
+        state = { ...state, deniedAt: new Date().toISOString(), lastError: null };
+        await writeSettingJSON(PLACES_BACKFILL_KEY, state).catch(() => undefined);
+      }
+      return { state, denied: true };
+    }
+    const error = friendlySquareError(e);
+    if (state) await writeSettingJSON(PLACES_BACKFILL_KEY, { ...state, lastError: error }).catch(() => undefined);
+    return { state, error };
+  }
+}
+
+/** Count the last 12 months' cards by postal code and kind, and lay them out by town and distance. */
+async function countPlaces(year: ISODate, today: ISODate): Promise<GuestPlaces | null> {
+  if ((await db.guestPlace.count()) === 0) return null;
+  const [rows, [tot], home] = await Promise.all([
+    db.$queryRaw<PlaceRow[]>`
+      WITH g AS (
+        SELECT "guest", MIN("date") AS first, MAX("date") AS last, COUNT(*) AS days, COUNT(DISTINCT date_trunc('month', "date")) AS months,
+               COALESCE(SUM("amount") FILTER (WHERE "date" >= ${year}::date AND "date" < ${today}::date), 0) AS amount365
+        FROM "GuestVisit" GROUP BY "guest"
+        HAVING MAX("date") >= ${year}::date),
+      k AS (
+        SELECT "guest", amount365, CASE WHEN months >= ${LOCAL_MONTHS} THEN 'local'
+                             WHEN days <= ${VISITOR_MAX_DAYS} AND (last - first) <= ${VISITOR_SPAN_DAYS} THEN 'visitor'
+                             ELSE 'occasional' END AS kind
+        FROM g)
+      SELECT p."postal" AS "postal", k.kind AS "kind", COUNT(*)::int AS "people", COALESCE(SUM(k.amount365), 0)::float8 AS "sales"
+      FROM "GuestPlace" p JOIN k USING ("guest")
+      WHERE p."postal" IS NOT NULL
+      GROUP BY 1, 2`,
+    db.$queryRaw<{ guests: number; checked: number }[]>`
+      WITH g AS (SELECT "guest" FROM "GuestVisit" GROUP BY "guest" HAVING MAX("date") >= ${year}::date)
+      SELECT COUNT(*)::int AS "guests", COUNT(p."guest")::int AS "checked"
+      FROM g LEFT JOIN "GuestPlace" p USING ("guest")`,
+    location(),
+  ]);
+  return guestPlaces(rows, tot ?? { guests: 0, checked: 0 }, placeInfo, home);
+}
+
 // ---- The picture ----------------------------------------------------------------------------
 
 const SUMMARY_KEY = "guests.summary";
@@ -183,6 +329,8 @@ interface StoredGuests {
   weekly: GuestWeek[];
   rhythm: GuestRhythm;
   orders: GuestOrders | null;
+  /** Where cards come from; null until any card has been placed. */
+  places: GuestPlaces | null;
 }
 
 /** Count everything again from the visits on file and keep the result (the page reads the kept copy). */
@@ -254,6 +402,7 @@ export async function computeGuests(): Promise<StoredGuests> {
     squareCatalogMeta(),
     ignoredSquareIds(),
   ]);
+  const places = await countPlaces(year, today);
   const skip = new Set(ignored);
   const orderRows: OrderRow[] = itemRows.filter((r) => !skip.has(r.squareId)).map((r) => ({ ...r, name: meta[r.squareId]?.baseName || r.name, category: meta[r.squareId]?.category ?? null }));
   const stored: StoredGuests = {
@@ -263,8 +412,13 @@ export async function computeGuests(): Promise<StoredGuests> {
     weekly: weekly.map((w) => ({ week: w.week, guests: w.guests, newGuests: w.newGuests, sales: Math.round(w.sales), returningSales: Math.round(w.returningSales) })),
     rhythm: guestRhythm(rhythmRows, openDays),
     orders: guestOrders(orderRows, rhythmRows),
+    places,
   };
   await writeSettingJSON(SUMMARY_KEY, stored);
+  // The first time there's enough for the map, note the day: that's when its What's new card appears.
+  if (placesReady(places) && !(await db.setting.findUnique({ where: { key: PLACES_READY_KEY } }))) {
+    await db.setting.create({ data: { key: PLACES_READY_KEY, value: today } }).catch(() => undefined);
+  }
   return stored;
 }
 
@@ -294,16 +448,21 @@ export interface GuestView {
   itemsBackfill: GuestBackfill | null;
   /** The first day with sales: how far back the history could go. */
   firstSale: ISODate | null;
+  /** Where cards come from (null until any is placed), how the year's look-up is going, and where the taproom is. */
+  places: GuestPlaces | null;
+  placesBackfill: PlacesBackfill | null;
+  home: { lat: number; lon: number; label: string };
 }
 
 export async function guestView(): Promise<GuestView> {
-  const [connected, daysOnFile, kept, backfill, itemsBackfill, firstSale] = await Promise.all([isSquareConnected(), db.guestDay.count({ where: { payments: { gt: 0 } } }), readSettingJSON<StoredGuests>(SUMMARY_KEY), guestBackfill(), guestItemsBackfill(), firstSaleDate()]);
+  const [connected, daysOnFile, kept, backfill, itemsBackfill, firstSale, placesState, home] = await Promise.all([isSquareConnected(), db.guestDay.count({ where: { payments: { gt: 0 } } }), readSettingJSON<StoredGuests>(SUMMARY_KEY), guestBackfill(), guestItemsBackfill(), firstSaleDate(), placesBackfill(), location()]);
   // Counted nightly; count now if there are visits but no kept copy, or it's from another day.
   const stored = daysOnFile > 0 && (kept?.computedOn !== businessToday() || kept.rules !== GUEST_RULES) ? await computeGuests() : kept;
   const summary = daysOnFile > 0 ? (stored?.summary ?? null) : null;
   const rhythm = summary ? (stored?.rhythm ?? null) : null;
   const orders = summary ? (stored?.orders ?? null) : null;
-  return { connected, daysOnFile, summary, story: summary ? guestStory(summary, rhythm, orders) : null, weekly: summary ? (stored?.weekly ?? []) : [], rhythm, orders, backfill, itemsBackfill, firstSale };
+  const places = summary ? (stored?.places ?? null) : null;
+  return { connected, daysOnFile, summary, story: summary ? guestStory(summary, rhythm, orders) : null, weekly: summary ? (stored?.weekly ?? []) : [], rhythm, orders, backfill, itemsBackfill, firstSale, places, placesBackfill: placesState, home };
 }
 
 /** Days on file, for a progress line: the earliest day loaded. */

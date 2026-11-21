@@ -11,10 +11,12 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
  *   came back     violet, a three-step ramp: the darker, the more often (lighter in dark mode)
  *   everyone else warm grey; hatched when it's too soon to say
  *   gone quiet    the warn colour, always with its name beside it
+ *   how far       teal, a four-step ramp: the darker, the farther from the taproom (lighter in dark mode)
  * Blue and pink are the app's validated two-series pair. The violet ramp passes the
  * ordinal checks (dataviz validate_palette --ordinal) in both modes: light
  * #a99ff0 · #7a68e0 · #4a3aa7 on #fff, dark #5a4fb5 · #8b7fe8 · #c2bbf6 on #1a1a18.
- * Blue and violet never share a chart. Text stays in text tokens; a share printed
+ * The teal ramp passes the same checks: light #7cc4b8 · #3f9e90 · #1d7a6d · #0c524a,
+ * dark #1d5a52 · #2a8578 · #4fb3a4 · #a3dbd1. Blue and violet never share a chart. Text stays in text tokens; a share printed
  * inside a block is white or near-black by the block's lightness.
  */
 export const GUEST_VIZ = [
@@ -26,9 +28,13 @@ export const GUEST_VIZ = [
   "[--viz-rest:#b5b2aa] [--viz-rest-ink:#1b1a18] dark:[--viz-rest:#55534e] dark:[--viz-rest-ink:#fff]",
   "[--viz-quiet:var(--warn)] [--viz-quiet-ink:#fff] dark:[--viz-quiet-ink:#1b1a18]",
   "[--viz-seen:var(--ink-2)] [--viz-seen-ink:var(--surface)]",
+  "[--viz-far-1:#7cc4b8] [--viz-far-1-ink:#1b1a18] dark:[--viz-far-1:#1d5a52] dark:[--viz-far-1-ink:#fff]",
+  "[--viz-far-2:#3f9e90] [--viz-far-2-ink:#fff] dark:[--viz-far-2:#2a8578] dark:[--viz-far-2-ink:#fff]",
+  "[--viz-far-3:#1d7a6d] [--viz-far-3-ink:#fff] dark:[--viz-far-3:#4fb3a4] dark:[--viz-far-3-ink:#1b1a18]",
+  "[--viz-far-4:#0c524a] [--viz-far-4-ink:#fff] dark:[--viz-far-4:#a3dbd1] dark:[--viz-far-4-ink:#1b1a18]",
 ].join(" ");
 
-export type VizTone = "local" | "visitor" | "back-1" | "back-2" | "back-3" | "rest" | "quiet" | "seen";
+export type VizTone = "local" | "visitor" | "back-1" | "back-2" | "back-3" | "rest" | "quiet" | "seen" | "far-1" | "far-2" | "far-3" | "far-4";
 const fill = (t: VizTone) => `var(--viz-${t})`;
 const ink = (t: VizTone) => `var(--viz-${t}-ink)`;
 /** "Too soon to say": the grey, hatched. */

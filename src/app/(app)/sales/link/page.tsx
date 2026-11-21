@@ -14,9 +14,9 @@ export default async function LinkSalesPage() {
         help="sales.link"
         title="Link your sales"
         back={{ href: "/sales", label: "Sales" }}
-        description="Give every Square item a cost: a recipe, a keg, or a cost each. Biggest sellers first; each link shows what it does before it's saved, and every change can be undone."
+        description="Give every Square item a cost: a recipe, a keg, or a cost each. The list below says what to do first; each link shows what it does before it's saved, and every change can be undone."
       />
-      <LinkAssistantView data={{ coverage: a.coverage, unlinked: a.unlinked, beerGroups: a.beerGroups, flagged: a.flagged, recipes: a.recipes, history: a.history, neverSold: a.neverSold }} />
+      <LinkAssistantView data={{ coverage: a.coverage, plan: a.plan, unlinked: a.unlinked, skipped: a.skipped, beerGroups: a.beerGroups, flagged: a.flagged, recipes: a.recipes, history: a.history, neverSold: a.neverSold }} />
     </>
   );
 }
