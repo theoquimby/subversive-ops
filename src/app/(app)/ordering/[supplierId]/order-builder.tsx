@@ -1,13 +1,15 @@
 "use client";
 
-import { Badge, Button, Card, cx, Field, Select } from "@/components/ui";
+import { Badge, Button, Card, cx, Field, LinkButton, Select } from "@/components/ui";
+import { readDraft, useDraftStorage, useUnsavedGuard } from "@/components/form-hooks";
+import { QtyStepper } from "../qty-stepper";
 import { addDays } from "@/domain/dates";
 import { packTradeoff, type OrderSuggestion } from "@/domain/ordering";
 import { orderWarnings } from "@/domain/orderGuards";
 import { useConfirm } from "@/components/dialog";
 import { dayDate, money, qty, shortDate } from "@/lib/format";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { DataTable, type Column, type Filter } from "@/components/data-table";
 import { createOrder } from "../actions";
 import { HelpTip, HelpZone } from "@/components/help";
@@ -18,27 +20,19 @@ const STATUS_LABEL: Record<Line["status"], string> = { "runs-out": "Runs out fir
 const packs = (base: number, l: Line) => (l.packQtyBase ? base / l.packQtyBase : null);
 const cover = (d: number) => (d >= 30 ? "30+ days" : d < 1 ? "under a day" : `${qty(d, d < 10 ? 1 : 0)} day${Math.round(d * 10) === 10 ? "" : "s"}`);
 
-/** − qty + (whole packs). */
+/** − qty + (part packs allowed: 1.5, 1 1/2). */
 function Stepper({ l, q, set }: { l: Line; q: number; set: (id: string, n: number) => void }) {
   const changed = q !== l.suggestedUnits;
   return (
-    <div className="inline-flex flex-col items-end">
-      <div className="inline-flex items-center rounded-lg border border-border-strong" data-tour="ordering.qty">
-        <button type="button" className="h-9 w-9 text-ink-2 hover:bg-surface-2" onClick={() => set(l.ingredientId, q - 1)} aria-label="Less">−</button>
-        <input
-          inputMode="numeric"
-          value={q}
-          onChange={(e) => set(l.ingredientId, Number(e.target.value.replace(/\D/g, "")) || 0)}
-          onFocus={(e) => e.target.select()}
-          className={cx("num h-9 w-12 border-x border-border bg-transparent text-center text-base focus:outline-none sm:text-sm", changed && "font-semibold")}
-          aria-label={`${l.ingredientName} quantity`}
-        />
-        <button type="button" className="h-9 w-9 text-ink-2 hover:bg-surface-2" onClick={() => set(l.ingredientId, q + 1)} aria-label="More">+</button>
-      </div>
+    <div className="inline-flex flex-col items-end" data-tour="ordering.qty">
+      <QtyStepper value={q} onChange={(n) => set(l.ingredientId, n)} label={`${l.ingredientName} quantity`} changed={changed} />
       {changed && <div className="mt-1 text-xs font-normal text-muted">suggested {l.suggestedUnits}</div>}
     </div>
   );
 }
+
+/** What's kept on this device while building: quantities typed and packs picked, by ingredient. */
+type BuilderDraft = { edits: Record<string, number>; pack: Record<string, string> };
 
 /** The line as ordered in another of its packs. */
 function withPack(l: Line, id: string | undefined): Line {
@@ -81,27 +75,51 @@ export function OrderBuilder(props: {
   usual?: Record<string, number | null>;
   /** Minutes to this delivery's cutoff (negative once passed). */
   minsToCutoff?: number | null;
+  /** A draft already saved for this supplier and delivery: saving adds to it. */
+  existingDraft?: { id: string; lines: number } | null;
 }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const [qtys, setQtys] = useState<Record<string, number>>(() => Object.fromEntries(props.lines.map((l) => [l.ingredientId, l.suggestedUnits])));
-  // Which pack each line is ordered in (starts on the one ordered last time).
-  const [pack, setPack] = useState<Record<string, string>>(() => Object.fromEntries(props.lines.map((l) => [l.ingredientId, l.supplierProductId])));
+  // Quantities typed over the suggestion, and packs switched, by ingredient. Kept on this
+  // device per supplier, so a reload or a new delivery date doesn't lose them.
+  const [edits, setEdits] = useState<Record<string, number>>({});
+  const [pack, setPack] = useState<Record<string, string>>({});
+  const [restored, setRestored] = useState(false);
+  const draftKey = `order-builder:${props.supplierId}`;
+  useEffect(() => {
+    const kept = readDraft<BuilderDraft>(draftKey);
+    if (!kept) return;
+    const ids = new Set(props.lines.map((l) => l.ingredientId));
+    const e = Object.fromEntries(Object.entries(kept.edits ?? {}).filter(([id, n]) => ids.has(id) && typeof n === "number" && n >= 0));
+    const p = Object.fromEntries(Object.entries(kept.pack ?? {}).filter(([id, sp]) => props.lines.some((l) => l.ingredientId === id && l.options?.some((o) => o.supplierProductId === sp))));
+    if (!Object.keys(e).length && !Object.keys(p).length) return;
+    setEdits(e);
+    setPack(p);
+    setRestored(true);
+  }, [draftKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo(() => props.lines.map((l) => withPack(l, pack[l.ingredientId])), [props.lines, pack]);
+  const qtys = useMemo(() => Object.fromEntries(rows.map((l) => [l.ingredientId, edits[l.ingredientId] ?? l.suggestedUnits])), [rows, edits]);
   const choosePack = (l: Line, id: string) => {
     const o = l.options?.find((x) => x.supplierProductId === id);
     if (!o) return;
     setPack((p) => ({ ...p, [l.ingredientId]: id }));
-    setQtys((q) => ({ ...q, [l.ingredientId]: o.suggestedUnits }));
+    // The new pack's own suggestion.
+    setEdits((e) => Object.fromEntries(Object.entries(e).filter(([id]) => id !== l.ingredientId)));
   };
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [submitted, setSubmitted] = useState(false);
+  const dirty = Object.keys(edits).length > 0 || Object.keys(pack).length > 0;
+  const draft = useMemo<BuilderDraft>(() => ({ edits, pack }), [edits, pack]);
+  useDraftStorage(draftKey, draft, dirty && !submitted);
+  const { allowLeave } = useUnsavedGuard(dirty && !submitted, { body: "The quantities you've changed aren't saved as an order yet. They stay on this device, so you can come back to them." });
+  const startOver = () => { setEdits({}); setPack({}); setRestored(false); };
 
   const total = rows.reduce((s, l) => s + (qtys[l.ingredientId] ?? 0) * (l.unitPrice ?? 0), 0);
   const ordering = rows.filter((l) => (qtys[l.ingredientId] ?? 0) > 0).length;
   const runsOut = rows.filter((l) => l.status === "runs-out");
 
-  const setQ = (id: string, n: number) => setQtys((s) => ({ ...s, [id]: Math.max(0, n) }));
+  const setQ = (id: string, n: number) => setEdits((s) => ({ ...s, [id]: Math.max(0, n) }));
   const columns = useMemo<Column<Line>[]>(() => [
     {
       id: "item",
@@ -176,6 +194,20 @@ export function OrderBuilder(props: {
         <div className="text-sm text-muted sm:pt-6" data-tour="ordering.formula">Quantities = forecast sales × recipes + buffer − stock you'll have on delivery day. <HelpTip id="ordering.builder.formula" /></div>
       </Card></HelpZone>
 
+      {props.existingDraft && (
+        <Card role="status" className="mb-6 flex flex-wrap items-center justify-between gap-3 border-warn/30 bg-warn-bg p-4 text-sm">
+          <span className="text-ink-2"><span className="font-medium text-warn">There&apos;s already a draft for this delivery</span> ({props.existingDraft.lines} item{props.existingDraft.lines === 1 ? "" : "s"}). Saving adds these to it instead of making a second order.</span>
+          <LinkButton href={`/ordering/po/${props.existingDraft.id}`} size="sm">Open the draft</LinkButton>
+        </Card>
+      )}
+
+      {restored && dirty && (
+        <Card role="status" className="mb-6 flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+          <span className="text-ink-2">Your changed quantities from before are back.</span>
+          <Button size="sm" variant="ghost" onClick={startOver}>Start over from the suggestion</Button>
+        </Card>
+      )}
+
       {props.problems.length > 0 && (
         <HelpZone id="ordering.builder.problems" className="mb-6"><Card className="border-warn/30 bg-warn-bg p-4 text-sm text-warn">
           <div className="flex items-center gap-1.5 font-medium">Some recipe lines couldn't be counted <HelpTip id="ordering.builder.problems" /></div>
@@ -233,19 +265,23 @@ export function OrderBuilder(props: {
               // Guard rails: far above the usual, or after the cutoff. Never blocks; asks for a second look.
               const warnings = orderWarnings({ lines: rows.map((l) => ({ name: l.ingredientName, qty: qtys[l.ingredientId] ?? 0, usual: props.usual?.[l.supplierProductId] ?? null, unit: l.purchaseUnit })), minsToCutoff: props.minsToCutoff ?? null });
               if (warnings.length && !(await confirm({ title: "Check before saving", body: <ul className="list-disc space-y-1 pl-4">{warnings.map((w) => <li key={w.text}>{w.text}</li>)}</ul>, confirmLabel: "Save anyway" }))) return;
+              // Saved as an order: nothing to keep on the device, and leaving is fine.
+              setSubmitted(true);
+              allowLeave();
               start(async () => {
-              setError(null);
-              const res = await createOrder({
-                supplierId: props.supplierId,
-                deliveryDate: props.deliveryDate,
-                coverUntil: props.coverUntil,
-                lines: rows.map((l) => ({ supplierProductId: l.supplierProductId, suggestedQty: l.suggestedUnits, qty: qtys[l.ingredientId] ?? 0, unitPrice: l.unitPrice })),
-              });
-              if (res?.error) setError(res.error);
+                setError(null);
+                const res = await createOrder({
+                  supplierId: props.supplierId,
+                  deliveryDate: props.deliveryDate,
+                  coverUntil: props.coverUntil,
+                  lines: rows.map((l) => ({ supplierProductId: l.supplierProductId, suggestedQty: l.suggestedUnits, qty: qtys[l.ingredientId] ?? 0, unitPrice: l.unitPrice })),
+                }).catch(() => ({ error: "No connection. The order isn't saved; your quantities are kept on this device. Try again when you have signal." }));
+                if (res?.error) { setError(res.error); setSubmitted(false); }
               });
             }}
+            pending={pending}
           >
-            {pending ? "Saving…" : "Save order"}
+            {pending ? "Saving…" : props.existingDraft ? "Add to the draft" : "Save order"}
           </Button>
         </HelpZone>
       </div>

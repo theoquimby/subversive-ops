@@ -9,6 +9,7 @@ import { recordManualSend, sendPurchaseOrder } from "@/server/email/outbound";
 import { businessToday } from "@/server/services/sales";
 import { dismissCadenceNotice, saveStaffOrderers, saveSupplierPrefs } from "@/server/services/supplierPrefs";
 import { currentPrices } from "./estimate";
+import { mergeIntoDraft } from "@/domain/purchasing";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -21,11 +22,40 @@ const draftSchema = z.object({
   lines: z.array(z.object({ supplierProductId: z.string(), suggestedQty: z.number().min(0), qty: z.number().min(0), unitPrice: z.number().nullable() })),
 });
 
+const dec = (n: number) => new Prisma.Decimal(n.toFixed(2));
+
+/**
+ * Save the builder's order as a draft. When a draft for the same supplier and
+ * delivery is already there, the lines go into it (an item on both takes the
+ * new quantity) instead of making a second draft; the order page says so.
+ */
 export async function createOrder(input: z.infer<typeof draftSchema>) {
   await requireUser("MANAGER");
-  const v = draftSchema.parse(input);
+  const p = draftSchema.safeParse(input);
+  if (!p.success) return { error: "Some quantities don't look right. Check them and save again." };
+  const v = p.data;
   const lines = v.lines.filter((l) => l.qty > 0);
-  if (lines.length === 0) return { error: "Nothing to order — every quantity is zero." };
+  if (lines.length === 0) return { error: "Nothing to order. Every quantity is zero." };
+  const existing = await db.purchaseOrder.findFirst({
+    where: { supplierId: v.supplierId, status: "DRAFT", deliveryDate: parseISODate(v.deliveryDate) },
+    include: { lines: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (existing) {
+    const m = mergeIntoDraft(
+      existing.lines.map((l) => ({ id: l.id, supplierProductId: l.supplierProductId, qty: l.qty.toNumber(), suggestedQty: l.suggestedQty.toNumber(), unitPrice: l.unitPrice?.toNumber() ?? null })),
+      lines,
+    );
+    const until = parseISODate(v.coverUntil);
+    await db.$transaction([
+      ...m.update.map((u) => db.purchaseOrderLine.update({ where: { id: u.id }, data: { qty: dec(u.qty), suggestedQty: dec(u.suggestedQty), unitPrice: u.unitPrice == null ? null : dec(u.unitPrice) } })),
+      ...(m.create.length ? [db.purchaseOrderLine.createMany({ data: m.create.map((l) => ({ orderId: existing.id, supplierProductId: l.supplierProductId, suggestedQty: dec(l.suggestedQty), qty: dec(l.qty), unitPrice: l.unitPrice == null ? null : dec(l.unitPrice) })) })] : []),
+      ...(until > existing.coverUntil ? [db.purchaseOrder.update({ where: { id: existing.id }, data: { coverUntil: until } })] : []),
+    ]);
+    revalidatePath("/ordering");
+    revalidatePath(`/ordering/po/${existing.id}`);
+    redirect(`/ordering/po/${existing.id}?merged=${m.update.length}-${m.create.length}`);
+  }
   const po = await db.purchaseOrder.create({
     data: {
       supplierId: v.supplierId,
@@ -45,19 +75,120 @@ export async function createOrder(input: z.infer<typeof draftSchema>) {
   redirect(`/ordering/po/${po.id}`);
 }
 
-export async function receiveOrder(id: string, form: FormData) {
-  await requireUser("MANAGER");
-  const po = await db.purchaseOrder.findUniqueOrThrow({ where: { id }, include: { lines: true } });
-  await db.$transaction([
-    ...po.lines.map((l) => {
-      const raw = form.get(`received_${l.id}`);
-      const received = raw === null || raw === "" ? l.qty.toNumber() : Number(raw);
-      return db.purchaseOrderLine.update({ where: { id: l.id }, data: { receivedQty: new Prisma.Decimal(Number.isFinite(received) && received > 0 ? received : 0) } });
-    }),
-    db.purchaseOrder.update({ where: { id }, data: { status: "RECEIVED", receivedAt: new Date(), sentAt: po.sentAt ?? new Date() } }),
-  ]);
+const orderId = z.string().min(1).max(40);
+const qtySchema = z.number().finite().min(0).max(99_999_999.99);
+const receiveSchema = z.object({ id: orderId, lines: z.array(z.object({ lineId: z.string().min(1).max(40), received: qtySchema })).max(500) });
+
+function orderChanged(id: string) {
   revalidatePath(`/ordering/po/${id}`);
   revalidatePath("/ordering");
+}
+
+/**
+ * Check in a delivery: what came in, line by line (a line left out counts as
+ * received as ordered). Works from a sent order, or straight from a draft that
+ * was phoned in. Received quantities go into estimated stock from the moment
+ * of check-in until the next count. A receipt being fixed (reopened) keeps its
+ * first check-in time, so a count taken since isn't counted twice.
+ */
+export async function receiveOrder(input: z.input<typeof receiveSchema>): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const v = receiveSchema.safeParse(input);
+  if (!v.success) return { error: "Some received amounts aren't numbers. Check them and try again." };
+  const po = await db.purchaseOrder.findUnique({ where: { id: v.data.id }, include: { lines: true } });
+  if (!po) return { error: "That order doesn't exist anymore." };
+  if (po.status === "RECEIVED") return { error: "This delivery is already checked in. Reopen it to fix it." };
+  const got = new Map(v.data.lines.map((l) => [l.lineId, l.received]));
+  const now = new Date();
+  await db.$transaction([
+    ...po.lines.map((l) => db.purchaseOrderLine.update({ where: { id: l.id }, data: { receivedQty: dec(got.get(l.id) ?? l.qty.toNumber()) } })),
+    db.purchaseOrder.update({ where: { id: po.id }, data: { status: "RECEIVED", receivedAt: po.receivedAt ?? now, sentAt: po.sentAt ?? now } }),
+  ]);
+  orderChanged(po.id);
+  revalidatePath("/brief");
+  return {};
+}
+
+/** Undo a check-in to fix what was received. The amounts entered stay as the starting point. */
+export async function reopenOrder(id: string): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const v = orderId.safeParse(id);
+  if (!v.success) return { error: "That order doesn't exist anymore." };
+  const r = await db.purchaseOrder.updateMany({ where: { id: v.data, status: "RECEIVED" }, data: { status: "SENT" } });
+  if (!r.count) return { error: "Only a checked-in delivery can be reopened." };
+  orderChanged(v.data);
+  revalidatePath("/brief");
+  return {};
+}
+
+// ---- Editing a draft order, line by line ----------------------------------------------
+
+async function draftLine(lineId: string) {
+  const l = await db.purchaseOrderLine.findUnique({ where: { id: lineId }, include: { order: { select: { id: true, status: true } } } });
+  if (!l) return { error: "That line is gone. Reload the page." } as const;
+  if (l.order.status !== "DRAFT") return { error: "Only a draft can be changed. This order has been sent." } as const;
+  return { line: l } as const;
+}
+
+/** A new quantity for one line of a draft. */
+export async function updateOrderLine(lineId: string, qty: number): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const v = z.object({ lineId: orderId, qty: qtySchema.positive() }).safeParse({ lineId, qty });
+  if (!v.success) return { error: "Enter a quantity above zero, like 2 or 1.5." };
+  const d = await draftLine(v.data.lineId);
+  if ("error" in d) return { error: d.error };
+  await db.purchaseOrderLine.update({ where: { id: d.line.id }, data: { qty: dec(v.data.qty) } });
+  orderChanged(d.line.order.id);
+  return {};
+}
+
+export interface RemovedLine { orderId: string; supplierProductId: string; qty: number; suggestedQty: number; unitPrice: number | null }
+
+/** Take a line off a draft. Returns what was removed, so Undo can put it back. */
+export async function removeOrderLine(lineId: string): Promise<{ error?: string; removed?: RemovedLine }> {
+  await requireUser("MANAGER");
+  const v = orderId.safeParse(lineId);
+  if (!v.success) return { error: "That line is gone. Reload the page." };
+  const d = await draftLine(v.data);
+  if ("error" in d) return { error: d.error };
+  const l = d.line;
+  await db.purchaseOrderLine.delete({ where: { id: l.id } });
+  orderChanged(l.order.id);
+  return { removed: { orderId: l.order.id, supplierProductId: l.supplierProductId, qty: l.qty.toNumber(), suggestedQty: l.suggestedQty.toNumber(), unitPrice: l.unitPrice?.toNumber() ?? null } };
+}
+
+const addLineSchema = z.object({
+  orderId,
+  supplierProductId: z.string().min(1).max(40),
+  qty: qtySchema.positive(),
+  suggestedQty: qtySchema.optional(),
+  unitPrice: z.number().finite().min(0).max(99_999_999.99).nullable().optional(),
+});
+
+/**
+ * Add one of the supplier's items to a draft (or put back a removed line).
+ * Priced from the current price list when no price is given. An item already
+ * on the draft gets the quantity added to it.
+ */
+export async function addOrderLine(input: z.input<typeof addLineSchema>): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const v = addLineSchema.safeParse(input);
+  if (!v.success) return { error: "Pick an item and a quantity above zero." };
+  const { supplierProductId, qty } = v.data;
+  const po = await db.purchaseOrder.findUnique({ where: { id: v.data.orderId }, select: { id: true, status: true, supplierId: true, lines: { where: { supplierProductId }, select: { id: true, qty: true } } } });
+  if (!po) return { error: "That order doesn't exist anymore." };
+  if (po.status !== "DRAFT") return { error: "Only a draft can be changed. This order has been sent." };
+  const product = await db.supplierProduct.findUnique({ where: { id: supplierProductId }, select: { supplierId: true } });
+  if (!product || product.supplierId !== po.supplierId) return { error: "That item isn't sold by this supplier." };
+  const same = po.lines[0];
+  if (same) {
+    await db.purchaseOrderLine.update({ where: { id: same.id }, data: { qty: dec(same.qty.toNumber() + qty) } });
+  } else {
+    const price = v.data.unitPrice !== undefined ? v.data.unitPrice : (await currentPrices([supplierProductId], businessToday())).get(supplierProductId) ?? null;
+    await db.purchaseOrderLine.create({ data: { orderId: po.id, supplierProductId, qty: dec(qty), suggestedQty: dec(v.data.suggestedQty ?? 0), unitPrice: price == null ? null : dec(price) } });
+  }
+  orderChanged(po.id);
+  return {};
 }
 
 export async function deleteDraft(id: string) {
@@ -286,7 +417,7 @@ export async function receiveOrders(orderIds: string[]): Promise<Result> {
   for (const po of orders) {
     await db.$transaction([
       ...po.lines.filter((l) => l.receivedQty == null).map((l) => db.purchaseOrderLine.update({ where: { id: l.id }, data: { receivedQty: l.qty } })),
-      db.purchaseOrder.update({ where: { id: po.id }, data: { status: "RECEIVED", receivedAt: new Date(), sentAt: po.sentAt ?? new Date() } }),
+      db.purchaseOrder.update({ where: { id: po.id }, data: { status: "RECEIVED", receivedAt: po.receivedAt ?? new Date(), sentAt: po.sentAt ?? new Date() } }),
     ]);
     revalidatePath(`/ordering/po/${po.id}`);
   }

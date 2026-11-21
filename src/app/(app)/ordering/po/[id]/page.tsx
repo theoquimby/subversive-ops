@@ -1,11 +1,11 @@
-import { Badge, Button, Card, Input, LinkButton, PageHeader, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, Button, Card, LinkButton, PageHeader } from "@/components/ui";
 import { toISODate } from "@/domain/dates";
 import { dayDate, money } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { loadOrder, orderAsText } from "@/server/services/orders";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { deleteDraft, receiveOrder } from "../../actions";
+import { deleteDraft } from "../../actions";
+import { OrderLines } from "./order-lines";
 import { CopyButton } from "./copy-button";
 import { HelpTip, HelpZone } from "@/components/help";
 import { markOrderSent } from "./actions";
@@ -37,27 +37,31 @@ const DELIVERY: Partial<Record<DeliveryEvent, { label: string; tone: "good" | "w
 
 export const metadata = { title: "Order" };
 
-export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ merged?: string }> }) {
   const session = await requireUser("MANAGER");
   const { id } = await params;
+  const { merged } = await searchParams;
   const o = await loadOrder(id);
   if (!o) notFound();
-  const [delivery, myEmail, invoices, prices, toSend, canEmail] = await Promise.all([
+  // A draft can take any of the supplier's items.
+  const catalog = o.status === "DRAFT" ? await db.supplierProduct.findMany({ where: { supplierId: o.supplierId, active: true }, select: { id: true, sku: true, description: true, purchaseUnit: true, ingredient: { select: { name: true } } }, orderBy: { description: "asc" } }) : [];
+  const [delivery, myEmail, invoices, prices, toSend, canEmail, addPrices] = await Promise.all([
     poDelivery(o.id),
     emailForUser(session.userId),
     db.invoice.findMany({ where: { orderId: o.id }, select: { id: true, total: true, invoiceNumber: true } }),
     currentPrices(o.lines.filter((l) => l.unitPrice == null).map((l) => l.supplierProductId), businessToday()),
     orderToSend(o.id),
     emailReady(),
+    currentPrices(catalog.map((p) => p.id), businessToday()),
   ]);
+  // "3-2": the builder added to this draft instead of making a second one (3 lines changed, 2 added).
+  const mergedCounts = merged && /^\d+-\d+$/.test(merged) ? merged.split("-").map(Number) : null;
   const sendBy = toSend?.prefs.sendBy ?? "email";
   const sent = delivery.record;
   const status = delivery.status ? DELIVERY[delivery.status] : null;
   const priced = o.lines.map((l) => ({ supplierProductId: l.supplierProductId, qty: l.qty.toNumber(), unitPrice: l.unitPrice?.toNumber() ?? null }));
-  const estimate = orderTotal(priced, prices);
   const invoiced = orderTotal(priced, prices, invoices.map((i) => i.total?.toNumber() ?? null));
   const text = orderAsText(o);
-  const receiving = o.status !== "RECEIVED";
   const mailto = o.supplier.email ? `mailto:${o.supplier.email}?subject=${encodeURIComponent(`Order for ${toISODate(o.deliveryDate)}`)}&body=${encodeURIComponent(text)}` : null;
 
   return (
@@ -109,6 +113,13 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
         }
       />
 
+      {mergedCounts && o.status === "DRAFT" && (
+        <Card role="status" className="mb-4 px-4 py-3 text-sm">
+          You already had a draft for this delivery, so the order went into it instead of making a second one
+          {mergedCounts[0] + mergedCounts[1] > 0 ? `: ${[mergedCounts[0] && `${mergedCounts[0]} item${mergedCounts[0] === 1 ? "" : "s"} changed`, mergedCounts[1] && `${mergedCounts[1]} added`].filter(Boolean).join(", ")}.` : ". Nothing on it changed."}
+        </Card>
+      )}
+
       {o.status === "DRAFT" && toSend?.cutoff && toSend.cutoff.mins <= 0 && (
         <Card role="alert" className="mb-4 border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn">The order cutoff for this delivery has passed. Call or text {o.supplier.name} to check they can still take it before sending.</Card>
       )}
@@ -128,63 +139,32 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
         </Card></HelpZone>
       )}
 
-      <form action={receiveOrder.bind(null, o.id)}>
-        <HelpZone id="ordering.po.lines"><Table>
-          <thead>
-            <tr><Th className="pr-2 sm:pr-4">Item</Th><Th align="right" className="px-2 sm:px-4">Ordered</Th>{o.status !== "DRAFT" && <Th align="right" className="px-2 sm:px-4">Received</Th>}<Th align="right" className="hidden sm:table-cell">Unit price</Th><Th align="right" className="pl-2 sm:pl-4">Total</Th></tr>
-          </thead>
-          <tbody>
-            {o.lines.map((l, idx) => {
-              const p = linePrice(priced[idx], prices);
-              return (
-                <Tr key={l.id}>
-                  <Td className="pr-2 sm:pr-4"><div className="font-medium break-words">{l.product.ingredient?.name ?? l.product.description}</div><div className="text-xs break-words text-muted">{l.product.description} · #{l.product.sku}</div></Td>
-                  <Td align="right" className="px-2 whitespace-nowrap sm:px-4">{l.qty.toNumber()} <span className="text-muted">{l.product.purchaseUnit}</span>{l.suggestedQty.toNumber() !== l.qty.toNumber() && <div className="text-xs text-muted">suggested {l.suggestedQty.toNumber()}</div>}</Td>
-                  {o.status !== "DRAFT" && (
-                    <Td align="right" className="px-2 sm:px-4">
-                      {receiving ? <Input name={`received_${l.id}`} type="number" step="any" min={0} defaultValue={l.qty.toNumber()} className="num ml-auto h-10 w-16 text-right sm:h-8 sm:w-20" aria-label={`Received quantity of ${l.product.description}`} /> : l.receivedQty?.toNumber()}
-                    </Td>
-                  )}
-                  <Td align="right" className="hidden sm:table-cell">
-                    {money(p.price)}
-                    {p.estimated && <div className="text-xs text-muted">current price</div>}
-                  </Td>
-                  <Td align="right" className="pl-2 whitespace-nowrap sm:pl-4">
-                    {p.price == null ? <span className="text-muted">—</span> : money(l.qty.toNumber() * p.price)}
-                    {p.estimated && <div className="text-xs text-muted">est.</div>}
-                  </Td>
-                </Tr>
-              );
-            })}
-          </tbody>
-        </Table></HelpZone>
-        <HelpZone id={o.status === "SENT" ? "ordering.po.receive" : "ordering.po.total"} className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm">
-            {invoiced.invoiced ? (
-              <>
-                <span className="text-muted">Invoiced total</span> <span className="num font-semibold">{money(invoiced.total)}</span>
-                {estimate.total != null && <span className="text-muted"> · ordered est. <span className="num">{money(estimate.total)}</span></span>}
-                <span className="text-muted"> · </span>
-                {invoices.map((i, k) => (
-                  <span key={i.id}>{k > 0 && ", "}<Link href={`/invoices/${i.id}`} className="text-ink-2 underline decoration-border-strong underline-offset-2 hover:text-ink">{i.invoiceNumber ? `invoice #${i.invoiceNumber}` : "invoice"}</Link></span>
-                ))}
-              </>
-            ) : (
-              <>
-                <span className="text-muted">Estimated total</span> <span className="num font-semibold">{money(estimate.total)}</span>
-                {estimate.estimated && <span className="text-muted"> · est. from current prices</span>}
-                {estimate.unpriced > 0 && <span className="text-warn"> · {estimate.unpriced} line{estimate.unpriced === 1 ? "" : "s"} without a price</span>}
-              </>
-            )}
-          </div>
-          {o.status === "SENT" && <span className="flex items-center gap-2"><HelpTip id="ordering.po.receive" /><Button variant="primary">Check in delivery</Button></span>}
-        </HelpZone>
-      </form>
+      <OrderLines
+        orderId={o.id}
+        status={o.status}
+        invoiced={invoiced.invoiced ? { total: invoiced.total, links: invoices.map((i) => ({ id: i.id, label: i.invoiceNumber ? `invoice #${i.invoiceNumber}` : "invoice" })) } : null}
+        addOptions={catalog.map((p) => ({ value: p.id, label: p.ingredient?.name ?? p.description, hint: `${p.description} · #${p.sku}${addPrices.has(p.id) ? ` · ${money(addPrices.get(p.id)!)}/${p.purchaseUnit}` : ""}` }))}
+        lines={o.lines.map((l, idx) => {
+          const p = linePrice(priced[idx], prices);
+          return {
+            id: l.id,
+            supplierProductId: l.supplierProductId,
+            name: l.product.ingredient?.name ?? l.product.description,
+            detail: `${l.product.description} · #${l.product.sku}`,
+            unit: l.product.purchaseUnit,
+            qty: l.qty.toNumber(),
+            suggestedQty: l.suggestedQty.toNumber(),
+            received: l.receivedQty?.toNumber() ?? null,
+            price: p.price,
+            estimated: p.estimated,
+          };
+        })}
+      />
 
       {o.status === "DRAFT" && (
         <form action={deleteDraft.bind(null, o.id)} className="mt-8"><Button variant="danger" size="sm">Delete draft</Button></form>
       )}
-      {o.status === "RECEIVED" && <Card className="mt-6 p-4 text-sm text-muted">Checked in. Received quantities are added to estimated stock until the next count.</Card>}
+      {o.status === "RECEIVED" && <Card className="mt-6 p-4 text-sm text-muted">Checked in. Received quantities are added to estimated stock until the next count. Got something wrong? Reopen it, fix the amounts and check it in again.</Card>}
     </>
   );
 }

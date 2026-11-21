@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/ui";
-import { addDays, dateRange } from "@/domain/dates";
+import { addDays, dateRange, parseISODate } from "@/domain/dates";
 import { whyLine } from "@/domain/orderGuards";
 import { dayDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
@@ -25,7 +25,12 @@ export default async function BuildOrderPage({ params, searchParams }: { params:
   const today = businessToday();
   const deliveryOptions = dateRange(addDays(today, 0), addDays(today, 15));
   const productIds = [...new Set(plan.lines.flatMap((l) => [l.supplierProductId, ...(l.options ?? []).map((o) => o.supplierProductId)]))];
-  const [usual, cutoff] = await Promise.all([usualQuantities(productIds), minutesToCutoff(supplier, plan.deliveryDate)]);
+  const [usual, cutoff, draft] = await Promise.all([
+    usualQuantities(productIds),
+    minutesToCutoff(supplier, plan.deliveryDate),
+    // Saving adds to a draft already there for this delivery, so say so up front.
+    db.purchaseOrder.findFirst({ where: { supplierId, status: "DRAFT", deliveryDate: parseISODate(plan.deliveryDate) }, orderBy: { createdAt: "asc" }, select: { id: true, _count: { select: { lines: true } } } }),
+  ]);
   const byDate = addDays(plan.coverUntil, -1);
 
   return (
@@ -46,6 +51,7 @@ export default async function BuildOrderPage({ params, searchParams }: { params:
         problems={plan.problems}
         usual={Object.fromEntries(usual)}
         minsToCutoff={cutoff?.mins ?? null}
+        existingDraft={draft ? { id: draft.id, lines: draft._count.lines } : null}
         lines={plan.lines.map((l) => {
           const pos = plan.positions.get(l.ingredientId);
           return {
