@@ -223,11 +223,14 @@ export async function updateLine(lineId: string, input: { field: string; value: 
   await after(line.invoiceId);
 }
 
-export async function addLines(invoiceId: string, pasted?: string) {
+/** Rows pasted from a spreadsheet, or `count` empty lines to type into (one trip, not one per line). */
+export async function addLines(invoiceId: string, pasted?: string, count = 1) {
   await requireUser("MANAGER");
   const blocked = await editable(invoiceId);
   if (blocked) return blocked;
-  const rows = pasted ? parsePastedLines(pasted) : [{ sku: null, description: "", qty: 1, unitPrice: 0 }];
+  const n = z.number().int().min(1).max(20).safeParse(count);
+  if (!n.success) return { error: "Add between 1 and 20 lines at a time." };
+  const rows = pasted ? parsePastedLines(pasted) : Array.from({ length: n.data }, () => ({ sku: null, description: "", qty: 1, unitPrice: 0 }));
   if (!rows.length) return { error: "Nothing to add from that paste." };
   await db.invoiceLine.createMany({
     data: rows.map((r) => ({ invoiceId, sku: r.sku || null, description: r.description, qty: new Prisma.Decimal(r.qty), unitPrice: new Prisma.Decimal(r.unitPrice.toFixed(2)) })),
@@ -236,14 +239,45 @@ export async function addLines(invoiceId: string, pasted?: string) {
   return { added: rows.length };
 }
 
-export async function deleteLine(lineId: string) {
+const removedLine = z.object({
+  sku: z.string().max(60).nullable(),
+  description: z.string().max(300),
+  qty: z.number().finite().min(-99_999_999).max(99_999_999),
+  unitPrice: z.number().finite().min(-99_999_999).max(99_999_999),
+  supplierProductId: z.string().max(40).nullable(),
+  kind: z.enum(LINE_KINDS),
+  packText: z.string().max(120).nullable(),
+  orderedQty: z.number().finite().min(-99_999_999).max(99_999_999).nullable(),
+});
+export type RemovedInvoiceLine = z.infer<typeof removedLine>;
+
+/** Take a line off. Returns what was removed, so Undo can put it back. */
+export async function deleteLine(lineId: string): Promise<{ error?: string; removed?: RemovedInvoiceLine } | undefined> {
   await requireUser("MANAGER");
-  const line = await db.invoiceLine.findUnique({ where: { id: lineId }, select: { invoiceId: true } });
+  const line = await db.invoiceLine.findUnique({ where: { id: lineId } });
   if (!line) return;
   const blocked = await editable(line.invoiceId);
   if (blocked) return blocked;
   await db.invoiceLine.delete({ where: { id: lineId } });
   await after(line.invoiceId);
+  const kind = (LINE_KINDS as readonly string[]).includes(line.kind) ? (line.kind as LineKind) : "item";
+  return { removed: { sku: line.sku, description: line.description, qty: line.qty.toNumber(), unitPrice: line.unitPrice.toNumber(), supplierProductId: line.supplierProductId, kind, packText: line.packText, orderedQty: line.orderedQty?.toNumber() ?? null } };
+}
+
+/** Undo a removed line: put it back as it was (the check runs again). */
+export async function restoreLine(invoiceId: string, input: RemovedInvoiceLine): Promise<{ error?: string }> {
+  await requireUser("MANAGER");
+  const v = removedLine.safeParse(input);
+  if (!v.success) return { error: "Couldn't put that line back. Add it again." };
+  const blocked = await editable(invoiceId);
+  if (blocked) return blocked;
+  const l = v.data;
+  const product = l.supplierProductId ? await db.supplierProduct.findUnique({ where: { id: l.supplierProductId }, select: { id: true } }) : null;
+  await db.invoiceLine.create({
+    data: { invoiceId, sku: l.sku, description: l.description, qty: new Prisma.Decimal(l.qty.toFixed(2)), unitPrice: new Prisma.Decimal(l.unitPrice.toFixed(2)), supplierProductId: product?.id ?? null, kind: l.kind, packText: l.packText, orderedQty: l.orderedQty == null ? null : new Prisma.Decimal(l.orderedQty.toFixed(2)) },
+  });
+  await after(invoiceId);
+  return {};
 }
 
 const headerField = z.discriminatedUnion("field", [

@@ -8,7 +8,8 @@ import { money, qty as fmtQty, shortDate } from "@/lib/format";
 import { Check, Copy, Mail, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { addLines, approveInvoice, deleteInvoice, deleteLine, reopenInvoice, sendCredit, updateHeader, updateLine, updatePrices } from "../actions";
+import { addLines, approveInvoice, deleteInvoice, deleteLine, reopenInvoice, restoreLine, sendCredit, updateHeader, updateLine, updatePrices } from "../actions";
+import { useToast } from "@/components/toast";
 
 type Opt = { value: string; label: string; hint?: string };
 
@@ -97,10 +98,51 @@ const off = (a: number, b: number | null, tol = 0.0001) => b != null && Math.abs
 
 export function LinesGrid({ invoiceId, locked, lines, products, hasOrder }: { invoiceId: string; locked: boolean; lines: LineVM[]; products: Opt[]; hasOrder: boolean }) {
   const router = useRouter();
-  const confirm = useConfirm();
   const [pending, start] = useTransition();
   const [note, setNote] = useState<string | null>(null);
+  const [toast, show] = useToast();
+  // Removed lines disappear straight away; Undo in the toast puts them back.
+  const [gone, setGone] = useState<Set<string>>(new Set());
   const productOptions = [{ value: "", label: "Pick the product…" }, ...products];
+  const shown = lines.filter((l) => !gone.has(l.id));
+
+  const addBlank = (n: number) => start(async () => {
+    const before = new Set(lines.map((l) => l.id));
+    const res = await addLines(invoiceId, undefined, n).catch(() => ({ error: "No connection. No lines were added." }));
+    if (res && "error" in res && res.error) { show(res.error, "bad"); return; }
+    router.refresh();
+    // Straight into the first new line's description once it's on the page.
+    let tries = 0;
+    const focusNew = () => {
+      const el = Array.from(document.querySelectorAll<HTMLElement>(`[data-line-id]`)).find((x) => !before.has(x.dataset.lineId ?? ""));
+      const input = el?.querySelector<HTMLInputElement>("input");
+      if (input) { input.focus(); input.scrollIntoView({ block: "center", behavior: "smooth" }); }
+      else if (tries++ < 20) setTimeout(focusNew, 100);
+    };
+    setTimeout(focusNew, 100);
+  });
+
+  const remove = (l: LineVM) => {
+    setGone((g) => new Set(g).add(l.id));
+    start(async () => {
+      const res = await deleteLine(l.id).catch(() => ({ error: "No connection. The line wasn't removed.", removed: undefined }));
+      if (res?.error || !res?.removed) {
+        setGone((g) => { const n = new Set(g); n.delete(l.id); return n; });
+        if (res?.error) show(res.error, "bad");
+        return;
+      }
+      const removed = res.removed;
+      router.refresh();
+      show(`Removed ${l.description || "an empty line"}`, "good", {
+        label: "Undo",
+        onClick: () => start(async () => {
+          const r = await restoreLine(invoiceId, removed).catch(() => ({ error: "No connection. Add the line again." }));
+          if (r.error) show(r.error, "bad");
+          router.refresh();
+        }),
+      });
+    });
+  };
 
   const onPasteCapture = (e: React.ClipboardEvent) => {
     if (locked) return;
@@ -123,6 +165,7 @@ export function LinesGrid({ invoiceId, locked, lines, products, hasOrder }: { in
           <p className="mt-0.5 text-sm text-muted">{hasOrder ? "Expected = what was received (or ordered) at the order price." : "No order linked — prices are checked against the last price on record."}</p>
         </div>
       </div>
+      {toast}
       <Card onPasteCapture={onPasteCapture}>
         <div className={cx(COLS, "hidden border-b border-border py-2.5 text-[0.75rem] font-medium text-muted sm:grid")}>
           <div className="px-2">Item</div>
@@ -131,7 +174,7 @@ export function LinesGrid({ invoiceId, locked, lines, products, hasOrder }: { in
           <div className="px-2">Check</div>
           <div />
         </div>
-        {lines.map((l) => {
+        {shown.map((l) => {
           const st = LINE_STATUS[l.status] ?? LINE_STATUS.OK;
           const qtyOff = off(l.qty, l.expectedQty);
           const priceOff = off(l.unitPrice, l.expectedPrice, 0.005);
@@ -139,7 +182,7 @@ export function LinesGrid({ invoiceId, locked, lines, products, hasOrder }: { in
           const badge = nonItem ? <Badge>{LINE_KIND_LABEL[l.kind as LineKind] ?? l.kind}</Badge> : <Badge tone={st.tone}>{st.label}</Badge>;
           const printedShort = l.orderedQty != null && l.orderedQty - l.qty > 1e-9 ? l.orderedQty - l.qty : 0;
           return (
-            <div key={l.id} className={cx(COLS, "items-start border-b border-border py-1.5 last:border-0", l.status !== "OK" && "bg-surface-2/40")}>
+            <div key={l.id} data-line-id={l.id} className={cx(COLS, "items-start border-b border-border py-1.5 last:border-0", l.status !== "OK" && "bg-surface-2/40")}>
               <div className="col-span-4 min-w-0 sm:col-span-1">
                 {locked ? (
                   <div className="px-2 py-1">
@@ -183,7 +226,7 @@ export function LinesGrid({ invoiceId, locked, lines, products, hasOrder }: { in
                   <button
                     type="button"
                     aria-label="Remove line"
-                    onClick={async () => { if (await confirm({ title: "Remove this line?", body: l.description || "Empty line", confirmLabel: "Remove", danger: true })) start(async () => { await deleteLine(l.id); router.refresh(); }); }}
+                    onClick={() => remove(l)}
                     className="grid size-10 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-ink sm:size-8"
                   >
                     <X className="size-4" />
@@ -193,11 +236,12 @@ export function LinesGrid({ invoiceId, locked, lines, products, hasOrder }: { in
             </div>
           );
         })}
-        {lines.length === 0 && <div className="px-4 py-8 text-center text-sm text-muted">No lines yet. Add one, or paste rows copied from a spreadsheet (item #, description, qty, unit price).</div>}
+        {shown.length === 0 && <div className="px-4 py-8 text-center text-sm text-muted">No lines yet. Add one, or paste rows copied from a spreadsheet (item #, description, qty, unit price).</div>}
       </Card>
       {!locked && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => start(async () => { await addLines(invoiceId); router.refresh(); })}><Plus className="size-4" />Add line</Button>
+          <Button type="button" variant="ghost" size="sm" className="h-10 sm:h-8" disabled={pending} onClick={() => addBlank(1)}><Plus className="size-4" />Add line</Button>
+          <Button type="button" variant="ghost" size="sm" className="h-10 sm:h-8" disabled={pending} onClick={() => addBlank(5)}><Plus className="size-4" />Add 5</Button>
           <span className="text-xs text-muted">{note ?? "Tip: paste several rows from a spreadsheet anywhere in the table."}</span>
         </div>
       )}

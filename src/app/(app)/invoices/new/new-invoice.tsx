@@ -9,7 +9,8 @@ import { money, shortDate } from "@/lib/format";
 import { AlertTriangle, Plus, Receipt, ScrollText, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { readDraft, useDraftStorage, useSaveShortcut, useUnsavedGuard } from "@/components/form-hooks";
 import { addInvoicePage, quickAddSupplier, readInvoice, saveNewInvoice } from "../actions";
 import { fitPages, PAGE_QUALITY, prepareUpload } from "../compress";
 import { type Page, PagesPicker, ReadingOverlay } from "./pages-picker";
@@ -27,6 +28,9 @@ const isBlank = (r: Row) => !r.sku && !r.description && !r.qty && !r.unitPrice;
 const toNum = (s: string) => (s.trim() === "" ? NaN : Number(s.replace(/[$,]/g, "")));
 
 const NEW_SUPPLIER = "__new";
+const DRAFT_KEY = "invoice-new";
+/** The form as kept on the device (photos can't be kept). */
+interface Kept { mode: Mode; supplierId: string; orderId: string; orderTouched: boolean; number: string; date: string; total: string; dueDate: string; payment: string; rows: Row[]; extracted: boolean }
 
 export function NewInvoice({ suppliers: initialSuppliers, orders, today, canRead, initialSupplierId, initialOrderId, initialMode = "invoice" }: { suppliers: { id: string; name: string }[]; orders: Order[]; today: string; canRead: boolean; initialSupplierId: string | null; initialOrderId: string | null; initialMode?: Mode }) {
   const router = useRouter();
@@ -69,6 +73,40 @@ export function NewInvoice({ suppliers: initialSuppliers, orders, today, canRead
   const [error, setError] = useState<{ text: string; duplicateId?: string } | null>(null);
   const [saving, start] = useTransition();
   const readSeq = useRef(0);
+
+  // ---- Typed work kept on this device until it's saved ----
+  const typed = rows.some((r) => !isBlank(r)) || Boolean(number.trim() || total.trim());
+  const [done, setDone] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [offer, setOffer] = useState<Kept | null>(null);
+  const kept = useMemo<Kept>(() => ({ mode, supplierId, orderId, orderTouched, number, date, total, dueDate, payment, rows: rows.filter((r) => !isBlank(r)), extracted }), [mode, supplierId, orderId, orderTouched, number, date, total, dueDate, payment, rows, extracted]);
+  useEffect(() => {
+    const d = readDraft<Kept>(DRAFT_KEY);
+    if (d && Array.isArray(d.rows) && (d.rows.length || d.number || d.total)) setOffer(d);
+    setReady(true);
+  }, []);
+  // Until they choose Resume or Start fresh, the earlier draft is left where it is.
+  useDraftStorage(!ready || (offer && !typed) ? `${DRAFT_KEY}:waiting` : DRAFT_KEY, kept, typed && !done);
+  const { allowLeave } = useUnsavedGuard(typed && !done, { body: "What you've typed stays on this device and you can resume it, but any photos you added will need adding again." });
+  const resume = (d: Kept) => {
+    setMode(d.mode === "receipt" ? "receipt" : "invoice");
+    setModeChosen(true);
+    if (d.supplierId && suppliers.some((s) => s.id === d.supplierId)) setSupplierId(d.supplierId);
+    setOrderId(d.orderId ?? "");
+    setOrderTouched(Boolean(d.orderTouched));
+    setNumber(d.number ?? "");
+    if (d.date) setDate(d.date);
+    setTotal(d.total ?? "");
+    setDueDate(d.dueDate ?? "");
+    setPayment(d.payment ?? "");
+    setExtracted(Boolean(d.extracted));
+    setRows([...d.rows.map((r) => ({ ...r, key: nextKey++ })), ...blanks(2)]);
+    setOffer(null);
+  };
+  const discardKept = () => {
+    try { localStorage.removeItem(`draft:${DRAFT_KEY}`); } catch { /* nothing kept */ }
+    setOffer(null);
+  };
 
   // Auto-pick the likely order whenever the supplier (or date) changes, unless someone chose one.
   const autoOrder = useMemo(() => (orderTouched || !supplierId || mode === "receipt" ? null : pickOrder(orders, supplierId, date)?.id ?? ""), [supplierId, date, orders, orderTouched, mode]);
@@ -197,9 +235,12 @@ export function NewInvoice({ suppliers: initialSuppliers, orders, today, canRead
     if (pages[0]) fd.set("file", pages[0].file);
     if (pages.length > 1) fd.set("more", "1");
     start(async () => {
-      const res = await saveNewInvoice(fd);
+      const res = await saveNewInvoice(fd).catch(() => ({ error: "No connection. Nothing was saved; what you typed is kept on this device. Try again when you have signal.", duplicateId: undefined }));
       if (res && "error" in res) return setError({ text: res.error ?? "Couldn't save.", duplicateId: res.duplicateId });
       if (!res || !("id" in res)) return;
+      // Saved: nothing left to keep on the device, and leaving is fine.
+      setDone(true);
+      allowLeave();
       // The other pages go up one request each, so every upload stays small.
       for (let i = 1; i < pages.length; i++) {
         setProgress(`Saving page ${i + 1} of ${pages.length}…`);
@@ -216,8 +257,28 @@ export function NewInvoice({ suppliers: initialSuppliers, orders, today, canRead
   const receipt = mode === "receipt";
   const busy = reading || preparing;
 
+  // ⌘S / ⌘Enter: finish the cell being typed in first, so it's included.
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useSaveShortcut(() => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    setTimeout(() => saveRef.current(), 60);
+  }, !saving && !busy && !done);
+
   return (
     <div className="pb-24">
+      {offer && (
+        <Card role="status" className="mb-6 flex flex-wrap items-center justify-between gap-3 border-warn/30 bg-warn-bg p-4 text-sm">
+          <span className="text-ink-2">
+            <span className="font-medium text-warn">You have an unsaved {offer.mode === "receipt" ? "receipt" : "invoice"} from earlier</span>
+            {" "}({[suppliers.find((s) => s.id === offer.supplierId)?.name, offer.number && `#${offer.number}`, `${offer.rows.length} line${offer.rows.length === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}). Photos aren&apos;t kept, so add those again.
+          </span>
+          <span className="flex gap-2">
+            <Button size="sm" variant="ghost" onClick={discardKept}>Start fresh</Button>
+            <Button size="sm" variant="primary" onClick={() => resume(offer)}>Resume your draft</Button>
+          </span>
+        </Card>
+      )}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         {/* Photos / file */}
         <HelpZone id="invoices.pages" className="space-y-3">
@@ -361,6 +422,8 @@ export function NewInvoice({ suppliers: initialSuppliers, orders, today, canRead
                   <td className="hidden px-1.5 py-1 sm:table-cell"><GridCell grid="new-lines" col="sku" value={r.sku} ariaLabel="Item number" placeholder="—" onSave={async (v) => setCell(r.key, "sku", v)} /></td>
                   <td className="px-1.5 py-1">
                     <GridCell grid="new-lines" col="description" value={r.description} ariaLabel="Description" placeholder={isBlank(r) ? "Add a line…" : ""} onSave={async (v) => setCell(r.key, "description", v)} />
+                    {/* Phones: item # on its own line under the description, not hidden. */}
+                    <div className="sm:hidden"><GridCell grid="new-lines" col="sku-phone" value={r.sku} ariaLabel="Item number" placeholder="Item #" onSave={async (v) => setCell(r.key, "sku", v)} className="[&_input]:text-xs [&_input]:text-muted" /></div>
                     {(r.kind && r.kind !== "item") || r.packText || short > 0 ? (
                       <div className="flex flex-wrap items-center gap-1.5 px-2 pb-1 text-xs text-muted">
                         {r.kind && r.kind !== "item" && <Badge>{LINE_KIND_LABEL[r.kind]}</Badge>}
