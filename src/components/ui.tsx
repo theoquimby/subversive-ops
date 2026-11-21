@@ -118,8 +118,17 @@ const buttonVariant: Record<Variant, string> = {
 };
 const buttonSize = { sm: "h-8 px-2.5", md: "h-9 px-3.5", lg: "h-11 px-5 text-[0.95rem]" };
 
-export function Button({ variant = "secondary", size = "md", className, ...rest }: ComponentProps<"button"> & { variant?: Variant; size?: keyof typeof buttonSize }) {
-  return <button className={cn(buttonBase, buttonVariant[variant], buttonSize[size], className)} {...rest} />;
+/**
+ * `pending`: saving. The button can't be pressed again, says so to screen
+ * readers, and shows a small spinner before its label.
+ */
+export function Button({ variant = "secondary", size = "md", className, pending, disabled, children, ...rest }: ComponentProps<"button"> & { variant?: Variant; size?: keyof typeof buttonSize; pending?: boolean }) {
+  return (
+    <button className={cn(buttonBase, buttonVariant[variant], buttonSize[size], className)} disabled={disabled || pending} aria-busy={pending || undefined} {...rest}>
+      {pending && <span aria-hidden className="size-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent opacity-70" />}
+      {children}
+    </button>
+  );
 }
 
 export { DatePicker } from "./date-picker";
@@ -133,8 +142,22 @@ export function LinkButton({ variant = "secondary", size = "md", className, ...r
 
 const control = "h-10 w-full rounded-lg border border-border-strong bg-surface px-3 text-base sm:h-9 sm:text-sm text-ink placeholder:text-muted/70 transition-[border-color,box-shadow] duration-120 ease-motion hover:border-ink-2/40 focus:border-ink-2 focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--ink)_7%,transparent)] focus:outline-none";
 
-export function Input({ className, ...rest }: ComponentProps<"input">) {
-  return <input className={cn(control, className)} {...rest} />;
+/**
+ * Number boxes (`type="number"`): the number pad on phones, everything
+ * selected on tap so typing replaces it, and the mouse wheel can't change the
+ * value while scrolling past.
+ */
+export function Input({ className, onFocus, onWheel, inputMode, ...rest }: ComponentProps<"input">) {
+  const num = rest.type === "number";
+  return (
+    <input
+      className={cn(control, className)}
+      inputMode={inputMode ?? (num ? "decimal" : undefined)}
+      onFocus={num ? (e) => { e.currentTarget.select(); onFocus?.(e); } : onFocus}
+      onWheel={num ? (e) => { e.currentTarget.blur(); onWheel?.(e); } : onWheel}
+      {...rest}
+    />
+  );
 }
 
 export { Select } from "./select";
@@ -143,12 +166,13 @@ export function Textarea({ className, ...rest }: ComponentProps<"textarea">) {
   return <textarea className={cn(control, "h-auto min-h-20 py-2", className)} {...rest} />;
 }
 
-export function Field({ label, hint, children, className }: { label: ReactNode; hint?: ReactNode; children: ReactNode; className?: string }) {
+/** `error`: shown under the field in place of the hint, in the error colour, and read out. */
+export function Field({ label, hint, error, children, className }: { label: ReactNode; hint?: ReactNode; error?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <label className={cn("block", className)}>
+    <label className={cn("block", className)} data-invalid={error ? true : undefined}>
       <span className="mb-1.5 block text-[0.8rem] font-medium text-ink-2">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-muted">{hint}</span>}
+      {error ? <span role="alert" className="mt-1 block text-xs font-medium text-bad">{error}</span> : hint && <span className="mt-1 block text-xs text-muted">{hint}</span>}
     </label>
   );
 }

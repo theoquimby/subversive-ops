@@ -310,7 +310,7 @@ For a prep recipe you see **batch cost** and **yield** instead, because prep isn
     area: "menu",
     route: "/menu",
     title: "Recipe lines",
-    body: "One line per ingredient or prep recipe, with quantity and unit. Under each line is where its cost comes from: the supplier item and price used (and when it was set), or the prep recipe's batch cost — and what that works out to per unit. Tap it to change it.",
+    body: "One line per ingredient or prep recipe, with quantity and unit. Under each line is where its cost comes from: the supplier item and price, or the prep recipe's batch cost. Add lines with quick add underneath, or Or pick from the list for the full searchable list.",
     related: ["menu.editor.units", "ingredients.yield"],
   },
   {

@@ -85,7 +85,9 @@ export function Select({ value, defaultValue, onChange, options: given, children
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const listId = useId();
 
-  const show = () => { setMenuMounted(true); setOpen(true); };
+  // A letter typed on the closed button: what to start the search with (or which option to highlight).
+  const [seed, setSeed] = useState("");
+  const show = (typed = "") => { setSeed(typed); setMenuMounted(true); setOpen(true); };
   const commit = (o: SelectOption) => {
     if (o.disabled) return;
     if (value === undefined) setInner(o.value);
@@ -101,10 +103,11 @@ export function Select({ value, defaultValue, onChange, options: given, children
       show();
       return;
     }
-    // Typeahead on the closed button: jump to the first option starting with the key.
-    if (e.key.length === 1 && /\S/.test(e.key)) {
-      const o = options.find((x) => x.label.toLowerCase().startsWith(e.key.toLowerCase()) && !x.disabled);
-      if (o) commit(o);
+    // Typing on the closed button opens it with the letter in the search (or highlights the first match).
+    // It never picks on its own: a stray key in a table cell used to save a different value.
+    if (e.key.length === 1 && /\S/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      show(e.key);
     }
   };
 
@@ -124,7 +127,7 @@ export function Select({ value, defaultValue, onChange, options: given, children
         className={cn(
           "inline-flex w-full min-w-0 items-center justify-between gap-2 text-left text-sm transition-[color,background-color,border-color,opacity,outline-color,outline-offset] duration-120 ease-motion disabled:opacity-50",
           variant === "default"
-            ? "h-9 rounded-lg border border-border-strong bg-surface px-3 hover:border-ink-2/40 focus-visible:border-ink-2"
+            ? "h-10 rounded-lg border border-border-strong bg-surface px-3 hover:border-ink-2/40 focus-visible:border-ink-2 sm:h-9"
             : "h-10 rounded-md border border-transparent bg-transparent px-2 hover:border-border focus-visible:border-ink-2 sm:h-8",
           open && "border-ink-2",
           className,
@@ -134,12 +137,12 @@ export function Select({ value, defaultValue, onChange, options: given, children
         <ChevronDown className={cn("size-3.5 shrink-0 text-muted transition-transform duration-180 ease-motion", open && "rotate-180")} />
       </button>
       {name && <input type="hidden" name={name} value={current} required={required} />}
-      {menuMounted && <Menu open={open} setOpen={setOpen} buttonRef={buttonRef} listId={listId} options={options} current={current} commit={commit} showSearch={searchable ?? options.length > 8} label={rest["aria-label"]} />}
+      {menuMounted && <Menu open={open} setOpen={setOpen} buttonRef={buttonRef} listId={listId} options={options} current={current} commit={commit} showSearch={searchable ?? options.length > 8} label={rest["aria-label"]} seed={seed} />}
     </>
   );
 }
 
-function Menu({ open, setOpen, buttonRef, listId, options, current, commit, showSearch, label }: { open: boolean; setOpen: (o: boolean) => void; buttonRef: React.RefObject<HTMLButtonElement | null>; listId: string; options: SelectOption[]; current: string; commit: (o: SelectOption) => void; showSearch: boolean; label?: string }) {
+function Menu({ open, setOpen, buttonRef, listId, options, current, commit, showSearch, label, seed = "" }: { open: boolean; setOpen: (o: boolean) => void; buttonRef: React.RefObject<HTMLButtonElement | null>; listId: string; options: SelectOption[]; current: string; commit: (o: SelectOption) => void; showSearch: boolean; label?: string; seed?: string }) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const phone = useIsPhone();
@@ -174,7 +177,13 @@ function Menu({ open, setOpen, buttonRef, listId, options, current, commit, show
 
   useEffect(() => {
     if (!open) return;
-    setActive(Math.max(0, filtered.findIndex((o) => o.value === current)));
+    if (seed && showSearch) {
+      setQuery(seed);
+      setActive(0);
+    } else if (seed) {
+      const i = options.findIndex((o) => o.label.toLowerCase().startsWith(seed.toLowerCase()) && !o.disabled);
+      setActive(i >= 0 ? i : Math.max(0, options.findIndex((o) => o.value === current)));
+    } else setActive(Math.max(0, filtered.findIndex((o) => o.value === current)));
     requestAnimationFrame(() => (showSearch ? searchRef.current?.focus({ preventScroll: true }) : null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);

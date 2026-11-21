@@ -802,7 +802,7 @@ export default async function CustomersPage() {
             <p>
               Cash leaves no mark. A phone wallet and the card behind it look like two people. So does a couple who take turns paying, or someone who got a new card. The true repeat figures are higher than the ones here; the direction they move in can be trusted. <Badge>Everything on this page is a floor</Badge>
             </p>
-            <p>Ops keeps a scrambled copy of Square&apos;s mark for each card, the day, and the amount. No name, card number, email or phone is read or kept, and the copy can&apos;t be turned back into a card. That also means nobody here can be contacted: for that you&apos;d need people to give you their details, through a membership or an email list.</p>
+            <p>Ops keeps a scrambled copy of Square&apos;s mark for each card, the day, and the amount. No name, card number, email or phone is read or kept, and the copy can&apos;t be turned back into a card. With Square&apos;s Customers permission it also keeps one postal code per card, for the map of where people come from. That also means nobody here can be contacted: for that you&apos;d need people to give you their details, through a membership or an email list.</p>
           </div>
         </Card>
       </Section>

@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { scanMany, undoKegAction, type ScanManyForm, type ScanManyResult } from "./actions";
 import { buzz, CameraFrame, useKegCamera } from "./camera";
 import { BatchChips } from "./keg-panel";
-import { newClientId } from "./queue";
+import { dequeue, enqueue, newClientId } from "./queue";
 
 /**
  * Scan a whole stack the same way: say once what's happening to these kegs,
@@ -56,11 +56,15 @@ export function ScanMany({ ctx, role, switcher, fill }: { ctx: PanelContext; rol
 
   const send = useCallback(async (row: Pick<Row, "id" | "text">) => {
     if (!form.current) return;
+    const input = { ...form.current, text: row.text, clientId: row.id };
     try {
-      const result = await scanMany({ ...form.current, text: row.text, clientId: row.id });
+      const result = await scanMany(input);
+      dequeue(row.id);
       if ("ok" in result) done.current.add(row.text);
       update(row.id, { state: "ok" in result ? "done" : "failed", result });
     } catch {
+      // No signal: keep it on the phone, so leaving the page (or the phone closing it) doesn't lose it.
+      enqueue({ ...input, kind: "many", at: Date.now(), label: `Scan ${row.text}` });
       update(row.id, { state: "waiting" });
     }
   }, []);
@@ -166,13 +170,13 @@ export function ScanMany({ ctx, role, switcher, fill }: { ctx: PanelContext; rol
           <div className="truncate text-sm font-semibold">{m!.doing}{detail && (m!.id === "DIRTY" || m!.id === "CLEANED" ? "" : m!.id === "FILL" ? `: ${detail}` : ` ${detail}`)}</div>
           <div className="num text-xs text-muted">{ok} done{waiting ? ` · ${waiting} sending` : ""}</div>
         </div>
-        <Button size="sm" className="h-10 shrink-0" onClick={() => setRunning(false)} disabled={waiting > 0}>{ok ? "Finish" : "Change"}</Button>
+        <Button size="sm" className="h-10 shrink-0" onClick={() => setRunning(false)} disabled={rows.some((r) => r.state === "sending")}>{ok ? "Finish" : "Change"}</Button>
       </Card>
 
       <CameraFrame cam={cam} compact status={cam.state === "on" ? "Scan the next keg" : undefined} />
 
       {note && <p role="status" className="rounded-xl bg-surface-2 px-4 py-2.5 text-sm text-ink-2">{note}</p>}
-      {waiting > 0 && rows.some((r) => r.state === "waiting") && <p role="status" className="rounded-xl bg-warn-bg px-4 py-2.5 text-sm font-medium text-warn">No signal for {rows.filter((r) => r.state === "waiting").length}. Keep this page open; they send as soon as there&apos;s signal.</p>}
+      {waiting > 0 && rows.some((r) => r.state === "waiting") && <p role="status" className="rounded-xl bg-warn-bg px-4 py-2.5 text-sm font-medium text-warn">No signal for {rows.filter((r) => r.state === "waiting").length}. They&apos;re saved on this phone and send by themselves as soon as there&apos;s signal, even if you leave this page.</p>}
 
       {typing ? (
         <form onSubmit={(e) => { e.preventDefault(); if (code.trim()) { onText(code); setCode(""); } }} className="flex gap-2">

@@ -322,7 +322,7 @@ export const SquareAllow = () => (
     <T x={186} y={45} s={9} w={700}>
       to see:
     </T>
-    {["Sales and orders", "Menu items", "Team members", "Timecards"].map((p, i) => (
+    {["Sales and orders", "Menu items", "Team, timecards", "Customers (postal code)"].map((p, i) => (
       <g key={p}>
         <Check x={186} y={56 + i * 14} />
         <T x={198} y={63 + i * 14} s={8} c={INK2}>

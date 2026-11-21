@@ -65,9 +65,10 @@ Your search, filters, sort, grouping and columns are remembered on this device f
 
 1. Sort by **Suggested match** to see the surest ones first, or use **Show only → Match 90%+**.
 2. Tick them (shift-click a range) and press **Accept**. Wrong ones: **Reject** — that recipe won't be suggested for that item again.
-3. Switch Status to **Not matched**. Tick items that need a recipe and press **Create recipes**, or pick one with **Link to recipe**.
+3. Switch Status to **Not matched**: items that sold in the last four weeks with nothing linked. Tick items that need a recipe and press **Create recipes**, or pick one with **Link to recipe**.
 4. Merch, gift cards and drinks bought in: **Ignore**. **Un-ignore** brings them back.
-5. **Show only → Price differs** lists linked items whose Square price isn't the recipe's menu price; **Use Square price** updates them.`,
+5. Old specials show as **Not selling lately** and need nothing; there's no need to delete them in Square. A special that's selling but not worth costing yet: tick it and **Skip for now** (it counts at a typical cost). **Bring back** undoes it.
+6. **Show only → Price differs** lists linked items whose Square price isn't the recipe's menu price; **Use Square price** updates them.`,
     related: ["sales.mapping", "sales.squareMenu.suggestions", "app.tables.bulk"],
     keywords: ["match", "accept", "reject", "link", "square menu", "bulk"],
   },

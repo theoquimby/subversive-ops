@@ -20,7 +20,8 @@ The card at the top lists the clean-up as numbered steps, each with how much of 
 ### For each item
 - **Accept** links it to the suggested recipe. The suggestion shows how sure it is (Sure, Likely, Maybe) and why: same name, same price, same category.
 - **Pick another** opens a searchable list of recipes, each with its cost and what share of this item's price that is.
-- **Create recipe** makes a menu recipe named after the item with Square's price and category, links it, and opens it so you can add ingredients. **Draft ingredients for me** suggests the lines from your similar recipes first.
+- **Create recipe** makes a menu recipe named after the item with Square's price and category. Add its ingredients right there (type \"6 oz ground beef\" and Enter, or pick from the list; anything missing can be added as a new ingredient), then **Create with N ingredients and link**: created, costed and linked without leaving the page. **Create and open the recipe** opens it instead. **Draft ingredients for me** suggests the lines from your similar recipes first.
+- **Skip for now**: a special you don't want to cost yet. It counts at a typical cost and comes back if it starts selling most weeks.
 - **Not a recipe**: **Bought in** for cans, bottles, soda and merch (type what one costs you; it still counts as a sale), or **Leave out of sales** for gift cards, service fees and deposits.
 
 ### Draft beer
@@ -29,6 +30,8 @@ Pours are grouped by beer. Type what a keg costs once and every pour gets a cost
 ### It can't make things worse
 - Every link shows its effect before you save it: “Cost $3.10 on $16.00 → 19% cost”.
 - Links that look wrong ask before saving: under 5% or over 80% of the price, a different size (Wings (6) vs Wings (10)), or a prep recipe.
+- **Check these links** lists saved links whose names hardly agree or whose cost looks off, with **Looks right**, **Change** and **Unlink**.
+- The **Linking your sales** tour (Help → Guided tours, or the **?** menu on this page) walks through it in two minutes.
 - Every change goes in **Changes** with an **Undo**, and the message after saving has one too.
 
 **Sure matches** links all the near-certain ones at once, after you've looked them over.`,

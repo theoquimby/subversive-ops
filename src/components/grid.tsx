@@ -15,6 +15,7 @@
  * giving its cells the same `grid` name and a `col` name.
  */
 
+import { parseAmount } from "@/lib/amount";
 import { cn } from "@/lib/cn";
 import { Check } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, useTransition } from "react";
@@ -89,7 +90,11 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
     }
   }, [focused]);
 
-  const commit = (next: string) => {
+  const commit = (raw: string) => {
+    // "$12.50", "1,200", "1/2" → a plain number before it's saved (anything else is left for the server to reject).
+    const amount = type === "number" && raw !== "" ? parseAmount(raw) : null;
+    const next = amount != null ? String(amount) : raw;
+    if (next !== raw) setV(next);
     if (next === committed.current && !error) return;
     if (next === committed.current) { setError(null); setState("idle"); return; }
     const prev = committed.current;
@@ -164,7 +169,9 @@ export function GridCell({ grid, col, value, onSave, type = "text", prefix, suff
           const start = cells.indexOf(e.currentTarget);
           rows.forEach((row, i) => {
             const cell = cells[start + i];
-            const val = row.split("\t")[0].trim().replace(/^\$/, "");
+            const first = row.split("\t")[0].trim();
+            const amount = type === "number" ? parseAmount(first) : null;
+            const val = amount != null ? String(amount) : first;
             cell?.dispatchEvent(new CustomEvent("grid:set", { detail: val }));
           });
         }}

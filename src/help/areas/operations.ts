@@ -1047,7 +1047,7 @@ Square marks each card it sees. Ops keeps a scrambled copy of that mark for each
     area: "sales",
     route: "/sales/customers",
     title: "How this is worked out",
-    body: "How much of what's paid carries a card Ops can recognise again, why every figure here is a floor, and what is and isn't kept. No name, card number, email or phone is read or stored.",
+    body: "How much of what's paid carries a card Ops can recognise again, why every figure here is a floor, and what is and isn't kept. No name, card number, email or phone is read or stored; with Square's Customers permission, one postal code per card is.",
     related: ["sales.customers"],
   },
   {
@@ -1507,6 +1507,8 @@ Each part says its state, which page it feeds, when it last read from Google (or
 - **Data we have** — how far back sales go and how many timecards are in.
 - **Sync** — the last menu, sales and timecard sync. With instant updates on, new orders and clock-ins arrive within seconds; otherwise today's numbers top up every 15 minutes while someone is using the app, and everything re-syncs nightly.
 - **Recent problems** — the last 20 errors from Square, newest first.
+
+**Reconnect** signs in to Square again, to give a permission Ops has started asking for (most recently **Customers**, used only for the postal code behind the map of where customers come from). Press it, sign in with the restaurant's Square login and press **Allow**. Your locations, history and links stay as they are. Every permission is read-only: Ops never changes anything in Square.
 
 Timecards you corrected here, or that are in an approved week, are never overwritten by a sync.`,
     related: ["sales.connect", "sales.backfill"],

@@ -23,7 +23,9 @@ Without AI, a draft copies your most similar recipe. A new burger starts from Cl
 ### Reviewing
 Each card shows plate cost, food cost % against your target, and the price. Change an ingredient, amount or unit, remove a line or type a new one. **Accept** saves it as a recipe and links the Square items. **Accept all** saves every draft as it is.
 
-Lines marked **New ingredient** add an ingredient with no price yet. Link a supplier product on the ingredient to price it.`,
+Lines marked **New ingredient** add an ingredient with no price yet. Link a supplier product on the ingredient to price it.
+
+**Hard or not.** Drafts never match plain cider to hard cider, or beer to a non-alcoholic one, on a shared word. If a draft picks a hard version for a dish whose name doesn't say so (a Cider and Bourbon), the line says so: check it isn't meant to be plain. Typed lines follow the same rule, and anything not on your list is offered as a new ingredient rather than swapped for the closest.`,
     related: ["menu.drafts.intake", "menu.drafts.review", "menu.drafts.beer", "menu.editor", "sales.squareMenu"],
     keywords: ["draft", "suggest recipe", "ai recipe", "recipe card", "photo", "auto cost", "copy recipe"],
   },

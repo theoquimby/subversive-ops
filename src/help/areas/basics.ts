@@ -111,12 +111,15 @@ Small **?** icons next to labels work all the time, help mode or not.`,
 
 - **Overview** — the dashboard, the command bar and where everything lives.
 - **Menu costs** — the costing table and the recipe editor, including quick add.
+- **Linking your sales** — giving every Square item a cost, in the right order: wrong links, keg costs, sure matches, recipes, and what to skip.
 - **Price import** — bringing in a distributor's price sheet.
 - **Ordering** — how suggested orders are worked out and how to send them.
 - **Counting** — for staff: counting stock and logging waste on a phone.
 - **Ingredients** — the spreadsheet grid, yield and order buffer.
 
-Start one from the [help center](/help), with **Show me** on any help article, or from the command bar. Tours can move between pages on their own — just follow along.`,
+Start one from **Help → Guided tours** in the sidebar ([help center](/help)), with **Show me** on any help article, or from the command bar. On a page that has a tour, the **?** help menu at the top offers **Tour this page**. Tours can move between pages on their own: just follow along. Take one again any time; nothing is changed by a tour.
+
+**What's new** cards (the pop-up after an update) aren't tours: they're short notes on what changed. They're all kept under the **?** menu → **What's new**, and on [Release notes](/help/releases).`,
     related: ["app.helpMode", "app.about"],
     keywords: ["walkthrough", "tutorial", "guide", "show me"],
     tour: "overview",

@@ -37,7 +37,7 @@ const fmt = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short",
 const longFmt = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
 const monthFmt = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 
-export function DatePicker({ value, defaultValue, onChange, name, className, min, max, today: todayProp, "aria-label": ariaLabel }: { value?: string; defaultValue?: string; onChange?: (e: ChangeEvent) => void; name?: string; className?: string; min?: string; max?: string; /** Business date to mark as today; defaults to businessTodayClient(). */ today?: string; "aria-label"?: string }) {
+export function DatePicker({ value, defaultValue, onChange, name, className, min, max, today: todayProp, clearable, "aria-label": ariaLabel }: { value?: string; defaultValue?: string; onChange?: (e: ChangeEvent) => void; name?: string; className?: string; min?: string; max?: string; /** Business date to mark as today; defaults to businessTodayClient(). */ today?: string; /** Offer Clear (the value becomes ""). */ clearable?: boolean; "aria-label"?: string }) {
   const [inner, setInner] = useState(defaultValue ?? "");
   const current = value ?? inner;
   const [open, setOpen] = useState(false);
@@ -132,7 +132,7 @@ export function DatePicker({ value, defaultValue, onChange, name, className, min
           if (e.key === "Escape" && open) { e.preventDefault(); close(); }
           else if (e.key === "ArrowDown" && !open) { e.preventDefault(); openAt(); }
         }}
-        className={cn("inline-flex h-9 w-full items-center gap-2 rounded-lg border border-border-strong bg-surface px-3 text-left text-sm transition-[border-color,background-color,outline-color,outline-offset] duration-120 ease-motion hover:border-ink-2/40", open && "border-ink-2", className)}
+        className={cn("inline-flex h-10 w-full items-center gap-2 rounded-lg border border-border-strong bg-surface px-3 text-left text-sm sm:h-9 transition-[border-color,background-color,outline-color,outline-offset] duration-120 ease-motion hover:border-ink-2/40", open && "border-ink-2", className)}
       >
         <CalendarDays className="size-4 shrink-0 text-muted" strokeWidth={1.75} />
         <span className={cn("truncate", !current && "text-muted")}>{current ? fmt.format(parse(current)) : "Pick a date"}</span>
@@ -193,8 +193,15 @@ export function DatePicker({ value, defaultValue, onChange, name, className, min
             </tbody>
           </table>
           <div className="mt-2 flex justify-between border-t border-border pt-2">
-            <button type="button" onClick={() => pick(today)} disabled={!!((min && today < min) || (max && today > max))} className="h-8 rounded-md px-2 text-xs text-ink-2 hover:bg-surface-2 disabled:opacity-40">Today</button>
-            <button type="button" onClick={() => close()} className="h-8 rounded-md px-2 text-xs text-muted hover:bg-surface-2">Close</button>
+            <div className="flex gap-1">
+              <button type="button" onClick={() => pick(today)} disabled={!!((min && today < min) || (max && today > max))} className="h-9 rounded-md px-2 text-xs font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-40 sm:h-8">Today</button>
+              {today && (() => {
+                const y = addDays(today, -1);
+                return <button type="button" onClick={() => pick(y)} disabled={!!((min && y < min) || (max && y > max))} className="h-9 rounded-md px-2 text-xs text-ink-2 hover:bg-surface-2 disabled:opacity-40 sm:h-8">Yesterday</button>;
+              })()}
+              {clearable && current && <button type="button" onClick={() => { if (value === undefined) setInner(""); onChange?.({ target: { value: "", name } }); close(); }} className="h-9 rounded-md px-2 text-xs text-ink-2 hover:bg-surface-2 sm:h-8">Clear</button>}
+            </div>
+            <button type="button" onClick={() => close()} className="h-9 rounded-md px-2 text-xs text-muted hover:bg-surface-2 sm:h-8">Close</button>
           </div>
         </div>,
         document.body,
