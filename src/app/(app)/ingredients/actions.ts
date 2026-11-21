@@ -4,8 +4,10 @@ import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { COUNT_UNITS_INCLUDE, countUnitsFor } from "@/server/services/inventory";
 import { setPar } from "@/server/services/planning";
-import { canConvert, toBase, type BaseUnit } from "@/domain/units";
+import { canConvert, standardUnit, toBase, type BaseUnit } from "@/domain/units";
+import { parseAmount } from "@/lib/amount";
 import { archivedName, baseName } from "@/domain/archiveName";
+import { handSku, readHandPrice } from "@/domain/manualPrice";
 import { shortDate } from "@/lib/format";
 import { businessToday } from "@/server/services/sales";
 import { Prisma } from "@prisma/client";
@@ -67,26 +69,39 @@ export async function saveIngredient(id: string | null, _: unknown, form: FormDa
   return { ok: true };
 }
 
-export async function addConversion(ingredientId: string, form: FormData) {
+export async function addConversion(ingredientId: string, form: FormData): Promise<{ error?: string; message?: string }> {
   await requireUser("MANAGER");
-  const ing = await db.ingredient.findUniqueOrThrow({ where: { id: ingredientId } });
-  const unit = String(form.get("unit") ?? "").trim().toLowerCase();
-  const amount = Number(form.get("amount"));
+  const ing = await db.ingredient.findUnique({ where: { id: ingredientId } });
+  if (!ing) return { error: "That ingredient isn't there any more." };
+  const unit = String(form.get("unit") ?? "").trim().toLowerCase().replace(/\s+/g, " ").slice(0, 20);
+  const amount = parseAmount(String(form.get("amount") ?? ""));
   const amountUnit = String(form.get("amountUnit") ?? ing.baseUnit);
-  if (!unit || !(amount > 0)) return;
-  const baseQty = toBase(amount, amountUnit, ing.baseUnit);
+  if (!unit) return { error: "Name the unit, like slice or scoop." };
+  if (standardUnit(unit)?.base === ing.baseUnit) return { error: `${unit} is already a unit for ${ing.name}. Pick another name.` };
+  if (amount == null || !(amount > 0)) return { error: `How much is one ${unit}? Type an amount, like 21.` };
+  let baseQty: number;
+  try {
+    baseQty = toBase(amount, amountUnit, ing.baseUnit);
+  } catch {
+    return { error: `${amountUnit} doesn't work for ${ing.name}. Pick another unit.` };
+  }
   await db.unitConversion.upsert({
     where: { ingredientId_unit: { ingredientId, unit } },
     create: { ingredientId, unit, baseQty: new Prisma.Decimal(baseQty.toFixed(4)) },
     update: { baseQty: new Prisma.Decimal(baseQty.toFixed(4)) },
   });
   revalidatePath(`/ingredients/${ingredientId}`);
+  revalidatePath("/menu", "layout");
+  return { message: `Added 1 ${unit}.` };
 }
 
-export async function removeConversion(ingredientId: string, conversionId: string) {
+export async function removeConversion(ingredientId: string, conversionId: string): Promise<{ error?: string }> {
   await requireUser("MANAGER");
-  await db.unitConversion.delete({ where: { id: conversionId } });
+  const r = await db.unitConversion.deleteMany({ where: { id: conversionId, ingredientId } });
+  if (!r.count) return { error: "That unit was already removed." };
   revalidatePath(`/ingredients/${ingredientId}`);
+  revalidatePath("/menu", "layout");
+  return {};
 }
 
 export async function setPreferredProduct(ingredientId: string, productId: string) {
@@ -97,18 +112,25 @@ export async function setPreferredProduct(ingredientId: string, productId: strin
 }
 
 /** Pack size: "how much is in one case", entered in any unit. */
-export async function setPackSize(productId: string, form: FormData) {
+export async function setPackSize(productId: string, form: FormData): Promise<{ error?: string; message?: string }> {
   await requireUser("MANAGER");
-  const p = await db.supplierProduct.findUniqueOrThrow({ where: { id: productId }, include: { ingredient: { include: { conversions: true } } } });
-  if (!p.ingredient) return;
-  const amount = Number(form.get("amount"));
+  const p = await db.supplierProduct.findUnique({ where: { id: productId }, include: { ingredient: { include: { conversions: true } } } });
+  if (!p?.ingredient) return { error: "That product isn't linked to this ingredient any more. Refresh the page." };
+  const amount = parseAmount(String(form.get("amount") ?? ""));
   const unit = String(form.get("unit") ?? p.ingredient.baseUnit);
-  if (!(amount > 0)) return;
-  const base = toBase(amount, unit, p.ingredient.baseUnit, p.ingredient.conversions.map((c) => ({ unit: c.unit, baseQty: c.baseQty.toNumber() })));
-  await db.supplierProduct.update({ where: { id: productId }, data: { packQtyBase: new Prisma.Decimal(base.toFixed(4)), purchaseUnit: String(form.get("purchaseUnit") || p.purchaseUnit) } });
+  const purchaseUnit = String(form.get("purchaseUnit") ?? "").trim().slice(0, 20) || p.purchaseUnit;
+  if (amount == null || !(amount > 0)) return { error: `How much is in one ${purchaseUnit}? Type an amount, like 50.` };
+  let base: number;
+  try {
+    base = toBase(amount, unit, p.ingredient.baseUnit, p.ingredient.conversions.map((c) => ({ unit: c.unit, baseQty: c.baseQty.toNumber() })));
+  } catch {
+    return { error: `${unit} doesn't work for ${p.ingredient.name}. Pick another unit.` };
+  }
+  await db.supplierProduct.update({ where: { id: productId }, data: { packQtyBase: new Prisma.Decimal(base.toFixed(4)), purchaseUnit } });
   revalidatePath(`/ingredients/${p.ingredient.id}`);
   revalidatePath("/prices");
   revalidatePath("/menu");
+  return { message: "Pack saved." };
 }
 
 export async function unlinkProduct(ingredientId: string, productId: string) {
@@ -232,6 +254,46 @@ export async function archiveIngredients(ids: string[]): Promise<BulkResult> {
   }
   if (!done) return { error: `${kept.length === 1 ? `${kept[0]} is` : "All of them are"} still used in recipes.` };
   return { message: `Archived ${count(done)}.${kept.length ? ` Kept ${kept.slice(0, 3).join(", ")}${kept.length > 3 ? ` and ${kept.length - 3} more` : ""}: still in recipes.` : ""}` };
+}
+
+const handPriceSchema = z.object({
+  supplier: z.string().max(120),
+  what: z.string().max(200),
+  size: z.string().max(40),
+  sizeUnit: z.string().max(40),
+  price: z.string().max(40),
+  per: z.string().max(40),
+});
+
+/**
+ * A first price for an ingredient nothing is linked to yet: what you buy, from
+ * whom, and what it costs. Makes a supplier product for it (and the supplier,
+ * when the name is new), uses it for cost, and records the price as of today.
+ */
+export async function addHandPrice(ingredientId: string, input: z.input<typeof handPriceSchema>): Promise<{ error?: string; field?: string; message?: string }> {
+  await requireUser("MANAGER");
+  const p = handPriceSchema.safeParse(input);
+  if (!p.success) return { error: "Something in the form is too long. Shorten it and try again." };
+  const ing = await db.ingredient.findUnique({ where: { id: ingredientId }, include: { conversions: true } });
+  if (!ing) return { error: "That ingredient isn't there any more." };
+  const read = readHandPrice(p.data, ing.name, ing.baseUnit as BaseUnit, ing.conversions.map((c) => ({ unit: c.unit, baseQty: c.baseQty.toNumber() })));
+  if ("error" in read) return read;
+  const v = read.ok;
+  const { recordManualPrice } = await import("@/server/services/priceImport");
+  const found = await db.supplier.findFirst({ where: { name: { equals: v.supplier, mode: "insensitive" } }, select: { id: true, name: true, active: true } });
+  const supplier = found ?? (await db.supplier.create({ data: { name: v.supplier, kind: "LOCAL", leadTimeDays: 0, deliveryDays: [] }, select: { id: true, name: true, active: true } }));
+  if (!supplier.active) await db.supplier.update({ where: { id: supplier.id }, data: { active: true } });
+  const sku = handSku(ing.id);
+  const data = { ingredientId: ing.id, description: v.description, packText: v.packText, purchaseUnit: v.purchaseUnit, packQtyBase: new Prisma.Decimal(v.packQtyBase.toFixed(4)), active: true };
+  const product = await db.supplierProduct.upsert({ where: { supplierId_sku: { supplierId: supplier.id, sku } }, create: { ...data, supplierId: supplier.id, sku }, update: data, select: { id: true } });
+  await recordManualPrice(product.id, v.price, businessToday());
+  await db.ingredient.update({ where: { id: ing.id }, data: { preferredProductId: product.id } });
+  revalidatePath(`/ingredients/${ing.id}`);
+  revalidatePath("/ingredients");
+  revalidatePath("/prices");
+  revalidatePath("/menu", "layout");
+  if (!found) revalidatePath("/settings");
+  return { message: `${ing.name} now costs from ${supplier.name}${found ? "" : " (a new supplier)"}.` };
 }
 
 /**

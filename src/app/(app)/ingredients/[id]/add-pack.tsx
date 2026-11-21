@@ -6,7 +6,7 @@ import { useState, useTransition } from "react";
 import { addPackToIngredient } from "../actions";
 
 /** "Also bought as…": link another supplier product (another pack size) to this ingredient. */
-export function AddPack({ ingredientId, products }: { ingredientId: string; products: { id: string; label: string; hint: string }[] }) {
+export function AddPack({ ingredientId, products, placeholder = "Also bought as… (add another pack)" }: { ingredientId: string; products: { id: string; label: string; hint: string }[]; placeholder?: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -14,7 +14,7 @@ export function AddPack({ ingredientId, products }: { ingredientId: string; prod
     <div className="px-4 py-3">
       <Select
         value=""
-        placeholder={pending ? "Linking…" : "Also bought as… (add another pack)"}
+        placeholder={pending ? "Linking…" : placeholder}
         searchable
         disabled={pending}
         options={products.map((p) => ({ value: p.id, label: p.label, hint: p.hint }))}
