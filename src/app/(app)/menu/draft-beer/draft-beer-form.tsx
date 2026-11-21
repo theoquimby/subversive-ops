@@ -50,6 +50,7 @@ export function DraftBeerFormView({ suppliers, squareItems, brewing = [] }: { su
   const [pours, setPours] = useState<PourRow[]>(DEFAULT_POURS.map((p) => ({ label: p.label, oz: String(p.oz), price: p.price == null ? "" : String(p.price), squareId: NONE })));
   const [result, setResult] = useState<{ error?: string; ok?: string } | null>(null);
   const [pending, start] = useTransition();
+  const router = useRouter();
 
   const input = {
     beer,
@@ -72,6 +73,9 @@ export function DraftBeerFormView({ suppliers, squareItems, brewing = [] }: { su
         setBeer("");
         setCost("");
         setCostTyped(false);
+        // Those Square items are linked now; the next beer starts with none picked.
+        setPours((ps) => ps.map((p) => ({ ...p, squareId: NONE })));
+        router.refresh();
       }
     });
 
@@ -113,7 +117,7 @@ export function DraftBeerFormView({ suppliers, squareItems, brewing = [] }: { su
               <Input value={p.oz} onChange={(e) => setPour(i, { oz: e.target.value })} inputMode="decimal" aria-label="Ounces" />
               <Input value={p.price} onChange={(e) => setPour(i, { price: e.target.value })} inputMode="decimal" aria-label="Menu price" placeholder="$" />
               <div className="col-span-3 md:col-span-1">
-                <Select value={p.squareId} onChange={(e) => setPour(i, { squareId: e.target.value })} options={[{ value: NONE, label: "Not linked" }, ...squareItems]} aria-label="Square item" />
+                <Select value={p.squareId} onChange={(e) => setPour(i, { squareId: e.target.value })} options={[{ value: NONE, label: "Not linked" }, ...squareItems]} searchable placeholder="Find the Square item…" aria-label="Square item" />
               </div>
               <div className="num col-span-2 self-center text-sm md:col-span-1 md:text-right">
                 {pv ? <>{money(pv.cost)} <span className="text-muted">· {pct(pv.pourCostPct, 0)}</span></> : <span className="text-muted">—</span>}
@@ -139,7 +143,7 @@ export function DraftBeerFormView({ suppliers, squareItems, brewing = [] }: { su
             <span className="text-muted">{"error" in plan ? plan.error : ""}</span>
           )}
         </div>
-        <Button type="button" variant="primary" disabled={!preview || pending} onClick={submit}>
+        <Button type="button" variant="primary" disabled={!preview} pending={pending} onClick={submit}>
           {pending ? "Saving…" : "Create keg and pours"}
         </Button>
       </div>
