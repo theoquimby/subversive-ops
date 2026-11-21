@@ -25,19 +25,19 @@ export function NewItemChoices({ name, measure, busy, onIngredient, onPrep, prim
   return (
     <>
       {measure ? (
-        <Button size="sm" variant={primary ? "secondary" : "ghost"} pending={busy} onClick={() => onIngredient()}>
+        <Button size="sm" className="h-10 sm:h-8" variant={primary ? "secondary" : "ghost"} pending={busy} onClick={() => onIngredient()}>
           {!busy && <Plus className="size-3.5" />}New ingredient {label}
         </Button>
       ) : (
         <span className="inline-flex flex-wrap items-center gap-1.5" role="group" aria-label={`New ingredient ${cap(name)}, measured by`}>
           <span className="text-xs text-ink-2">New ingredient {label}, by</span>
-          <Button size="sm" variant={primary ? "secondary" : "ghost"} disabled={busy} onClick={() => onIngredient("g")}>weight</Button>
-          <Button size="sm" variant={primary ? "secondary" : "ghost"} disabled={busy} onClick={() => onIngredient("ml")}>volume</Button>
-          <Button size="sm" variant={primary ? "secondary" : "ghost"} disabled={busy} onClick={() => onIngredient("each")}>count</Button>
+          <Button size="sm" className="h-10 sm:h-8" variant={primary ? "secondary" : "ghost"} disabled={busy} onClick={() => onIngredient("g")}>weight</Button>
+          <Button size="sm" className="h-10 sm:h-8" variant={primary ? "secondary" : "ghost"} disabled={busy} onClick={() => onIngredient("ml")}>volume</Button>
+          <Button size="sm" className="h-10 sm:h-8" variant={primary ? "secondary" : "ghost"} disabled={busy} onClick={() => onIngredient("each")}>count</Button>
         </span>
       )}
       {onPrep && (
-        <Button size="sm" variant="ghost" disabled={busy} onClick={onPrep}>
+        <Button size="sm" className="h-10 sm:h-8" variant="ghost" disabled={busy} onClick={onPrep}>
           <Plus className="size-3.5" />New prep recipe {label}
         </Button>
       )}
