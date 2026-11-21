@@ -9,15 +9,20 @@ import type { BrewStockRow } from "@/server/services/brewStock";
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { readDraft, useDraftStorage, useUnsavedGuard } from "@/components/form-hooks";
+import { parseAmount } from "@/lib/amount";
 import { saveCountsAction, saveReceivedAction } from "./actions";
 
 type Draft = Record<string, { amount: string; unit: string }>;
-const parse = (s: string) => (s.trim() === "" ? null : Number(s.replace(",", ".")));
+/** Blank is "not typed"; anything else is a number ("2", "1.5", "1,5", "1 1/2", "1,200") or NaN. */
+const parse = (s: string) => (s.trim() === "" ? null : parseAmount(s.trim().replace(/^(\d+),(\d{1,2})$/, "$1.$2")) ?? NaN);
+const hasAmounts = (d: Draft) => Object.values(d).some((x) => x.amount.trim() !== "");
 
 /**
  * The whole brewing shelf on one list, for a phone: type what's there (a count)
  * or what came in (a delivery) in any unit that fits, then save once. Blank
- * rows are left alone. The draft survives a reload in this browser tab.
+ * rows are left alone. What's typed is kept on this device (a reload, a closed
+ * tab or lost signal doesn't lose it) until it's saved.
  */
 export function CountSheet({ rows, mode, suppliers = [] }: { rows: BrewStockRow[]; mode: "count" | "received"; suppliers?: string[] }) {
   const router = useRouter();
@@ -29,19 +34,22 @@ export function CountSheet({ rows, mode, suppliers = [] }: { rows: BrewStockRow[
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, start] = useTransition();
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem(key);
-      if (saved) setDraft(JSON.parse(saved) as Draft);
-    } catch {
-      // Storage blocked: the sheet still works, it just isn't kept.
+    const kept = readDraft<{ draft: Draft; note?: string }>(key);
+    if (kept?.draft && typeof kept.draft === "object") {
+      setDraft(kept.draft);
+      if (kept.note) setNote(kept.note);
+      if (hasAmounts(kept.draft)) show("Your typed amounts from before are back.", "good");
     }
-  }, [key]);
-  const update = (next: Draft) => {
-    setDraft(next);
-    try { sessionStorage.setItem(key, JSON.stringify(next)); } catch { /* not kept */ }
-  };
+    setReady(true);
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const kept = useMemo(() => ({ draft, note }), [draft, note]);
+  // Not until the kept draft is read back, so the first render can't wipe it.
+  useDraftStorage(ready ? key : `${key}:loading`, kept, hasAmounts(draft));
+  useUnsavedGuard(hasAmounts(draft) && !pending, { body: "What you've typed isn't saved yet. It stays on this device, so you can come back to it." });
+  const update = (next: Draft) => setDraft(next);
 
   const shown = useMemo(() => {
     const bySupplier = supplier ? rows.filter((r) => (r.supplier ?? "") === supplier) : rows;
@@ -54,7 +62,13 @@ export function CountSheet({ rows, mode, suppliers = [] }: { rows: BrewStockRow[
 
   const save = () => start(async () => {
     setErrors({});
-    const r = mode === "count" ? await saveCountsAction(entries) : await saveReceivedAction(entries, note.trim() || null);
+    const r = await (mode === "count" ? saveCountsAction(entries) : saveReceivedAction(entries, note.trim() || null)).catch(() => null);
+    if (!r) {
+      show(mode === "count"
+        ? "No connection, so the count isn't saved. Your numbers are kept on this device. Save again when you have signal."
+        : "No connection, so nothing was added. Your numbers are kept on this device. Check the stock page before saving again, in case it went through.", "bad");
+      return;
+    }
     if (r.errors?.length) {
       setErrors(Object.fromEntries(r.errors.map((e) => [e.ingredientId, e.error])));
       const keep = Object.fromEntries(Object.entries(draft).filter(([id]) => r.errors!.some((e) => e.ingredientId === id)));
@@ -65,7 +79,7 @@ export function CountSheet({ rows, mode, suppliers = [] }: { rows: BrewStockRow[
     }
     if (r.error) { show(r.error, "bad"); return; }
     update({});
-    try { sessionStorage.removeItem(key); } catch { /* not kept */ }
+    try { localStorage.removeItem(`draft:${key}`); } catch { /* not kept */ }
     show(r.ok ?? "Saved.", "good");
     router.push("/brewery/stock");
     router.refresh();
@@ -119,6 +133,17 @@ export function CountSheet({ rows, mode, suppliers = [] }: { rows: BrewStockRow[
                       </div>
                       <Input
                         inputMode="decimal"
+                        enterKeyHint="next"
+                        autoComplete="off"
+                        data-stock-input
+                        onFocus={(e) => e.currentTarget.select()}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          e.preventDefault();
+                          const all = Array.from(document.querySelectorAll<HTMLInputElement>("input[data-stock-input]"));
+                          const next = all[all.indexOf(e.currentTarget) + 1];
+                          if (next) { next.focus(); next.scrollIntoView({ block: "center", behavior: "smooth" }); } else e.currentTarget.blur();
+                        }}
                         value={d.amount}
                         onChange={(e) => update({ ...draft, [r.id]: { ...d, amount: e.target.value } })}
                         aria-label={`${r.name}, ${mode === "count" ? "amount on the shelf" : "amount received"}`}

@@ -387,6 +387,10 @@ export function CountSheet({ countId, countArea, areaOrder, items, catalog, mana
                       ))}
                       {list.length > 1 && (() => { const t = total(item, num(list)); return t == null ? null : <span className="num text-xs text-muted">= {inUnit(t, item.units[0], item)}</span>; })()}
                       {places > 1 && isRowDone(row.key) && <span className="num text-xs text-muted">{places} places · {inUnit(itemTotal(item), item.units[0], item)} in all</span>}
+                      {/* The last count, faint, as a sense check (once per item, on its first row). */}
+                      {item.last && places <= 1 && firstRow(item)?.key === row.key && (
+                        <span className="num text-[11px] text-muted/70" title={`Counted ${shortDate(item.last.at.slice(0, 10))}`}>last {inUnit(item.last.qtyBase, item.units[0], item)}</span>
+                      )}
                     </div>
                   </div>
                   {focused?.startsWith(`${row.key}#`) && (
@@ -509,8 +513,10 @@ export function CountSheet({ countId, countArea, areaOrder, items, catalog, mana
       <div className="fixed inset-x-0 bottom-[var(--tabbar)] z-30 border-t border-border bg-surface/95 backdrop-blur lg:left-60">
         <div className="mx-auto flex max-w-xl items-center justify-between gap-3 px-4 py-3">
           <HelpZone id="count.autosave" className="num flex items-center gap-1.5 text-sm text-muted">{progress.done} of {progress.total} <HelpTip id="count.autosave" placement="top-start" /></HelpZone>
-          <div className="flex gap-2">
-            <HelpZone id="count.discard"><Button variant="ghost" size="lg" disabled={finishing} onClick={async () => { if (await confirm({ title: "Discard this count?", body: "Everything counted so far will be thrown away.", confirmLabel: "Discard", danger: true })) start(() => discardCount(countId)); }}>Discard</Button></HelpZone>
+          {/* Discard sits apart from Finish, quieter, so a cold thumb doesn't hit the wrong one. */}
+          <div className="flex items-center gap-3 sm:gap-6">
+            <HelpZone id="count.discard"><Button variant="ghost" size="lg" className="px-3 text-muted hover:text-bad" disabled={finishing} onClick={async () => { if (await confirm({ title: "Discard this count?", body: "Everything counted so far will be thrown away.", confirmLabel: "Discard", danger: true })) start(() => discardCount(countId)); }}>Discard</Button></HelpZone>
+            <span aria-hidden className="h-8 w-px bg-border" />
             <HelpZone id="count.finish"><Button variant="primary" size="lg" disabled={finishing || progress.total === 0} onClick={finish}>{finishing ? "Saving…" : progress.remaining > 0 ? `${progress.remaining} left` : manager ? "Finish count" : "Send to manager"}</Button></HelpZone>
           </div>
         </div>
