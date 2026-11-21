@@ -8,6 +8,7 @@ import { canConvert, standardUnit, toBase, type BaseUnit } from "@/domain/units"
 import { parseAmount } from "@/lib/amount";
 import { archivedName, baseName } from "@/domain/archiveName";
 import { handSku, readHandPrice } from "@/domain/manualPrice";
+import { allergenLabel, isAllergen, toggleAllergen } from "@/domain/allergens";
 import { shortDate } from "@/lib/format";
 import { businessToday } from "@/server/services/sales";
 import { Prisma } from "@prisma/client";
@@ -236,6 +237,22 @@ export async function bulkSetMinOnHand(ids: string[], raw: string): Promise<Bulk
   revalidatePath("/ingredients");
   if (errors.length === p.data.length) return { error: errors[0] };
   return { message: `${raw.trim() ? "Set" : "Cleared"} minimum on hand for ${count(p.data.length - errors.length)}${errors.length ? `; ${errors.length} couldn't convert` : ""}.` };
+}
+
+/** Tag (or untag) one allergen on several ingredients. Menu allergens follow from the ingredients. */
+export async function bulkTagAllergen(ids: string[], allergen: string, on: boolean): Promise<BulkResult> {
+  await requireUser("MANAGER");
+  const p = bulkIds.safeParse(ids);
+  if (!p.success) return { error: "Pick at least one ingredient." };
+  if (!isAllergen(allergen)) return { error: "Pick an allergen from the list." };
+  const rows = await db.ingredient.findMany({ where: { id: { in: p.data } }, select: { id: true, allergens: true } });
+  const changed = rows.filter((r) => r.allergens.includes(allergen) !== on);
+  await db.$transaction(changed.map((r) => db.ingredient.update({ where: { id: r.id }, data: { allergens: toggleAllergen(r.allergens, allergen, on) } })));
+  revalidatePath("/ingredients");
+  revalidatePath("/menu", "layout");
+  const label = allergenLabel(allergen);
+  if (!changed.length) return { message: `${on ? "All of them were already tagged" : "None of them were tagged"} ${label}.` };
+  return { message: `${on ? "Tagged" : "Untagged"} ${label} on ${count(changed.length)}.` };
 }
 
 /** Archive several. Ingredients still in a recipe are skipped and named. */
