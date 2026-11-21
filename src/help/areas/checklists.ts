@@ -53,7 +53,7 @@ Managers also see **Last two weeks**: every list, day by day, and who signed it.
     area: "checklists",
     route: "/checklists/setup",
     title: "Set up checklists",
-    body: "Name each list, choose opening, mid or closing, the days it runs and the positions it's for, then add the steps.",
+    body: "Name each list, choose opening, mid or closing, the days and positions, then add the steps: paste a list and each line becomes a step. Duplicate copies a list (the copy starts off). Reorder with the arrows, on a phone too.",
     article: `Open it from **Checklists → Set up lists**.
 
 - **The list's name** and **Opening / Mid-shift / Closing** decide where it shows and when.

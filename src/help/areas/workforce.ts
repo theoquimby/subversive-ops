@@ -197,7 +197,7 @@ export const workforce: HelpEntry[] = [
     area: "team",
     route: "/team/onboarding",
     title: "New hires",
-    body: "Each person's checklist with what's done. Tap one to tick tasks (uniform, keys) and make their login. Behind means past the due date with must-dos open.",
+    body: "Add a new hire with their pay rate, and make their login at the same time: the PIN shows once, with Copy. Tap a person to tick tasks (uniform, keys). Behind means past the due date with must-dos open.",
   },
   {
     id: "team.onboarding.suggest",

@@ -1586,7 +1586,7 @@ Brewery suppliers (malt, hops, yeast) are listed apart under **Brewery suppliers
     area: "settings",
     route: "/settings/pay",
     title: "Labor rules",
-    body: "Minimum and tipped wages, overtime, spread of hours, call-in pay, employer burden, meal breaks, rest, minors, paid sick leave and the pay period. Pre-filled for New York; each compliance check can be Must fix, Warn or Off.",
+    body: "Minimum and tipped wages, overtime, spread of hours, call-in pay, burden, meal breaks, rest, minors (latest finish as a time, like 10p), sick leave and the pay period. Pre-filled for New York; each check can be Must fix, Warn or Off.",
     related: ["schedule.compliance", "labor.overtime", "labor.sick", "settings.wageSchedule"],
   },
   {

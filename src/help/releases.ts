@@ -24,6 +24,32 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.50",
+    date: "2026-11-20",
+    title: "Faster, safer data entry everywhere",
+    summary: "Typing things in is quicker and harder to get wrong across the app: orders, deliveries, invoices, waste, counts, recipes, prices, the schedule, timecards, notes, events, new hires and checklists.",
+    entries: ["2026-11-20.qol-ordering", "2026-11-20.qol-costing", "2026-11-20.qol-schedule", "2026-11-20.qol-floor"],
+    fixed: [
+      "Amounts can be typed the way you write them: $12.50, 1,200, 1/2 or 1 1/2. Number boxes select what's in them when you tap, and the mouse wheel no longer changes them by accident.",
+      "A key pressed on a closed drop-down opens it with that letter searched, instead of quietly picking (and in a table, saving) something else.",
+      "Leaving a page with unsaved typing asks first on recipes, orders, invoices, price updates, drafts and counts; most also keep what you typed on the device. ⌘S or Ctrl+S saves where there's a Save button.",
+      "Date pickers have Yesterday, and Clear where a date is optional. Buttons show when they're saving and can't be pressed twice.",
+      "Kegs scanned in the walk-in with no signal are kept on the phone and send by themselves, even if you leave the page.",
+      "Recipes: Duplicate, a new prep recipe from inside a recipe, new ingredients ask weight, volume or count, Undo on removing a line, and the save bar names lines left out.",
+      "Ingredients: Add a price by hand when there's no supplier product yet; allergen column, filter and bulk tagging; clear errors on units and packs.",
+      "Prices: typed prices stay when you switch supplier; import lets you untick rows and flags changes over 40%. Recipe drafts: Accept all saves your edits.",
+      "Prep setup: set station, list, shelf life and rounding for several items at once.",
+      "Waste: Undo, recent items as one tap, your last unit remembered, and Yesterday for last night's close.",
+      "Invoices: a new invoice is kept on the device with Resume; Add 5 lines at once; Undo on removing a line.",
+      "Brewery stock count keeps what you typed with no signal; the count sheet shows the last count next to each item.",
+      "Walk-in on a phone: tap a keg to move it to another spot.",
+      "Shift notes: a note from another day is offered back; Over or Short asks how much.",
+      "Private events: times on quick add, a heads-up when the space is already booked, and the next payment fills in after one is recorded.",
+      "New hires: pay rate and their login in the same step. Checklists: paste a list to add steps, Duplicate a list, reorder on a phone.",
+      "Tips: Last week and pay period are one tap. Time off: deny with a reason. Budgets: Use the forecast. Pay rules: minors' latest finish as a time (10p).",
+    ],
+  },
+  {
     version: "1.49",
     date: "2026-11-20",
     title: "Ingredients: add them as you create, no wrong guesses",

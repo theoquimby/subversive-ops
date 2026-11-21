@@ -41,7 +41,7 @@ Overdue deposits, balances coming due, follow-ups and new inquiries with no quot
     route,
     tour,
     title: "New inquiry",
-    body: "Type the client's name and an email or phone (one box, it works out which), the date and guests if you know them, then Add. It opens the booking so you can build the quote right away.",
+    body: "Type the client's name and an email or phone (one box), the date, times (7p works) and guests if you know them, then Add. If the space is already booked then, it says so (it never blocks). It opens the booking to build the quote.",
     related: ["events.private.quote"],
     keywords: ["add", "new", "lead"],
   },

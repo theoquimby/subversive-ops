@@ -110,7 +110,7 @@ These rules are pre-filled for New York and editable in Settings. The app applie
     area: "labor",
     route: "/labor",
     title: "Timecards",
-    body: "Each shift worked, from Square clock-ins or added by hand. Correct a missed punch or break in place; edited cards are kept when Square syncs again.",
+    body: "Each shift worked, from Square or added by hand. Correct a missed punch or break in place; edited cards are kept when Square syncs. Missing clock-out (red) means a card from an earlier day was never closed.",
   },
   {
     id: "labor.squareSync",
@@ -125,7 +125,7 @@ These rules are pre-filled for New York and editable in Settings. The app applie
     area: "labor",
     route: "/labor",
     title: "Before you approve",
-    body: "Problems in the pay period, most urgent first: missing clock-outs and rates must be fixed; no-shows, call-in pay, long cards and missing meal breaks are worth a check.",
+    body: "Problems in the pay period, most urgent first. Fix a missed clock-out right here: type the time or use the scheduled end, or open the card. Missing rates must be fixed too; no-shows, call-in pay and missing breaks are worth a check.",
     related: ["labor.approve"],
     keywords: ["exceptions", "missing punch", "no show", "errors"],
   },
@@ -334,7 +334,7 @@ In Settings each rule can be **Must fix** (publishing stops until you override),
     area: "schedule",
     route: "/schedule",
     title: "Week and actions",
-    body: "Step between weeks with the arrows. Requests opens time off and swaps waiting for you; Copy last week and Generate add draft shifts, Clear drafts removes them, and Publish sends the drafts to staff.",
+    body: "Step between weeks with the arrows. Copy a week asks which week to copy and skips shifts already here, so pressing it twice adds nothing; Undo removes just the copies. Generate adds drafts, Clear drafts removes them, Publish sends them to staff.",
   },
   {
     id: "schedule.kpis",
@@ -348,7 +348,7 @@ In Settings each rule can be **Must fix** (publishing stops until you override),
     area: "schedule",
     route: "/schedule",
     title: "Week grid",
-    body: "A row per person plus open shifts, a column per day with its forecast, labor cost and hours bar. Tap + in a cell to add a shift, tap a shift to edit it, drag it to move it. Dashed shifts are drafts; on a phone you see one day at a time.",
+    body: "A row per person, a column per day with its forecast and labor. Tap + to add a shift (it starts from that person's usual times), tap one to edit: type 4p, 10:30p or close. Copy to other days with the day chips. Deletes and moves can be undone.",
     keywords: ["shifts", "drag", "open shifts", "draft"],
   },
   {
@@ -364,7 +364,7 @@ In Settings each rule can be **Must fix** (publishing stops until you override),
     area: "schedule",
     route: "/schedule/requests",
     title: "Time-off requests",
-    body: "Each request shows the dates, type and paid hours, plus a day-by-day table of scheduled vs needed hours and who else is off. Turn on Open up their shifts to free their shifts for others when you approve.",
+    body: "Each request shows the dates, type and paid hours, and scheduled against needed hours day by day. Approve can open up their shifts for others. Deny can carry a short reason, sent to them with the answer.",
     related: ["schedule.requests", "labor.sick"],
   },
   {
@@ -492,7 +492,7 @@ Only tip-eligible positions are in the pool (set on the Team page). Check the sp
     area: "tips",
     route: "/tips",
     title: "Period, tips and method",
-    body: "Pick the dates and choose to split by hours or by points. The tips themselves come in from Square below.",
+    body: "Pick the dates (Last week, This pay period and Last pay period are one tap) and split by hours or by points. The tips come in from Square below.",
     related: ["tips.hours", "tips.points", "tips.sources"],
   },
   {
@@ -1156,7 +1156,7 @@ export const budgets: HelpEntry[] = [
     area: "budgets",
     route: "/budgets",
     title: "Budgets",
-    body: "Weekly targets for sales, food cost % and labor %. The P&L, the Overview and the weekly brief measure against them.",
+    body: "Weekly targets for sales, food cost % and labor %. Use the forecast fills blank sales targets for the coming weeks. The P&L, the Overview and the weekly brief measure against them.",
     article: `- **This week** at the top: sales to yesterday against the target, plus how many of the last 6 finished weeks hit it.
 - **Weekly targets** — one row per week (weeks start Monday). Type a target and it saves. Under each one you'll see the actual so far, or the forecast for weeks ahead, in green, amber or red.
 - **Copy last week** or **Fill 8 weeks** to reuse targets. Weeks you've already set keep their numbers.

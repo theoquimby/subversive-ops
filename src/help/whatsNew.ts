@@ -78,6 +78,51 @@ export interface WhatsNewEntry {
 export type WhatsNewData = "guestPlaces";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 20 Nov · 1.50 (faster, safer data entry) ----
+  {
+    id: "2026-11-20.qol-ordering",
+    date: "2026-11-20",
+    title: "Orders: edit drafts, check in short",
+    line: "Change a draft order line by line, one draft per delivery, and mark short items when it arrives.",
+    icon: "ordering",
+    area: "food",
+    href: "/ordering",
+    help: "ordering.po.receive",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-20.qol-costing",
+    date: "2026-11-20",
+    title: "Recipes and prices, quicker",
+    line: "Duplicate a recipe, price a new ingredient by hand, and keep typed prices when you switch supplier.",
+    icon: "draft",
+    area: "food",
+    href: "/ingredients",
+    help: "ingredients.boughtAs",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-20.qol-schedule",
+    date: "2026-11-20",
+    title: "Schedule: type 4p, copy safely",
+    line: "Type shift times, copy a shift to other days, and copy a week without doubling it. Undo on all of it.",
+    icon: "pace",
+    area: "people",
+    href: "/schedule",
+    help: "schedule.grid",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-20.qol-floor",
+    date: "2026-11-20",
+    title: "Missed clock-outs, waste, notes",
+    line: "Fix a missed clock-out in place, undo waste, log last night's waste as yesterday, and never lose a note.",
+    icon: "checklist",
+    area: "people",
+    href: "/labor",
+    help: "labor.exceptions",
+    audience: "manager",
+  },
   // ---- 20 Nov · 1.49 (ingredients as you create; the linking tour) ----
   {
     id: "2026-11-20.create-with-ingredients",
