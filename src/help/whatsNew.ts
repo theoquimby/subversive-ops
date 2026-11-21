@@ -78,6 +78,18 @@ export interface WhatsNewEntry {
 export type WhatsNewData = "guestPlaces";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 20 Nov · 1.51 (automatic linking) ----
+  {
+    id: "2026-11-20.auto-link",
+    date: "2026-11-20",
+    title: "Ops links the sure ones for you",
+    line: "Sure matches and other flavours link themselves overnight; Draft all drafts every missing recipe at once.",
+    icon: "insights",
+    area: "numbers",
+    href: "/sales/link#auto",
+    help: "sales.link.auto",
+    audience: "manager",
+  },
   // ---- 20 Nov · 1.50 (faster, safer data entry) ----
   {
     id: "2026-11-20.qol-ordering",

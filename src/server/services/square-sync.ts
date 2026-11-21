@@ -1,4 +1,5 @@
 import "server-only";
+import { autoLinkSalesQuietly } from "./linking";
 import { addDays, businessDate, ISODate } from "@/domain/dates";
 import { DateChunk, dateRuns, emptyPending, isStale, mergePending, monthsBefore, PendingWork, planChunks } from "@/domain/squareSync";
 import { after } from "next/server";
@@ -40,6 +41,8 @@ export async function dailySync() {
   await syncPaymentsQuietly(addDays(today, -3), addDays(today, 1));
   const labor = await logged("labor", () => syncSquareTimecards(addDays(today, -1), addDays(today, 1)));
   await processPending().catch(() => undefined);
+  // Link what's safe to link unseen (sure matches, flavours of linked items), logged so Max can undo it.
+  await autoLinkSalesQuietly();
   // Carry on loading the history of card visits if it was started and isn't done, then count everything again.
   const guests = await guestBackfill();
   if (guests && !guests.finishedAt) await backfillGuests(60_000).catch(() => undefined);

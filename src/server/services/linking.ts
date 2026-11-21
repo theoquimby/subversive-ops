@@ -25,6 +25,7 @@ import {
   type LinkState,
 } from "@/domain/linking";
 import { cleanupPlan, isBackOnMenu, WEAK_NAME_MATCH, type CleanupPlan } from "@/domain/linkCleanup";
+import { autoLinkPlan, type AutoLink } from "@/domain/autoLink";
 import { isRevenueClass, type RevenueClass } from "@/domain/revenueClass";
 import { STANDARD_UNITS_BY_BASE } from "@/domain/units";
 import { db, num } from "../db";
@@ -379,4 +380,84 @@ export async function undoBatch(batch: string): Promise<{ restored: number; skip
   ops.push(db.linkChange.updateMany({ where: { batch, undoneAt: null }, data: { undoneAt: new Date() } }));
   await db.$transaction(ops);
   return { restored: ops.length - 1, skipped };
+}
+
+// ---- Linking without a button (overnight, and on the first look of the day) ---------------------
+
+const AUTO_KEY = "linking.auto";
+/** Who the log says made these links. */
+export const AUTO_USER = "Ops (automatic)";
+
+export interface AutoRun {
+  at: string;
+  day: string;
+  batch: string | null;
+  items: AutoLink[];
+}
+
+const loadAutoRuns = async () => (await readSettingJSON<AutoRun[]>(AUTO_KEY)) ?? [];
+
+/**
+ * Link what's safe to link unseen (sure matches and siblings of linked items;
+ * see domain/autoLink.ts), as one logged batch that Undo puts back. Anything a
+ * person has ever linked, unlinked or skipped is left alone, so undoing an
+ * automatic link sticks.
+ */
+export async function autoLinkSales(): Promise<AutoRun> {
+  const [a, changed, skippedOn] = await Promise.all([
+    linkAssistant(),
+    db.linkChange.findMany({ distinct: ["squareId"], select: { squareId: true } }),
+    loadSkipped(),
+  ]);
+  const touched = new Set([...changed.map((c) => c.squareId), ...Object.keys(skippedOn)]);
+  const plan = autoLinkPlan(
+    a.unlinked.map((r) => ({
+      squareId: r.squareId,
+      name: r.name,
+      modifier: r.modifier,
+      kind: r.kind,
+      price: r.price,
+      sales30: r.sales30,
+      best: r.candidates[0] ? { recipeId: r.candidates[0].recipeId, recipeName: r.candidates[0].recipeName, confidence: r.candidates[0].confidence, safe: r.candidates[0].safe } : null,
+      touched: touched.has(r.squareId),
+    })),
+    a.rows.filter((r) => r.state.recipeId && r.recipeName).map((r) => ({ name: r.name, modifier: r.modifier, price: r.price, recipeId: r.state.recipeId!, recipeName: r.recipeName! })),
+  );
+  const run: AutoRun = { at: new Date().toISOString(), day: a.today, batch: null, items: [] };
+  if (plan.length) {
+    const w = await writeLinks(plan.map((p) => ({ squareId: p.squareId, to: { recipeId: p.recipeId, ignored: false, unitCost: null, costClass: null } })), AUTO_USER);
+    run.batch = w.batch;
+    run.items = plan.filter((p) => w.names.includes(p.name));
+  }
+  const runs = await loadAutoRuns();
+  // Keep the last few runs that linked something, plus the day of the latest look.
+  await writeSettingJSON(AUTO_KEY, [run, ...runs.filter((r) => r.items.length)].slice(0, 10));
+  return run;
+}
+
+/** Nightly, and on the first look at Link your sales each day. A failure is logged, never thrown. */
+export async function autoLinkSalesQuietly(): Promise<AutoRun | null> {
+  try {
+    return await autoLinkSales();
+  } catch (e) {
+    console.error("auto link failed", e);
+    return null;
+  }
+}
+
+/** Has it run today already? */
+export async function autoLinkedToday(today: string) {
+  return (await loadAutoRuns()).some((r) => r.day === today);
+}
+
+/** Automatic links from the last week that are still in place, newest run first, for review and Undo. */
+export async function recentAutoLinks(days = 7): Promise<{ at: string; batch: string; items: AutoLink[] }[]> {
+  const since = Date.now() - days * 86_400_000;
+  const runs = (await loadAutoRuns()).filter((r) => r.batch && r.items.length && Date.parse(r.at) >= since);
+  if (!runs.length) return [];
+  const ids = [...new Set(runs.flatMap((r) => r.items.map((i) => i.squareId)))];
+  const now = new Map((await db.squareMapping.findMany({ where: { squareId: { in: ids } }, select: { squareId: true, recipeId: true } })).map((m) => [m.squareId, m.recipeId]));
+  return runs
+    .map((r) => ({ at: r.at, batch: r.batch!, items: r.items.filter((i) => now.get(i.squareId) === i.recipeId) }))
+    .filter((r) => r.items.length);
 }

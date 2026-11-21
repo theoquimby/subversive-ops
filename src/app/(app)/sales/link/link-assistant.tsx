@@ -21,7 +21,8 @@ import { rejectSuggestions } from "../square-menu/actions";
 import { IngredientBuilder, type BuiltLine, type Part } from "./ingredient-builder";
 
 type Recipe = LinkAssistant["recipes"][number];
-type Data = Pick<LinkAssistant, "coverage" | "plan" | "unlinked" | "skipped" | "beerGroups" | "flagged" | "recipes" | "parts" | "history" | "neverSold">;
+type Data = Pick<LinkAssistant, "coverage" | "plan" | "unlinked" | "skipped" | "beerGroups" | "flagged" | "recipes" | "parts" | "history" | "neverSold"> & { auto: AutoRunView[] };
+type AutoRunView = { at: string; batch: string; items: { squareId: string; name: string; recipeName: string; why: "sure" | "sibling"; like?: string; sales30: number }[] };
 type Show = (text: string, tone?: "good" | "bad" | "queued", action?: { label: string; onClick: () => void }) => void;
 
 const whole = (n: number) => money(n, { whole: true });
@@ -66,6 +67,7 @@ export function LinkAssistantView({ data }: { data: Data }) {
     <div className={cx(pending && "cursor-progress")}>
       {toast}
       <CoverageCard c={data.coverage} plan={data.plan} unlinkedCount={data.unlinked.length} neverSold={data.neverSold} />
+      {data.auto.length > 0 && <AutoLinked runs={data.auto} run={run} pending={pending} />}
 
       {data.flagged.length > 0 && (
         <HelpZone id="sales.link.check" tour="sales.link-check">
@@ -87,6 +89,8 @@ export function LinkAssistantView({ data }: { data: Data }) {
           <BeerSection groups={data.beerGroups} run={run} pending={pending} />
         </div>
       )}
+
+      <DraftAll rows={list} show={show} />
 
       <HelpZone id="sales.link.items" tour="sales.link-items">
         <div id="items" className="scroll-mt-24">
@@ -174,6 +178,85 @@ function reachText(plan: LinkAssistant["plan"], c: LinkAssistant["coverage"]): s
     if (at >= c.target) return i === 0 ? `Step 1 gets you past ${pct(c.target, 0)}.` : `Steps 1 to ${i + 1} get you past ${pct(c.target, 0)}; the rest is the long tail.`;
   }
   return `All of it done: about ${pct(plan.after, 0)} of sales with a cost behind it.`;
+}
+
+// ---- Linked by Ops ---------------------------------------------------------------------------------
+
+/** What Ops linked by itself lately, still in place: one tap to undo a run, or any single link. */
+function AutoLinked({ runs, run, pending }: { runs: AutoRunView[]; run: (fn: () => Promise<LinkResult>) => void; pending: boolean }) {
+  const [open, setOpen] = useState(false);
+  const items = runs.flatMap((r) => r.items);
+  const dollars = items.reduce((s, i) => s + i.sales30, 0);
+  const when = relativeTime(new Date(runs[0].at));
+  return (
+    <HelpZone id="sales.link.auto" className="mb-8">
+      <Card id="auto" className="scroll-mt-24 overflow-hidden">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-good-bg text-good"><Sparkles className="size-4" /></span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold">Ops linked {items.length} item{items.length === 1 ? "" : "s"} by itself · {whole(dollars)} of sales</div>
+            <div className="text-xs text-muted">Last run {when}. Only sure matches and other flavours of items you&apos;d linked. Wrong? Unlink it and Ops won&apos;t link it again.</div>
+          </div>
+          <Button size="sm" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{open ? "Hide" : "Check them"}</Button>
+          {runs.length === 1 && <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(() => undoLinks(runs[0].batch))}><Undo2 className="size-3.5" />Undo all</Button>}
+        </div>
+        {open && (
+          <div className="divide-y divide-border border-t border-border">
+            {items.map((i) => (
+              <div key={i.squareId} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <div className="min-w-0 text-sm">
+                  <span className="font-medium break-words">{i.name}</span> <span className="text-muted">→</span> {i.recipeName}
+                  <div className="text-xs text-muted">{i.why === "sibling" ? `Like ${i.like}, which you linked` : "Same name as the recipe, and the cost looks right"} · {whole(i.sales30)}</div>
+                </div>
+                <Button size="sm" variant="ghost" className="h-10 shrink-0 sm:h-8" disabled={pending} onClick={() => run(() => applyLinks([{ squareId: i.squareId, to: UNLINKED }]))}>Unlink</Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </HelpZone>
+  );
+}
+
+// ---- Draft every missing recipe ------------------------------------------------------------------------
+
+const DRAFT_CHUNK = 8;
+
+/**
+ * Kitchen and bar items with no recipe (and no suggestion worth accepting):
+ * draft them all, a few at a time, then review them on Recipe drafts. Nothing
+ * is saved as a recipe until someone accepts a draft.
+ */
+function DraftAll({ rows, show }: { rows: AssistantRow[]; show: Show }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState<{ done: number; of: number } | null>(null);
+  const todo = rows.filter((r) => (r.kind === "food" || r.kind === "drink") && !r.deleted && !(r.candidates[0] && bandOf(r.candidates[0].confidence) !== "low"));
+  if (todo.length < 2) return null;
+  const go = async () => {
+    const ids = todo.map((r) => r.squareId);
+    setBusy({ done: 0, of: ids.length });
+    let failed: string | null = null;
+    for (let i = 0; i < ids.length; i += DRAFT_CHUNK) {
+      const res = await draftSquareItems(ids.slice(i, i + DRAFT_CHUNK)).catch(() => ({ error: "Lost the connection part way. What's drafted so far is kept." }));
+      if (res.error) { failed = res.error; break; }
+      setBusy({ done: Math.min(ids.length, i + DRAFT_CHUNK), of: ids.length });
+    }
+    setBusy(null);
+    if (failed) show(failed, "bad");
+    router.push("/menu/drafts");
+  };
+  return (
+    <HelpZone id="sales.link.draftAll" className="mb-8">
+      <Card className="flex flex-wrap items-center gap-3 px-4 py-3">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2"><Sparkles className="size-4" /></span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold">{todo.length} kitchen and bar items have no recipe · {whole(todo.reduce((s, r) => s + r.sales30, 0))} of sales</div>
+          <div className="text-xs text-muted">{busy ? `Drafting ${busy.done} of ${busy.of}… keep this page open.` : "Draft them all at once from your similar recipes, then check each one on Recipe drafts. Nothing is saved until you accept it."}</div>
+        </div>
+        <Button variant="primary" size="sm" pending={!!busy} onClick={go}>{busy ? "Drafting…" : `Draft all ${todo.length}`}</Button>
+      </Card>
+    </HelpZone>
+  );
 }
 
 // ---- Links to check --------------------------------------------------------------------------------

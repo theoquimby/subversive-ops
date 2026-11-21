@@ -1,4 +1,5 @@
 import "server-only";
+import { recentAutoLinks } from "./linking";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { addDays, ISODate, weekday } from "@/domain/dates";
@@ -213,6 +214,12 @@ export async function morningBrief(now = new Date()) {
       href: "/kegs/taps",
       tone: t.backups > 0 ? "neutral" : "warn",
     });
+  }
+  // Sales items Ops linked to recipes overnight: worth a glance, and one tap to undo.
+  const auto = (await recentAutoLinks(1).catch(() => [])).flatMap((r) => r.items);
+  if (auto.length) {
+    const names = auto.slice(0, 3).map((i) => i.name.split(" · ")[0]);
+    tonight.push({ key: "linking.auto", kind: "other", title: `Ops linked ${auto.length} sales item${auto.length === 1 ? "" : "s"} to recipes`, detail: `${[...new Set(names)].join(", ")}${auto.length > 3 ? " and more" : ""} · check or undo on Link your sales`, href: "/sales/link#auto", tone: "neutral" });
   }
   const toneRank = { bad: 0, warn: 1, neutral: 2 } as const;
   const kindRank: Record<TonightItem["kind"], number> = { deadline: 0, draft: 1, checkin: 2, invoices: 3, kegs: 4, brewery: 4, schedule: 5, requests: 6, certs: 7, reviews: 8, other: 9 };

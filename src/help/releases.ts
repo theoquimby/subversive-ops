@@ -24,6 +24,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.51",
+    date: "2026-11-20",
+    title: "Ops links sales by itself, where it's safe",
+    summary: "Every night Ops links sure matches and other flavours of items already linked, and lists them on Link your sales to check or undo. Draft all drafts every missing kitchen and bar recipe at once.",
+    entries: ["2026-11-20.auto-link"],
+    fixed: [
+      "Ops never changes a link a person made, unlinked or skipped, and never links draft beer, cans or gift cards. Unlink one and it won't be linked again.",
+      "The morning brief says when Ops linked something overnight.",
+    ],
+  },
+  {
     version: "1.50",
     date: "2026-11-20",
     title: "Faster, safer data entry everywhere",

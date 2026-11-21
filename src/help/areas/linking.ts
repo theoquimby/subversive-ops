@@ -13,6 +13,16 @@ export const linking: HelpEntry[] = [
 ### What to do, in order
 The card at the top lists the clean-up as numbered steps, each with how much of the last 30 days' sales it gives a cost to. Tap a step to jump to where it's done. Links that may be wrong always come first; then the biggest: usually keg costs for draft beer, sure matches, cans and bottles, and recipes for the kitchen and bar.
 
+### What Ops links by itself
+Each night, and the first time anyone opens this page each day, Ops links what's safe to link without asking:
+- **Sure matches**: the same name as a recipe (or nearly), and a cost that looks right for the price.
+- **Other flavours of an item you've linked**: "Wings (6) · Cajun" follows "Wings (6) · Buffalo", at a similar price, and never a different size.
+
+It never touches anything a person has linked, unlinked or skipped, nor draft beer, cans or gift cards. **Ops linked N items by itself** at the top lists them, with **Unlink** on each and **Undo all**. Once you undo one, Ops won't link it again. The morning brief mentions it too, and every link is in **Changes** as "Ops (automatic)".
+
+### Drafting the missing recipes
+**Draft all** drafts a recipe for every kitchen and bar item that has none, from your similar recipes (and AI, if it's on). Then check each on [Recipe drafts](/menu/drafts) and accept it: that creates the recipe and links the item. Nothing is saved until you accept.
+
 ### Specials
 - **Specials you aren't running** need nothing. Anything that hasn't sold in 30 days stays out of the way here, so there's nothing to delete in Square.
 - **A special that's selling but you don't want to cost yet**: press **Skip for now**. It counts at a typical cost and leaves the list. If it starts selling most weeks again (8 or more of the last 30 days), it comes back with a note. **Skipped for now**, at the bottom, lists them with **Bring back**.
@@ -37,6 +47,24 @@ Pours are grouped by beer. Type what a keg costs once and every pour gets a cost
 **Sure matches** links all the near-certain ones at once, after you've looked them over.`,
     related: ["sales.link.coverage", "sales.link.beer", "sales.link.check", "sales.mapping", "menu.draftBeer"],
     keywords: ["link", "map", "mapping", "unlinked", "not linked", "typical 30%", "assistant", "square items", "recipe"],
+  },
+  {
+    id: "sales.link.auto",
+    area: "sales",
+    route: "/sales/link",
+    title: "Linked by Ops",
+    body: "What Ops linked by itself lately: sure matches, and other flavours of items you'd linked. Check them, Unlink any that are wrong (Ops won't link that one again), or Undo all.",
+    related: ["sales.link"],
+    keywords: ["automatic", "auto link", "undo"],
+  },
+  {
+    id: "sales.link.draftAll",
+    area: "sales",
+    route: "/sales/link",
+    title: "Draft all",
+    body: "Drafts a recipe for every kitchen and bar item with none, a few at a time, then opens Recipe drafts to check and accept them. Nothing is saved as a recipe until you accept it.",
+    related: ["sales.link", "menu.drafts"],
+    keywords: ["draft", "bulk", "recipes"],
   },
   {
     id: "sales.link.coverage",
