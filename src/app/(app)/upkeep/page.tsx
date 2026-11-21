@@ -9,8 +9,11 @@ import { LogList, RepairButton } from "./log-client";
 
 export const metadata = { title: "Upkeep" };
 
-export default async function UpkeepPage() {
+export default async function UpkeepPage({ searchParams }: { searchParams: Promise<{ repair?: string; title?: string; date?: string; note?: string }> }) {
   await requireUser("MANAGER");
+  const sp = await searchParams;
+  // "Log as repair" from a shift note opens the form filled in.
+  const prefill = sp.repair ? { title: (sp.title ?? "").slice(0, 120), date: /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? sp.date! : undefined, note: (sp.note ?? "").slice(0, 500) } : undefined;
   await ensureUpkeepPresets();
   const b = await upkeepBoard();
   const s = b.summary;
@@ -22,7 +25,7 @@ export default async function UpkeepPage() {
         help="upkeep.page"
         title="Upkeep"
         description="Draft lines, the hood, the walk-in and everything else that needs looking after: what's due, who to call, and what repairs have cost."
-        actions={<RepairButton equipment={equipOptions} today={b.today} />}
+        actions={<RepairButton equipment={equipOptions} today={b.today} prefill={prefill} />}
       />
 
       <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4" data-tour="upkeep.stats">
