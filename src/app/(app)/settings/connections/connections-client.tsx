@@ -117,7 +117,7 @@ function quickbooksStatusOf(d: ConnectionsData): Status {
 }
 
 function StatusPill({ status }: { status: Status }) {
-  const dot = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted" }[status.tone];
+  const dot = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted", unknown: "bg-muted" }[status.tone];
   return (
     <Badge tone={status.tone} className="gap-1.5">
       <span className={cx("size-1.5 rounded-full", dot)} />
@@ -262,7 +262,7 @@ function ServiceTile({ meta, status, selected, onOpen, href }: { meta: ServiceMe
           <LinkButton href={href} variant="secondary">Manage <ChevronRight className="size-4" /></LinkButton>
         ) : (
         <Button variant={done || selected ? "secondary" : "primary"} onClick={onOpen} aria-expanded={selected}>
-          {selected ? "Close" : { good: "Manage", warn: "Continue", bad: "Fix", neutral: "Set up" }[status.tone]}
+          {selected ? "Close" : { good: "Manage", warn: "Continue", bad: "Fix", neutral: "Set up", unknown: "Check" }[status.tone]}
           {!selected && <ChevronRight className="size-4" />}
         </Button>
         )}
@@ -502,7 +502,7 @@ export function Outbound({ href, children }: { href: string; children: ReactNode
 }
 
 export function Note({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
-  return <div className={cx("rounded-lg px-3 py-2.5 text-sm", { good: "bg-good-bg text-good", warn: "bg-warn-bg text-warn", bad: "bg-bad-bg text-bad", neutral: "bg-surface-2 text-ink-2" }[tone])}>{children}</div>;
+  return <div className={cx("rounded-lg px-3 py-2.5 text-sm", { good: "bg-good-bg text-good", warn: "bg-warn-bg text-warn", bad: "bg-bad-bg text-bad", neutral: "bg-surface-2 text-ink-2", unknown: "bg-surface-2 text-muted" }[tone])}>{children}</div>;
 }
 
 /**

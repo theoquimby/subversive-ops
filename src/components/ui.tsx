@@ -88,13 +88,18 @@ export function EmptyState({ title, children, action }: { title: ReactNode; chil
 
 // ---- Status -------------------------------------------------------------------
 
-export type Tone = "good" | "warn" | "bad" | "neutral";
-const toneText: Record<Tone, string> = { good: "text-good", warn: "text-warn", bad: "text-bad", neutral: "text-ink" };
+/**
+ * `unknown`: the data behind it isn't in (not synced, not counted, not connected).
+ * Never green or red: a missing number mustn't read as good or bad news.
+ */
+export type Tone = "good" | "warn" | "bad" | "neutral" | "unknown";
+const toneText: Record<Tone, string> = { good: "text-good", warn: "text-warn", bad: "text-bad", neutral: "text-ink", unknown: "text-muted" };
 const toneBadge: Record<Tone, string> = {
   good: "bg-good-bg text-good",
   warn: "bg-warn-bg text-warn",
   bad: "bg-bad-bg text-bad",
   neutral: "bg-surface-2 text-ink-2",
+  unknown: "border border-dashed border-border-strong text-muted",
 };
 
 export function Badge({ tone = "neutral", children, className }: { tone?: Tone; children: ReactNode; className?: string }) {
@@ -102,7 +107,7 @@ export function Badge({ tone = "neutral", children, className }: { tone?: Tone; 
 }
 
 export function Dot({ tone }: { tone: Tone }) {
-  return <span className={cn("inline-block size-1.5 rounded-full transition-colors duration-180", { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted" }[tone])} />;
+  return <span className={cn("inline-block size-1.5 rounded-full transition-colors duration-180", { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted", unknown: "border border-muted bg-transparent" }[tone])} />;
 }
 
 // ---- Buttons ------------------------------------------------------------------

@@ -10,7 +10,7 @@ import { areaStyle, type Area } from "@/lib/areas";
  */
 export function LinkTile({ help, tour, icon: Icon, area, title, turnsOn, tone, label, detail, time, href }: { help: string; tour: string; icon: LucideIcon; area: Area; title: string; turnsOn: string; tone: Tone; label: string; detail: string; time: string; href: string }) {
   const done = tone === "good";
-  const dot = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted" }[tone];
+  const dot = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", neutral: "bg-muted", unknown: "bg-muted" }[tone];
   return (
     <HelpZone id={help} className="h-full min-w-0">
       <Card className="flex h-full flex-col p-5" data-tour={tour}>
@@ -29,7 +29,7 @@ export function LinkTile({ help, tour, icon: Icon, area, title, turnsOn, tone, l
         <div className="mt-auto flex items-center justify-between gap-3 pt-4">
           <span className="text-xs text-muted">{done ? "" : time}</span>
           <LinkButton href={href} variant={done ? "secondary" : "primary"}>
-            {{ good: "Manage", warn: "Continue", bad: "Fix", neutral: "Set up" }[tone]} <ChevronRight className="size-4" />
+            {{ good: "Manage", warn: "Continue", bad: "Fix", neutral: "Set up", unknown: "Check" }[tone]} <ChevronRight className="size-4" />
           </LinkButton>
         </div>
       </Card>

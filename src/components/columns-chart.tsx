@@ -35,6 +35,8 @@ export interface Col {
   parts: number[];
   /** A mark across the column at this value (where sales were, when the costs stacked past them). */
   tick?: number;
+  /** The data for this column isn't in yet (not synced, not counted): drawn as an outline, never as zero. */
+  missing?: boolean;
   tip: { title: string; rows: { color?: string; label: string; value: string; strong?: boolean }[] };
 }
 
@@ -70,7 +72,7 @@ export function ColumnsChart({ cols, series, money = true, height = 200, ariaLab
   const subs = cols.some((c) => c.sub) && band0 >= 46;
   const H = height + (subs ? 14 : 0);
   const pad = { top: 10, right: 4, bottom: subs ? 36 : 22, left: 40 };
-  const max = Math.max(1, ...cols.map((c) => Math.max(c.tick ?? 0, c.parts.reduce((s, v) => s + Math.max(0, v), 0)))) * 1.06;
+  const max = Math.max(1, ...cols.filter((c) => !c.missing).map((c) => Math.max(c.tick ?? 0, c.parts.reduce((s, v) => s + Math.max(0, v), 0)))) * 1.06;
   const ticks = niceTicks(max);
   const top = ticks.at(-1)!;
   const band = (W - pad.left - pad.right) / Math.max(1, cols.length);
@@ -109,7 +111,8 @@ export function ColumnsChart({ cols, series, money = true, height = 200, ariaLab
             return (
               <g key={c.key} opacity={hover == null || hover === i ? 1 : 0.55} className="transition-opacity duration-180">
                 {c.mark && <rect x={x(i) - band / 2 + 1} y={pad.top - 6} width={band - 2} height={H - pad.top + 4} rx={6} fill="var(--surface-2)" />}
-                {segs.map((s, k) => {
+                {c.missing && <rect x={x(i) - barW / 2 + 0.5} y={y(top * 0.35)} width={barW - 1} height={y(0) - y(top * 0.35) - 0.5} rx={3} fill="none" stroke="var(--border-strong)" strokeDasharray="3 3" />}
+                {!c.missing && segs.map((s, k) => {
                   const y0 = y(acc);
                   acc += s.v;
                   const y1 = y(acc);

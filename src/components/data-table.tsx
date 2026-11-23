@@ -58,6 +58,9 @@ import { HelpTip, HelpZone } from "./help";
 
 // ---- Types --------------------------------------------------------------------
 
+/** Tables this short show no toolbar or keyboard hints (search and filters are noise on a few rows). */
+const COMPACT_ROWS = 8;
+
 export interface Column<T> {
   id: string;
   header: ReactNode;
@@ -596,6 +599,8 @@ export function DataTable<T>(props: DataTableProps<T>) {
   const segmentedIds = new Set(filters.filter((f) => f.kind === "facet" && f.display === "segmented").map((f) => f.id));
   const narrowing = Object.fromEntries(Object.entries(activeFilters).filter(([k]) => !segmentedIds.has(k)));
   const isFiltered = !!view.q.trim() || activeFilterCount(narrowing) > 0;
+  // A handful of rows needs no search, filters or keyboard hints: they'd outweigh the table.
+  const compact = !remote && !isFiltered && !props.toolbar && rows.length <= COMPACT_ROWS;
   // Clear all leaves the tabs (segmented filters) where they are.
   const clearAll = () => { setQInput(""); patch({ q: "", filters: Object.fromEntries(Object.entries(activeFilters).filter(([k]) => filters.some((f) => f.id === k && f.kind === "facet" && f.display === "segmented"))) }); };
   const countsFor = (fid: string) => {
@@ -939,7 +944,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
         </div>
       )}
 
-      {!noRows && toolbar}
+      {!noRows && !compact && toolbar}
 
       {noRows ? (
         props.empty ?? <EmptyState title={`No ${nPlural} yet`} />
@@ -1039,7 +1044,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
             </div>
             {props.footer}
           </Card>
-          <p className="mt-2 hidden text-xs text-muted lg:block">
+          <p className={cn("mt-2 hidden text-xs text-muted", !compact && "lg:block")}>
             <kbd className="dt-kbd">/</kbd> search · <kbd className="dt-kbd">j</kbd><kbd className="dt-kbd">k</kbd> move · <kbd className="dt-kbd">Enter</kbd> open{selectable && <> · <kbd className="dt-kbd">x</kbd> select · shift-click a range</>} · shift-click a header to sort by two columns
           </p>
           <div className="sm:hidden">{props.footer}</div>
