@@ -333,7 +333,7 @@ export function QuoteBuilder({ ev, catalog }: { ev: PrivateEventDetail; catalog:
                         type="button"
                         onClick={() => run(async () => (await setLineField(l.id, "perPerson", l.perPerson ? "0" : "1")) ?? {})}
                         className="relative rounded px-1 text-[11px] text-muted underline decoration-dotted underline-offset-2 after:absolute after:-inset-2 after:content-[''] hover:text-ink"
-                        aria-label={l.perPerson ? "Per guest — switch to a fixed count" : "Fixed count — switch to per guest"}
+                        aria-label={l.perPerson ? "Per guest: switch to a fixed count" : "Fixed count: switch to per guest"}
                       >
                         {l.perPerson ? `per guest = ${l.units}` : "total"}
                       </button>
@@ -453,7 +453,7 @@ export function TotalsCard({ ev }: { ev: PrivateEventDetail }) {
         <Line label="Balance" value={money(q.balance)} strong />
 
         <div className="mt-4 rounded-lg bg-surface-2 p-3" data-tour="private.margin">
-          <div className="mb-1 text-xs font-medium text-muted">Just for you — not on the quote</div>
+          <div className="mb-1 text-xs font-medium text-muted">Just for you, not on the quote</div>
           <Line label={<>Food cost{q.foodCostPct != null && <span className="text-muted"> · {pct(q.foodCostPct, 0)}</span>}</>} value={<>{money(q.foodCost)}{q.costIncomplete && <span className="text-warn">*</span>}</>} />
           {q.barCost > 0 && <Line label="Bar cost (est.)" value={money(q.barCost)} />}
           <Line label={<>Margin before labor{q.marginPct != null && <span className={cx(" font-medium", tone)}> · {pct(q.marginPct, 0)}</span>}</>} value={money(q.margin)} strong />
@@ -483,7 +483,7 @@ export function ShareCard({ ev, canEmail }: { ev: PrivateEventDetail; canEmail: 
       if (r.error || !r.url) return setMsg(r);
       setUrl(r.url);
       const ok = await copy(r.url);
-      setMsg({ message: r.message ?? (ok ? "Link copied — paste it in a text or email." : "Here's the link — copy it from the box.") });
+      setMsg({ message: r.message ?? (ok ? "Link copied. Paste it in a text or email." : "Here's the link. Copy it from the box.") });
       router.refresh();
     });
 

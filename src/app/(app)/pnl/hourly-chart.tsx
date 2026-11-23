@@ -42,11 +42,15 @@ export function HourlyChart({ hours, height = 220, showScheduled = true }: { hou
   const H = height;
   const pad = { top: 12, right: 12, bottom: 24, left: 52 };
   const sched = showScheduled && visible.some((h) => h.scheduled > 0);
-  const max = Math.max(1, ...visible.map((h) => Math.max(h.sales, h.labor, sched ? h.scheduled : 0))) * 1.15;
+  // Round ticks ($0, $250, $500…), never a third of whatever the busiest hour happened to be.
+  const raw = Math.max(1, ...visible.map((h) => Math.max(h.sales, h.labor, sched ? h.scheduled : 0))) * 1.08;
+  const mag = 10 ** Math.floor(Math.log10(raw / 2));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw / 2) ?? raw / 2;
+  const max = Math.ceil(raw / step) * step;
   const band = (W - pad.left - pad.right) / Math.max(1, visible.length);
   const x = (i: number) => pad.left + band * i + band / 2;
   const y = (v: number) => pad.top + (1 - v / max) * (H - pad.top - pad.bottom);
-  const ticks = [0, 0.5, 1].map((t) => max * t);
+  const ticks = Array.from({ length: Math.round(max / step) + 1 }, (_, i) => i * step);
   const path = (v: (h: HourPoint) => number) => visible.map((h, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v(h)).toFixed(1)}`).join(" ");
   const line = path((h) => h.labor);
   const schedLine = sched ? path((h) => h.scheduled) : null;

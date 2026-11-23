@@ -36,7 +36,7 @@ export default async function PrivateEventsPage({ searchParams }: { searchParams
         help="events.private.page"
         back={{ href: "/events", label: "Events" }}
         title="Private events"
-        description="Parties, buyouts, rehearsal dinners and corporate nights — from first inquiry to paid in full. Confirmed bookings go on the events calendar and into the forecast."
+        description="Parties, buyouts, rehearsal dinners and corporate nights, from first inquiry to paid in full. Confirmed bookings go on the events calendar and into the forecast."
         actions={
           <>
             <LinkButton href="/events/private/setup" data-tour="private.setup-link">Packages & defaults</LinkButton>
@@ -51,7 +51,7 @@ export default async function PrivateEventsPage({ searchParams }: { searchParams
         <Stat label="Balances owed" value={money(owed, { whole: true })} hint={winRate != null ? `Win rate ${Math.round(winRate * 100)}%` : "After deposits"} />
       </div>
 
-      <Section title="New inquiry" description="Just the basics — fill in the rest as it firms up.">
+      <Section title="New inquiry" description="Just the basics. Fill in the rest as it firms up.">
         <HelpZone id="events.private.new" tour="private.new">
           <NewInquiry spaces={cfg.spaces.map((s) => s.name)} today={today} />
         </HelpZone>
