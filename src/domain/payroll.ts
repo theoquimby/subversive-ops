@@ -121,8 +121,9 @@ export interface RecentPeriod extends PeriodRange {
 
 /**
  * The pay period the Timecards page opens on when none is asked for: the
- * oldest ended period still waiting for approval that has hours in it (payroll
- * is done in order), looking back no further than the last approved one. With
+ * latest ended period still waiting for approval that has hours in it (the
+ * one being paid now; older ones waiting are listed under it), looking back
+ * no further than the last approved one. With
  * no hours anywhere, the latest ended period that had shifts, so a week whose
  * clock-ins never came in is seen. Otherwise the period in progress.
  * `waiting` is every other ended period still to approve, `pending` all of them; both oldest first.
@@ -135,7 +136,7 @@ export function openingPeriod(recent: RecentPeriod[], today: ISODate): { open: I
     walked.push(p);
   }
   const pending = walked.filter((p) => p.end < today && (p.cards > 0 || p.shifts > 0));
-  const open = [...pending].reverse().find((p) => p.cards > 0) ?? pending[0];
+  const open = pending.find((p) => p.cards > 0) ?? pending[0];
   if (!open) return { open: recent[0]?.start ?? today, waiting: [], pending: [] };
   return { open: open.start, waiting: pending.filter((p) => p !== open).reverse(), pending: [...pending].reverse() };
 }

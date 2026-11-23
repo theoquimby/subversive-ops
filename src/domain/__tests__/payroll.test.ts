@@ -22,12 +22,12 @@ describe("pay periods", () => {
 
 describe("openingPeriod", () => {
   const p = (start: number, extra: { approved?: boolean; cards?: number; shifts?: number } = {}) => ({ start: d(start), end: d(start + 6), approved: false, cards: 0, shifts: 0, ...extra });
-  it("opens on the oldest unapproved period with hours, back to the last approved one", () => {
+  it("opens on the latest unapproved period with hours, and lists the others waiting, back to the last approved one", () => {
     const recent = [p(23, { shifts: 60 }), p(16, { shifts: 55 }), p(9, { cards: 37 }), p(2, { cards: 39 }), { start: "2026-10-26", end: "2026-11-01", approved: true, cards: 40, shifts: 0 }];
     const r = openingPeriod(recent, d(23));
-    expect(r.open).toBe(d(2));
-    // Ended periods still waiting after it, oldest first; the week in progress isn't one.
-    expect(r.waiting.map((w) => w.start)).toEqual([d(9), d(16)]);
+    expect(r.open).toBe(d(9));
+    // Other ended periods still waiting, oldest first; the week in progress isn't one.
+    expect(r.waiting.map((w) => w.start)).toEqual([d(2), d(16)]);
     expect(r.pending.map((w) => w.start)).toEqual([d(2), d(9), d(16)]);
   });
   it("opens on an ended week with shifts but no clock-ins when nothing has hours", () => {
