@@ -71,7 +71,7 @@ function SendSheet({ id, supplierName, supplierEmail, myEmail, emailReady, subje
         <label className="mt-4 block">
           <span className="mb-1.5 block text-[0.8rem] font-medium text-ink-2">To</span>
           <Input type="email" inputMode="email" autoFocus={!supplierEmail} value={to} onChange={(e) => setTo(e.target.value)} onKeyDown={(e) => e.key === "Enter" && canSend && to && send()} placeholder="orders@supplier.com" aria-label="Supplier email" />
-          {!supplierEmail && <span className="mt-1 block text-xs text-muted">No email on file for {supplierName} — we&apos;ll remember this one.</span>}
+          {!supplierEmail && <span className="mt-1 block text-xs text-muted">No email on file for {supplierName}. We&apos;ll remember this one.</span>}
         </label>
         <div className="mt-2 flex items-center justify-between gap-3">
           <div className="min-w-0 text-sm">

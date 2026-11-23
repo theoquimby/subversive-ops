@@ -324,7 +324,7 @@ function ProviderCard({ provider, pending, run }: { provider: PayrollProvider; p
   const [name, setName] = useState(provider.id === "OTHER" ? provider.name : "");
   const [url, setUrl] = useState(provider.url);
   return (
-    <Section help="team.onboarding.provider" title="Payroll provider" description="Where new hires fill in their W-4, I-9 and direct deposit — the checklist links there. Also names the payroll file on Payroll hand-off.">
+    <Section help="team.onboarding.provider" title="Payroll provider" description="Where new hires fill in their W-4, I-9 and direct deposit; the checklist links there. Also names the payroll file on Payroll hand-off.">
       <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
         <div className="sm:w-56"><Select aria-label="Payroll provider" value={id} onChange={(e) => { setId(e.target.value); setUrl(PROVIDERS[e.target.value as PayrollProvider["id"]]?.url ?? ""); }} options={PROVIDER_OPTIONS} className="max-sm:h-12" /></div>
         {id === "OTHER" && <Input aria-label="Provider name" placeholder="Name (ADP, Paychex…)" value={name} onChange={(e) => setName(e.target.value)} className="max-sm:h-12 sm:w-48" />}

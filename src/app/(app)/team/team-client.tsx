@@ -86,8 +86,8 @@ export function AddRow({ placeholder, onAdd, label, onPasteLines }: { placeholde
   );
 }
 
-export const AddPositionRow = () => <AddRow placeholder="Add a position — type a name, press Enter" label="New position name" onAdd={addPosition} />;
-export const AddEmployeeRow = () => <AddRow placeholder="Add a person — type a name, press Enter" label="New employee name" onAdd={addEmployee} />;
+export const AddPositionRow = () => <AddRow placeholder="Add a position: type a name, press Enter" label="New position name" onAdd={addPosition} />;
+export const AddEmployeeRow = () => <AddRow placeholder="Add a person: type a name, press Enter" label="New employee name" onAdd={addEmployee} />;
 
 export function DeletePositionButton({ id, name }: { id: string; name: string }) {
   const confirm = useConfirm();
@@ -401,7 +401,7 @@ function AvailabilityEditor({ employee: e, openingHours, users }: { employee: Em
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm">
           <span className="font-medium">{e.name}&rsquo;s availability</span>
-          <span className="ml-2 text-muted">{notSet ? "Not set — scheduling treats them as always available." : "Type ranges like 4p-10p, 11-2 or all day. Blank = unavailable."}</span>
+          <span className="ml-2 text-muted">{notSet ? "Not set, so scheduling treats them as always available." : "Type ranges like 4p-10p, 11-2 or all day. Blank = unavailable."}</span>
         </div>
         <div className="flex gap-1">
           {notSet ? (

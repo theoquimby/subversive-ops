@@ -43,7 +43,7 @@ export function MyTrainingPanel({ data, today }: { data: MyTraining; today: stri
                       {statusSentence({ status: c.status, expiresOn: c.expiresOn, daysLeft: c.daysLeft })}
                       {c.isAnnualTraining && " · every year"}
                     </div>
-                    {waiting && <div className="mt-1 inline-flex items-center gap-1 text-xs text-warn"><Clock className="size-3.5" />Uploaded {shortDate(c.latest!.createdAt.slice(0, 10))} — waiting for a manager to check</div>}
+                    {waiting && <div className="mt-1 inline-flex items-center gap-1 text-xs text-warn"><Clock className="size-3.5" />Uploaded {shortDate(c.latest!.createdAt.slice(0, 10))}, waiting for a manager to check</div>}
                   </div>
                   <Button
                     size="sm"
@@ -113,7 +113,7 @@ function Checklist({ a, today }: { a: MyTraining["checklists"][number]; today: s
             {a.dueOn && <> · <span className={cx(overdue && "text-bad")}>due {shortDate(a.dueOn)}</span></>}
           </div>
         </div>
-        {st && <Badge tone={st.tone}>{st.label === "Ready to sign off" ? "Done — waiting for sign-off" : st.label}</Badge>}
+        {st && <Badge tone={st.tone}>{st.label === "Ready to sign off" ? "Done, waiting for sign-off" : st.label}</Badge>}
       </div>
       <div className="h-1 bg-surface-2" aria-hidden>
         <div className={cx("h-full transition-[width] duration-260 ease-motion", count >= a.steps.length ? "bg-good" : "bg-ink-2")} style={{ width: `${a.steps.length ? (count / a.steps.length) * 100 : 100}%` }} />

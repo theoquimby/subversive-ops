@@ -19,7 +19,7 @@ export default async function MyPage() {
     return (
       <div className="mx-auto max-w-xl">
         <PageHeader help="my.page" title="My shifts" />
-        <EmptyState title={`Hi ${session.name} — you're not on the schedule yet`}>
+        <EmptyState title={`Hi ${session.name}, you're not on the schedule yet`}>
           Your login isn&apos;t linked to a team member. Ask a manager to connect it on the Team page, then your shifts, open shifts and time off will show up here.
         </EmptyState>
       </div>

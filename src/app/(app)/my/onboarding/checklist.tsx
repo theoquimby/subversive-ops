@@ -33,7 +33,7 @@ export function MyChecklist({ done, dueOn, progress, provider, emergency, items 
   const tick = (i: Item, on: boolean) => {
     setTicked((t) => ({ ...t, [i.id]: on }));
     start(async () => {
-      const r = await tickMyItem(i.id, on).catch(() => ({ error: "No signal — try again in a moment." }));
+      const r = await tickMyItem(i.id, on).catch(() => ({ error: "No signal. Try again in a moment." }));
       if (r.error) {
         setTicked((t) => ({ ...t, [i.id]: !on }));
         show(r.error, "bad");
@@ -99,7 +99,7 @@ export function MyChecklist({ done, dueOn, progress, provider, emergency, items 
                       disabled={pending}
                       onClick={() =>
                         start(async () => {
-                          const r = await saveEmergencyContact(ec).catch(() => ({ error: "No signal — try again in a moment." }) as { error?: string; ok?: string });
+                          const r = await saveEmergencyContact(ec).catch(() => ({ error: "No signal. Try again in a moment." }) as { error?: string; ok?: string });
                           if (r.error) show(r.error, "bad");
                           else {
                             setTicked((t) => ({ ...t, [i.id]: true }));

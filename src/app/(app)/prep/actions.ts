@@ -26,7 +26,7 @@ export type PrepActionForm = z.infer<typeof actionSchema>;
 export async function prepAction(input: PrepActionForm): Promise<{ ok: true } | { error: string }> {
   const me = await requireUser();
   const parsed = actionSchema.safeParse(input);
-  if (!parsed.success) return { error: "That didn't look right — try again." };
+  if (!parsed.success) return { error: "That didn't look right. Try again." };
   const a = parsed.data;
   const recipe = await db.recipe.findFirst({ where: { id: a.recipeId, kind: "PREP" }, select: { id: true } });
   if (!recipe) return { error: "That prep item isn't there any more." };

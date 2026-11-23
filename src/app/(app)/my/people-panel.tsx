@@ -77,7 +77,7 @@ function DocRow({ d }: { d: MyPeople["docs"][number] }) {
             setError(null);
             setAckedAt(new Date().toISOString());
             start(async () => {
-              const r = await acknowledgeDocument(d.id).catch(() => ({ error: "No signal — try again in a moment.", ackedAt: undefined }));
+              const r = await acknowledgeDocument(d.id).catch(() => ({ error: "No signal. Try again in a moment.", ackedAt: undefined }));
               if (r.error) { setError(r.error); setAckedAt(null); } else if (r.ackedAt) setAckedAt(r.ackedAt);
             });
           }}

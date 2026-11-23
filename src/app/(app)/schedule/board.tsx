@@ -327,7 +327,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
       <HelpZone id="schedule.toolbar" className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
           <LinkButton href={`/schedule?week=${prevWeek}`} variant="ghost" size="sm" aria-label="Previous week" className="max-sm:size-10"><ChevronLeft className="size-4" /></LinkButton>
-          <div className="num min-w-[9.5rem] text-center text-[0.95rem] font-semibold">{shortDate(dates[0])} – {shortDate(dates[6])}</div>
+          <div className="num min-w-[9.5rem] text-center text-[0.95rem] font-semibold">{shortDate(dates[0])} to {shortDate(dates[6])}</div>
           <LinkButton href={`/schedule?week=${nextWeek}`} variant="ghost" size="sm" aria-label="Next week" className="max-sm:size-10"><ChevronRight className="size-4" /></LinkButton>
           {data.monday !== thisWeek && <LinkButton href="/schedule" variant="ghost" size="sm">This week</LinkButton>}
           <span className="ml-1 hidden text-sm text-muted sm:inline">

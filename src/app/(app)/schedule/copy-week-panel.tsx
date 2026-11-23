@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { copyWeek, previewWeekCopy } from "./actions";
 
-const range = (monday: string) => `${shortDate(monday)} – ${shortDate(addDays(monday, 6))}`;
+const range = (monday: string) => `${shortDate(monday)} to ${shortDate(addDays(monday, 6))}`;
 
 /**
  * Copy another week's shifts onto this one. Last week is picked to start;

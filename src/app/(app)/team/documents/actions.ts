@@ -17,7 +17,7 @@ export async function uploadDocument(_: unknown, form: FormData): Promise<{ erro
   const s = await requireUser("MANAGER");
   const f = form.get("file");
   if (!(f instanceof File) || f.size === 0) return { error: "Choose a file to upload." };
-  if (f.size > MAX_DOCUMENT_BYTES) return { error: `That file is ${(f.size / 1024 / 1024).toFixed(1)} MB. The limit is 8 MB — try a smaller PDF.` };
+  if (f.size > MAX_DOCUMENT_BYTES) return { error: `That file is ${(f.size / 1024 / 1024).toFixed(1)} MB. The limit is 8 MB: try a smaller PDF.` };
   const mime = guessMime(f);
   if (!mime) return { error: "Upload a PDF, Word file, text file or photo." };
   const kind = String(form.get("kind") ?? "POLICY");
@@ -39,7 +39,7 @@ export async function uploadDocument(_: unknown, form: FormData): Promise<{ erro
     },
   });
   refresh();
-  const note = via === "claude" ? " Text read by Claude for questions." : text ? "" : " No text could be read from it — paste the text below so the assistant can use it.";
+  const note = via === "claude" ? " Text read by Claude for questions." : text ? "" : " No text could be read from it. Paste the text below so the assistant can use it.";
   return { ok: `Uploaded “${title}”.${note}` };
 }
 

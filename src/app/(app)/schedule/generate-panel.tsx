@@ -122,7 +122,7 @@ export function GeneratePanel({ monday, positions, laborTarget, autoDraft, onClo
               </div>
               {open.length > 0 && (
                 <div className="mt-4">
-                  <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">Couldn&apos;t fill — these become open shifts</div>
+                  <div className="mb-1.5 text-[0.8rem] font-medium text-ink-2">Couldn&apos;t fill these, so they become open shifts</div>
                   <div className="flex flex-wrap gap-1.5">
                     {open.map((o, i) => (
                       <Badge key={i} tone="warn">{dayDate(o.date).split(",")[0]} · {pos.get(o.positionId)?.name} · {shiftLabel(o.startMin, o.endMin)}</Badge>

@@ -68,7 +68,7 @@ export async function givePeerShoutout(input: { employeeId: string; value?: stri
   if (!cfg.peerShoutouts && m.session.role !== "MANAGER") return { error: "Shout-outs from teammates are turned off." };
   const p = shout.safeParse(input);
   if (!p.success) return { error: p.error.issues[0]?.message };
-  if (p.data.employeeId === m.e.id) return { error: "Nice try — pick a teammate." };
+  if (p.data.employeeId === m.e.id) return { error: "Nice try. Pick a teammate." };
   const to = await db.employee.findFirst({ where: { id: p.data.employeeId, active: true }, select: { id: true } });
   if (!to) return { error: "Pick someone on the team." };
   const s = await db.shoutout.create({
@@ -113,5 +113,5 @@ export async function sendStaffMessage(input: { kind: "QUESTION" | "IDEA" | "CON
   inBackground(() => notifyManagersNote({ subject: `${who} ${label}`, title: `${who} ${label}`, line: p.data.body.slice(0, 200), path: "/team/messages", tag: `msg-${row.id}` }));
   revalidatePath("/my/message");
   revalidatePath("/team/messages");
-  return { ok: anonymous ? "Sent — your name won't show to managers." : "Sent. You'll see the reply here." };
+  return { ok: anonymous ? "Sent. Your name won't show to managers." : "Sent. You'll see the reply here." };
 }

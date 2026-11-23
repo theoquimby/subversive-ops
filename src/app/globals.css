@@ -107,6 +107,13 @@
   }
 }
 
+/* A panel that is dark in both themes (the staff home's next shift): status colours stepped for a dark surface. */
+.on-ink {
+  --good: #5cc28f;
+  --warn: #e3a34a;
+  --bad: #f07a6e;
+}
+
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);

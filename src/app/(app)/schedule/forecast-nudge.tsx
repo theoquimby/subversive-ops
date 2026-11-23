@@ -50,7 +50,7 @@ export function ForecastNudge({ date, sales, nudge, past, onRegenerate }: { date
       {open && (
         <form className="mt-2 grid grid-cols-[6rem_1fr] gap-2 sm:grid-cols-[6rem_1fr_auto_auto]" onSubmit={(e) => { e.preventDefault(); save(pct, reason); }}>
           <Input value={pct} onChange={(e) => setPct(e.target.value)} placeholder="+15" inputMode="text" aria-label="Change in percent" className="num text-right" autoFocus />
-          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why — e.g. festival, private party" aria-label="Reason" maxLength={200} />
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why: a festival, a private party" aria-label="Reason" maxLength={200} />
           <Button variant="primary" disabled={pending}>{pending ? "Saving…" : "Save"}</Button>
           <Button type="button" variant="ghost" disabled={pending} onClick={() => { if (nudge?.multiplier != null) { setPct(""); setReason(""); save("", ""); } else setOpen(false); }}>
             {nudge?.multiplier != null ? "Remove" : "Cancel"}

@@ -46,7 +46,7 @@ export function ShoutoutComposer({ team, values, milestones }: { team: { id: str
             </button>
           ))}
         </div>
-        <Textarea aria-label="What they did" placeholder="What did they do? Be specific — it means more." rows={3} maxLength={400} value={body} onChange={(e) => setBody(e.target.value)} />
+        <Textarea aria-label="What they did" placeholder="What did they do? Be specific: it means more." rows={3} maxLength={400} value={body} onChange={(e) => setBody(e.target.value)} />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <button type="button" role="switch" aria-checked={announce} onClick={() => setAnnounce(!announce)} className="flex min-h-11 items-center gap-2 text-left text-sm">
             <span className={cx("relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors", announce ? "bg-ink" : "bg-border-strong")}>
@@ -76,7 +76,7 @@ export function ShoutoutFeed({ items }: { items: { id: string; to: string; from:
           {items.map((s) => (
             <article key={s.id} className={cx("flex items-start gap-3 px-4 py-3", s.hidden && "opacity-55")}>
               <div className="min-w-0 flex-1">
-                <p className="text-sm leading-snug"><span className="font-medium">{s.to}</span> — {s.body}</p>
+                <p className="text-sm leading-snug"><span className="font-medium">{s.to}</span>: {s.body}</p>
                 <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">{s.value && <Badge>{s.value}</Badge>}from {s.from} · {new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}{s.points ? ` · +${s.points}` : ""}{s.hidden ? " · hidden" : ""}</p>
               </div>
               <Button size="sm" variant="ghost" className="shrink-0 max-sm:h-10" disabled={pending} aria-label={s.hidden ? "Show" : "Hide"} onClick={() => run(() => hideShoutout(s.id, !s.hidden))}>

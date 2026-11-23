@@ -42,7 +42,7 @@ export default async function MyPayPage() {
 
   return (
     <div className="mx-auto max-w-xl">
-      <PageHeader help="my.pay" title="Hours & tips" back={{ href: "/my", label: "Today" }} description={`This pay period: ${shortDate(pay.period.start)} – ${shortDate(pay.period.end)}. Estimates only — your paycheck from payroll is what counts.`} />
+      <PageHeader help="my.pay" title="Hours & tips" back={{ href: "/my", label: "Today" }} description={`This pay period: ${shortDate(pay.period.start)} to ${shortDate(pay.period.end)}. Estimates only: your paycheck from payroll is what counts.`} />
       <HelpZone id="my.pay.totals">
         <div className="grid grid-cols-2 gap-3">
           <Card className="px-4 py-4">
@@ -70,14 +70,14 @@ export default async function MyPayPage() {
               <div key={c.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                 <div className="min-w-0">
                   <div className="font-medium">{dayDate(businessDate(c.clockIn, tz))}</div>
-                  <div className="num text-xs text-muted">{clockLabel(localMinutes(c.clockIn, tz))} – {c.clockOut ? clockLabel(localMinutes(c.clockOut, tz)) : cardHours(c, now).stale ? "no clock-out" : "still on"}{c.breakMinutes ? ` · ${c.breakMinutes} min break` : ""}{c.position ? ` · ${c.position.name}` : ""}</div>
+                  <div className="num text-xs text-muted">{clockLabel(localMinutes(c.clockIn, tz))} to {c.clockOut ? clockLabel(localMinutes(c.clockOut, tz)) : cardHours(c, now).stale ? "no clock-out" : "still on"}{c.breakMinutes ? ` · ${c.breakMinutes} min break` : ""}{c.position ? ` · ${c.position.name}` : ""}</div>
                 </div>
                 <div className={cardHours(c, now).stale ? "shrink-0 text-xs font-medium text-warn" : "num shrink-0 font-medium"}>{cardHours(c, now).stale ? "ask a manager" : `${cardHours(c, now).hours.toFixed(2)}h`}</div>
               </div>
             ))}
           </Card>
         )}
-        <p className="mt-3 px-1 text-xs text-muted">Something wrong? Tell a manager before the period is approved — <Link href="/my/message" className="underline underline-offset-2">send a message</Link>.</p>
+        <p className="mt-3 px-1 text-xs text-muted">Something wrong? Tell a manager before the period is approved: <Link href="/my/message" className="underline underline-offset-2">send a message</Link>.</p>
       </section>
     </div>
   );

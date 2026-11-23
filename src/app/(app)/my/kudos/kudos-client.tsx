@@ -7,7 +7,7 @@ import { useState, useTransition } from "react";
 import { givePeerShoutout, redeemReward } from "../workforce-actions";
 
 type Res = { error?: string; ok?: string };
-const offline = { error: "No signal — that didn't go through. Try again in a moment." } as Res;
+const offline = { error: "No signal, so that didn't go through. Try again in a moment." } as Res;
 
 export function GiveShoutout({ team, values }: { team: { id: string; name: string }[]; values: string[] }) {
   const [pending, start] = useTransition();

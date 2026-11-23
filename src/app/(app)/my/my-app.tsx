@@ -22,7 +22,7 @@ interface Props {
 
 type LeaveType = "PTO" | "SICK" | "UNPAID";
 const LEAVE_TYPES = [
-  { value: "UNPAID", short: "Day off", label: "Unpaid — ask early so it's on the next schedule." },
+  { value: "UNPAID", short: "Day off", label: "Unpaid. Ask early so it's on the next schedule." },
   { value: "SICK", short: "Sick", label: "Paid from your sick leave. Fine to log for today." },
   { value: "PTO", short: "Paid off", label: "Paid time off." },
 ];
@@ -41,7 +41,7 @@ export function MyApp({ today, timeOff, sick, availability, openingHours }: Prop
     const { hide, after } = opts;
     if (hide) setGone((g) => new Set(g).add(hide));
     start(async () => {
-      const r = await fn().catch(() => ({ error: "No signal — that didn't go through. Try again in a moment." }) as { error?: string; ok?: string });
+      const r = await fn().catch(() => ({ error: "No signal, so that didn't go through. Try again in a moment." }) as { error?: string; ok?: string });
       if (r.error) {
         if (hide) setGone((g) => { const n = new Set(g); n.delete(hide); return n; });
         show(r.error, "bad");
@@ -136,7 +136,7 @@ export function MyApp({ today, timeOff, sick, availability, openingHours }: Prop
             {timeOff.filter((t) => !gone.has(t.id)).map((t) => (
               <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                 <div className="min-w-0">
-                  <div className="font-medium">{t.start === t.end ? dayDate(t.start) : `${shortDate(t.start)} – ${shortDate(t.end)}`} <span className="font-normal text-muted">· {LEAVE_LABEL[t.type]}{t.hours != null ? ` · ${Number(t.hours.toFixed(2))}h` : ""}</span></div>
+                  <div className="font-medium">{t.start === t.end ? dayDate(t.start) : `${shortDate(t.start)} to ${shortDate(t.end)}`} <span className="font-normal text-muted">· {LEAVE_LABEL[t.type]}{t.hours != null ? ` · ${Number(t.hours.toFixed(2))}h` : ""}</span></div>
                   {t.note && <div className="truncate text-xs text-muted">{t.note}</div>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

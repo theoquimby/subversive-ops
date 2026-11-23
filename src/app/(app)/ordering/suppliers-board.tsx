@@ -192,7 +192,7 @@ function SupplierPanel({ r, today, s, loading, reload, people }: { r: Row; today
                 </li>
               ))}
             </ul>
-            {s.top.length > 12 && <p className="mt-1 text-xs text-muted">and {s.lines - 12} more — Build order shows every line.</p>}
+            {s.top.length > 12 && <p className="mt-1 text-xs text-muted">and {s.lines - 12} more. Build order shows every line.</p>}
             {(s.needsCount > 0 || s.needsSetup > 0) && <p className="mt-1 text-xs text-warn">{[s.needsCount && `${s.needsCount} need a count`, s.needsSetup && `${s.needsSetup} need a pack size`].filter(Boolean).join(" · ")} before they can be suggested.</p>}
           </>
         )}
@@ -307,7 +307,7 @@ export function SuppliersBoard({ rows: allRows, today, emailReady, people }: { r
           <Link href={`/ordering/${r.id}`} className="font-medium text-ink hover:underline" data-tour="ordering.supplier-card">{r.name}</Link>
           <div className="flex items-center gap-1 text-xs text-muted">
             {r.kind === "DISTRIBUTOR" ? "Distributor" : "Local"}
-            {r.learned && <span title="A suggestion from your invoices is waiting — open the row" className="inline-flex items-center gap-0.5 text-ink-2"><Sparkles className="size-3" aria-hidden /> tip</span>}
+            {r.learned && <span title="A suggestion from your invoices is waiting: open the row" className="inline-flex items-center gap-0.5 text-ink-2"><Sparkles className="size-3" aria-hidden /> tip</span>}
           </div>
         </div>
       ),

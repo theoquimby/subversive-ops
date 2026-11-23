@@ -53,7 +53,7 @@ export async function setPositionField(id: string, field: z.infer<typeof positio
     data = { tipEligible: yes(value) };
   } else if (field === "minStaff" || field === "maxStaff") {
     const n = numberOrNull(value);
-    if (n == null || Number.isNaN(n) || n < 0 || n > 20 || !Number.isInteger(n)) return { error: "Whole number 0–20" };
+    if (n == null || Number.isNaN(n) || n < 0 || n > 20 || !Number.isInteger(n)) return { error: "Whole number, 0 to 20" };
     const p = await db.position.findUniqueOrThrow({ where: { id } });
     if (field === "minStaff" && n > p.maxStaff) return { error: `Min can't be over max (${p.maxStaff})` };
     if (field === "maxStaff" && n < p.minStaff) return { error: `Max can't be under min (${p.minStaff})` };
@@ -94,7 +94,7 @@ export async function addPosition(name: string): R {
 export async function deletePosition(id: string): R {
   await requireUser("MANAGER");
   const [shifts, cards] = await Promise.all([db.shift.count({ where: { positionId: id } }), db.timecard.count({ where: { positionId: id } })]);
-  if (shifts || cards) return { error: `Used on ${shifts} shift${shifts === 1 ? "" : "s"} and ${cards} timecard${cards === 1 ? "" : "s"} — rename it instead.` };
+  if (shifts || cards) return { error: `Used on ${shifts} shift${shifts === 1 ? "" : "s"} and ${cards} timecard${cards === 1 ? "" : "s"}, so rename it instead.` };
   await deletePositionEverywhere(id);
   refresh();
 }
@@ -123,7 +123,7 @@ export async function setEmployeeField(id: string, field: z.infer<typeof employe
     data = { userId: value || null };
   } else if (field === "maxHoursWeek") {
     const n = numberOrNull(value);
-    if (Number.isNaN(n) || (n != null && (n <= 0 || n > 80))) return { error: "Hours 1–80, or blank" };
+    if (Number.isNaN(n) || (n != null && (n <= 0 || n > 80))) return { error: "Hours 1 to 80, or blank" };
     data = { maxHoursWeek: n == null ? null : Math.round(n) };
   } else {
     const n = numberOrNull(value);
@@ -187,7 +187,7 @@ export async function syncTeamFromSquare(): Promise<{ error?: string; message?: 
     const r = await syncLabor(addDays(today, -14), addDays(today, 1));
     if ("skipped" in r) return { error: r.skipped };
     refresh();
-    return { message: `Synced ${r.members} team members and ${r.timecards} timecards${r.positionsCreated ? `, added ${r.positionsCreated} positions` : ""}${r.keptEdited ? `; kept ${r.keptEdited} edited` : ""}.${r.differences ? ` Square differs for ${r.differences} ${r.differences === 1 ? "person" : "people"} — see below.` : ""}` };
+    return { message: `Synced ${r.members} team members and ${r.timecards} timecards${r.positionsCreated ? `, added ${r.positionsCreated} positions` : ""}${r.keptEdited ? `; kept ${r.keptEdited} edited` : ""}.${r.differences ? ` Square differs for ${r.differences} ${r.differences === 1 ? "person" : "people"}: see below.` : ""}` };
   } catch (e) {
     return { error: friendlySquareError(e) };
   }
@@ -274,7 +274,7 @@ export async function inviteEmployee(employeeId: string, loginName: string, pin?
   const name = loginName.trim();
   if (!name || name.length > 40) return { error: "Pick a login name." };
   const code = pin?.trim() || String(Math.floor(1000 + Math.random() * 9000));
-  if (!/^\d{4,8}$/.test(code)) return { error: "PINs are 4–8 digits." };
+  if (!/^\d{4,8}$/.test(code)) return { error: "PINs are 4 to 8 digits." };
   const emp = await db.employee.findUnique({ where: { id: employeeId }, select: { userId: true } });
   if (!emp) return { error: "That person was removed." };
   if (emp.userId) return { error: "They already have a login." };

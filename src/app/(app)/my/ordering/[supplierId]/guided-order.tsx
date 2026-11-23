@@ -4,6 +4,7 @@ import { useConfirm } from "@/components/dialog";
 import { Button, Card, cx, LinkButton } from "@/components/ui";
 import { orderWarnings } from "@/domain/orderGuards";
 import { money } from "@/lib/format";
+import { ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { saveOrderForSending } from "../actions";
@@ -31,7 +32,7 @@ function Steps({ at }: { at: 1 | 2 | 3 }) {
         <li key={s} aria-current={i + 1 === at ? "step" : undefined} className={cx("flex items-center gap-1.5", i + 1 === at ? "font-medium text-ink" : "text-muted")}>
           <span className={cx("flex size-5 items-center justify-center rounded-full border text-[0.7rem]", i + 1 <= at ? "border-ink bg-primary text-primary-ink" : "border-border-strong")}>{i + 1}</span>
           {s}
-          {i < steps.length - 1 && <span aria-hidden className="text-muted">—</span>}
+          {i < steps.length - 1 && <ChevronRight aria-hidden className="size-3.5 text-muted" />}
         </li>
       ))}
     </ol>

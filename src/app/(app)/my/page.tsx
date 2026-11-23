@@ -39,7 +39,7 @@ export default async function TodayPage() {
     return (
       <div className="mx-auto flex max-w-xl flex-col gap-7">
         <PageHeader help="my.today" title="Today" />
-        <EmptyState title={`Hi ${session.name} — you're not on the schedule yet`}>
+        <EmptyState title={`Hi ${session.name}, you're not on the schedule yet`}>
           {session.role === "MANAGER"
             ? "Your login isn't linked to a team member. Link it on the Team page and your shifts, open shifts and time off show up here."
             : "Your login isn't linked to a team member. Ask a manager to connect it on the Team page, then your shifts, open shifts and time off will show up here."}
@@ -109,7 +109,7 @@ export default async function TodayPage() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-[0.95rem] leading-snug font-medium text-ink">{t.title}</span>
-                      <span className="mt-0.5 block truncate text-[0.8rem] text-muted">{t.detail}</span>
+                      <span className="mt-0.5 block text-sm leading-snug text-ink-2">{t.detail}</span>
                     </span>
                     <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
                   </Link>
@@ -139,7 +139,7 @@ export default async function TodayPage() {
             <Card className="divide-y divide-border">
               {shoutouts.map((s) => (
                 <article key={s.id} className="px-4 py-3.5">
-                  <p className="text-[0.95rem] leading-snug text-ink"><span className="font-medium">{s.to.split(" ")[0]}</span> — {s.body}</p>
+                  <p className="text-[0.95rem] leading-snug text-ink"><span className="font-medium">{s.to.split(" ")[0]}</span>: {s.body}</p>
                   <p className="mt-1 text-xs text-muted">{s.value ? `${s.value} · ` : ""}{s.from} · {when(s.createdAt)}</p>
                 </article>
               ))}
@@ -185,7 +185,7 @@ function NextShift({ s, crew, today, now, week }: { s: HomeShift; crew: Awaited<
   const day = relativeDay(s.date, today) ?? dayDate(s.date);
   const shown = crew.slice(0, 5);
   return (
-    <section aria-label="Your next shift" className="overflow-hidden rounded-[1.4rem] bg-[#1b1a18] text-[#f7f7f5] shadow-[0_12px_32px_-12px_rgb(0_0_0/0.45)] dark:bg-[#22221f] dark:ring-1 dark:ring-white/10">
+    <section aria-label="Your next shift" className="on-ink overflow-hidden rounded-[1.4rem] bg-ink text-bg shadow-[0_12px_32px_-12px_rgb(0_0_0/0.45)] dark:bg-surface-2 dark:text-ink dark:ring-1 dark:ring-white/10">
       <div className="flex items-start justify-between gap-4 px-5 pt-5">
         <div className="min-w-0">
           <p className="text-[0.8rem] font-medium opacity-70">{day === "Today" || day === "Tomorrow" ? `${day} · ${shortDate(s.date)}` : day}</p>
@@ -199,7 +199,7 @@ function NextShift({ s, crew, today, now, week }: { s: HomeShift; crew: Awaited<
         <ShiftCountdown startAt={s.startAt} endAt={s.endAt} serverNow={now} className="shrink-0 pt-0.5" />
       </div>
       {s.notes && <p className="mx-5 mt-3 rounded-xl bg-white/8 px-3 py-2 text-sm">{s.notes}</p>}
-      {s.swapPending && <p className="mx-5 mt-3 rounded-xl bg-[#ffb35c]/15 px-3 py-2 text-sm text-[#ffcf94]">You&apos;ve asked to swap this one — it&apos;s yours until a manager approves.</p>}
+      {s.swapPending && <p className="mx-5 mt-3 rounded-xl bg-warn/15 px-3 py-2 text-sm text-warn">You&apos;ve asked to swap this one. It&apos;s yours until a manager approves.</p>}
       <div className="mt-4 border-t border-white/10 px-5 py-3.5">
         {crew.length === 0 ? (
           <p className="text-sm opacity-70">No one else is on the schedule with you yet.</p>
@@ -207,7 +207,7 @@ function NextShift({ s, crew, today, now, week }: { s: HomeShift; crew: Awaited<
           <div className="flex items-center gap-3">
             <div className="flex shrink-0 -space-x-1.5" aria-hidden>
               {shown.map((c) => (
-                <span key={`${c.name}-${c.startMin}`} className="grid size-8 place-items-center rounded-full text-[0.7rem] font-semibold text-white ring-2 ring-[#1b1a18] dark:ring-[#22221f]" style={{ background: `color-mix(in oklab, ${c.color} 72%, black)` }}>
+                <span key={`${c.name}-${c.startMin}`} className="grid size-8 place-items-center rounded-full text-[0.7rem] font-semibold text-white ring-2 ring-ink dark:ring-surface-2" style={{ background: `color-mix(in oklab, ${c.color} 72%, black)` }}>
                   {c.name.split(/\s+/).map((p) => p[0]).slice(0, 2).join("")}
                 </span>
               ))}
@@ -254,7 +254,7 @@ function PayCard({ pay }: { pay: MyPayView }) {
     <HelpZone id="my.pay">
       <Link href="/my/pay" className="block rounded-2xl border border-border bg-surface px-4 py-3.5 transition-colors duration-120 active:bg-surface-2">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[0.8rem] font-medium text-muted">This pay period · {shortDate(pay.period.start)} – {shortDate(pay.period.end)}</span>
+          <span className="text-[0.8rem] font-medium text-muted">This pay period · {shortDate(pay.period.start)} to {shortDate(pay.period.end)}</span>
           <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
         </div>
         <div className="mt-1.5 grid grid-cols-2 gap-3">

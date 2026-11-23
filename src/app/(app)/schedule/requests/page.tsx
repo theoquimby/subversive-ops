@@ -126,7 +126,7 @@ export default async function RequestsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader help="schedule.requests" title="Requests" description="Time off, swaps, drops and pickups from the team — with who else is off, how each day is covered, and whether the person taking a shift passes the schedule rules." back={{ href: "/schedule", label: "Schedule" }} />
+      <PageHeader help="schedule.requests" title="Requests" description="Time off, swaps, drops and pickups from the team, with who else is off, how each day is covered, and whether the person taking a shift passes the schedule rules." back={{ href: "/schedule", label: "Schedule" }} />
       <div className="flex flex-col gap-10">
         <RequestsList
           timeOff={timeOff}
