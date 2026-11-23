@@ -1,9 +1,11 @@
+import { Verdict } from "@/components/chapter";
 import { Badge, Card, LinkButton, PageHeader, Section, Td, Th, Tr } from "@/components/ui";
 import { GOOGLE_SETUP_HREF, parseRange } from "@/domain/online";
 import { relativeTime, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { googleListing, type ListingBlock, type ListingConnection } from "@/server/services/online";
 import { Change, MAPS_FILL, MeasureRow, n0, Notice, PartsBar, RangeChips, SEARCH_FILL, spanText, VIEW_FILL } from "../bits";
+import { CHANNEL } from "../channel";
 import { StackBars, Trend, TrendKey } from "../charts";
 
 export const metadata = { title: "Google listing" };
@@ -37,10 +39,11 @@ export default async function GoogleListingPage({ searchParams }: { searchParams
       {l ? (
         <>
           <p className="-mt-3 mb-6 text-xs text-pretty text-muted">
-            {spanText(l.windows.cur)}, compared with the {r.period} before.{" "}
+            {spanText(l.windows.cur)}{l.views.trend != null ? `, compared with the ${r.period} before.` : `. Nothing earlier to compare with yet.`}{" "}
             {l.stale && l.through ? <span className="text-warn">Nothing newer than {shortDate(l.through)} has arrived from Google.</span> : "Google's numbers arrive two or three days late."}
             {l.since && <> Counting since {shortDate(l.since)}.</>}
           </p>
+          <ListingVerdict l={l} period={r.period} manageHref={r.connection?.manageHref ?? GOOGLE_SETUP_HREF} />
           <Views l={l} period={r.period} />
           <Actions l={l} period={r.period} />
           <Keywords l={l} />
@@ -63,9 +66,39 @@ export default async function GoogleListingPage({ searchParams }: { searchParams
         </Section>
       )}
 
-      <Connection c={r.connection} through={l?.through ?? null} waiting={r.listing.state.kind === "waiting"} />
+      <Connection c={r.connection} through={l?.through ?? null} stale={!!l?.stale} waiting={r.listing.state.kind === "waiting"} />
     </>
   );
+}
+
+/** The change in words, only when there is something earlier to compare with (said once, at the top, when there isn't). */
+const changeOf = (d: ListingBlock["views"], period: string) => (d.trend != null ? <Change d={d} period={period} /> : undefined);
+
+/** The top of the page: stopped numbers first, else how often the listing was shown and what people did from it. */
+function ListingVerdict({ l, period, manageHref }: { l: ListingBlock; period: string; manageHref: string }) {
+  const stats = [
+    { label: "Times shown", value: n0(l.views.cur), hint: l.views.trend != null ? <Change d={l.views} period={period} compact /> : undefined },
+    { label: "Calls, directions, clicks and menu views", value: n0(l.actions.cur), hint: l.actions.trend != null ? <Change d={l.actions} period={period} compact /> : undefined },
+    { label: "Shown on Maps", value: l.views.cur > 0 ? `${Math.round((l.maps.cur / l.views.cur) * 100)}%` : "—", hint: l.views.cur > 0 ? `${n0(l.maps.cur)} of ${n0(l.views.cur)}` : "Nothing shown yet" },
+  ];
+  if (l.stale && l.through) {
+    return (
+      <Verdict
+        badge={{ tone: "warn" }}
+        title={`The listing's numbers stopped after ${shortDate(l.through)}`}
+        line={
+          <>
+            Google hasn&apos;t sent anything newer, so the charts end there and nothing can be compared until it catches up.{" "}
+            <a href={manageHref} className="font-medium text-ink underline underline-offset-2">Sync again</a>.
+          </>
+        }
+        stats={stats}
+      />
+    );
+  }
+  const d = l.views;
+  const title = d.trend === "up" || d.trend === "down" ? `The listing was shown ${n0(d.cur)} times, ${d.trend} ${Math.round(Math.abs(d.change ?? 0) * 100)}% on the ${period} before` : `The listing was shown ${n0(d.cur)} times in the last ${period}`;
+  return <Verdict badge={d.trend === "down" ? { tone: "warn" } : undefined} title={title} line={`People called, asked for directions, clicked through or looked at the menu ${n0(l.actions.cur)} times from it.`} stats={stats} />;
 }
 
 function Views({ l, period }: { l: ListingBlock; period: string }) {
@@ -75,17 +108,17 @@ function Views({ l, period }: { l: ListingBlock; period: string }) {
         <div className="p-4 sm:p-5">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="num text-[1.75rem] leading-tight font-semibold tracking-tight">{n0(l.views.cur)}</span>
-            <span className="text-xs"><Change d={l.views} period={period} /></span>
+            <span className="text-xs">{changeOf(l.views, period)}</span>
           </div>
           <div className="mt-4">
             <PartsBar what="times shown" columns="grid-cols-2 lg:grid-cols-4" parts={l.split.map((s) => ({ key: s.key, label: s.label, value: s.value, fill: VIEW_FILL[s.key] }))} />
           </div>
           <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted">
             <span>
-              On Maps <span className="num font-medium text-ink-2">{n0(l.maps.cur)}</span> <Change d={l.maps} period={period} compact />
+              On Maps <span className="num font-medium text-ink-2">{n0(l.maps.cur)}</span> {l.maps.trend != null && <Change d={l.maps} period={period} compact />}
             </span>
             <span>
-              In Search <span className="num font-medium text-ink-2">{n0(l.search.cur)}</span> <Change d={l.search} period={period} compact />
+              In Search <span className="num font-medium text-ink-2">{n0(l.search.cur)}</span> {l.search.trend != null && <Change d={l.search} period={period} compact />}
             </span>
           </div>
         </div>
@@ -94,7 +127,7 @@ function Views({ l, period }: { l: ListingBlock; period: string }) {
             title="Times the listing was shown, on Maps and in Search"
             unit="times shown"
             series={[{ label: "Google Maps", ...MAPS_FILL }, { label: "Google Search", ...SEARCH_FILL }]}
-            points={l.surfaceTrend.map((p) => ({ x: p.x, to: p.to, values: [p.maps, p.search] }))}
+            points={l.surfaceTrend.map((p) => ({ x: p.x, to: p.to, values: [p.maps, p.search], missing: p.missing }))}
           />
         </div>
       </Card>
@@ -108,12 +141,12 @@ function Actions({ l, period }: { l: ListingBlock; period: string }) {
       <Card className="divide-y divide-border">
         {l.actionTrends.some((a) => a.points.some((pt) => pt.prev != null)) && (
           <div className="px-4 py-2.5 sm:px-5">
-            <TrendKey period={period} />
+            <TrendKey period={period} color={CHANNEL.listing} />
           </div>
         )}
         {l.actionTrends.map((a) => (
-          <MeasureRow key={a.metric} title={a.label} counts={ACTION_COUNTS[a.metric]?.counts ?? ""} value={n0(a.total.cur)} change={<Change d={a.total} period={period} />}>
-            <Trend points={a.points} title={a.label} unit={ACTION_COUNTS[a.metric]?.unit ?? "times"} period={period} height={104} legend={false} />
+          <MeasureRow key={a.metric} title={a.label} counts={ACTION_COUNTS[a.metric]?.counts ?? ""} value={n0(a.total.cur)} change={changeOf(a.total, period)}>
+            <Trend points={a.points} title={a.label} unit={ACTION_COUNTS[a.metric]?.unit ?? "times"} period={period} height={104} legend={false} color={CHANNEL.listing} />
           </MeasureRow>
         ))}
       </Card>
@@ -150,7 +183,7 @@ function Keywords({ l }: { l: ListingBlock }) {
                     <Td className="hidden sm:table-cell">
                       {k.value != null && (
                         <div className="h-1.5 w-full rounded-full" style={{ background: "color-mix(in oklab, var(--ink) 7%, var(--surface))" }}>
-                          <div className="h-full rounded-full" style={{ width: `${Math.max(2, (k.value / max) * 100)}%`, background: "var(--area)", opacity: 0.85 }} />
+                          <div className="h-full rounded-full" style={{ width: `${Math.max(2, (k.value / max) * 100)}%`, background: CHANNEL.listing }} />
                         </div>
                       )}
                     </Td>
@@ -167,28 +200,47 @@ function Keywords({ l }: { l: ListingBlock }) {
   );
 }
 
-function Connection({ c, through, waiting }: { c: ListingConnection | null; through: string | null; /** Google hasn't approved access yet: its refusal is expected, not a fault. */ waiting: boolean }) {
+function Connection({ c, through, stale, waiting }: { c: ListingConnection | null; through: string | null; /** Numbers have stopped arriving. */ stale: boolean; /** Google hasn't approved access yet: its refusal is expected, not a fault. */ waiting: boolean }) {
+  // Weeks of listing numbers on file mean it was connected, whatever the saved sign-in says now.
+  const hadData = !!through;
+  const title = c?.title ?? (hadData ? "The Google listing" : waiting ? "Signed in to Google" : "No listing picked yet");
+  const badge: { tone: "good" | "warn" | "neutral"; text: string } = waiting
+    ? { tone: "neutral", text: "Waiting on Google" }
+    : c?.error
+      ? { tone: "warn", text: "Needs a look" }
+      : hadData && stale
+        ? { tone: "warn", text: "Numbers stopped" }
+        : c?.connected || hadData
+          ? { tone: "good", text: "Connected" }
+          : { tone: "neutral", text: "Not connected" };
+  const line = hadData
+    ? `Connected, last data ${shortDate(through!)}.${stale ? " Sync again to bring in anything newer." : ""}`
+    : c?.lastSyncAt
+      ? `Last checked ${relativeTime(new Date(c.lastSyncAt))}.`
+      : waiting
+        ? "Google hasn't let the app read the listing yet."
+        : "Not checked yet.";
   return (
     <Section help="online.google.connection" title="Connection" description="Read-only. The app reads these numbers from Google every night and never changes the listing.">
       <Card className="flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5">
         {c ? (
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-ink">{c.title ?? (waiting ? "Signed in to Google" : "No listing picked yet")}</span>
-              <Badge tone={waiting ? "neutral" : c.error ? "warn" : c.connected ? "good" : "neutral"}>{waiting ? "Waiting on Google" : c.error ? "Needs a look" : c.connected ? "Google connected" : "Not connected"}</Badge>
+              <span className="text-sm font-semibold text-ink">{title}</span>
+              <Badge tone={badge.tone}>{badge.text}</Badge>
             </div>
             <p className="mt-1 text-sm text-pretty text-muted">
-              {c.lastSyncAt ? `Last checked ${relativeTime(new Date(c.lastSyncAt))}` : waiting ? "Google hasn't let the app read the listing yet" : "Not checked yet"}
-              {through ? `. Numbers through ${shortDate(through)}` : ""}
-              {c.connectedBy ? `. Connected by ${c.connectedBy}` : ""}.
+              {line}
+              {hadData && c.lastSyncAt ? ` Last checked ${relativeTime(new Date(c.lastSyncAt))}.` : ""}
+              {c.connectedBy ? ` Connected by ${c.connectedBy}.` : ""}
             </p>
             {c.error && <p className={waiting ? "mt-1 text-sm text-pretty text-muted" : "mt-1 text-sm text-pretty text-warn"}>{c.error}</p>}
           </div>
         ) : (
           <p className="min-w-0 text-sm text-muted">Couldn&apos;t read the connection just now. Try again in a minute.</p>
         )}
-        <LinkButton href={c?.manageHref ?? GOOGLE_SETUP_HREF} variant="secondary" className="h-10 sm:h-9">
-          Manage the connection
+        <LinkButton href={c?.manageHref ?? GOOGLE_SETUP_HREF} variant={stale ? "primary" : "secondary"} className="h-10 sm:h-9">
+          {stale ? "Sync again" : "Manage the connection"}
         </LinkButton>
       </Card>
     </Section>

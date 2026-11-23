@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/ui";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
 import type { ReactNode } from "react";
+import { ChannelVars } from "../online/channel";
 import { WebsiteTabs } from "./tabs";
 
 /** The Website hub: one header and the tabs for every page under /website (including Analytics). */
@@ -10,6 +11,7 @@ export default async function WebsiteLayout({ children }: { children: ReactNode 
   const newInquiries = await db.webInquiry.count({ where: { seenAt: null } });
   return (
     <div className="max-w-6xl">
+      <ChannelVars />
       <PageHeader
         help="website.page"
         title="Website"

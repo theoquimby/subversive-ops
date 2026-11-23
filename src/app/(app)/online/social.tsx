@@ -1,11 +1,13 @@
+import { Verdict } from "@/components/chapter";
 import { LineChart } from "@/components/line-chart";
 import { Badge, Card, LinkButton, PageHeader, Section } from "@/components/ui";
 import { TRACKING_SETUP_HREF } from "@/domain/online";
-import { META_SETUP_HREF, SOCIAL } from "@/domain/onlineChannels";
+import { META_SETUP_HREF, postHeadline, SOCIAL } from "@/domain/onlineChannels";
 import { relativeTime, shortDate } from "@/lib/format";
 import type { SocialBlock, SocialConnection, SocialReport } from "@/server/services/online";
 import Link from "next/link";
 import { Change, MeasureRow, MoreLink, n0, Notice, RangeChips, spanText } from "./bits";
+import { CHANNEL } from "./channel";
 import { Trend, TrendKey } from "./charts";
 import { PostsTable } from "./posts";
 
@@ -54,10 +56,11 @@ export function SocialPage({ r }: { r: SocialReport }) {
       {b ? (
         <>
           <p className="-mt-3 mb-6 text-xs text-pretty text-muted">
-            {spanText(b.windows.cur)}, compared with the {r.period} before.{" "}
+            {spanText(b.windows.cur)}{b.views.trend != null ? `, compared with the ${r.period} before.` : ". Nothing earlier to compare with yet."}{" "}
             {b.stale && b.through ? <span className="text-warn">Nothing newer than {shortDate(b.through)} has arrived.</span> : late}
             {b.since && <> Counting since {shortDate(b.since)}.</>}
           </p>
+          <SocialVerdict b={b} period={r.period} manageHref={r.connection?.manageHref ?? META_SETUP_HREF} />
           <Followers b={b} period={r.period} help={help.followers} />
           <Seen b={b} period={r.period} help={help.seen} />
           <Next b={b} period={r.period} help={help.next} />
@@ -82,6 +85,56 @@ export function SocialPage({ r }: { r: SocialReport }) {
       <Connection c={r.connection} through={b?.through ?? null} help={help.connection} channel={r.channel} />
     </>
   );
+}
+
+/** The top of the page: stopped numbers first, else the period's standout post, else how often it was seen. */
+function SocialVerdict({ b, period, manageHref }: { b: SocialBlock; period: string; manageHref: string }) {
+  const c = SOCIAL[b.channel];
+  const headline = postHeadline(b.best, b.channel);
+  const stats = [
+    { label: c.copy.views.title, value: n0(b.views.cur), hint: b.views.trend != null && !b.stale ? <Change d={b.views} period={period} compact /> : undefined },
+    { label: "Followers", value: b.followers.now != null ? n0(b.followers.now) : "—", hint: b.followers.now == null ? "Not on record yet" : undefined, tone: b.followers.now == null ? ("unknown" as const) : undefined },
+    { label: b.postsInPeriod ? `Posts in the last ${period}` : "Posts", value: b.postsInPeriod ? n0(b.posts.length) : "None", hint: b.best && b.postsInPeriod && b.best.counted < b.posts.length ? `${b.best.counted} with numbers so far` : b.lastPostDay ? `Last one ${shortDate(b.lastPostDay)}` : undefined },
+  ];
+  const seePosts = b.posts.length > 0 ? <> <a href="#posts" className="font-medium text-ink underline underline-offset-2">See the posts</a>.</> : null;
+  const who = b.channel === "instagram" ? "Instagram's" : "The Facebook Page's";
+  if (headline) {
+    // The standout post leads even while the daily numbers are stuck: posts carry their own numbers.
+    return (
+      <Verdict
+        title={headline}
+        line={
+          <>
+            {b.callout}
+            {seePosts}
+            {b.stale && b.through && (
+              <span className="mt-2 block text-warn">
+                {who} daily numbers stopped after {shortDate(b.through)}, so the charts below end there.{" "}
+                <a href={manageHref} className="font-medium underline underline-offset-2">Sync again</a>.
+              </span>
+            )}
+          </>
+        }
+        stats={stats}
+      />
+    );
+  }
+  if (b.stale && b.through) {
+    return (
+      <Verdict
+        badge={{ tone: "warn" }}
+        title={`${who} numbers stopped after ${shortDate(b.through)}`}
+        line={
+          <>
+            Nothing newer has arrived, so the charts end there and nothing can be compared until it catches up.{" "}
+            <a href={manageHref} className="font-medium text-ink underline underline-offset-2">Sync again</a>.
+          </>
+        }
+        stats={stats}
+      />
+    );
+  }
+  return <Verdict title={`${c.copy.views.counts}: ${n0(b.views.cur)} in the last ${period}`} line={b.callout ?? (b.lastPostDay ? `Fewer than three posts went up, so there is no standout to call out. The last one went up on ${shortDate(b.lastPostDay)}.` : "No posts have been brought in yet.")} stats={stats} />;
 }
 
 function Followers({ b, period, help }: { b: SocialBlock; period: string; help: string }) {
@@ -131,11 +184,11 @@ function Seen({ b, period, help }: { b: SocialBlock; period: string; help: strin
       <Card className="divide-y divide-border">
         {[b.viewsTrend, b.reachTrend].some((t) => t.some((pt) => pt.prev != null)) && (
           <div className="px-4 py-2.5 sm:px-5">
-            <TrendKey period={period} />
+            <TrendKey period={period} color={CHANNEL[b.channel]} />
           </div>
         )}
-        <MeasureRow title={copy.views.title} counts={copy.views.counts} value={n0(b.views.cur)} change={b.stale ? undefined : <Change d={b.views} period={period} />} note={b.interactions.cur > 0 ? <>{n0(b.interactions.cur)} {b.channel === "instagram" ? "likes, comments, saves and shares" : "reactions, comments, shares and clicks"} in the same period.</> : undefined}>
-          <Trend points={b.viewsTrend} title={copy.views.counts} unit={copy.views.unit} period={period} legend={false} />
+        <MeasureRow title={copy.views.title} counts={copy.views.counts} value={n0(b.views.cur)} change={b.stale || b.views.trend == null ? undefined : <Change d={b.views} period={period} />} note={b.interactions.cur > 0 ? <>{n0(b.interactions.cur)} {b.channel === "instagram" ? "likes, comments, saves and shares" : "reactions, comments, shares and clicks"} in the same period.</> : undefined}>
+          <Trend points={b.viewsTrend} title={copy.views.counts} unit={copy.views.unit} period={period} legend={false} color={CHANNEL[b.channel]} />
         </MeasureRow>
         <MeasureRow
           title={copy.reach.title}
@@ -144,7 +197,7 @@ function Seen({ b, period, help }: { b: SocialBlock; period: string; help: strin
           change={<span className="text-muted">on a typical day{b.reachPerDayBefore != null ? `, ${n0(b.reachPerDayBefore)} in the ${period} before` : ""}</span>}
           note={<>The same {who === "accounts" ? "account" : "person"} on two days is counted on both, so the days are averaged, not added.</>}
         >
-          <Trend points={b.reachTrend} title={copy.reach.counts} unit={copy.reach.unit} period={period} legend={false} />
+          <Trend points={b.reachTrend} title={copy.reach.counts} unit={copy.reach.unit} period={period} legend={false} color={CHANNEL[b.channel]} />
         </MeasureRow>
       </Card>
     </Section>
@@ -157,34 +210,34 @@ function Next({ b, period, help }: { b: SocialBlock; period: string; help: strin
     <Section help={help} title="What people did next" description={b.channel === "instagram" ? "From the profile, and on to the website." : "On the Page, and on to the website."}>
       <Card className="divide-y divide-border">
         {b.visits && (
-          <MeasureRow title={copy.visits.title} counts={copy.visits.counts} value={n0(b.visits.cur)} change={b.stale ? undefined : <Change d={b.visits} period={period} />}>
-            <Trend points={b.visitsTrend} title={copy.visits.counts} unit={copy.visits.unit} period={period} height={104} legend={false} />
+          <MeasureRow title={copy.visits.title} counts={copy.visits.counts} value={n0(b.visits.cur)} change={b.stale || b.visits.trend == null ? undefined : <Change d={b.visits} period={period} />}>
+            <Trend points={b.visitsTrend} title={copy.visits.counts} unit={copy.visits.unit} period={period} height={104} legend={false} color={CHANNEL[b.channel]} />
           </MeasureRow>
         )}
         <MeasureRow
           title={copy.taps.title}
           counts={copy.taps.counts}
           value={n0(b.taps.cur)}
-          change={b.stale ? undefined : <Change d={b.taps} period={period} />}
+          change={b.stale || b.taps.trend == null ? undefined : <Change d={b.taps} period={period} />}
           note={b.tapParts.length > 0 ? b.tapParts.map((p) => `${p.label} ${n0(p.value)}`).join(" · ") : undefined}
         >
-          <Trend points={b.tapsTrend} title={copy.taps.counts} unit={copy.taps.unit} period={period} height={104} legend={false} />
+          <Trend points={b.tapsTrend} title={copy.taps.counts} unit={copy.taps.unit} period={period} height={104} legend={false} color={CHANNEL[b.channel]} />
         </MeasureRow>
-        <MeasureRow title={copy.website.title} counts={copy.website.counts} value={b.website ? n0(b.website.cur) : undefined} change={b.website ? <Change d={b.website} period={period} /> : undefined}>
-          {b.website ? (
+        {b.website ? (
+          <MeasureRow title={copy.website.title} counts={copy.website.counts} value={n0(b.website.cur)} change={b.website.trend != null ? <Change d={b.website} period={period} /> : undefined}>
             <div className="text-sm text-pretty text-muted">
               <p>{b.channel === "instagram" ? "Instagram no longer tells apps how many people tapped the website link, so this is the website's own count of visits that arrived from Instagram." : "The website's own count of visits that arrived from Facebook."}</p>
               <div className="mt-1">
                 <MoreLink href="/website/analytics#sources">Every source, and how often its visits act</MoreLink>
               </div>
             </div>
-          ) : (
-            <p className="text-sm text-pretty text-muted">
-              The website isn&apos;t counting visits yet, so there is nothing to show here.{" "}
-              <Link href={TRACKING_SETUP_HREF} className="font-medium text-ink-2 underline underline-offset-2 hover:text-ink">Set up tracking</Link>
-            </p>
-          )}
-        </MeasureRow>
+          </MeasureRow>
+        ) : (
+          <p className="px-4 py-3 text-sm text-pretty text-muted sm:px-5">
+            <span className="font-medium text-ink-2">{copy.website.title}:</span> not counted, the website isn&apos;t counting visits yet.{" "}
+            <Link href={TRACKING_SETUP_HREF} className="inline-flex min-h-10 items-center font-medium text-ink-2 underline underline-offset-2 hover:text-ink sm:min-h-0">Set up tracking</Link>
+          </p>
+        )}
         {b.channel === "instagram" && b.postVisits != null && (
           <MeasureRow title={copy.visits.title} counts={copy.visits.counts} value={n0(b.postVisits)}>
             <p className="text-sm text-pretty text-muted">Added up from the posts below that went up in this period. Instagram no longer gives a count of profile visits for the whole account, and reels don&apos;t report theirs.</p>

@@ -20,6 +20,7 @@ import {
   sumDays,
   trendPoints,
   websiteState,
+  onlineVerdict,
   worthALook,
   type GoogleFacts,
   type LookInput,
@@ -149,6 +150,24 @@ describe("trend points", () => {
     const w = rangeWindows("28d", "2026-11-15");
     const pts = trendPoints(days("2026-11-10", [3, 3, 3, 3, 3]), null, w, "2026-11-10");
     expect(pts.map((p) => p.x)).toEqual(["2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14"]);
+  });
+  it("marks the days a stopped source hasn't sent as not in yet, never as zeros", () => {
+    const w = alignToData(rangeWindows("7d", "2026-11-15"), "2026-11-05");
+    expect(w.stale).toBe(true);
+    const pts = trendPoints(days("2026-11-01", [2, 2, 2, 2, 2]), null, w);
+    expect(pts.map((p) => !!p.missing)).toEqual([true, true, true, true, true, true, true]);
+    const pts2 = trendPoints(days("2026-11-08", [1, 1, 1]), null, { ...rangeWindows("7d", "2026-11-15"), through: "2026-11-10" });
+    expect(pts2.map((p) => !!p.missing)).toEqual([false, false, false, true, true, true, true]);
+  });
+  it("marks a week that runs past the source's last day as not all in", () => {
+    const base = rangeWindows("3m", "2026-11-15");
+    const pts = trendPoints(days(base.cur.from, Array(91).fill(1)), null, { ...base, through: "2026-11-11" });
+    expect(pts[11].missing).toBeUndefined();
+    expect(pts[12].missing).toBe(true);
+  });
+  it("leaves points alone when the source is up to date", () => {
+    const w = alignToData(rangeWindows("7d", "2026-11-15"), "2026-11-14");
+    expect(trendPoints(days("2026-11-08", [1, 1, 1, 1, 1, 1, 1]), null, w).some((p) => p.missing)).toBe(false);
   });
   it("is empty with no data and no window to fill", () => {
     const w = rangeWindows("7d", "2026-11-15");
@@ -329,6 +348,48 @@ describe("what each block says when its source isn't ready", () => {
     expect(websiteState({ hasVisits: true, hasAddress: true }).kind).toBe("ready");
     expect(websiteState({ hasVisits: false, hasAddress: false })).toMatchObject({ kind: "setup", href: "/website/analytics#tracking" });
     expect(websiteState({ hasVisits: false, hasAddress: true }).title).toBe("Waiting for the first visit");
+  });
+});
+
+describe("the Online verdict", () => {
+  const item = (key: string, tone: "bad" | "warn" | "good" | "neutral", title: string) => ({ key, tone, title, detail: "", href: "/x" });
+  it("leads with sources that stopped, named together, with the day they stopped", () => {
+    const v = onlineVerdict({
+      stopped: [
+        { name: "Google Search", through: "2026-11-13" },
+        { name: "the Google listing", through: "2026-11-13" },
+        { name: "Instagram", through: "2026-11-13" },
+        { name: "Facebook", through: "2026-11-13" },
+      ],
+      look: [item("stale-search", "warn", "a"), item("reply", "warn", "6 reviews are waiting for a reply")],
+    });
+    expect(v.tone).toBe("warn");
+    expect(v.title).toBe("Google Search, the Google listing, Instagram and Facebook stopped sending numbers after Nov 13");
+    expect(v.line).toContain("1 more thing worth a look");
+  });
+  it("gives each source its own day when they differ", () => {
+    const v = onlineVerdict({
+      stopped: [
+        { name: "Google Search", through: "2026-11-13" },
+        { name: "the Google listing", through: "2026-11-13" },
+        { name: "Instagram", through: "2026-11-14" },
+        { name: "Facebook", through: "2026-11-14" },
+      ],
+      look: [],
+    });
+    expect(v.title).toBe("Google Search, the Google listing, Instagram and Facebook stopped sending numbers");
+    expect(v.line).toMatch(/^Google Search and the Google listing after Nov 13, Instagram and Facebook after Nov 14\. /);
+    expect(onlineVerdict({ stopped: [{ name: "the Google listing", through: "2026-11-10" }, { name: "Instagram", through: "2026-11-12" }], look: [] }).line).toMatch(/^The Google listing after Nov 10, Instagram after Nov 12\./);
+  });
+  it("otherwise leads with the most serious thing worth a look", () => {
+    const v = onlineVerdict({ stopped: [], look: [item("down-calls", "bad", "Calls from the listing are down 60%"), item("reply", "warn", "2 reviews are waiting for a reply")] });
+    expect(v.tone).toBe("bad");
+    expect(v.title).toBe("Calls from the listing are down 60%");
+    expect(v.line).toBe("And 1 more thing below.");
+  });
+  it("says so when nothing needs you", () => {
+    expect(onlineVerdict({ stopped: [], look: [] })).toMatchObject({ tone: "good", title: "Nothing online needs you" });
+    expect(onlineVerdict({ stopped: [], look: [item("up-visits", "good", "Website visits are up 40%")] })).toMatchObject({ tone: "good", title: "Website visits are up 40%" });
   });
 });
 

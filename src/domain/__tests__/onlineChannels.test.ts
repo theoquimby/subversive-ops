@@ -7,6 +7,7 @@ import {
   followerSummary,
   META_SETUP_HREF,
   postCallout,
+  postHeadline,
   postName,
   postsForPage,
   SOCIAL,
@@ -125,6 +126,12 @@ describe("the best and worst post of the period", () => {
     const s = postCallout(bestAndWorst(list, today), "28 days", "instagram")!;
     expect(s).toBe("Of 5 posts in the last 28 days, “Trivia night is back this Thursday” (Nov 3) reached the most accounts: 2,100, about 3 times a typical post. The quietest was “Kitchen closes early Sunday” (Oct 28), at 210.");
     expect(postCallout(bestAndWorst(list, today), "28 days", "facebook")).toMatch(/reached the most people/);
+  });
+  it("makes the standout post the page's headline", () => {
+    expect(postHeadline(bestAndWorst(list, today), "instagram")).toBe("“Trivia night is back this Thursday” reached about 3 times a typical post");
+    const even = [post("2026-11-01", 100), post("2026-11-02", 110), post("2026-11-03", 120)];
+    expect(postHeadline(bestAndWorst(even, today), "facebook")).toMatch(/reached the most people$/);
+    expect(postHeadline(null, "instagram")).toBeNull();
   });
   it("doesn't call a post from the last two days the quietest: its numbers are still coming in", () => {
     const fresh = [...list, post("2026-11-15", 40)];
