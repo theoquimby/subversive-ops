@@ -38,7 +38,7 @@ When a brew is brewed, its ingredient cost is worked out from that day's prices 
     area: "brewery",
     route: "/brewery/schedule",
     title: "Tank schedule",
-    body: "Every tank over the coming weeks: what is planned where, its dry-hop, transfer, packaging and release days, the year by month, and a calendar feed.",
+    body: "Every tank over the coming weeks. The page leads with what's late to brew, and Brews by month lists only months with a brew.",
     article: `### Plan a brew
 
 Pick what you're brewing, the brew day, the size and its timing. Before anything is saved you see where it goes: the first free fermenter until its transfer day, then the first free brite until packaging, with its dry-hop and release days.

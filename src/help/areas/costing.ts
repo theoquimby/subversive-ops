@@ -112,7 +112,7 @@ Common fixes: raise the price (the recipe page shows the **price to hit target**
     area: "overview",
     route: "/",
     title: "Finish setting up",
-    body: "How far through the setup guide you are. Continue setup picks up where you left off; the × hides this card once you don't need it.",
+    body: "One line under Needs you: how many essentials are done and the next one. Tap it to do it, or see every step.",
     related: ["app.setup"],
   },
   {
@@ -407,7 +407,7 @@ Before you press Enter, the line underneath shows exactly what will be added. Le
     area: "menu",
     route: "/menu",
     title: "Menu costs",
-    body: "Every recipe's plate cost, menu price and food cost % against target, re-costed whenever a supplier price changes. Draft beer and the allergen chart are one tap away; New recipe adds one, and Bulk add pastes many at once from a spreadsheet.",
+    body: "Every recipe's plate cost and food cost % against target, re-costed when a supplier price changes. It opens with the dishes that cost the most to plate. New recipe is the main button; Draft beer, Allergens and the rest are under More.",
     related: ["menu.list", "menu.editor", "menu.draftBeer", "menu.allergenChart"],
   },
   {

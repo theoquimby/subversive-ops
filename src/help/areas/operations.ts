@@ -83,7 +83,7 @@ The suggested quantities recalculate when you change either.`,
     area: "ordering",
     route: "/ordering",
     title: "How quantities are worked out",
-    body: "Forecast sales × recipes + buffer − stock you'll have on delivery day, rounded up to whole packs.",
+    body: "How much: what you'll sell through the cover date, minus what's on the shelf. Items not counted yet are grouped so you can count them first.",
     related: ["ordering.builder", "ingredients.buffer", "sales.forecast"],
   },
   {
@@ -109,7 +109,7 @@ The fresher the count, the better the order. "Not counted yet" means there's no 
     area: "ordering",
     route: "/ordering",
     title: "Needed",
-    body: "Forecast usage from delivery until the order's cover date, plus the ingredient's order buffer.",
+    body: "One figure per item: what's on hand and how much more you need through the order's cover date. It rounds up to whole packs.",
     related: ["ingredients.buffer", "sales.forecast"],
   },
   {
@@ -270,7 +270,7 @@ export const counts: HelpEntry[] = [
     tour: "counting",
     audience: "all",
     title: "Counting stock",
-    body: "Pick an area and count what's on the shelf, in walking order. Every number saves as you go. Staff counts go to a manager to approve before they count.",
+    body: "Pick an area and count what's on the shelf. The page says when the last full count was; counts started and left empty are listed to continue or discard.",
     article: `1. Tap the area you're counting — **Everything**, or one storage area like the walk-in.
 2. Type how much is there next to each item, or tap **None**. Enter jumps to the next one.
 3. Change the unit if it's easier — cases, jugs, lb, each. Got some of each? Add another unit on the same line.
@@ -798,7 +798,7 @@ A negative number usually means a delivery wasn't checked in, or a count was off
     area: "variance",
     route: "/variance",
     title: "By ingredient",
-    body: "Biggest dollar gaps first, each with a plain-English line on what it means per plate or pour. Badges mark gaps over 10% and at least $5; red is over-use, orange is under-use.",
+    body: "Biggest dollar gaps first, each with what it means per plate or pour. The table is under The numbers.",
   },
   {
     id: "variance.skipped",
@@ -812,7 +812,7 @@ A negative number usually means a delivery wasn't checked in, or a count was off
     area: "variance",
     route: "/variance",
     title: "The gap in four numbers",
-    body: "What costs should have been if recipes were followed, what actually left the shelves, the waste staff logged, and what's left unexplained — the money to go looking for.",
+    body: "The verdict: how much stock went missing beyond what recipes and logged waste explain, which ingredients most, and what to do. It says how old the last count is.",
     related: ["variance.theoretical", "variance.actual", "variance.waste", "variance.unexplained"],
   },
   {
@@ -929,7 +929,7 @@ It's deliberately simple so you can always see why a number is what it is. Order
     area: "sales",
     route: "/sales",
     title: "Link Square items to recipes",
-    body: "Each Square item and modifier needs its recipe so its sales count toward costing and ordering. Link your sales walks through them biggest first; \"Leave out of sales\" is only for gift cards, fees and deposits.",
+    body: "One line on how much of what sells has a cost behind it. The linking itself is on Link your sales.",
     article: `When Square sells something, the app needs to know which recipe that was. [Link your sales](/sales/link) is the quickest way: biggest sellers first, with a suggestion, its cost and an Undo for each.
 
 - Pick the recipe from the list. It saves straight away, and shows up under **Changes** on Link your sales with an Undo.
@@ -946,7 +946,7 @@ An unlinked item still uses product but doesn't count as a sale, which shows up 
     area: "sales",
     route: "/sales",
     title: "Five-week forecast",
-    body: "Sales expected for each of the next five weeks, day by day, built from history and adjusted for weather, events and your own changes.",
+    body: "Sales expected each day for five weeks. Each day is shaded against a usual day of its weekday; hatched days are closed; Not in yet means Square hasn't sent that day.",
     article: `The forecast looks five weeks out so ordering, scheduling and budgets all work from the same numbers.
 
 Each day shows what moved it: the season (once there's a year of history), the weather forecast (rain, heavy rain, snow, heat and cold each learn their own effect from your history), holidays and school breaks (learned from past years), interest on Google (searches and listing activity, where they've made the forecast closer), events on the [events calendar](/events), and any manual change you made. Tap a day to see the breakdown, the expected number of orders and the hourly shape, or to override it.`,
@@ -1223,7 +1223,7 @@ Groups with only a handful of days are greyed, because a few days can't tell you
     area: "sales",
     route: "/sales",
     title: "Next 7 days",
-    body: "Forecast sales from today through the next seven days, with events, weather and your adjustments included.",
+    body: "How the next seven days compare with a usual week, why, and what to do. The tick on each column is a usual day of that weekday.",
     related: ["sales.forecast"],
   },
   {
@@ -1255,7 +1255,7 @@ Groups with only a handful of days are greyed, because a few days can't tell you
     area: "sales",
     route: "/sales",
     title: "How the forecast did",
-    body: "Each of the last four weeks: what the forecast said the day before against what you actually sold, and the average daily miss. Show each day lists them one by one.",
+    body: "The same measure as the scorecard: each open day forecast as of the evening before, total miss over total sold, week by week.",
     related: ["sales.accuracy"],
   },
   {

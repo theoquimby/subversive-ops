@@ -28,7 +28,7 @@ Lines that run out first are at the top of each station. Items with enough on ha
     area: "prep",
     route: "/prep",
     title: "How the amounts are worked out",
-    body: "Forecast sales of every dish that uses it, over the cover days, minus what's on hand, rounded up to batches. Par is the minimum; shelf life is the maximum. With no Square items linked yet, sales are matched to recipes by name.",
+    body: "Each line says what it's for: the dishes forecast over the next days (today and tomorrow, say), minus what's on hand, rounded up to batches.",
     article: `**Linked items win.** Square items linked to a recipe on [Sales & forecast](/sales) are used as they are. Items with no link are matched by name ("Classic Smash Burger" → Classic Burger) only onto recipes that have no links, so nothing counts twice.
 
 The forecast is the same one ordering uses: recent weeks of each weekday, the trend, events, weather and any manual change to the day.

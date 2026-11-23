@@ -14,7 +14,7 @@ export const team: HelpEntry[] = [
     area: "team",
     route: "/team",
     title: "Team",
-    body: "Your positions and the people who work them, in one grid: pay rates, positions, availability, logins, sick leave and team announcements. Sync from Square fills in team members and wages.",
+    body: "What needs fixing first (certificates, unsigned documents, people without a login), then the people with their documents and notes. Positions are folded at the bottom.",
     article: `- **Positions** — server, bartender, line cook, dish… Each has a default pay rate, tip points and a staffing ratio the schedule uses.
 - **People** — one row per person: positions, pay rate, minor or not, max hours, and their paid sick leave balance. A rate under the minimum wage (or the tipped minimum for tip-eligible positions) shows in red.
 - **Availability and login** — the calendar icon opens when each person can work, and lets you give them a login in one step.
@@ -29,14 +29,14 @@ Edit cells in place like any other grid — they save as you go.`,
     area: "team",
     route: "/team",
     title: "Positions",
-    body: "The roles you schedule, each with a default hourly rate, tip points, whether it's in the tip pool, and how many people it needs per dollar of sales.",
+    body: "The roles you schedule, each with a default hourly rate, tip points, tip pool and how many people it needs. Sales per person sets staffing from the forecast.",
   },
   {
     id: "team.employees",
     area: "team",
     route: "/team",
     title: "Employees",
-    body: "One row per person with their positions and pay rate. Mark minors so the schedule follows the hours they're allowed to work. Sick shows their paid sick leave left this year.",
+    body: "One row per person: positions, pay rate, certificates, documents and notes. Mark minors so the schedule follows their allowed hours. Tap Notes to add kudos or coaching.",
     related: ["schedule.compliance", "app.grids", "labor.sick"],
   },
   {
@@ -84,7 +84,7 @@ export const labor: HelpEntry[] = [
     area: "labor",
     route: "/labor",
     title: "Timecards and payroll",
-    body: "Timecards from Square, a ranked list of problems to fix, adjustments, and a payroll file you approve before it goes to your payroll provider. The buttons at the top change the pay period, sync from Square and download the payroll spreadsheet.",
+    body: "Timecards, problems to fix and the payroll file. It opens on the latest period waiting for approval, with any older ones waiting listed underneath.",
     article: `### Timecards
 Clock-ins and outs come over from Square. Fix a missed punch in place: type 4p, 16:30 or 10:15pm. Any card you change is marked edited, and the Square sync leaves it as you set it from then on. Square's own record isn't changed.
 
@@ -125,7 +125,7 @@ These rules are pre-filled for New York and editable in Settings. The app applie
     area: "labor",
     route: "/labor",
     title: "Before you approve",
-    body: "Problems in the pay period, most urgent first. Fix a missed clock-out right here: type the time or use the scheduled end, or open the card. Missing rates must be fixed too; no-shows, call-in pay and missing breaks are worth a check.",
+    body: "Problems in the pay period, most urgent first. A week with no clock-ins shows as one item. Fix a missed clock-out right here: type the time or use the scheduled end.",
     related: ["labor.approve"],
     keywords: ["exceptions", "missing punch", "no show", "errors"],
   },
@@ -134,7 +134,7 @@ These rules are pre-filled for New York and editable in Settings. The app applie
     area: "labor",
     route: "/labor",
     title: "Approve a pay period",
-    body: "Locks the period's timecards and adjustments and freezes the payroll file. Unlock to change anything, then approve again. Until then the payroll spreadsheet is marked DRAFT.",
+    body: "Locks the period's timecards and adjustments and freezes the payroll file. Greyed out, with the reason, when the period has no hours. Unlock to change anything.",
     related: ["labor.export"],
   },
   {
@@ -341,7 +341,7 @@ In Settings each rule can be **Must fix** (publishing stops until you override),
     area: "schedule",
     route: "/schedule",
     title: "The week at a glance",
-    body: "Forecast sales for the week, scheduled labor cost (wages plus employer taxes, overtime and call-in pay included), labor % against your budget, and hours scheduled vs hours the forecast needs.",
+    body: "One line for the week: hours against what the forecast needs, where they're over or short, open shifts, and labor % by day. Holidays, closed days with a forecast and days with no forecast are flagged on the day.",
   },
   {
     id: "schedule.grid",
@@ -636,7 +636,7 @@ It's worked out once a day, overnight, so the first look of the day can take a f
     route: "/pnl",
     tour: "pnl",
     title: "Profit before overhead",
-    body: "Net sales minus food and drink cost, labor and Square card fees, before rent. Comps & discounts show above net sales. Items not linked to a recipe are costed at a typical 30% (hatched). Arrows compare with the same days last week or month and a year ago.",
+    body: "What you kept of every sales dollar, what took the rest, and the one thing to do. Days not in from Square are counted as missing, not as zero.",
     related: ["pnl.page", "pnl.caveats", "sales.mapping"],
     keywords: ["margin", "bridge", "waterfall", "cents on the dollar"],
   },
@@ -654,7 +654,7 @@ It's worked out once a day, overnight, so the first look of the day can take a f
     route: "/pnl",
     tour: "pnl",
     title: "What moved",
-    body: "Notes worked out from the numbers only: sales against the period before and last year, labor or food cost moves of 2 points or more with what changed, the best day, days that lost money, forecast misses, and card fee or comp moves.",
+    body: "What moved against the period before, each with its own chart.",
     related: ["pnl.page", "pnl.forecast"],
   },
   {
@@ -721,7 +721,7 @@ Each menu item counts as Food, Beer, Other beverage or Retail, based on its cate
     area: "pnl",
     route: "/pnl",
     title: "By day",
-    body: "Each day's sales against forecast, food and beverage cost %, actual and scheduled labor, prime cost and profit (with unlinked items estimated), and productivity. Tap a day for its hours. Columns hide on small screens.",
+    body: "Each day's sales split into food and drink, labor, card fees and what was kept. Days not in yet are dashed. The table is under The numbers.",
   },
   {
     id: "pnl.splh",
@@ -780,7 +780,7 @@ Past event days are left out of the "usual day" averages, for both the sales for
     area: "events",
     route: "/events",
     title: "Did it work?",
-    body: "Each thing you've put on, scored against an ordinary day of that weekday at that time of year, with a verdict only when the nights together say more than chance would.",
+    body: "Did it work? Each dot is one night against an ordinary night of that weekday; the grey band is the normal swing. The write-ups are under The numbers.",
     article: `Open **Events** and look under **Did it work?**
 
 Every past event is compared with an ordinary day: the last eight days of that weekday with nothing on and no holiday, scaled by how your other days were doing around the event against how they were doing back then. That way a weekly night that has run for months is still compared with the same weekday from before it started, allowing for the season.
@@ -1066,7 +1066,7 @@ export const reviews: HelpEntry[] = [
     area: "reviews",
     route: "/reviews",
     title: "Themes",
-    body: "What guests mention most in the last 90 days, and how many of those mentions were critical. Each bar splits into praise (green), mixed (amber) and critical (red).",
+    body: "What guests mention most, each judged by what the review says about it: praise, critical, or Just mentioned.",
   },
   {
     id: "reviews.reply",
@@ -1087,7 +1087,7 @@ export const reviews: HelpEntry[] = [
     area: "reviews",
     route: "/reviews",
     title: "Average rating",
-    body: "The average star rating of reviews from the last 90 days, and how many there were.",
+    body: "The verdict: the average rating over the last 90 days, how it's moving, and the one thing to look at.",
   },
   {
     id: "reviews.last30",
@@ -1201,7 +1201,7 @@ The labor target also drives **Fit to budget** on the schedule, and the weekly b
     area: "budgets",
     route: "/budgets",
     title: "Sales target hit",
-    body: "In how many of the last six finished weeks sales reached the target. Green when it's at least half.",
+    body: "How many of the last four finished weeks hit their sales target. A finished week is Hit, Just missed or Missed; Not all in means some days haven't synced.",
   },
 ];
 

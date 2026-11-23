@@ -7,7 +7,7 @@ export const breweryStock: HelpEntry[] = [
     area: "brewery",
     route: "/brewery/stock",
     title: "Brewing stock",
-    body: "Malt, hops, yeast and other brewing ingredients: what's on the shelf, what brews used, what planned brews need, and which are running short. Kept apart from kitchen counts.",
+    body: "Brewing ingredients: what's on the shelf, what brews used and need, and which run short. Never counted shows as Not counted, so count first.",
     article: `Every ingredient on the brewery side, with:
 
 - **On hand**: the last count, plus deliveries, less what each brew used, plus fixes since. Malt and hops are in lb, yeast in packs (or grams), liquids in gallons. Red means below zero: a brew used more than was on record, so count it.
@@ -37,7 +37,7 @@ Only ingredients on the brewery side show here, and they never show in kitchen c
     area: "brewery",
     route: "/brewery/stock",
     title: "On hand",
-    body: "The last count, plus deliveries, less what each brew used, plus fixes since. Never counted: the same from zero. Red when below zero.",
+    body: "The last count, plus deliveries, less what each brew used. Never counted shows as Not counted, never as zero or fine.",
     related: ["brewery.stock"],
   },
   {

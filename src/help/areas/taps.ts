@@ -7,7 +7,7 @@ export const taps: HelpEntry[] = [
     area: "kegs",
     route: "/kegs/taps",
     title: "Tap list",
-    body: "What's pouring now, in the order the TV and website show it, with prices and about how much is left. “Almost gone” under 15% left, “New” for 3 days after a keg goes on. Managers use the arrows to change the board order.",
+    body: "What's pouring now, in the order the TV and website show it, with prices and about how much is left. Almost gone shows in the level line.",
     audience: "all",
     related: ["taps.tv", "taps.beers", "taps.comingSoon", "kegs.taps"],
     keywords: ["tap list", "whats on tap", "pouring", "board order", "reorder taps", "menu board"],

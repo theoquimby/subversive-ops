@@ -18,7 +18,7 @@ export const kegs: HelpEntry[] = [
     area: "kegs",
     route: "/kegs",
     title: "The fleet right now",
-    body: "Every keg in service as one bar, split by where it is: full, on tap, out at accounts, waiting to be cleaned, and clean and empty. Tap a part to see those kegs.",
+    body: "Every keg in service as one bar, split by where it is: full, on tap, out at accounts, dirty, and clean.",
     article: `The bar is the whole fleet. A healthy one has a good share **full**, and not too much sitting **to clean** or **clean, empty**.
 
 Beside it is the same split for each of the **last 12 weeks**, so you can see whether today is normal.
@@ -348,7 +348,7 @@ Every keg also has one of our own codes. When an old sticker wears out, print a 
     area: "kegs",
     route: "/kegs/fleet",
     title: "Fleet & trends",
-    body: "How the keg fleet is used over time, worked out from every scan: where the kegs were each week, how many were filled each month, where that beer went, and which kegs need a look.",
+    body: "Opens with fills that have no tap or delivery scan, which are missing from beer tax. Then kegs to look at, out too long, probably lost (over 180 days) and not seen lately.",
     article: `Everything here comes from the keg history, including history imported from your old keg app. Nothing is typed in.
 
 **Where the fleet was** stacks the kegs by state at the end of each week. If most of the fleet is usually dirty or clean, you own more kegs than you need. If it's nearly all full or out, you're one busy weekend from having nothing to fill.
@@ -386,7 +386,7 @@ The fix is the habit, not the app: scan a keg when it goes on and when it goes o
     area: "kegs",
     route: "/kegs/fleet",
     title: "Kegs that need a look",
-    body: "Two lists: kegs that have been out at an account too long, and kegs in service that nobody has scanned in a long time. Managers also see a summary on the Kegs page.",
+    body: "Kegs out at an account too long, kegs nobody has scanned in a long time, and kegs out over 180 days, listed apart as probably lost.",
     article: `**Out too long** is every keg at an account for more than 14 days, grouped by account with the longest wait first. Call the account or pick the kegs up.
 
 **Not seen lately** is every keg that isn't out and hasn't been scanned for 90 days. Find it and scan it. If it's gone, **Retire** takes it off the boards and keeps its history; it's still under [All kegs](/kegs/all) → Retired if it turns up. Tick several and **Retire** them together.

@@ -78,6 +78,51 @@ export interface WhatsNewEntry {
 export type WhatsNewData = "guestPlaces";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // ---- 23 Nov · 1.52 (every page leads with what matters) ----
+  {
+    id: "2026-11-23.verdict-first",
+    date: "2026-11-23",
+    title: "Every page leads with the verdict",
+    line: "Pages open with what's happening and what to do, then a picture per finding; tables sit under The numbers.",
+    icon: "insights",
+    area: "numbers",
+    href: "/pnl",
+    help: "pnl.headline",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-23.not-in-yet",
+    date: "2026-11-23",
+    title: "Missing data no longer looks like news",
+    line: "Days not in yet say so instead of Closed or zero, so no swing or 0% is ever made up.",
+    icon: "analytics",
+    area: "numbers",
+    href: "/",
+    help: "overview.setup",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-23.floor-pages",
+    date: "2026-11-23",
+    title: "Kegs, beer tax and reviews, clearer",
+    line: "Beer tax warns when scans are missing, online charts stop where data does, reviews judge each topic fairly.",
+    icon: "keg",
+    area: "floor",
+    href: "/kegs/fleet",
+    help: "kegs.fleet",
+    audience: "manager",
+  },
+  {
+    id: "2026-11-23.ops-pages",
+    date: "2026-11-23",
+    title: "Timecards, schedule, ordering: one line",
+    line: "Each opens with one line on what needs doing: approve, trim hours, or order by the deadline.",
+    icon: "pace",
+    area: "people",
+    href: "/labor",
+    help: "labor.page",
+    audience: "manager",
+  },
   // ---- 20 Nov · 1.51 (automatic linking) ----
   {
     id: "2026-11-20.auto-link",

@@ -135,7 +135,7 @@ Under 30 visits is too few to judge a rate, so it says "Too few".`,
     area: "website",
     route: "/website/analytics",
     title: "Website and sales",
-    body: "Whether days with more website actions than usual for that weekday also had more Square sales. Season and events are allowed for. It says 'goes together' only when the range is clear of zero, and never that one causes the other.",
+    body: "Whether busier website days also brought more Square sales, compared within each weekday with events and closed days left out, over at least eight weeks. It shows the two moving together, never that one causes the other.",
     article: `How it's worked out:
 
 - Each day's Square sales and the website's actions (direction clicks, or all actions) over the last 12 months of tracking.

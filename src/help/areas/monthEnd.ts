@@ -35,7 +35,7 @@ The figures come from Square, your counts, invoices and timecards. They're for r
     area: "accounting",
     route: "/accounting",
     title: "Closing checklist",
-    body: "Invoices approved and in QuickBooks, a stock count within 3 days of the period's end, tips finalized, payroll approved and every day's sales synced. Tap a line to go and fix it. Grey lines don't apply this time.",
+    body: "In the order to work it, blockers first. The counts are done, to do, and worth a look, and they add up.",
     related: ["invoices.quickbooks", "count.home", "tips.page", "labor.payroll"],
     keywords: ["to do", "checklist", "close the month"],
   },

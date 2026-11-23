@@ -7,7 +7,7 @@ export const online: HelpEntry[] = [
     area: "online",
     route: "/online",
     title: "Online",
-    body: "How guests find Subversive online and what they do next, on one page: Google Search, the Google listing, the website, Instagram, the Facebook Page and reviews, each against the period before. Pick 7 days, 28 days, 3 months or 12 months at the top.",
+    body: "How guests find Subversive online and what they do next. It opens with what needs you (sources that stopped, reviews to answer). Periods are 7 days, 28 days, 3 months or 12 months, ending yesterday.",
     article: `Open it from **Online → Overview**. It answers two questions: how do people find us, and what do they do next?
 
 - **How people found you**, in four groups: Search (how often the website showed up in Google's results), Maps and the listing (how often the Google listing was shown), Website (visits, and where they came from) and Social (how often your Instagram posts and your Facebook Page were shown).
@@ -150,7 +150,7 @@ Messages and food orders sent from the listing aren't brought in.`,
     area: "online",
     route: "/online/google",
     title: "Connection",
-    body: "Which listing the app reads, when it last checked and the last day Google has reported. Manage the connection opens Settings → Connections → Google, where you can sync now, pick a different listing or disconnect.",
+    body: "Whether the listing is connected and the last day Google has reported. If the numbers stop arriving it says so, with Sync again.",
     related: ["settings.google", "website.analytics.googleSetup"],
   },
   {

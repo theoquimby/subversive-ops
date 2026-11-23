@@ -47,7 +47,7 @@ Pick the time at the top of the page (7 to 11am, default 9am). It's a phone noti
     area: "brief",
     route: "/brief",
     title: "Before tonight",
-    body: "What to get done today, most urgent first: order deadlines and drafts to send, deliveries to check in, invoices to approve, kegs with nothing behind them, staff requests and the schedule. Tap one to do it.",
+    body: "The first five things to get done, one per subject, most urgent first. The rest are under Needs you on the Overview.",
     related: ["overview.needs", "ordering.today"],
   },
   {

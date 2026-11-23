@@ -24,6 +24,28 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.52",
+    date: "2026-11-23",
+    title: "Every page leads with what matters",
+    summary: "The reports across the app now open with a plain verdict and what to do, then a picture for each finding, with the tables tucked under The numbers. Days and figures that aren't in yet say so instead of showing as zero or Closed.",
+    entries: ["2026-11-23.verdict-first", "2026-11-23.not-in-yet", "2026-11-23.floor-pages", "2026-11-23.ops-pages"],
+    fixed: [
+      "Overview: Today and Needs you come first; setup is one line. Days Square hasn't sent read Not in yet, not Closed, and their swings are held back.",
+      "Brief: five things, one per subject. The weekly brief shows a dash for labor with no timecards (not 0% in green), and its review and linking counts match the other pages.",
+      "P&L opens on last week until this week has two finished days, with a verdict and a chart per change. Profit by day, Month-end, Budgets and Events lead with their verdict too.",
+      "Money is the same colour on every page: sales blue, food and drink orange, card fees violet, wages magenta, what's left in ink.",
+      "Forecast trust is one measure everywhere: Sales and the Scorecard now say the same thing. The Sales calendar shades each day against a usual one.",
+      "Menu costs, Margin gap, Ingredients and Counts: a verdict and a chart each; Margin gap no longer shows the same gap as green and red; chips say when something isn't counted.",
+      "Online, Google, Instagram and Facebook: charts stop where the data stops instead of dropping to zero, and each channel keeps one colour across the pages. Website analytics shows one clear empty state.",
+      "Reviews judges each topic by what the review says about it, so a bad review that praises the beer no longer counts against the beer. Reply drafts have no dashes.",
+      "Kegs: one set of keg colours and labels everywhere; Fleet leads with fills missing a scan; kegs out over 180 days are listed as probably lost. Beer tax warns when it's probably under-counted.",
+      "Brewing stock shows Not counted instead of Fine for anything never counted. The brewery schedule fits a phone.",
+      "Timecards open on the latest week waiting for approval; a week with no clock-ins is one line, not one per shift; Approve waits until there are hours.",
+      "Schedule, Ordering, the order builder, Team and Prep each lead with one line on what needs doing; one need figure per item when ordering; position colours stay off red and green.",
+      "Short tables no longer show search and filter controls, and dashes are gone from text across the app.",
+    ],
+  },
+  {
     version: "1.51",
     date: "2026-11-20",
     title: "Ops links sales by itself, where it's safe",

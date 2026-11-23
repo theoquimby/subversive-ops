@@ -9,7 +9,7 @@ export const orderingBoard: HelpEntry[] = [
     route: "/ordering",
     tour: "ordering",
     title: "Today",
-    body: "What needs you now: order deadlines in the next 48 hours with nothing ordered yet, drafts waiting to be sent, deliveries to check in, and trucks due tomorrow. Each has one button: Build order, Draft, Review & send or Check in.",
+    body: "What needs ordering now and by when. A missed cutoff says what to do next: call or email the supplier, or order by the next deadline.",
     article: `The strip at the top of Ordering lists only what needs doing, most urgent first.
 
 - **Order by …** — a deadline in the next 48 hours and no order yet. The countdown turns amber under a day and red under 6 hours. **Build order** opens the suggested order to adjust; **Draft** saves it as a draft in one tap and opens it. Suppliers ordered **when stock runs low** only show here when something runs short, and suppliers with reminders off never do.

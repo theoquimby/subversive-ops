@@ -140,7 +140,7 @@ export const workforce: HelpEntry[] = [
     area: "labor",
     route: "/labor",
     title: "Per hour worked",
-    body: "Sales and covers per hour actually worked this period, from timecards and Square, and the average spend per cover.",
+    body: "Wages against sales for the period, and sales per hour worked. A dash means timecards aren't in yet, not zero.",
     related: ["schedule.covers"],
   },
   {
