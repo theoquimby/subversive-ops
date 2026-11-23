@@ -31,7 +31,7 @@ export default async function PayrollHandoffPage({ searchParams }: { searchParam
   const [v, recent] = await Promise.all([handoffView(period), recentPeriods(6)]);
   const prev = payPeriodFor(addDays(period.start, -1), rules).start;
   const next = addDays(period.end, 1);
-  const label = `${shortDate(period.start)} – ${shortDate(period.end)}`;
+  const label = `${shortDate(period.start)} to ${shortDate(period.end)}`;
   const order: ExportFormat[] = v.provider.id === "GUSTO" ? ["GUSTO", "ACCOUNTANT", "GENERIC", "SQUARE_PAYROLL"] : v.provider.id === "SQUARE_PAYROLL" ? ["SQUARE_PAYROLL", "ACCOUNTANT", "GENERIC", "GUSTO"] : ["GENERIC", "ACCOUNTANT", "SQUARE_PAYROLL", "GUSTO"];
   const submitted = v.steps.find((s) => s.id === "submitted")!;
 
@@ -41,7 +41,7 @@ export default async function PayrollHandoffPage({ searchParams }: { searchParam
         help="labor.handoff"
         back={{ href: `/labor?start=${period.start}`, label: "Timecards" }}
         title="Payroll"
-        description={`Hand the approved hours and tips to ${v.provider.name}. Payroll itself — taxes, paychecks, direct deposit — is run there, not here.`}
+        description={`Hand the approved hours and tips to ${v.provider.name}. Payroll itself (taxes, paychecks, direct deposit) is run there, not here.`}
         actions={
           <div className="flex items-center gap-1">
             <LinkButton href={`/labor/handoff?start=${prev}`} variant="secondary" className="size-11 shrink-0 px-0 sm:size-10" aria-label="Previous pay period"><ChevronLeft className="size-5" /></LinkButton>
@@ -78,7 +78,7 @@ export default async function PayrollHandoffPage({ searchParams }: { searchParam
           <HelpZone id="labor.handoff.files">
             <section aria-labelledby="files-h">
               <h2 id="files-h" className="mb-1 flex items-center gap-1.5 text-[0.95rem] font-semibold">Files <HelpTip id="labor.handoff.files" /></h2>
-              <p className="mb-3 text-sm text-muted">{v.facts.approved ? "From the approved period — these won't change." : "Hours aren't approved yet, so files are marked DRAFT."}</p>
+              <p className="mb-3 text-sm text-muted">{v.facts.approved ? "From the approved period, so these won't change." : "Hours aren't approved yet, so files are marked DRAFT."}</p>
               <Card className="divide-y divide-border">
                 {order.map((f) => {
                   const m = FORMAT_META[f];
@@ -152,7 +152,7 @@ export default async function PayrollHandoffPage({ searchParams }: { searchParam
               <Card className="divide-y divide-border">
                 {recent.map((p) => (
                   <Link key={p.start} href={`/labor/handoff?start=${p.start}`} className={cn("flex min-h-11 items-center justify-between gap-2 px-4 py-2 text-sm active:bg-surface-2", p.start === period.start && "bg-surface-2/60")}>
-                    <span className="num">{shortDate(p.start)} – {shortDate(p.end)}</span>
+                    <span className="num">{shortDate(p.start)} to {shortDate(p.end)}</span>
                     <Badge tone={p.label === "Handed off" ? "good" : p.label === "Open" ? (p.end < today ? "warn" : "neutral") : "neutral"}>{p.end >= today && p.label === "Open" ? "In progress" : p.label}</Badge>
                   </Link>
                 ))}
