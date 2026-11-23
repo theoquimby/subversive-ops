@@ -1,3 +1,4 @@
+import { positionColor } from "@/domain/positionColors";
 import { HelpZone } from "@/components/help";
 import { GridCell, GridSelect } from "@/components/grid";
 import { Card, LinkButton, PageHeader, Section, Th, Tr } from "@/components/ui";
@@ -85,7 +86,7 @@ export default async function TeamPage() {
               <Tr key={p.id}>
                 <td className={td}>
                   <div className="flex items-center gap-2 pl-2">
-                    <span className="size-2 shrink-0 rounded-full" style={{ background: p.color }} />
+                    <span className="size-2 shrink-0 rounded-full" style={{ background: positionColor(p.color) }} />
                     <GridCell grid="pos" col="name" value={p.name} onSave={setPositionField.bind(null, p.id, "name")} ariaLabel="Position name" className="min-w-32 flex-1 font-medium" />
                   </div>
                 </td>
@@ -152,7 +153,7 @@ export default async function TeamPage() {
               rateWarning: rateWarning(num(e.hourlyRate), e.positions.map((p) => p.positionId)),
               certs: certChips.get(e.id) ?? null,
             }))}
-            positions={positions.map((p) => ({ id: p.id, name: p.name, color: p.color }))}
+            positions={positions.map((p) => ({ id: p.id, name: p.name, color: positionColor(p.color) }))}
             users={users}
             openingHours={openingHours}
           />

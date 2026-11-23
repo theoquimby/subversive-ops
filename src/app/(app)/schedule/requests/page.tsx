@@ -1,3 +1,4 @@
+import { positionColor } from "@/domain/positionColors";
 import { PageHeader } from "@/components/ui";
 import { addDays, ISODate, toISODate, weekday } from "@/domain/dates";
 import { DayCoverage, inclusiveDates, shiftLabel, shiftPaidHours, weekStartOf } from "@/domain/schedule";
@@ -110,7 +111,7 @@ export default async function RequestsPage() {
       date: v.date,
       time: shiftLabel(v.startMin, v.endMin),
       position: w.shift.position.name,
-      color: w.shift.position.color,
+      color: positionColor(w.shift.position.color),
       note: w.note,
       giving: tradeLabel(w.offeredShift),
       checks,
