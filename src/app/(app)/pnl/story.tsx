@@ -5,6 +5,7 @@
 
 import { cx } from "@/components/ui";
 import { HelpTip } from "@/components/help";
+import type { Finding } from "@/components/chapter";
 import type { Bridge, StoryNote } from "@/domain/pnlStory";
 import { TYPICAL_COST_SHARE } from "@/domain/pnlStory";
 import { dayDate, money, pct, shortDate } from "@/lib/format";
@@ -92,6 +93,86 @@ function noteText(n: StoryNote): ReactNode {
   }
 }
 
+/** A note as a finding: a short heading, the sentence behind it, what to do, and the chapter it lives in. */
+export function noteFinding(n: StoryNote): { id: string; point: Finding } {
+  const ptsWord = (a: number, b: number) => `${Math.abs((a - b) * 100).toFixed(1)} points ${a > b ? "higher" : "lower"}`;
+  switch (n.kind) {
+    case "sales":
+      return { id: "moved-sales", point: { tone: "neutral", title: n.prev ? (Math.abs(n.prev.change) < 0.005 ? `Sales were level with ${n.prev.label}` : `Sales were ${upDown(n.prev.change)} ${pctAbs(n.prev.change)} on ${n.prev.label}`) : `Sales were ${whole(n.sales)}`, detail: plainNote(n), action: null } };
+    case "labor":
+      return { id: "moved-labor", point: { tone: n.tone, title: `Labor was ${ptsWord(n.pct, n.prevPct)} than ${n.label}`, detail: plainNote(n), action: n.tone === "warn" ? "Trim the quietest shifts on next week's schedule." : null } };
+    case "food":
+      return { id: "moved-food", point: { tone: n.tone, title: `Food cost ran ${ptsWord(n.pct, n.prevPct)} than ${n.label}`, detail: plainNote(n), action: n.tone === "warn" ? "Menu costs shows which dishes cost more to make." : null } };
+    case "bestDay":
+      return { id: "days", point: { tone: "neutral", title: `Best day: ${dayDate(n.date)}, with ${whole(n.sales)}`, detail: plainNote(n), action: null } };
+    case "lossDays":
+      return { id: "days", point: { tone: "warn", title: n.days.length === 1 ? `${dayDate(n.days[0].date)} lost money` : `${n.days.length} days lost money`, detail: plainNote(n), action: "Check what was on the schedule those days against what came in." } };
+    case "forecast":
+      return { id: "moved-forecast", point: { tone: n.tone === "good" ? "good" : "neutral", title: `Sales came in ${pctAbs(n.change)} ${n.change < 0 ? "under" : "over"} the forecast`, detail: plainNote(n), action: null } };
+    case "fees":
+      return { id: "moved-fees", point: { tone: n.tone, title: `Card fees were ${pct(n.pct, 1)} of sales, ${ptsWord(n.pct, n.prevPct)} than ${n.label}`, detail: plainNote(n), action: null } };
+    case "discounts":
+      return { id: "moved-discounts", point: { tone: n.tone, title: `Comps and discounts came to ${whole(n.amount)}`, detail: plainNote(n), action: n.tone === "warn" ? "Comps & discounts, further down, shows who rang them up and why." : null } };
+  }
+}
+
+/** noteText as plain words, for a chapter's line. */
+function plainNote(n: StoryNote): string {
+  switch (n.kind) {
+    case "sales": {
+      const parts = [n.prev && (Math.abs(n.prev.change) < 0.005 ? `level with ${n.prev.label}` : `${upDown(n.prev.change)} ${pctAbs(n.prev.change)} on ${n.prev.label}`), n.year && `${upDown(n.year.change)} ${pctAbs(n.year.change)} on ${n.year.label}`].filter(Boolean);
+      return `Sales were ${whole(n.sales)}${parts.length ? `, ${parts.join(" and ")}` : ""}.`;
+    }
+    case "labor": {
+      const why =
+        Math.abs(n.laborChange) < 0.05
+          ? `Sales were ${pctAbs(n.salesChange)} ${n.salesChange < 0 ? "lower" : "higher"} while labor cost stayed about the same (${whole(n.labor)})`
+          : `Sales ${n.salesChange < 0 ? "fell" : "rose"} ${pctAbs(n.salesChange)} while labor cost ${n.laborChange < 0 ? "fell" : "rose"} ${pctAbs(n.laborChange)}${n.hoursChange != null && Math.abs(n.hoursChange) >= 0.02 ? ` on ${pctAbs(n.hoursChange)} ${n.hoursChange < 0 ? "fewer" : "more"} hours` : ""}`;
+      return `${pct(n.pct, 1)} of sales against ${pct(n.prevPct, 1)}. ${why}.`;
+    }
+    case "food":
+      return `${pct(n.pct, 1)} against ${pct(n.prevPct, 1)}, on items linked to a recipe.`;
+    case "bestDay":
+      return `${pct(n.share, 0)} of the period's sales came in that day.`;
+    case "lossDays": {
+      const [w] = n.days;
+      if (n.days.length === 1) return `It lost ${whole(w.loss)} once food, drink and labor were paid: ${whole(w.sales)} in sales against ${whole(w.labor)} of labor.`;
+      return `Once food, drink and labor were paid (${n.days.map((d) => shortDate(d.date)).join(", ")}). The worst was ${dayDate(w.date)}, down ${whole(w.loss)}.`;
+    }
+    case "fees":
+      return `${whole(n.fees)} in card fees, against ${pct(n.prevPct, 1)} of sales ${n.label}.`;
+    case "discounts":
+      return `${pct(n.pct, 1)} of what items rang up at, against ${whole(n.prevAmount)} (${pct(n.prevPct, 1)}) ${n.label}${n.top && n.top.amount > 0 ? `. The biggest was ${n.top.name} at ${whole(n.top.amount)}` : ""}.`;
+    case "forecast":
+      return `${whole(n.actual)} against a forecast of ${whole(n.forecast)}.`;
+  }
+}
+
+/**
+ * Two or three figures side by side as bars on one scale: this period in its
+ * money colour, the comparisons in grey, with the figure at the end of each.
+ */
+export function CompareBars({ rows, format }: { rows: { label: string; value: number; color?: string; target?: boolean }[]; format: (n: number) => string }) {
+  const max = Math.max(1e-9, ...rows.map((r) => Math.abs(r.value)));
+  return (
+    <ul className="space-y-2.5">
+      {rows.map((r) => (
+        <li key={r.label} className="grid grid-cols-[minmax(0,8.5rem)_1fr] items-center gap-x-3 sm:grid-cols-[11rem_1fr]">
+          <span className={cx("truncate text-sm", r.color ? "font-medium text-ink" : "text-ink-2")}>{r.label.charAt(0).toUpperCase() + r.label.slice(1)}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            {r.target ? (
+              <span aria-hidden className="h-2.5 min-w-[2px] rounded-r-[4px] border border-dashed border-border-strong" style={{ width: `calc((100% - 4.5rem) * ${(Math.abs(r.value) / max).toFixed(4)})` }} />
+            ) : (
+              <span aria-hidden className="h-2.5 min-w-[2px] rounded-r-[4px]" style={{ width: `calc((100% - 4.5rem) * ${(Math.abs(r.value) / max).toFixed(4)})`, background: r.color ?? "var(--border-strong)" }} />
+            )}
+            <span className={cx("num text-sm whitespace-nowrap", r.color ? "font-semibold text-ink" : "text-ink-2")}>{format(r.value)}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const toneDot: Record<StoryNote["tone"], string> = { good: "bg-good-bg text-good", warn: "bg-warn-bg text-warn", neutral: "bg-surface-2 text-ink-2" };
 
 export function StoryNotes({ notes }: { notes: StoryNote[] }) {
@@ -125,9 +206,11 @@ export function bridgeSteps(b: Bridge, opts: { hours: number; feeNote?: string }
   }
   steps.push({ key: "sales", label: "Net sales", value: b.sales, from: 0, to: b.sales, total: true });
   let at = b.sales;
-  steps.push({ key: "cogs", label: "Food & drink cost", value: b.cogs, from: at, to: (at -= b.cogs) });
+  if (b.cogs > 0 || !b.estimated) steps.push({ key: "cogs", label: "Food & drink cost", value: b.cogs, from: at, to: (at -= b.cogs) });
   if (b.estimated) steps.push({ key: "est", label: "Not-linked items", value: b.cogsEstimate, from: at, to: (at -= b.cogsEstimate), note: `Estimated at a typical ${pct(TYPICAL_COST_SHARE, 0)} of their ${whole(b.cogsEstimate / TYPICAL_COST_SHARE)} in sales` });
-  steps.push({ key: "labor", label: "Labor", value: b.labor, from: at, to: (at -= b.labor), note: opts.hours > 0 ? `${Math.round(opts.hours).toLocaleString("en-US")} hours, incl. employer taxes` : undefined });
+  // No timecards is "not in", never a $0 cost.
+  if (b.labor <= 0) steps.push({ key: "labor", label: "Labor", value: 0, from: at, to: at, missing: true, note: "No timecards for these days, so profit reads high" });
+  else steps.push({ key: "labor", label: "Labor", value: b.labor, from: at, to: (at -= b.labor), note: opts.hours > 0 ? `${Math.round(opts.hours).toLocaleString("en-US")} hours, incl. employer taxes` : undefined });
   if (b.fees !== 0) steps.push({ key: "fees", label: <span className="inline-flex items-center gap-1">Card fees <HelpTip id="pnl.fees" /></span>, value: b.fees, from: at, to: (at -= b.fees), note: opts.feeNote });
   steps.push({ key: "profit", label: "Profit before overhead", value: b.profit, from: 0, to: b.profit, total: true });
   if (b.fixed != null && b.afterFixed != null) {
