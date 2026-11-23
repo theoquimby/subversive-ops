@@ -225,7 +225,10 @@ export async function pastEventDays(from: ISODate, to: ISODate) {
 
 /** History for baselines: sales, open days, and open days minus event days (once per render per range). */
 const baselineHistory = cache(async (from: ISODate, to: ISODate) => {
-  const [h, events, method] = await Promise.all([fullSalesHistory(from, to), pastEventDays(from, to), storedMethod()]);
+  // Hourly sales only, for now: reading the merged item-sales history too (as the scorecard replay does) would
+  // change every live forecast, so it waits until the scorecard shows it beats this (the owner's rule for any
+  // forecast change). fullSalesHistory below is what that switch would use.
+  const [h, events, method] = await Promise.all([dailySalesHistory(from, to), pastEventDays(from, to), storedMethod()]);
   // When the replay favours it, a day with only a stray sale isn't an open day for the usual-day average.
   const refined = !!method?.refined;
   const open = refined ? realOpenDays(h.sales) : h.openDays;

@@ -107,9 +107,8 @@ export async function backfillWeather(maxSpans = 10): Promise<{ days: number; sp
 /** v2: weather by kind (rain, heavy rain, snow, heat, cold) in place of one rain factor.
  * v3: online interest (Google searches and listing activity) on top of v2.
  * v4: holidays and school breaks on top of v3.
- * v5: the usual-day average leaves out stray-sale days and caps freak days, when the replay favours it.
- * v6: the live forecast reads item-sales history from before hourly sales were kept, as the replay always has (seasonality). */
-export const FORECAST_MODEL = "v6";
+ * v5: the usual-day average leaves out stray-sale days and caps freak days, when the replay favours it. */
+export const FORECAST_MODEL = "v5";
 const LOG_DAYS_AHEAD = 14;
 
 /** Keep tonight's forecast for today and the next two weeks, so it can be scored against what then sells. */
