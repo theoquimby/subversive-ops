@@ -3,6 +3,7 @@ import { paidHours, staffingCurve } from "@/domain/labor";
 import { addDays, businessDate, ISODate, parseISODate, weekday, zonedMidnightUTC } from "@/domain/dates";
 import { forecastSeries } from "@/domain/forecast";
 import {
+  criticalThemes,
   estimateRating,
   fallbackReply,
   isTheme,
@@ -142,7 +143,7 @@ const analysisSchema = z.object({
 });
 
 const VOICE = `You write review replies for Subversive, a small brewery and taproom with a kitchen in Catskill, NY.
-Voice: friendly, local, plain-spoken, a little warm. Short (2–4 sentences). First name only if given. No corporate phrases ("we strive", "valued guest", "we apologize for any inconvenience"), no emojis, no exclamation-mark pile-ups, no discounts or promises you can't keep. Thank happy guests specifically for what they mentioned. For unhappy guests: own it, name the concrete fix, invite them back. Sign off "— the Subversive crew".`;
+Voice: friendly, local, plain-spoken, a little warm. Short (2–4 sentences). First name only if given. No corporate phrases ("we strive", "valued guest", "we apologize for any inconvenience"), no emojis, no exclamation-mark pile-ups, no discounts or promises you can't keep. Thank happy guests specifically for what they mentioned. For unhappy guests: own it, name the concrete fix, invite them back. Never use a dash (— or –) anywhere: use a period, a comma or a colon. End with "The Subversive crew" on its own.`;
 
 function opsFacts(o: OpsDay | undefined): string {
   if (!o) return "No operations data for that day.";
@@ -328,8 +329,8 @@ export interface ReviewAlert {
 export async function reviewAlerts(): Promise<ReviewAlert[]> {
   const today = businessToday();
   const since = zonedMidnightUTC(addDays(today, -121), tz());
-  const rows = await db.review.findMany({ where: { postedAt: { gte: since } }, select: { rating: true, postedAt: true, themes: true, sentiment: true } });
-  const drop = ratingDrop(rows.map((r) => ({ rating: r.rating, postedAt: reviewDate(r.postedAt), themes: r.themes, sentiment: r.sentiment })), today);
+  const rows = await db.review.findMany({ where: { postedAt: { gte: since } }, select: { rating: true, postedAt: true, themes: true, sentiment: true, text: true } });
+  const drop = ratingDrop(rows.map((r) => ({ rating: r.rating, postedAt: reviewDate(r.postedAt), themes: r.themes, sentiment: r.sentiment, text: r.text })), today);
   if (!drop.alert) return [];
   const themes = drop.themes.slice(0, 2).map((t) => themeLabel(t).toLowerCase());
   return [
@@ -352,7 +353,12 @@ export interface WhatToFix {
   by: "claude" | "rules";
   reviewCount: number;
   actions: FixAction[];
+  /** How themes were counted; older summaries counted every theme of a critical review as a complaint. */
+  version?: number;
 }
+
+/** 2: each theme is judged by what the review says about it (see mentionSentiment). */
+const FIX_VERSION = 2;
 
 const fixSchema = z.object({
   actions: z
@@ -384,20 +390,21 @@ export async function loadWhatToFix(): Promise<WhatToFix | null> {
  * the days' operations. Claude writes it when configured; otherwise a
  * deterministic playbook. Cached in a Setting.
  */
-export async function generateWhatToFix(useClaude = true): Promise<WhatToFix> {
+export async function generateWhatToFix(useClaude = true, save = true): Promise<WhatToFix> {
   const today = businessToday();
   const since = zonedMidnightUTC(addDays(today, -90), tz());
   const [rows, hints] = await Promise.all([db.review.findMany({ where: { postedAt: { gte: since } }, orderBy: { postedAt: "desc" } }), claudeHints()]);
-  const lite = rows.map((r) => ({ rating: r.rating, postedAt: reviewDate(r.postedAt), themes: r.themes, sentiment: r.sentiment }));
+  const lite = rows.map((r) => ({ rating: r.rating, postedAt: reviewDate(r.postedAt), themes: r.themes, sentiment: r.sentiment, text: r.text }));
   const themes = themeCounts(lite);
   const monthAgo = addDays(today, -30);
   const recentCritical = rows.filter((r) => reviewDate(r.postedAt) > monthAgo && (r.rating <= 3 || r.sentiment === "negative" || r.sentiment === "mixed"));
-  const recentThemes = [...new Set(recentCritical.flatMap((r) => r.themes))];
+  // Only what those reviews complain about: "the beer was good" in a critical review isn't a beer complaint.
+  const recentThemes = [...new Set(recentCritical.flatMap((r) => criticalThemes(r)))];
   const critical = rows.filter((r) => r.rating <= 3 || r.sentiment === "negative" || r.sentiment === "mixed");
   const ops = await opsForDates(critical.slice(0, 20).map((r) => reviewDate(r.postedAt)));
   const causes = critical.map((r) => hints.get(r.id) ?? operationalHint(r.themes, ops.get(reviewDate(r.postedAt)))).filter((x): x is string => Boolean(x));
 
-  let result: WhatToFix = { month: today.slice(0, 7), generatedAt: new Date().toISOString(), by: "rules", reviewCount: rows.length, actions: whatToFixFallback({ themes, recentThemes, rootCauses: causes }) };
+  let result: WhatToFix = { month: today.slice(0, 7), generatedAt: new Date().toISOString(), by: "rules", reviewCount: rows.length, actions: whatToFixFallback({ themes, recentThemes, rootCauses: causes }), version: FIX_VERSION };
 
   if (useClaude && (await claudeReady()) && critical.length > 0) {
     const res = await claudeJSON({
@@ -408,8 +415,8 @@ export async function generateWhatToFix(useClaude = true): Promise<WhatToFix> {
       content: [
         `From the last 90 days of guest reviews, give up to three things to fix this month, most important first. Each must tie to a theme key: ${THEME_KEYS.join(", ")}.
 
-Theme counts (total / critical / mixed): ${themes.map((t) => `${t.theme} ${t.total}/${t.negative}/${t.mixed}`).join("; ") || "none"}.
-Critical themes in the last 30 days: ${recentThemes.join(", ") || "none"}.
+Theme counts, judged by what each review says about that theme (total / critical / mixed): ${themes.map((t) => `${t.theme} ${t.total}/${t.negative}/${t.mixed}`).join("; ") || "none"}.
+Themes complained about in the last 30 days: ${recentThemes.join(", ") || "none"}.
 Likely operational causes found on review days: ${[...new Set(causes)].slice(0, 8).join(" | ") || "none found"}.
 
 Critical and mixed reviews (newest first):
@@ -423,6 +430,7 @@ ${critical
       result = { ...result, by: "claude", actions: res.data.actions.map((a) => ({ theme: isTheme(a.theme) ? a.theme : "", title: a.title.trim(), why: a.why.trim(), action: a.action.trim() })) };
     }
   }
+  if (!save) return result;
   const value = JSON.stringify(result);
   await db.setting.upsert({ where: { key: FIX_KEY }, create: { key: FIX_KEY, value }, update: { value } });
   return result;
@@ -435,7 +443,12 @@ ${critical
  */
 export async function whatToFixThisMonth(): Promise<{ fix: WhatToFix; stale: boolean }> {
   const cached = await loadWhatToFix();
-  if (cached && cached.month === businessToday().slice(0, 7)) return { fix: cached, stale: false };
+  if (cached && cached.month === businessToday().slice(0, 7)) {
+    if ((cached.version ?? 1) >= FIX_VERSION) return { fix: cached, stale: false };
+    // Written before themes were judged mention by mention: show the rules version, worked out
+    // afresh (not saved, so viewing the page never overwrites); the next month or Refresh saves one.
+    return { fix: await generateWhatToFix(false, false), stale: false };
+  }
   const fix = await generateWhatToFix(false);
   return { fix, stale: await claudeReady() };
 }

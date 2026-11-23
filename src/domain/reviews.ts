@@ -1,7 +1,7 @@
 /**
- * Customer reviews: parsing pasted text, keyword themes, sentiment and a
- * plain fallback reply — used when Claude isn't configured, and to keep
- * theme names consistent when it is.
+ * Customer reviews: parsing pasted text, keyword themes, sentiment (for the
+ * review, and for each theme it mentions) and a plain fallback reply, used
+ * when Claude isn't configured, and to keep theme names consistent when it is.
  */
 
 import { addDays, ISODate } from "./dates";
@@ -61,6 +61,60 @@ export function keywordSentiment(rating: number, text: string): Sentiment {
   return "positive";
 }
 
+// ---- Feeling per theme mention ---------------------------------------------------------
+
+/*
+ * A review that says "Beer was good, but one server for the whole room" is critical overall,
+ * and still praises the beer. So each theme is judged by the part of the review that mentions
+ * it: the review is cut into clauses (sentences, and at "but", "though", "and the..."), and the
+ * clauses naming the theme are read for praise and complaint words on their own.
+ */
+const CLAUSE_SPLIT = /[.!?;\n]+|\s[—–-]\s|,?\s+\b(?:but|however|though|although|except|yet|unfortunately|sadly)\b|,?\s+and\s+(?=(?:the|our|my|their|its|it|we|they|service|food|beer|staff|everything|nobody|no one)\b)/i;
+const PRAISE = /\b(great|amazing|awesome|lov(e|ed|es|ing)|delicious|excellent|best|friendly|fantastic|perfect|wonderful|recommend(ed)?|favou?rite|gem|good|nice|tasty|solid|fresh|enjoy(ed|able)?|liked|lovely|attentive|welcoming|helpful|crisp|spotless|cozy|fun|beautiful|incredible|outstanding|top notch|on point)\b/i;
+const COMPLAINT = /\b(slow(ly)?|rude|bland|dirty|filthy|sticky|overpriced|pricey|disappoint(ed|ing|ment)?|never (came|again)|forgot|terrible|awful|worst|horrible|meh|mediocre|ignored|wrong order|undercooked|overcooked|greasy|steep|off night|soggy|too long|forever|chaos|flat|stale|skunk(y|ed)|watery|lukewarm|gross|understaffed|short[- ]staffed|overwhelmed|swamped|dismissive|unfriendly|inattentive|cramped|one server|only one|no one|nobody)\b|\b(cold (food|fries|burgers?|wings|plates?|meal)|(food|fries|burgers?|wings|plates?|meal|dish|it)\s+(was|were|came( out)?|arrived)\s+cold)\b/i;
+const NEGATED_PRAISE = /\b(not|never|no|hardly|\w+n['’]t)\s+(?:\w+\s+){0,2}?(great|good|nice|friendly|tasty|fresh|clean|worth it|fast|quick|attentive|welcoming|helpful|cold)\b/i;
+/** Themes whose own words already judge (slow, packed, dirty, pricey): a plain mention leans on the whole review. */
+const JUDGING_THEMES = new Set(["service-speed", "wait", "cleanliness", "price"]);
+
+function clauseFeeling(clause: string): Sentiment | null {
+  if (NEGATED_PRAISE.test(clause)) return "negative";
+  const bad = COMPLAINT.test(clause);
+  const good = PRAISE.test(clause);
+  return bad && good ? "mixed" : bad ? "negative" : good ? "positive" : null;
+}
+
+const asSentiment = (s: string | null): Sentiment | null => (s === "positive" || s === "negative" || s === "mixed" ? s : null);
+
+/**
+ * How a review feels about one theme: positive, negative or mixed, or null when it only
+ * mentions it. Falls back to the whole review's feeling (`overall`) when the theme's words
+ * aren't in the text (a theme tagged by AI), and for a plain mention of a theme whose words
+ * already judge (a wait, a price).
+ */
+export function mentionSentiment(text: string, theme: string, overall: string | null): Sentiment | null {
+  const words = isTheme(theme) ? KEYWORDS[theme] : null;
+  if (!words) return asSentiment(overall);
+  const clauses = text.split(CLAUSE_SPLIT).filter((c): c is string => !!c && c.trim().length > 0 && words.test(c));
+  if (!clauses.length) return asSentiment(overall);
+  const feelings = new Set(clauses.map(clauseFeeling).filter((f): f is Sentiment => f != null));
+  if (feelings.has("mixed") || (feelings.has("positive") && feelings.has("negative"))) return "mixed";
+  if (feelings.has("negative")) return "negative";
+  if (feelings.has("positive")) return "positive";
+  return JUDGING_THEMES.has(theme) ? asSentiment(overall) : null;
+}
+
+/** The whole review's feeling, from its stars when it hasn't been read yet. */
+const overallOf = (r: { rating?: number; sentiment: string | null }) => r.sentiment ?? (r.rating == null ? null : r.rating <= 2 ? "negative" : r.rating === 3 ? "mixed" : "positive");
+
+/** The themes a review actually complains about (negative or mixed where it mentions them). */
+export function criticalThemes(r: { text?: string | null; themes: readonly string[]; sentiment: string | null; rating?: number }): string[] {
+  const overall = overallOf(r);
+  return r.themes.filter((t) => {
+    const f = r.text ? mentionSentiment(r.text, t, overall) : asSentiment(overall);
+    return f === "negative" || f === "mixed";
+  });
+}
+
 /** A best guess at stars when a pasted review has none. */
 export function estimateRating(text: string): number {
   const neg = (text.match(new RegExp(NEGATIVE.source, "gi")) ?? []).length;
@@ -80,8 +134,8 @@ export interface ReplyInput {
   sentiment: Sentiment;
 }
 
-/** A short, plain reply in Subversive's voice for when Claude isn't available. */
-export function fallbackReply(r: ReplyInput, signoff = "— the Subversive crew"): string {
+/** A short, plain reply in Subversive's voice for when Claude isn't available. Posted publicly, so no dashes. */
+export function fallbackReply(r: ReplyInput, signoff = "The Subversive crew"): string {
   const first = r.author?.trim().split(/\s+/)[0]?.replace(/[^\p{L}'-]/gu, "");
   const hi = first ? `Hi ${first},` : "Hi there,";
   const t = new Set(r.themes);
@@ -92,7 +146,7 @@ export function fallbackReply(r: ReplyInput, signoff = "— the Subversive crew"
     if (t.has("staff")) bits.push("we'll pass the kind words to the team");
     if (t.has("dogs")) bits.push("give your pup a scratch from us");
     if (t.has("family")) bits.push("we love having families in");
-    const middle = bits.length ? `Thanks so much — ${bits.slice(0, 2).join(", and ")}.` : "Thanks so much for coming by and taking the time to write this.";
+    const middle = bits.length ? `Thanks so much, ${bits.slice(0, 2).join(", and ")}.` : "Thanks so much for coming by and taking the time to write this.";
     return `${hi} ${middle} See you next time you're in Catskill. ${signoff}`;
   }
   const fixes: string[] = [];
@@ -102,8 +156,8 @@ export function fallbackReply(r: ReplyInput, signoff = "— the Subversive crew"
   if (t.has("price")) fixes.push("we hear you on value and we're looking at it");
   if (t.has("staff")) fixes.push("we've talked with the team about how you were treated");
   const fix = fixes.length ? `${fixes.slice(0, 2).join(", and ")}.` : "We've shared this with the team.";
-  const sorry = r.sentiment === "mixed" ? "Thanks for the honest feedback — glad parts of the visit were good, and sorry the rest didn't measure up." : "Sorry we let you down — that's not the visit we want anyone to have.";
-  return `${hi} ${sorry} ${fix[0].toUpperCase()}${fix.slice(1)} We'd love another shot — ask for a manager next time and say hi. ${signoff}`;
+  const sorry = r.sentiment === "mixed" ? "Thanks for the honest feedback. We're glad parts of the visit were good, and sorry the rest didn't measure up." : "Sorry we let you down. That's not the visit we want anyone to have.";
+  return `${hi} ${sorry} ${fix[0].toUpperCase()}${fix.slice(1)} We'd love another shot: ask for a manager next time and say hi. ${signoff}`;
 }
 
 // ---- Pasted reviews -------------------------------------------------------------------
@@ -264,6 +318,8 @@ export interface ReviewLite {
   postedAt: ISODate;
   themes: readonly string[];
   sentiment: string | null;
+  /** The review's words: when given, each theme is judged by what the review says about it. */
+  text?: string | null;
 }
 
 /** Rolling average rating (last `window` reviews) at each review, oldest first — smoother than weekly with few reviews. */
@@ -275,15 +331,20 @@ export function rollingRating(reviews: readonly ReviewLite[], window = 5) {
   });
 }
 
-/** Mentions per theme, split by sentiment, most-mentioned first. */
+/**
+ * Mentions per theme, split by how the review felt about that theme (not the review as a
+ * whole, when its text is given), most-mentioned first. `neutral` is a plain mention.
+ */
 export function themeCounts(reviews: readonly ReviewLite[]) {
-  const by = new Map<string, { theme: string; total: number; positive: number; negative: number; mixed: number }>();
+  const by = new Map<string, { theme: string; total: number; positive: number; negative: number; mixed: number; neutral: number }>();
   for (const r of reviews) {
     for (const t of r.themes) {
-      const cur = by.get(t) ?? { theme: t, total: 0, positive: 0, negative: 0, mixed: 0 };
+      const cur = by.get(t) ?? { theme: t, total: 0, positive: 0, negative: 0, mixed: 0, neutral: 0 };
       cur.total++;
-      if (r.sentiment === "positive") cur.positive++;
-      else if (r.sentiment === "negative") cur.negative++;
+      const f = r.text ? mentionSentiment(r.text, t, r.sentiment) : r.sentiment;
+      if (f === "positive") cur.positive++;
+      else if (f === "negative") cur.negative++;
+      else if (f == null && r.text) cur.neutral++;
       else cur.mixed++;
       by.set(t, cur);
     }
@@ -322,7 +383,7 @@ export function operationalHint(themes: readonly string[], ops: OpsDay | undefin
   }
   if (t.has("food") && ops.overTarget.length > 0) {
     const top = [...ops.overTarget].sort((a, b) => b.sold - a.sold)[0];
-    out.push(`${ops.overTarget.length} item${ops.overTarget.length === 1 ? " was" : "s were"} over food-cost target — check the recipe card and portioning on ${top.name}.`);
+    out.push(`${ops.overTarget.length} item${ops.overTarget.length === 1 ? " was" : "s were"} over food-cost target: check the recipe card and portioning on ${top.name}.`);
   }
   if (out.length === 0 && serviceIssue && surge != null && surge > 0.15) {
     out.push(`Sales ran ${pctText(surge)} over forecast.`);
@@ -341,7 +402,7 @@ export interface RatingDrop {
   /** baseline − recent, in stars (positive = worse lately). */
   drop: number | null;
   alert: boolean;
-  /** Themes in the last 30 days' critical reviews, most frequent first. */
+  /** Themes the last 30 days' critical reviews complain about, most frequent first. */
   themes: string[];
 }
 
@@ -362,7 +423,7 @@ export function ratingDrop(reviews: readonly ReviewLite[], today: ISODate, opts:
   const drop = a != null && b != null ? b - a : null;
   const alert = drop != null && drop >= threshold - 1e-9 && recent.length >= (opts.minRecent ?? 3) && base.length >= (opts.minBaseline ?? 5);
   const counts = new Map<string, number>();
-  for (const r of recent) if (r.rating <= 3 || r.sentiment === "negative" || r.sentiment === "mixed") for (const t of r.themes) counts.set(t, (counts.get(t) ?? 0) + 1);
+  for (const r of recent) if (r.rating <= 3 || r.sentiment === "negative" || r.sentiment === "mixed") for (const t of criticalThemes(r)) counts.set(t, (counts.get(t) ?? 0) + 1);
   const themes = [...counts].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).map(([t]) => t);
   return { recent: a, baseline: b, recentCount: recent.length, baselineCount: base.length, drop, alert, themes };
 }
