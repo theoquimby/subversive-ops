@@ -63,7 +63,7 @@ export function TodayChart({ hours, hour, minute, height }: { hours: TodayHour[]
             return (
               <g key={h.hour}>
                 {h.forecast > 0 && <path d={col(x(i) - barW / 2, y(h.forecast), barW, y(0) - y(h.forecast))} fill="var(--surface-2)" stroke="var(--border-strong)" strokeWidth={1} />}
-                {h.sales > 0 && <path d={col(x(i) - barW / 2 + 3, y(h.sales), barW - 6, y(0) - y(h.sales))} fill="var(--series-1)" opacity={hover == null || hover === i ? 1 : 0.55} className="transition-opacity duration-120" />}
+                {h.sales > 0 && <path d={col(x(i) - barW / 2 + 3, y(h.sales), barW - 6, y(0) - y(h.sales))} fill="var(--money-sales)" opacity={hover == null || hover === i ? 1 : 0.55} className="transition-opacity duration-120" />}
                 {i % labelEvery === 0 && <text x={x(i)} y={H - 5} textAnchor="middle" className={cx("text-[10.5px]", past ? "fill-muted" : "fill-muted/70")}>{hourLabel(h.hour)}</text>}
               </g>
             );
@@ -75,13 +75,13 @@ export function TodayChart({ hours, hour, minute, height }: { hours: TodayHour[]
         </svg>
         {hv && (
           <div className="pointer-events-none absolute -top-2 z-10 -translate-x-1/2 -translate-y-full rounded-md border border-border bg-surface px-2 py-1 text-xs whitespace-nowrap shadow-sm" style={{ left: Math.min(Math.max(x(hover!), 70), W - 70) }}>
-            <div className="text-muted">{hourLabel(hv.hour)}–{hourLabel((hv.hour + 1) % 24)}</div>
+            <div className="text-muted">{hourLabel(hv.hour)} to {hourLabel((hv.hour + 1) % 24)}</div>
             <div className="num"><span className="font-medium text-ink">{whole(hv.sales)}</span> <span className="text-muted">sold · {whole(hv.forecast)} expected</span></div>
           </div>
         )}
       </div>
       <div className="mt-2 flex items-center gap-4 text-xs text-muted">
-        <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-[3px] bg-series-1" /> Sold</span>
+        <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-[3px] bg-[var(--money-sales)]" /> Sold</span>
         <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-[3px] border border-border-strong bg-surface-2" /> Forecast</span>
       </div>
     </div>
@@ -101,18 +101,20 @@ export interface StripDay {
   sales: number;
   forecast: number | null;
   profit: number;
-  closed: boolean;
+  /** domain/dayState: a day whose sales aren't in yet is drawn as an outline, never as zero or "Closed". */
+  state: "in" | "closed" | "notIn";
 }
 
 /**
  * Seven days side by side: each day's sales as a column with a tick where the
- * forecast was, the weekday under it and the amount beneath. Tap a day to see
- * it against the forecast and its profit; each day links to its P&L.
+ * forecast was, the weekday under it and the amount beneath. A day whose sales
+ * haven't synced is a dashed outline at its forecast. Tap a day to see it
+ * against the forecast and its profit; each day links to its P&L.
  */
 export function WeekStrip({ days, height = 92 }: { days: StripDay[]; height?: number }) {
   const [hover, setHover] = useState<string | null>(null);
-  const max = Math.max(1, ...days.map((d) => Math.max(d.sales, d.forecast ?? 0)));
-  const best = days.reduce<StripDay | null>((a, d) => (!a || d.sales > a.sales ? d : a), null);
+  const max = Math.max(1, ...days.map((d) => Math.max(d.state === "in" ? d.sales : 0, d.forecast ?? 0)));
+  const best = days.reduce<StripDay | null>((a, d) => (d.state === "in" && (!a || d.sales > a.sales) ? d : a), null);
   return (
     <div className="grid grid-cols-7 gap-1.5 sm:gap-3" onMouseLeave={() => setHover(null)}>
       {days.map((d, i) => {
@@ -121,6 +123,7 @@ export function WeekStrip({ days, height = 92 }: { days: StripDay[]; height?: nu
         const off = d.forecast && d.forecast > 0 ? d.sales / d.forecast - 1 : null;
         const isHover = hover === d.date;
         const wd = dayDate(d.date).slice(0, 3);
+        const word = d.state === "closed" ? "Closed" : d.state === "notIn" ? "Not in" : compact(d.sales);
         return (
           <Link
             key={d.date}
@@ -129,26 +132,34 @@ export function WeekStrip({ days, height = 92 }: { days: StripDay[]; height?: nu
             onMouseEnter={() => setHover(d.date)}
             onFocus={() => setHover(d.date)}
             onBlur={() => setHover(null)}
-            aria-label={`${dayDate(d.date)}: ${d.closed ? "closed" : `${whole(d.sales)} sales${d.forecast ? `, forecast ${whole(d.forecast)}` : ""}`}`}
+            aria-label={`${dayDate(d.date)}: ${d.state === "closed" ? "closed" : d.state === "notIn" ? "sales not in yet" : `${whole(d.sales)} sales${d.forecast ? `, forecast ${whole(d.forecast)}` : ""}`}`}
           >
             <div className="relative flex w-full items-end justify-center" style={{ height }}>
-              {d.closed ? (
+              {d.state === "closed" ? (
                 <span className="mb-0.5 h-0.5 w-5 rounded-full bg-border-strong" />
+              ) : d.state === "notIn" ? (
+                <span className="w-[min(24px,70%)] rounded-t-[4px] border border-b-0 border-dashed border-border-strong" style={{ height: Math.max(8, fc ?? height * 0.4) }} />
               ) : (
                 <span
                   className={cx("w-[min(24px,70%)] rounded-t-[4px] transition-opacity duration-120", hover && !isHover ? "opacity-55" : "")}
-                  style={{ height: Math.max(2, hgt), background: "var(--series-1)" }}
+                  style={{ height: Math.max(2, hgt), background: "var(--money-sales)" }}
                 />
               )}
-              {fc != null && !d.closed && <span aria-hidden className="absolute left-1/2 h-0.5 w-[min(34px,92%)] -translate-x-1/2 rounded-full bg-ink" style={{ bottom: fc - 1 }} />}
+              {fc != null && d.state === "in" && <span aria-hidden className="absolute left-1/2 h-0.5 w-[min(34px,92%)] -translate-x-1/2 rounded-full bg-ink" style={{ bottom: fc - 1 }} />}
             </div>
             <div className={cx("mt-1.5 text-[0.7rem] font-medium", best?.date === d.date ? "text-ink" : "text-muted")}>{wd}</div>
-            <div className="num text-[0.7rem] text-ink-2 sm:text-xs">{d.closed ? "Closed" : compact(d.sales)}</div>
-            {isHover && !d.closed && (
+            <div className={cx("num text-[0.7rem] sm:text-xs", d.state === "in" ? "text-ink-2" : "text-muted")}>{word}</div>
+            {isHover && d.state !== "closed" && (
               <div className={cx("pointer-events-none absolute bottom-full z-10 mb-1 rounded-md", i < 2 ? "left-0" : i > 4 ? "right-0" : "left-1/2 -translate-x-1/2")} ><div className="border border-border bg-surface px-2 py-1 text-xs whitespace-nowrap shadow-sm rounded-md">
                 <div className="text-muted">{dayDate(d.date)}</div>
-                <div className="num"><span className="font-medium text-ink">{whole(d.sales)}</span>{d.forecast ? <span className="text-muted"> · forecast {whole(d.forecast)}{off != null ? ` (${off >= 0 ? "+" : "−"}${pct(Math.abs(off), 0)})` : ""}</span> : null}</div>
-                <div className="num text-muted">Profit {d.profit < 0 ? `−${whole(-d.profit)}` : whole(d.profit)} before overhead</div>
+                {d.state === "notIn" ? (
+                  <div className="text-ink-2">Sales not in from Square yet{d.forecast ? <span className="num text-muted"> · forecast {whole(d.forecast)}</span> : null}</div>
+                ) : (
+                  <>
+                    <div className="num"><span className="font-medium text-ink">{whole(d.sales)}</span>{d.forecast ? <span className="text-muted"> · forecast {whole(d.forecast)}{off != null ? ` (${off >= 0 ? "+" : "−"}${pct(Math.abs(off), 0)})` : ""}</span> : null}</div>
+                    <div className="num text-muted">Profit {d.profit < 0 ? `−${whole(-d.profit)}` : whole(d.profit)} before overhead</div>
+                  </>
+                )}
               </div></div>
             )}
           </Link>
