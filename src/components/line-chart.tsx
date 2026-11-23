@@ -4,6 +4,18 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { money, qty, shortDate } from "@/lib/format";
 
 const FORMATS = { money: (n: number) => money(n), number: (n: number) => qty(n, 1) };
+/** Axis labels: whole dollars (or whole numbers) once the step between ticks is 1 or more. */
+const TICK_FORMATS = {
+  money: (n: number, step: number) => (step >= 1 ? money(n, { whole: true }) : money(n)),
+  number: (n: number, step: number) => qty(n, step >= 1 ? 0 : 1),
+};
+
+/** A round step (1, 2, 2.5 or 5 times a power of ten) giving about `want` gaps across `span`. */
+function niceStep(span: number, want = 3) {
+  const raw = Math.max(span, 1e-9) / want;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((x) => x >= raw) ?? raw;
+}
 
 /**
  * Single-series line chart with crosshair + tooltip. One series, so no legend —
@@ -39,9 +51,8 @@ export function LineChart({
     return () => ro.disconnect();
   }, []);
   const H = height;
-  const pad = { top: 12, right: 12, bottom: 24, left: 52 };
 
-  const { path, scaleX, scaleY, ticks, valid } = useMemo(() => {
+  const { path, scaleX, scaleY, ticks, step: tickStep, valid, pad } = useMemo(() => {
     const valid = points.map((p, i) => ({ ...p, i })).filter((p) => p.y != null) as { x: string; y: number; i: number }[];
     const ys = valid.map((p) => p.y);
     let min = Math.min(...ys);
@@ -50,13 +61,28 @@ export function LineChart({
     const span = max - min || Math.max(Math.abs(max) * 0.1, 0.01);
     min = Math.max(0, min - span * 0.25);
     max = max + span * 0.25;
-    if (domain) [min, max] = domain;
+    let ticks: number[];
+    let step: number;
+    if (domain) {
+      [min, max] = domain;
+      ticks = [0, 0.5, 1].map((t) => min + (max - min) * t);
+      step = (max - min) / 2;
+    } else {
+      // Round ticks on a round range, so the axis reads $1,000 / $2,000 rather than $1,688.96.
+      step = niceStep(max - min);
+      min = Math.max(0, Math.floor(min / step) * step);
+      max = Math.ceil(max / step) * step;
+      ticks = [];
+      for (let v = min; v <= max + step * 1e-6; v += step) ticks.push(v);
+    }
+    // Room for the longest label, so a "$" never sits under the edge.
+    const longest = Math.max(...ticks.map((t) => TICK_FORMATS[valueFormat](t, step).length));
+    const pad = { top: 12, right: 12, bottom: 24, left: Math.max(40, Math.round(longest * 6.8) + 12) };
     const scaleX = (i: number) => pad.left + (i / Math.max(1, points.length - 1)) * (W - pad.left - pad.right);
     const scaleY = (v: number) => pad.top + (1 - (v - min) / (max - min)) * (H - pad.top - pad.bottom);
     const path = valid.map((p, k) => `${k ? "L" : "M"}${scaleX(p.i).toFixed(1)},${scaleY(p.y).toFixed(1)}`).join(" ");
-    const ticks = [0, 0.5, 1].map((t) => min + (max - min) * t);
-    return { path, scaleX, scaleY, ticks, valid };
-  }, [points, W, H, pad.left, pad.right, pad.top, pad.bottom, domain]);
+    return { path, scaleX, scaleY, ticks, step, valid, pad };
+  }, [points, W, H, domain, valueFormat]);
 
   if (valid.length < 2) return <div ref={ref} className="grid h-24 place-items-center text-sm text-muted">Not enough price history yet.</div>;
 
@@ -69,7 +95,7 @@ export function LineChart({
         {ticks.map((t) => (
           <g key={t}>
             <line x1={pad.left} x2={W - pad.right} y1={scaleY(t)} y2={scaleY(t)} stroke="var(--border)" strokeWidth={1} />
-            <text x={pad.left - 8} y={scaleY(t)} dy="0.32em" textAnchor="end" className="num fill-muted text-[11px]">{format(t)}</text>
+            <text x={pad.left - 8} y={scaleY(t)} dy="0.32em" textAnchor="end" className="num fill-muted text-[11px]">{TICK_FORMATS[valueFormat](t, tickStep)}</text>
           </g>
         ))}
         <text x={pad.left} y={H - 6} className="fill-muted text-[11px]">{formatX(points[0].x)}</text>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asCountEvery, countProgress, isDue, parseItemKey, prepKey, usedOnMenu, valueBreakdown, valueChange } from "../countPlan";
+import { asCountEvery, countProgress, isDue, parseItemKey, prepKey, likeForLike, usedOnMenu, valueBreakdown, valueChange } from "../countPlan";
 
 describe("isDue", () => {
   it("every count is always due", () => expect(isDue("every", "2026-11-10", "2026-11-16")).toBe(true));
@@ -59,6 +59,14 @@ describe("valueBreakdown", () => {
   it("change vs the last count", () => {
     expect(valueChange(110, 100)).toEqual({ amount: 10, pct: 0.1 });
     expect(valueChange(110, null)).toBeNull();
+  });
+  it("change on the same items only: an item counted for the first time isn't stock arriving", () => {
+    const prev = new Map([["a", 100], ["b", 50]]);
+    // b ran out (counted at zero, so it drops off the value): a real drop.
+    expect(likeForLike(new Map([["a", 90]]), prev)).toEqual({ amount: -60, pct: -0.4, added: 0, addedValue: 0 });
+    // c and d counted for the first time: left out of the change, reported apart.
+    expect(likeForLike(new Map([["a", 100], ["b", 50], ["c", 400], ["d", 20]]), prev)).toEqual({ amount: 0, pct: 0, added: 2, addedValue: 420 });
+    expect(likeForLike(new Map([["a", 1]]), null)).toBeNull();
   });
 });
 

@@ -1,5 +1,5 @@
 import "server-only";
-import { asCountEvery, homeAreas, isDue, isSupplyCategory, prepKey, usedOnMenu, valueBreakdown, type CountEvery, type ItemKind, type ValuedLine } from "@/domain/countPlan";
+import { asCountEvery, homeAreas, isDue, likeForLike, isSupplyCategory, prepKey, usedOnMenu, valueBreakdown, type CountEvery, type ItemKind, type ValuedLine } from "@/domain/countPlan";
 import { readParts, unitOptions } from "@/domain/countUnits";
 import { Prisma } from "@prisma/client";
 import { costRecipe, recipeYieldInBase } from "@/domain/costing";
@@ -184,9 +184,22 @@ async function valuesAt(countIds: { id: string; takenAt: Date }[]) {
 
 /** The value of the last few completed counts, oldest first (for the trend). */
 export async function valueTrend(n = 8) {
-  const counts = await db.stockCount.findMany({ where: { completed: true }, orderBy: { takenAt: "desc" }, take: n, select: { id: true, takenAt: true, area: true, _count: { select: { lines: true, prepLines: true } } } });
+  // One more than shown, so the oldest shown count has a change too.
+  const counts = await db.stockCount.findMany({ where: { completed: true }, orderBy: { takenAt: "desc" }, take: n + 1, select: { id: true, takenAt: true, area: true, _count: { select: { lines: true, prepLines: true } } } });
   const vals = await valuesAt(counts);
-  return counts.reverse().map((c) => ({ id: c.id, date: businessDateOf(c.takenAt), area: c.area, items: c._count.lines + c._count.prepLines, total: vals.get(c.id)?.total ?? 0 }));
+  const byItem = (id: string) => new Map((vals.get(id)?.lines ?? []).map((l) => [l.key, l.value]));
+  const asc = counts.reverse();
+  return asc
+    .map((c, i) => ({
+      id: c.id,
+      date: businessDateOf(c.takenAt),
+      area: c.area,
+      items: c._count.lines + c._count.prepLines,
+      total: vals.get(c.id)?.total ?? 0,
+      /** Against the count before, on the same items only (see likeForLike). */
+      change: i > 0 ? likeForLike(byItem(c.id), byItem(asc[i - 1].id)) : null,
+    }))
+    .slice(asc.length > n ? 1 : 0);
 }
 
 /** One count's result: value by area and category, carried items, change vs the previous count, and stock not on the menu. */
@@ -202,7 +215,8 @@ export async function countSummary(countId: string) {
   // Food and drink only: napkins and cleaner aren't on any menu, and that's fine.
   const sellable = (l: ValuedLine) => !isSupplyCategory(l.category);
   const offMenu = v.lines.filter((l) => (l.key.startsWith("p_") ? !used.preps.has(l.key.slice(2)) : !used.ingredients.has(l.key)) && l.value > 0 && sellable(l));
-  return { count, value: v, prev: before ? { date: businessDateOf(prev!.takenAt), total: before.total } : null, offMenu };
+  const change = before ? likeForLike(new Map(v.lines.map((l) => [l.key, l.value])), new Map(before.lines.map((l) => [l.key, l.value]))) : null;
+  return { count, value: v, prev: before ? { date: businessDateOf(prev!.takenAt), total: before.total } : null, change, offMenu };
 }
 
 export const countDay = (d: Date) => businessDateOf(d);

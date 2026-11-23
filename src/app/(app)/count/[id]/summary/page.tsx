@@ -1,7 +1,7 @@
 import { Card, cx, PageHeader, Section } from "@/components/ui";
 import { LineChart } from "@/components/line-chart";
 import { HelpTip, HelpZone } from "@/components/help";
-import { valueChange } from "@/domain/countPlan";
+import { Bars } from "@/app/(app)/sales/bars";
 import { money, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { countDay, countSummary, foundElsewhere, valueTrend } from "@/server/services/counts";
@@ -19,8 +19,7 @@ export default async function CountSummaryPage({ params }: { params: Promise<{ i
     redirect("/count");
     notFound();
   }
-  const { count, value: v, prev, offMenu } = s;
-  const change = valueChange(v.total, prev?.total ?? null);
+  const { count, value: v, prev, offMenu, change } = s;
   const where = !count.area || count.area === "All" ? "Everything" : count.area;
   const date = countDay(count.takenAt);
   const offMenuTotal = offMenu.reduce((t, l) => t + l.value, 0);
@@ -36,24 +35,27 @@ export default async function CountSummaryPage({ params }: { params: Promise<{ i
         <div className="num mt-1 text-3xl font-semibold tracking-tight">{money(v.total, { whole: true })}</div>
         <div className="mt-1 text-sm">
           {change ? (
-            <span className={cx("num", change.amount > 0 ? "text-ink" : change.amount < 0 ? "text-ink" : "text-muted")}>
-              {change.amount >= 0 ? "+" : "−"}{money(Math.abs(change.amount), { whole: true })}{change.pct != null ? ` (${change.amount >= 0 ? "+" : "−"}${Math.abs(change.pct * 100).toFixed(0)}%)` : ""} <span className="text-muted">vs {shortDate(prev!.date)}</span>
-            </span>
+            <>
+              <span className={cx("num", change.amount === 0 ? "text-muted" : "text-ink")}>
+                {change.amount >= 0 ? "+" : "−"}{money(Math.abs(change.amount), { whole: true })}{change.pct != null ? ` (${change.amount >= 0 ? "+" : "−"}${Math.abs(change.pct * 100).toFixed(0)}%)` : ""} <span className="text-muted">on the same items since {shortDate(prev!.date)}</span>
+              </span>
+              {change.added > 0 && <span className="mt-0.5 block text-xs text-muted">{change.added} item{change.added === 1 ? "" : "s"} counted for the first time ({money(change.addedValue, { whole: true })}) aren&apos;t part of that change.</span>}
+            </>
           ) : <span className="text-muted">First count, nothing to compare yet.</span>}
         </div>
         {v.carriedCount > 0 && <p className="mt-2 text-xs text-muted"><span className="num">{money(v.carriedValue, { whole: true })}</span> of it is {v.carriedCount} item{v.carriedCount === 1 ? "" : "s"} carried from an earlier count.</p>}
         {trend.length > 1 && <div className="mt-4"><LineChart points={trend.map((t) => ({ x: t.date, y: t.total }))} height={120} ariaLabel="Inventory value over the last counts" /></div>}
       </Card></HelpZone>
 
-      <div className="grid gap-6 sm:grid-cols-2">
+      <div className="grid gap-6">
         <HelpZone id="count.summary.byArea"><Section title="By area">
-          <Card className="divide-y divide-border">
-            {v.byArea.map((a) => <div key={a.name} className="flex justify-between gap-3 px-4 py-2.5 text-sm"><span className="truncate">{a.name}</span><span className="num">{money(a.value, { whole: true })}</span></div>)}
+          <Card className="p-4">
+            <Bars ariaLabel="Inventory value by storage area" color="var(--money-goods)" rows={v.byArea.map((a) => ({ key: a.name, label: a.name, value: a.value, display: money(a.value, { whole: true }) }))} />
           </Card>
         </Section></HelpZone>
         <HelpZone id="count.summary.byCategory"><Section title="By category">
-          <Card className="divide-y divide-border">
-            {v.byCategory.slice(0, 10).map((a) => <div key={a.name} className="flex justify-between gap-3 px-4 py-2.5 text-sm"><span className="truncate">{a.name}</span><span className="num">{money(a.value, { whole: true })}</span></div>)}
+          <Card className="p-4">
+            <Bars ariaLabel="Inventory value by category" color="var(--money-goods)" rows={v.byCategory.slice(0, 10).map((a) => ({ key: a.name, label: a.name, value: a.value, display: money(a.value, { whole: true }) }))} />
           </Card>
         </Section></HelpZone>
       </div>

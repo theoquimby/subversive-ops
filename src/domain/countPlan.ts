@@ -104,6 +104,29 @@ export function valueChange(now: number, prev: number | null): { amount: number;
   return { amount: r2(now - prev), pct: prev > 0 ? (now - prev) / prev : null };
 }
 
+/**
+ * Change against the previous count on the same items only. The value carries each item's last count
+ * forward, so a smaller count doesn't lower it; but an item counted for the first time raises it without
+ * any stock arriving. Those are taken out of the change and reported apart, so a first full count isn't
+ * read as a delivery (and a partial first count isn't read as a loss later).
+ * `now` and `prev` are value by item key. Null without a previous count.
+ */
+export function likeForLike(now: ReadonlyMap<string, number>, prev: ReadonlyMap<string, number> | null): { amount: number; pct: number | null; added: number; addedValue: number } | null {
+  if (!prev) return null;
+  let nowSame = 0;
+  let added = 0;
+  let addedValue = 0;
+  for (const [k, v] of now) {
+    if (prev.has(k)) nowSame += v;
+    else if (v > 0) {
+      added++;
+      addedValue += v;
+    }
+  }
+  const before = [...prev.values()].reduce((s, v) => s + v, 0);
+  return { amount: r2(nowSame - before), pct: before > 0 ? (nowSame - before) / before : null, added, addedValue: r2(addedValue) };
+}
+
 // ---- Counting one item in several places ------------------------------------------------------
 
 /** Where an item is listed on counts: its storage area first, then any extra home areas. */

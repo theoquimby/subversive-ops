@@ -1,8 +1,11 @@
 import { Badge, Button, Card, cx, LinkButton, PageHeader, Section } from "@/components/ui";
 import { ListChecks } from "lucide-react";
-import { money, relativeTime, shortDate } from "@/lib/format";
+import { businessDateOf, money, relativeTime, shortDate } from "@/lib/format";
 import { valueTrend } from "@/server/services/counts";
-import { valueChange } from "@/domain/countPlan";
+import { daysBetween } from "@/domain/dates";
+import { countAge } from "@/domain/varianceStory";
+import { businessToday } from "@/server/services/sales";
+import { StaleCounts } from "./stale-counts";
 import { LineChart } from "@/components/line-chart";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
@@ -26,14 +29,35 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
     manager ? valueTrend(8) : Promise.resolve([]),
   ]);
   const latest = trend.at(-1);
-  const change = latest ? valueChange(latest.total, trend.at(-2)?.total ?? null) : null;
+  // Against the count before, on the same items only: an item counted for the first time isn't stock arriving.
+  const change = latest?.change ?? null;
   const areas = areaRows.map((a) => a.name);
+  const today = businessToday();
+  const lastFull = recent.find((c) => !c.area || c.area === "All") ?? null;
+  const fullAge = lastFull ? countAge(daysBetween(businessDateOf(lastFull.takenAt), today)) : null;
+  // Started, nothing counted, and not today's: left behind, not in progress.
+  const isStale = (c: (typeof open)[number]) => c._count.lines + c._count.prepLines === 0 && businessDateOf(c.takenAt) < today;
+  const stale = open.filter(isStale);
+  const active = open.filter((c) => !isStale(c));
 
   return (
     <div className="mx-auto max-w-xl">
       <PageHeader help="count.home" title="Inventory count" description="Pick an area and count what's on the shelf. Everything saves as you go." />
       {done && <Card className="mb-6 border-good/30 bg-good-bg p-4 text-sm font-medium text-good">Count saved. Thank you!</Card>}
       {sent && <Card className="mb-6 border-good/30 bg-good-bg p-4 text-sm font-medium text-good">Sent to the manager to check. Thank you!</Card>}
+
+      <Card className={cx("mb-8 p-4 sm:p-5", fullAge?.stale && "border-warn/40")}>
+        <h2 className="text-lg font-semibold tracking-tight text-balance text-ink">
+          {lastFull ? `The last full count was ${fullAge!.words}` : "No full count yet"}
+        </h2>
+        <p className="mt-1 text-sm text-ink-2">
+          {!lastFull
+            ? "Count everything once to give ordering and the Margin gap a starting point."
+            : fullAge!.stale
+              ? "Count everything again this week, so ordering and the Margin gap work from what's really on the shelf."
+              : `Counted by ${lastFull.user?.name ?? "someone"}. Next one due within the week.`}
+        </p>
+      </Card>
 
       {waiting.length > 0 && (
         <HelpZone id="count.waiting" tour="count.waiting">
@@ -58,11 +82,11 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
         </HelpZone>
       )}
 
-      {open.length > 0 && (
+      {active.length > 0 && (
         <HelpZone id="count.inProgress" tour="count.in-progress">
         <Section title="In progress">
           <Card className="divide-y divide-border">
-            {open.map((c) => (
+            {active.map((c) => (
               <Link key={c.id} href={`/count/${c.id}`} className="flex items-center justify-between px-4 py-4 hover:bg-surface-2/60">
                 <div>
                   <div className="font-medium">{!c.area || c.area === "All" ? "Everything" : c.area}</div>
@@ -83,8 +107,13 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
               <div className="text-sm text-muted">Inventory value{latest.area !== "All" ? ` · ${latest.area}` : ""} · {shortDate(latest.date)}</div>
               <div className="num mt-0.5 text-2xl font-semibold tracking-tight">{money(latest.total, { whole: true })}</div>
               {/* Say how much the number stands on: a 2-item count isn't the whole stock. */}
-              <div className="text-xs text-muted">From {latest.items} item{latest.items === 1 ? "" : "s"} counted{latest.items < 20 ? " — a full count gives the real figure" : ""}</div>
-              {change && <div className="num text-sm text-ink-2">{change.amount >= 0 ? "+" : "−"}{money(Math.abs(change.amount), { whole: true })} <span className="text-muted">vs the count before</span></div>}
+              <div className="text-xs text-muted">From {latest.items} item{latest.items === 1 ? "" : "s"} counted{latest.items < 20 ? "; a full count gives the real figure" : ""}</div>
+              {change && (
+                <div className="num text-sm text-ink-2">
+                  {change.amount >= 0 ? "+" : "−"}{money(Math.abs(change.amount), { whole: true })} <span className="text-muted">on the same items as the count before</span>
+                  {change.added > 0 && <span className="block text-xs text-muted">{change.added} item{change.added === 1 ? "" : "s"} counted for the first time ({money(change.addedValue, { whole: true })}) left out of the change</span>}
+                </div>
+              )}
             </div>
             <span className="text-sm text-ink-2">Details →</span>
           </div>
@@ -105,6 +134,12 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
       </Section>
       </HelpZone>
 
+      {stale.length > 0 && (
+        <Section title="Left empty">
+          <StaleCounts counts={stale.map((c) => ({ id: c.id, where: !c.area || c.area === "All" ? "Everything" : c.area, by: c.user?.name ?? "someone", started: relativeTime(c.takenAt) }))} />
+        </Section>
+      )}
+
       {recent.length > 0 && (
         <HelpZone id="count.recent" tour="count.recent">
         <Section title="Recent counts">
@@ -113,8 +148,8 @@ export default async function CountHome({ searchParams }: { searchParams: Promis
               const Row = manager ? Link : "div";
               return (
               <Row key={c.id} href={`/count/${c.id}/summary`} className={cx("flex items-center justify-between gap-3 px-4 py-3 text-sm", manager && "hover:bg-surface-2/60")}>
-                <div className="min-w-0">{!c.area || c.area === "All" ? "Everything" : c.area} <span className="text-muted">· {c.user?.name ?? "—"}{c.approvedBy && c.approvedBy !== c.user?.name ? `, approved by ${c.approvedBy}` : ""}</span></div>
-                <div className="flex items-center gap-2 text-muted"><Badge>{c._count.lines + c._count.prepLines} items</Badge>{relativeTime(c.takenAt)}</div>
+                <div className="min-w-0">{!c.area || c.area === "All" ? "Everything" : c.area} <span className="text-muted">· {c.user?.name ?? "someone"}{c.approvedBy && c.approvedBy !== c.user?.name ? `, approved by ${c.approvedBy}` : ""}</span></div>
+                <div className="flex shrink-0 items-center gap-2 text-muted"><Badge>{c._count.lines + c._count.prepLines} items</Badge>{relativeTime(c.takenAt)}</div>
               </Row>
               );
             })}
