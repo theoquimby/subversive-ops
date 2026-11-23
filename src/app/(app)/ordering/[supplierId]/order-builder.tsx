@@ -10,11 +10,13 @@ import { useConfirm } from "@/components/dialog";
 import { dayDate, money, qty, shortDate } from "@/lib/format";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { DataTable, type Column, type Filter } from "@/components/data-table";
+import { DataTable, type Column, type Filter, type GroupBy } from "@/components/data-table";
 import { createOrder } from "../actions";
 import { HelpTip, HelpZone } from "@/components/help";
 
 type Line = OrderSuggestion & { onHandNote: string; why?: string };
+
+const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const STATUS_LABEL: Record<Line["status"], string> = { "runs-out": "Runs out first", order: "To order", "needs-count": "Needs a count", "needs-setup": "Needs pack size", covered: "Covered" };
 const packs = (base: number, l: Line) => (l.packQtyBase ? base / l.packQtyBase : null);
@@ -120,6 +122,7 @@ export function OrderBuilder(props: {
   const runsOut = rows.filter((l) => l.status === "runs-out");
 
   const setQ = (id: string, n: number) => setEdits((s) => ({ ...s, [id]: Math.max(0, n) }));
+  const byDay = WEEKDAY_NAMES[new Date(`${addDays(props.coverUntil, -1)}T12:00:00Z`).getUTCDay()];
   const columns = useMemo<Column<Line>[]>(() => [
     {
       id: "item",
@@ -131,7 +134,7 @@ export function OrderBuilder(props: {
         <div className={cx(l.status === "covered" && (qtys[l.ingredientId] ?? 0) === 0 && "opacity-60")}>
           <div className="font-medium text-ink">{l.ingredientName}</div>
           <div className="text-xs text-muted">{l.description} · {money(l.unitPrice)}/{l.purchaseUnit}</div>
-          {l.why && <div className="text-xs text-ink-2">{l.why}</div>}
+          {l.why && <div className="text-xs text-ink-2" title={l.status === "needs-count" ? undefined : `What you'll use through ${byDay}, plus a safety buffer, less what you'll still have on delivery day. Ordered in whole ${l.purchaseUnit}s.`}>{l.why}</div>}
           <PackPicker l={l} onPick={choosePack} />
           {l.status === "needs-setup" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="warn">Set pack size</Badge><HelpTip id="ordering.builder.needsSetup" /></span>}
           {l.status === "needs-count" && <span className="mt-1 flex items-center gap-1.5"><Badge tone="warn">Count to auto-order</Badge><HelpTip id="ordering.builder.needsCount" /></span>}
@@ -165,10 +168,15 @@ export function OrderBuilder(props: {
         </>
       ),
     },
-    { id: "needed", header: "Needed", help: "ordering.builder.needed", align: "right", firstDir: "desc", sort: (l) => packs(l.neededForCover, l), csv: (l) => packs(l.neededForCover, l), cell: (l) => (packs(l.neededForCover, l) == null ? "—" : `${qty(packs(l.neededForCover, l), 1)} ${l.purchaseUnit}`) },
+    { id: "needed", header: "Needed", help: "ordering.builder.needed", align: "right", defaultHidden: true, firstDir: "desc", sort: (l) => packs(l.neededForCover, l), csv: (l) => packs(l.neededForCover, l), cell: (l) => (packs(l.neededForCover, l) == null ? "—" : `${qty(packs(l.neededForCover, l), 1)} ${l.purchaseUnit}`) },
     { id: "order", header: "Order", align: "right", hideable: false, width: 150, firstDir: "desc", sort: (l) => qtys[l.ingredientId] ?? 0, csv: (l) => qtys[l.ingredientId] ?? 0, cell: (l) => <Stepper l={l} q={qtys[l.ingredientId] ?? 0} set={setQ} /> },
     { id: "cost", header: "Cost", align: "right", firstDir: "desc", sort: (l) => (qtys[l.ingredientId] ?? 0) * (l.unitPrice ?? 0), csv: (l) => (qtys[l.ingredientId] ?? 0) * (l.unitPrice ?? 0), cell: (l) => { const q = qtys[l.ingredientId] ?? 0; return q > 0 ? money(q * (l.unitPrice ?? 0)) : <span className="text-muted">—</span>; } },
-  ], [qtys]);
+  ], [qtys, byDay]);
+
+  // Uncounted items can't be suggested: they sit together, folded, under one heading that says why.
+  const groups = useMemo<GroupBy<Line>[]>(() => [
+    { id: "counted", label: "Counted or not", key: (l) => (l.status === "needs-count" ? "no" : "yes"), order: (a, b) => (a === b ? 0 : a === "yes" ? -1 : 1), title: (k) => (k === "no" ? "Not counted yet: count these to order them properly" : "Counted") },
+  ], []);
 
   const filters = useMemo<Filter<Line>[]>(() => [
     { id: "status", label: "Status", kind: "facet", values: (l) => l.status, options: (Object.keys(STATUS_LABEL) as Line["status"][]).map((k) => ({ value: k, label: STATUS_LABEL[k] })) },
@@ -191,7 +199,7 @@ export function OrderBuilder(props: {
             {Array.from({ length: 14 }, (_, i) => addDays(props.deliveryDate, i + 1)).map((d) => <option key={d} value={d}>{dayDate(addDays(d, -1))}</option>)}
           </Select>
         </Field>
-        <div className="text-sm text-muted sm:pt-6" data-tour="ordering.formula">Quantities = forecast sales × recipes + buffer − stock you'll have on delivery day. <HelpTip id="ordering.builder.formula" /></div>
+        <div className="text-sm text-muted sm:pt-6" data-tour="ordering.formula">How much: what you&apos;ll sell through {byDay}, minus what&apos;s on the shelf. <HelpTip id="ordering.builder.formula" /></div>
       </Card></HelpZone>
 
       {props.existingDraft && (
@@ -226,14 +234,16 @@ export function OrderBuilder(props: {
 
       <HelpZone id="ordering.builder.lines">
         <DataTable
-          id="order-builder"
+          // v2: uncounted items start grouped and folded.
+          id="order-builder-v2"
           rows={rows}
           rowKey={(l) => l.ingredientId}
           columns={columns}
           noun={["item", "items"]}
           searchText={(l) => `${l.ingredientName} ${l.description}`}
           filters={filters}
-          defaultView={{ filters: { hideCovered: ["1"] } }}
+          groups={rows.some((l) => l.status === "needs-count") ? groups : undefined}
+          defaultView={{ filters: { hideCovered: ["1"] }, ...(rows.some((l) => l.status === "needs-count") ? { group: "counted", collapsed: ["no"] } : {}) }}
           csvName="order"
           maxHeight="calc(100dvh - 14rem)"
           summary={(vis) => [

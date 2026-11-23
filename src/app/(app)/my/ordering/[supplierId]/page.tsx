@@ -41,7 +41,7 @@ export default async function GuidedOrderPage({ params }: { params: Promise<{ su
         runsOut: l.status === "runs-out",
         needsCount: l.status === "needs-count",
         usual: usual.get(l.supplierProductId) ?? null,
-        why: pos ? whyLine({ onHandBase: pos.onHandNow, needBase: Math.max(0, pos.usageUntilDelivery + l.neededForCover - pos.incoming), packQtyBase: l.packQtyBase, unit: l.purchaseUnit, byDate, known: pos.known }) : "",
+        why: pos ? whyLine({ onHandBase: pos.onHandNow, needBase: l.shortfall, packQtyBase: l.packQtyBase, unit: l.purchaseUnit, byDate, known: pos.known }) : "",
       };
     });
 

@@ -57,7 +57,7 @@ export default async function BuildOrderPage({ params, searchParams }: { params:
           return {
             ...l,
             onHandNote: plan.onHandNotes.get(l.ingredientId) ?? "",
-            why: pos ? whyLine({ onHandBase: pos.onHandNow, needBase: Math.max(0, pos.usageUntilDelivery + l.neededForCover - pos.incoming), packQtyBase: l.packQtyBase, unit: l.purchaseUnit, byDate, known: pos.known }) : "",
+            why: pos ? whyLine({ onHandBase: pos.onHandNow, needBase: l.shortfall, packQtyBase: l.packQtyBase, unit: l.purchaseUnit, byDate, known: pos.known }) : "",
           };
         })}
       />

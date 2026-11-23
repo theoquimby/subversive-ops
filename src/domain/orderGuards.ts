@@ -39,11 +39,15 @@ export function orderWarnings(a: { lines: readonly { name: string; qty: number; 
   return out;
 }
 
-/** "On hand 3 case, need 9 by Fri": why a line is on the order, in the order's own unit. */
+/**
+ * "On hand 3 case, 2.6 more needed through Fri": why a line is on the order, in the order's own unit.
+ * `needBase` is the line's shortfall (what the period needs with its buffer, less what's left on
+ * delivery day), the figure the order quantity is rounded up from, so the two never disagree.
+ */
 export function whyLine(a: { onHandBase: number; needBase: number; packQtyBase: number | null; unit: string; byDate: ISODate; known: boolean }): string {
   if (!a.known) return "Not counted yet, so on hand is unknown";
   if (!a.packQtyBase || a.packQtyBase <= 0) return "Pack size not set";
   const p = (x: number) => n(Math.max(0, x) / a.packQtyBase!);
   const day = WEEKDAYS[weekday(a.byDate)];
-  return a.needBase > 0 ? `On hand ${p(a.onHandBase)} ${a.unit}, need ${p(a.needBase)} by ${day}` : `On hand ${p(a.onHandBase)} ${a.unit}, enough to ${day}`;
+  return a.needBase > 0 ? `On hand ${p(a.onHandBase)} ${a.unit}, ${p(a.needBase)} more needed through ${day}` : `On hand ${p(a.onHandBase)} ${a.unit}, enough through ${day}`;
 }

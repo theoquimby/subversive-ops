@@ -1,7 +1,8 @@
+import { Verdict } from "@/components/chapter";
 import { HelpZone } from "@/components/help";
 import { PageHeader } from "@/components/ui";
 import { addDays } from "@/domain/dates";
-import { clock, compareByDeadline, deadlineBucket, todayItems } from "@/domain/orderingBoard";
+import { clock, compareByDeadline, deadlineBucket, orderingHeadline, todayItems } from "@/domain/orderingBoard";
 import { dayDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { orderingBoard } from "@/server/services/orderingBoard";
@@ -41,12 +42,18 @@ export default async function OrderingPage({ searchParams }: { searchParams: Pro
     ? { name: upcoming.name, supplierId: upcoming.id, at: upcoming.cutoffAt, label: `${clock(upcoming.next.cutoffTime)} ${deadlineBucket(upcoming.next.cutoffDate, today) === "tomorrow" ? "tomorrow" : dayDate(upcoming.next.cutoffDate)}` }
     : null;
 
+  // The verdict: what to order today and by when, and any cutoff that slipped by with its next step.
+  const missed = suppliers.filter((s) => s.missed).map((s) => ({ supplierName: s.name, next: s.missed!.nextChance, phone: s.prefs.phone, email: s.email }));
+  const headline = orderingHeadline({ items, missed, today });
+  const quietCount = suppliers.filter((s) => s.cadence === "as_needed").length;
+
   return (
     <NowProvider now={board.now}>
       <PageHeader help="ordering.page" title="Ordering" description="Every supplier, its next deadline and where its order stands. Tap a row for the suggested order, or tick several to draft them at once." />
-      {notice && <CadenceNotice names={suppliers.filter((s) => s.cadence === "as_needed").map((s) => s.name)} />}
       <HelpZone id="ordering.today" tour="ordering.today">
-        <TodayStrip items={items} today={today} tomorrow={tomorrow} nextUp={nextUp} unscheduled={suppliers.filter((s) => !s.next).length} total={suppliers.length} />
+        <Verdict badge={{ tone: headline.tone, label: headline.tone === "good" ? "All set" : undefined }} title={headline.title} line={headline.line || undefined} className="mb-6 [&>div:has(>section)]:mt-4">
+          <TodayStrip bare items={items} today={today} tomorrow={tomorrow} nextUp={nextUp} unscheduled={suppliers.filter((s) => !s.next).length} total={suppliers.length} />
+        </Verdict>
       </HelpZone>
       <OrderingTabs
         initial={tab === "orders" ? "orders" : "suppliers"}
@@ -62,6 +69,7 @@ export default async function OrderingPage({ searchParams }: { searchParams: Pro
           </HelpZone>
         }
       />
+      {notice && quietCount > 0 && <CadenceNotice names={suppliers.filter((s) => s.cadence === "as_needed").map((s) => s.name)} />}
     </NowProvider>
   );
 }
