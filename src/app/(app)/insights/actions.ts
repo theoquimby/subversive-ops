@@ -55,5 +55,5 @@ export async function setRange(preset: RangePreset): Promise<{ error?: string; s
   await saveRange(p.data);
   const r = await refreshAnalytics();
   revalidate();
-  return "error" in r ? { error: `Saved — it'll be used from the next update. ${plainAnalyticsError(r.error)}` } : { seconds: Math.round(r.seconds) };
+  return "error" in r ? { error: `Saved. It'll be used from the next update. ${plainAnalyticsError(r.error)}` } : { seconds: Math.round(r.seconds) };
 }

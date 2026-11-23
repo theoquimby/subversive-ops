@@ -22,13 +22,13 @@ export const metadata = { title: "Insights Lab" };
 
 const whole = (n: number) => money(n, { whole: true });
 
-/** "3 years (Nov 2023 – Nov 12, 2026)" */
+/** "3 years · Nov 2023 to Nov 2026" */
 function spanLabel(from: string, through: string) {
   const days = daysBetween(from, through) + 1;
   const years = days / 365.25;
   const len = years >= 1.9 ? `${Math.round(years * 2) / 2} years` : years >= 0.95 ? "12 months" : `${Math.round(days / 30.4)} months`;
   const y = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
-  return `${len} · ${y(from)} – ${y(through)}`;
+  return `${len} · ${y(from)} to ${y(through)}`;
 }
 
 export default async function InsightsPage() {
@@ -39,25 +39,39 @@ export default async function InsightsPage() {
     <PageHeader
       help="insights.page"
       title="Insights Lab"
-      description={<span className="hidden sm:inline">Your numbers, turned into one thing to do at a time — with the dollars, the reason and how sure we are.</span>}
+      description={<span className="hidden sm:inline">Your numbers, turned into one thing to do at a time, with the dollars, the reason and how sure we are.</span>}
       actions={<RangeControl preset={preset} span={span} />}
     />
   );
 
+  const title = (id: string, text: string, help: string) => (
+    <span id={id} className="inline-flex scroll-mt-36 items-center lg:scroll-mt-24 gap-1 text-[1.05rem] tracking-tight">{text} <HelpTip id={help} /></span>
+  );
+
   if (!run) {
+    // The keg findings (and anything else outside the nightly analysis) still come first; only the Lab's own
+    // analysis waits for its first run. The Overview and the Brief link here with "1 more in the Insights Lab".
+    const early = items.map((a) => toDeck(a));
     return (
-      <>
+      <div className="lab">
         {header(null)}
-        <EmptyState title="Insights update overnight" action={<RefreshLink />}>
-          {status.error ? `The last try didn't finish. ${plainAnalyticsError(status.error)} ` : ""}The first set is worked out after the nightly sync, or work it out now — it takes a few seconds.
-          {status.error && plainAnalyticsError(status.error) !== status.error && (
-            <details className="mx-auto mt-3 max-w-md text-left text-xs">
-              <summary className="cursor-pointer text-muted hover:text-ink">Details for whoever looks after the app</summary>
-              <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-surface-2 p-3 whitespace-pre-wrap break-all">{status.error}</pre>
-            </details>
-          )}
-        </EmptyState>
-      </>
+        {early.length > 0 && (
+          <HelpZone id="insights.hero">
+            <ActionDeck actions={early} />
+          </HelpZone>
+        )}
+        <Section help="insights.lab" className="mb-10" title={title("lab-tiles", "The Lab", "insights.lab")}>
+          <EmptyState title="The Lab's analysis comes in overnight" action={<RefreshLink />}>
+            {status.error ? `The last try didn't finish. ${plainAnalyticsError(status.error)} ` : ""}Staffing, menu, ordering and the week ahead are worked out after the nightly sync. Or work them out now: it takes a few seconds.
+            {status.error && plainAnalyticsError(status.error) !== status.error && (
+              <details className="mx-auto mt-3 max-w-md text-left text-xs">
+                <summary className="cursor-pointer text-muted hover:text-ink">Details for whoever looks after the app</summary>
+                <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-surface-2 p-3 whitespace-pre-wrap break-all">{status.error}</pre>
+              </details>
+            )}
+          </EmptyState>
+        </Section>
+      </div>
     );
   }
 
@@ -65,6 +79,7 @@ export default async function InsightsPage() {
   const findings = allFindings(run);
   const span = run.window ? spanLabel(run.data?.from ?? run.window.from, run.window.through) : null;
   const watching = watchList(allWatching(run), state);
+
 
   // How it connects: a month of the business, and the levers (drivers model).
   const dd = r.drivers?.status === "ok" ? (r.drivers.details as { base?: ProfitBase & { costMeasured?: boolean }; levers?: { key: string; label: string; monthly: number }[]; month?: { sales: number; cogs: number; labor: number; laborHours: number; waste: number; openDays: number }; elasticity?: number; laborSplit?: { fixed: number; variable: number }; fixedTotal?: number }) : null;
@@ -79,9 +94,6 @@ export default async function InsightsPage() {
   const watchingPrices = watching.filter((w) => w.area === "menu").length;
   const age = daysBetween(run.computedAt.slice(0, 10), new Date().toISOString().slice(0, 10));
 
-  const title = (id: string, text: string, help: string) => (
-    <span id={id} className="inline-flex scroll-mt-36 items-center lg:scroll-mt-24 gap-1 text-[1.05rem] tracking-tight">{text} <HelpTip id={help} /></span>
-  );
   return (
     <div className="lab">
       {header(span)}
@@ -106,7 +118,7 @@ export default async function InsightsPage() {
           help="insights.watching"
           className="mb-12 scroll-mt-20"
           title={title("lab-watching", "Watching", "insights.watching")}
-          description="These looked like something on the raw numbers, but not once we allow for how busy you were, the weekday, the season and events. Nothing to do — each says what would make it count."
+          description="These looked like something on the raw numbers, but not once we allow for how busy you were, the weekday, the season and events. Nothing to do yet: each says what would make it count."
         >
           <div data-tour="insights.watching">
             <WatchList items={watching} />
@@ -145,7 +157,7 @@ export default async function InsightsPage() {
             <div className="rounded-2xl border border-border bg-surface p-5 shadow-[var(--lab-card-shadow)] sm:p-6">
               <div className="mb-4">
                 <h3 className="text-[0.98rem] font-semibold tracking-tight text-ink">Try a price on any item</h3>
-                <p className="mt-0.5 text-sm text-muted">Pick an item, drag the price, and see what it does to profit a month — with the likely range.</p>
+                <p className="mt-0.5 text-sm text-muted">Pick an item, drag the price, and see what it does to profit a month, with the likely range.</p>
               </div>
               <PriceSlider fits={fits} />
             </div>
@@ -179,7 +191,7 @@ export default async function InsightsPage() {
             {priceNews.length ? (
               <PriceWins items={priceNews} />
             ) : (
-              <p className="px-5 py-8 text-sm leading-relaxed text-muted">When you change a price in Square, we compare the weeks before and after here — allowing for how busy the place was{watchingPrices ? `. ${watchingPrices} recent price changes are on the watch list above` : ""}.</p>
+              <p className="px-5 py-8 text-sm leading-relaxed text-muted">When you change a price in Square, we compare the weeks before and after here, allowing for how busy the place was{watchingPrices ? `. ${watchingPrices} recent price changes are on the watch list above` : ""}.</p>
             )}
           </div>
         </div>

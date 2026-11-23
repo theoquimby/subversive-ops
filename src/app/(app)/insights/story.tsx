@@ -106,7 +106,7 @@ export function ProfitStory({ base, levers, costMeasured, fixedSet }: { base: Pr
             )}
           </div>
           <div className="mt-5 flex flex-col gap-5">
-            <LabSlider label="Prices" value={price} min={0} max={10} step={1} onChange={setPrice} show={(v) => (v ? `+${v}%` : "as today")} note="Some guests buy a little less — that's counted." />
+            <LabSlider label="Prices" value={price} min={0} max={10} step={1} onChange={setPrice} show={(v) => (v ? `+${v}%` : "as today")} note="Some guests buy a little less, and that's counted." />
             <LabSlider label="Wage hours a day" value={hours} min={0} max={8} step={0.5} onChange={setHours} show={(v) => (v ? `${v} fewer` : "as today")} note="Same sales, fewer paid hours (trim quiet hours, stagger starts)." />
             <LabSlider label="Guests" value={guests} min={0} max={15} step={1} onChange={setGuests} show={(v) => (v ? `+${v}%` : "as today")} note="More guests with the same team." />
           </div>
@@ -134,7 +134,7 @@ export function ProfitStory({ base, levers, costMeasured, fixedSet }: { base: Pr
           </ul>
           {levers.length > 1 && levers[1].monthly > 0 && (
             <p className="mt-4 rounded-xl bg-surface-2 px-3.5 py-3 text-[0.82rem] leading-relaxed text-ink-2">
-              <span className="font-medium text-ink">{levers[0].label}</span> is worth about <span className="num font-medium text-ink">{(levers[0].monthly / levers[1].monthly).toFixed(1)}×</span> {levers[1].label.toLowerCase()} — but the smaller levers are usually easier to pull this week.
+              <span className="font-medium text-ink">{levers[0].label}</span> is worth about <span className="num font-medium text-ink">{(levers[0].monthly / levers[1].monthly).toFixed(1)}×</span> {levers[1].label.toLowerCase()}, but the smaller levers are usually easier to pull this week.
             </p>
           )}
         </div>
