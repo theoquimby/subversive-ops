@@ -1,9 +1,10 @@
 import { Chapter, InShort } from "@/components/chapter";
 import { ColumnsChart, type Col } from "@/components/columns-chart";
 import { Badge, Card, EmptyState, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
-import { about, hourLabel, outlookPoint, PACE_DAYS, RECENT_DAYS, SEASONS, type ProfitPoint, type WeekdayProfit } from "@/domain/dayProfit";
+import { about, hourLabel, outlookPoint, PACE_DAYS, RECENT_DAYS, recentSummary, SEASONS, type ProfitPoint, type WeekdayProfit } from "@/domain/dayProfit";
+import { rangeWords } from "@/domain/pnlVerdict";
 import { TYPICAL_COST_SHARE } from "@/domain/pnlStory";
-import { dayDate, money, pct, qty, shortDate } from "@/lib/format";
+import { dayDate, money, pct, qty } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { dayProfitView } from "@/server/services/dayProfit";
 import Link from "next/link";
@@ -49,14 +50,16 @@ export default async function ProfitByDayPage() {
     label: DAYS[w.wd].slice(0, 3),
     sub: signed(w.left),
     mark: w.wd === worst?.wd,
+    // Open too few times to judge: faded, so a tall bar on eleven days can't read as the best day.
+    faint: !w.regular,
     parts: [w.goods, w.labor, w.fees, Math.max(0, w.left)],
     tick: w.left < 0 ? w.sales : undefined,
     tip: {
-      title: `A typical ${DAYS[w.wd]} · open ${qty(w.openDays + w.oneOffs, 0)} times`,
+      title: `A typical ${DAYS[w.wd]} · open ${qty(w.openDays + w.oneOffs, 0)} times${w.regular ? "" : ", too few to judge"}`,
       rows: [
         { label: "Sales", value: whole(w.sales), strong: true },
         { color: "var(--viz-cogs)", label: "Food & drink", value: whole(w.goods) },
-        { color: "var(--viz-labor)", label: "Wages", value: `${whole(w.labor)}${w.laborPct != null ? ` · ${pct(w.laborPct, 0)}` : ""}` },
+        { color: "var(--viz-labor)", label: "Wages", value: w.laborPct == null ? "No timecards" : `${whole(w.labor)} · ${pct(w.laborPct, 0)}` },
         { color: "var(--viz-fees)", label: "Card fees", value: whole(w.fees) },
         { color: "var(--viz-profit)", label: w.left < 0 ? "Lost" : "Left over", value: whole(Math.abs(w.left)), strong: true },
       ],
@@ -81,6 +84,7 @@ export default async function ProfitByDayPage() {
   const seasonMax = Math.max(1, ...p.seasons.map((c) => Math.abs(c.left ?? 0)));
   const coldCells = p.seasons.filter((c) => c.left != null && c.left < 0).length;
   const laborMax = Math.max(0.01, ...regular.map((w) => w.laborPct ?? 0));
+  const lately = recentSummary(p.weekdays);
 
   const late = [...v.hours].filter((h) => h.late).sort((a, b) => a.late!.yearLeft - b.late!.yearLeft)[0];
   const hourDays = v.hours.map((h) => ({
@@ -128,7 +132,7 @@ export default async function ProfitByDayPage() {
             ariaLabel="A typical open day of each weekday: sales split into food and drink, wages, card fees and what's left"
             caption="Weekday"
           />
-          <p className="mt-2 text-xs text-muted">The figure under each day is what it leaves. The blue is the only part you keep; everything else is spent by closing time.</p>
+          <p className="mt-2 text-xs text-muted">The figure under each day is what it leaves. The top of each column, what's left over, is the only part you keep; everything else is spent by closing time.{p.weekdays.some((w) => !w.regular) ? ` Faded: open too few times in the year to judge (${p.weekdays.filter((w) => !w.regular).map((w) => DAYS[w.wd]).join(", ")}).` : ""}</p>
         </div>
         <dl className="mt-5 grid gap-x-8 gap-y-4 border-t border-border pt-4 sm:grid-cols-3">
           <div>
@@ -200,7 +204,7 @@ export default async function ProfitByDayPage() {
         </Section>
       )}
 
-      <Section title="Is each day worth opening?" description={`Every open day from ${p.from ? shortDate(p.from) : "a year ago"} to ${p.to ? shortDate(p.to) : "yesterday"}. A day is worth opening when it leaves more than nothing: rent is owed either way.`}>
+      <Section title="Is each day worth opening?" description={`Every open day ${p.from && p.to ? `from ${rangeWords(p.from, p.to)}` : "over the last year"}. A day is worth opening when it leaves more than nothing: rent is owed either way.`}>
         <div className="grid gap-4">
           <Chapter
             id="weakest"
@@ -239,7 +243,7 @@ export default async function ProfitByDayPage() {
             <DayStrip rows={stripRows} fixed={p.fixedPerOpenDay} recent={RECENT_DAYS} />
           </Chapter>
 
-          <Chapter id="recent" point={point("recent")} title="Lately is in line with the year" detail={`Each weekday's last ${RECENT_DAYS} open days next to its whole year: about two months against twelve.`}>
+          <Chapter id="recent" point={point("recent")} title={lately.title} detail={`${lately.detail} Each weekday's last ${RECENT_DAYS} open days next to its whole year: about two months against twelve.`}>
             <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
               <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-[3px] bg-border-strong" /> A typical day over the year</span>
               <span className={`inline-flex items-center gap-1.5 ${VIZ_VARS}`}><span aria-hidden className="inline-block size-2.5 rounded-[3px]" style={{ background: "var(--viz-profit)" }} /> A typical day of its last {RECENT_DAYS}</span>
@@ -376,7 +380,7 @@ export default async function ProfitByDayPage() {
                 {p.weekdays.map((w) => (
                   <Tr key={w.wd}>
                     <Td><WeekdayName w={w} /></Td>
-                    <Td align="right" className="num text-ink-2">{whole(w.labor)}</Td>
+                    <Td align="right" className="num text-ink-2">{w.laborPct != null ? whole(w.labor) : "No timecards"}</Td>
                     <Td align="right" className="num font-medium text-ink">{w.laborPct != null ? pct(w.laborPct, 0) : "—"}</Td>
                     <Td align="right" className="num hidden text-ink-2 sm:table-cell">{w.breakEven != null ? whole(w.breakEven) : "—"}</Td>
                     <Td align="right" className="num text-ink-2">{qty(w.openDays - w.lostDays, 0)} of {qty(w.openDays, 0)}</Td>
@@ -393,10 +397,10 @@ export default async function ProfitByDayPage() {
                 <div className="col-span-2 sm:col-span-1">
                   <div className="flex items-center gap-2">
                     <div className="h-2.5 min-w-[2px] rounded-r-[4px]" style={{ width: `calc((100% - 3rem) * ${(((w.laborPct ?? 0) / laborMax)).toFixed(4)})`, background: "var(--viz-labor)" }} />
-                    <span className="num text-sm font-semibold text-ink">{w.laborPct != null ? pct(w.laborPct, 0) : "—"}</span>
+                    <span className={`num text-sm font-semibold ${w.laborPct != null ? "text-ink" : "text-muted"}`}>{w.laborPct != null ? pct(w.laborPct, 0) : "—"}</span>
                   </div>
                   <div className="mt-1 text-xs text-muted">
-                    {whole(w.labor)} of wages a day.{w.breakEven != null && ` Needs ${about(w.breakEven)} in sales to cover them; ${qty(w.openDays - w.lostDays, 0)} of ${qty(w.openDays, 0)} days got there.`}
+                    {w.laborPct == null ? "No timecards for these days, so wages can't be told yet." : <>{whole(w.labor)} of wages a day.{w.breakEven != null && ` Needs ${about(w.breakEven)} in sales to cover them; ${qty(w.openDays - w.lostDays, 0)} of ${qty(w.openDays, 0)} days got there.`}</>}
                   </div>
                 </div>
               </li>

@@ -37,6 +37,8 @@ export interface Col {
   tick?: number;
   /** The data for this column isn't in yet (not synced, not counted): drawn as an outline, never as zero. */
   missing?: boolean;
+  /** Too few days behind it to judge: drawn faded so it can't read as a finding. */
+  faint?: boolean;
   tip: { title: string; rows: { color?: string; label: string; value: string; strong?: boolean }[] };
 }
 
@@ -109,7 +111,7 @@ export function ColumnsChart({ cols, series, money = true, height = 200, ariaLab
             let acc = 0;
             const last = segs.length - 1;
             return (
-              <g key={c.key} opacity={hover == null || hover === i ? 1 : 0.55} className="transition-opacity duration-180">
+              <g key={c.key} opacity={(c.faint ? 0.38 : 1) * (hover == null || hover === i ? 1 : 0.55)} className="transition-opacity duration-180">
                 {c.mark && <rect x={x(i) - band / 2 + 1} y={pad.top - 6} width={band - 2} height={H - pad.top + 4} rx={6} fill="var(--surface-2)" />}
                 {c.missing && <rect x={x(i) - barW / 2 + 0.5} y={y(top * 0.35)} width={barW - 1} height={y(0) - y(top * 0.35) - 0.5} rx={3} fill="none" stroke="var(--border-strong)" strokeDasharray="3 3" />}
                 {!c.missing && segs.map((s, k) => {

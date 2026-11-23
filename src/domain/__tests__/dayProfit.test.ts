@@ -1,6 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { addDays, weekday } from "../dates";
-import { about, crewOutlook, crewShortfalls, dayProfit, dayProfitStory, hourLabel, hourProfit, outlookPoint, seasonOf, type HourInput, type ProfitDayInput } from "../dayProfit";
+import { about, crewOutlook, crewShortfalls, dayProfit, dayProfitStory, hourLabel, hourProfit, outlookPoint, recentSummary, seasonOf, type HourInput, type ProfitDayInput, type WeekdayProfit } from "../dayProfit";
+
+describe("recentSummary", () => {
+  const wd = (d: number, left: number, recent: number): WeekdayProfit => ({ wd: d, regular: true, left, recent: { days: 8, left: recent, lost: 0 } }) as unknown as WeekdayProfit;
+  it("says the year and lately agree only when they do", () => {
+    expect(recentSummary([wd(1, 600, 640), wd(3, 800, 760)]).title).toBe("Lately is in line with the year");
+  });
+  it("names the days that moved, with the biggest as the example", () => {
+    const s = recentSummary([wd(2, 615, 1110), wd(3, 800, 1000), wd(5, 1500, 1520)]);
+    expect(s.title).toBe("Lately Tuesdays and Wednesdays leave more than over the year");
+    expect(s.detail).toBe("A Tuesday has left about $1,100 lately, against $620 over the year.");
+    expect(recentSummary([wd(2, 615, 1110), wd(3, 800, 1000)]).title).toBe("Lately every weekday leaves more than over the year");
+    expect(recentSummary([wd(2, 615, 1110), wd(3, 800, 400)]).title).toBe("Lately Tuesdays leave more, and Wednesdays less, than over the year");
+  });
+});
+
+describe("no timecards", () => {
+  it("is no wage share at all, not 0%", () => {
+    const p = dayProfit({ days: year((d) => ({ labor: weekday(d.date) === 1 ? 0 : d.labor })), open: openOf(year()) });
+    expect(p.weekdays.find((w) => w.wd === 1)!.laborPct).toBeNull();
+    expect(p.weekdays.find((w) => w.wd === 5)!.laborPct).not.toBeNull();
+  });
+});
 
 /** A year of days from a Monday: closed Tuesdays, each weekday with its own sales and crew. */
 const START = "2025-11-17"; // a Monday
