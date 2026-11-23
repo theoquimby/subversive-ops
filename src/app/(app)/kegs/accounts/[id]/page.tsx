@@ -52,7 +52,7 @@ export default async function KegAccountPage({ params, searchParams }: { params:
 
       <Verdict
         badge={late ? { tone: "warn" } : undefined}
-        title={late ? `${kegsWord(late)} of the ${kegsWord(n.kegsOut)} here ${late === 1 ? "has" : "have"} been out more than ${daysWord(r.overdueDays)}` : n.kegsOut ? `${kegsWord(n.kegsOut)} here now, the longest for ${daysWord(longest ?? 0)}` : "No kegs out here right now"}
+        title={late ? `${late} of the ${kegsWord(n.kegsOut)} here ${late === 1 ? "has" : "have"} been out more than ${daysWord(r.overdueDays)}` : n.kegsOut ? `${kegsWord(n.kegsOut)} here now, the longest for ${daysWord(longest ?? 0)}` : "No kegs out here right now"}
         line={late ? "Ask for the empties back on the next delivery." : undefined}
         stats={[
           { label: "Deliveries", value: n.deliveries12, hint: `In the last 12 months, ${since}` },

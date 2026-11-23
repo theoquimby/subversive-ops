@@ -39,7 +39,7 @@ export function ReturnsDue({ rows, today, current, amounts }: { rows: DueRow[]; 
         const d = daysBetween(today, r.due);
         return (
           <div key={`${r.form}-${r.periodKey}`} className={cx("flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3", pending && "opacity-70")}>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-[1_1_14rem]">
               <div className="text-sm font-medium text-ink">{r.name} · {r.periodLabel}</div>
               <div className="text-xs text-muted">
                 {r.filing ? `Filed ${shortDate(r.filing.filedOn)}${r.filing.amount != null ? ` · paid ${money(r.filing.amount)}` : ""}${r.filing.userName ? ` · ${r.filing.userName}` : ""}` : `Due ${shortDate(r.due)} · ${r.who}`}
@@ -76,7 +76,7 @@ function FileSheet({ row, today, suggested, onClose, onDone }: { row: DueRow; to
       <div className="space-y-3">
         <Field label="Filed on"><DatePicker value={filedOn} max={today} today={today} onChange={(e) => setFiledOn(e.target.value)} aria-label="Filed on" /></Field>
         {row.form !== "brop" && (
-          <Field label="Paid" hint={suggested != null ? "From this period's worksheet — change it to what you actually paid." : "Leave blank if nothing was due."}>
+          <Field label="Paid" hint={suggested != null ? "From this period's worksheet. Change it to what you actually paid." : "Leave blank if nothing was due."}>
             <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="$0.00" />
           </Field>
         )}
@@ -93,8 +93,8 @@ function FileSheet({ row, today, suggested, onClose, onDone }: { row: DueRow; to
 }
 
 const ADJ_KINDS = [
-  { value: "removed", label: "Removed — cans, bottles, crowlers out the door" },
-  { value: "packaged", label: "Packaged — cans or bottles filled" },
+  { value: "removed", label: "Removed: cans, bottles, crowlers out the door" },
+  { value: "packaged", label: "Packaged: cans or bottles filled" },
   { value: "returned", label: "Returned to the brewery" },
   { value: "loss", label: "Dumped or lost" },
 ];
@@ -117,7 +117,8 @@ export function AdjustmentForm({ beers, defaultDate, today }: { beers: { id: str
     });
   return (
     <Card className="mb-3 p-4" data-tour="beertax.adjust">
-      <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)] lg:grid-cols-[10rem_minmax(0,1.4fr)_minmax(0,1fr)_9rem_8rem]">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[10rem_minmax(0,1fr)] lg:grid-cols-[10rem_minmax(0,1.4fr)_minmax(0,1fr)_9rem_8rem]">
+        {/* One column on a phone: without it the grid sizes to the longest option and runs off the screen. */}
         <Field label="Date"><DatePicker value={date} max={today} today={today} onChange={(e) => setDate(e.target.value)} aria-label="Date" /></Field>
         <Field label="What"><Select value={kind} onChange={(e) => setKind(e.target.value)} options={ADJ_KINDS} aria-label="What" /></Field>
         <Field label="Beer"><Select value={beerId} onChange={(e) => setBeerId(e.target.value)} options={[{ value: "", label: "Not one beer" }, ...beers.map((b) => ({ value: b.id, label: b.name }))]} searchable aria-label="Beer" /></Field>
