@@ -235,7 +235,8 @@ function BookedRow({ r, past }: { r: EventRowView; past: boolean }) {
   const href = `/events/private/${r.privateEventId}`;
   return (
     <tr className="transition-colors hover:bg-surface-2/60 [&:last-child>td]:border-b-0">
-      <td className="num hidden w-40 border-b border-border px-4 py-2.5 text-ink-2 sm:table-cell">{shortDate(r.date)}</td>
+      {/* The same "Sun, Dec 6, 2026" as the date pickers on the rows around it. */}
+      <td className="num hidden w-40 border-b border-border px-4 py-2.5 text-ink-2 sm:table-cell">{dayDate(r.date)}, {r.date.slice(0, 4)}</td>
       <td className="border-b border-border px-3 py-2.5">
         <Link href={href} className="font-medium underline-offset-2 hover:underline">{r.title}</Link>
         <div className="text-xs text-muted">

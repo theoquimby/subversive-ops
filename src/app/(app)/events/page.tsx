@@ -1,3 +1,4 @@
+import { Chapter, type Finding } from "@/components/chapter";
 import { HelpZone } from "@/components/help";
 import { Badge, Card, EmptyState, LinkButton, PageHeader, Section } from "@/components/ui";
 import { addDays } from "@/domain/dates";
@@ -8,6 +9,7 @@ import { requireUser } from "@/server/auth";
 import { eventLearning, listEvents } from "@/server/services/events";
 import { businessToday } from "@/server/services/sales";
 import { ApplyLearned, EventRowView, EventsGrid, HolidayButtons, QuickAdd } from "./events-client";
+import { NightDots } from "./night-dots";
 
 export const metadata = { title: "Events" };
 
@@ -46,6 +48,23 @@ export default async function EventsPage() {
     : settled
       ? `${count("added") ? `${count("added")} added sales` : ""}${count("added") && count("cost") ? ", " : ""}${count("cost") ? `${count("cost")} cost sales` : ""}${results.length - settled ? `, ${results.length - settled} can't be told from chance yet` : ""}.`
       : `None of the ${results.length} can be told from chance yet. That's normal: a night's sales swing a lot on their own.`;
+  // Each series' scored nights, for the dot plot.
+  const nightsOf = new Map<string, { date: string; lift: number }[]>();
+  for (const e of scored) {
+    const o = learning.outcomes.get(e.id);
+    if (o?.lift != null) nightsOf.set(e.series, [...(nightsOf.get(e.series) ?? []), { date: e.date, lift: o.lift }]);
+  }
+  const applyable = results.filter((r) => r.impact != null && (learning.upcoming.get(r.series)?.differing ?? 0) > 0).length;
+  const finding: Finding = {
+    tone: count("cost") ? "warn" : count("added") ? "good" : "unknown",
+    title: !results.length
+      ? "Nothing to score yet"
+      : settled
+        ? `${count("added") ? `${count("added")} of the ${results.length} things you put on added sales` : `None of the ${results.length} things you put on added sales you can count on`}${count("cost") ? `; ${count("cost")} cost sales` : ""}`
+        : `None of the ${results.length} things you put on can be told from chance yet`,
+    detail: "Each dot is one night against an ordinary day of that weekday at that time of year. The shaded band is how far an ordinary night swings on its own: a dot inside it could be chance. The blue bar is the nights together.",
+    action: applyable ? `${applyable === 1 ? "One series has" : `${applyable} series have`} upcoming nights set to a different impact than they've measured: set them below so the forecast uses what happened.` : null,
+  };
   const signedPct = (m: number) => `${m >= 1 ? "+" : "−"}${Math.round(Math.abs(m - 1) * 100)}%`;
 
   return (
@@ -53,11 +72,79 @@ export default async function EventsPage() {
       <PageHeader
         help="events.page"
         title="Events"
-        description="Games, festivals, music, buyouts and closures. They move the sales forecast, and the upcoming list is what the website shows — keep titles and times tidy."
+        description="Games, festivals, music, buyouts and closures. They move the sales forecast, and the upcoming list is what the website shows, so keep titles and times tidy."
         actions={<><LinkButton href="/events/private" data-tour="events.private-link">Private events</LinkButton><HelpZone id="events.holidays"><HolidayButtons years={[year, year + 1]} /></HelpZone></>}
       />
 
-      <Section help="events.add" title="Add events" description="Pick as many dates as you need — every Knicks home game at once — or repeat weekly. Impact is how much busier than a normal day (+30%) or quieter (−20%).">
+      <Section help="events.learned" title="Did it work?" description={results.length ? (settled ? summary : undefined) : "Each thing you put on, against an ordinary day of that weekday at that time of year."}>
+        {results.length === 0 ? (
+          <Card className="p-5 text-sm text-ink-2">
+            <p className="font-medium text-ink">Nothing to score yet.</p>
+            <p className="mt-1">Add what you&apos;ve already run and it&apos;s scored straight away: pick the first night below, set “Weekly until” to today, and leave the impact blank if you don&apos;t know it. Past dates work. Trivia, music, a run club, a special: anything you&apos;d like to know the answer to.</p>
+          </Card>
+        ) : (
+          <Chapter
+            id="did-it-work"
+            point={finding}
+            title={finding.title}
+            numbers={
+              <Card className="divide-y divide-border">
+                {results.map((r) => {
+                  const w = describeResult(r);
+                  const up = learning.upcoming.get(r.series);
+                  const kind = r.kind as keyof typeof EVENT_KIND_LABEL;
+                  return (
+                    <div key={r.series} className="px-4 py-4 sm:px-5">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <h4 className="text-[0.95rem] font-semibold text-ink">{seriesName(r.series)}</h4>
+                        <Badge tone={w.tone}>{w.label}</Badge>
+                        <span className="text-xs text-muted">
+                          {EVENT_KIND_LABEL[kind] ?? r.kind} · {r.nights + r.skipped === 1 ? shortDate(r.first) : `${r.nights + r.skipped} nights, ${shortDate(r.first)} to ${shortDate(r.last)}`}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-sm text-ink-2">{w.line}</p>
+                      {w.next && <p className="mt-1.5 text-sm font-medium text-ink">{w.next}</p>}
+                      {w.notes.length > 0 && <p className="mt-1.5 text-xs text-muted">{w.notes.join(" ")}</p>}
+                      {r.impact != null && up && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+                          {up.differing === 0 ? (
+                            <span>{up.count} upcoming already set to {signedPct(r.impact)}.</span>
+                          ) : (
+                            <>
+                              <ApplyLearned series={r.series} label={`Set ${up.differing} upcoming to ${signedPct(r.impact)}`} />
+                              {r.verdict === "unclear" && <span>A cautious number: scaled back because it isn&apos;t settled.</span>}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <p className="px-4 py-3 text-xs text-muted sm:px-5">
+                  “Ordinary” is the last eight days of that weekday with nothing on, scaled by how your other days were doing at the time. A result is only called when the nights together clear what chance does about 19 times in 20. Sales only: host fees, prizes and staff aren&apos;t taken off.
+                </p>
+              </Card>
+            }
+          >
+            <ul className="space-y-5">
+              {results.map((r, i) => {
+                const w = describeResult(r);
+                return (
+                  <li key={r.series} className="grid gap-x-5 gap-y-1.5 sm:grid-cols-[12rem_1fr]">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-ink">{seriesName(r.series)}</div>
+                      <Badge tone={w.tone} className="mt-1">{w.label}</Badge>
+                    </div>
+                    <NightDots nights={nightsOf.get(r.series) ?? []} noise={r.noise} lift={r.lift} label={seriesName(r.series)} axis={i === results.length - 1} />
+                  </li>
+                );
+              })}
+            </ul>
+          </Chapter>
+        )}
+      </Section>
+
+      <Section help="events.add" title="Add events" description="Pick as many dates as you need (every Knicks home game at once) or repeat weekly. Impact is how much busier than a normal day (+30%) or quieter (−20%).">
         <QuickAdd today={today} />
       </Section>
 
@@ -66,54 +153,6 @@ export default async function EventsPage() {
           <EmptyState title="Nothing on the calendar">Add games, music nights and holidays above so the forecast and the website know about them.</EmptyState>
         ) : (
           <EventsGrid rows={upcoming.map(view)} grid="events-upcoming" />
-        )}
-      </Section>
-
-      <Section help="events.learned" title="Did it work?" description={summary ?? "Each thing you put on, against an ordinary day of that weekday at that time of year."}>
-        {results.length === 0 ? (
-          <Card className="p-5 text-sm text-ink-2">
-            <p className="font-medium text-ink">Nothing to score yet.</p>
-            <p className="mt-1">Add what you&apos;ve already run and it&apos;s scored straight away: pick the first night above, set “Weekly until” to today, and leave the impact blank if you don&apos;t know it. Past dates work. Trivia, music, a run club, a special: anything you&apos;d like to know the answer to.</p>
-          </Card>
-        ) : (
-          <Card className="divide-y divide-border">
-            {results.map((r) => {
-              const w = describeResult(r);
-              const up = learning.upcoming.get(r.series);
-              const kind = r.kind as keyof typeof EVENT_KIND_LABEL;
-              return (
-                <div key={r.series} className="px-4 py-4 sm:px-5">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <h3 className="text-[0.95rem] font-semibold text-ink">{seriesName(r.series)}</h3>
-                    <Badge tone={w.tone}>{w.label}</Badge>
-                    <span className="text-xs text-muted">
-                      {EVENT_KIND_LABEL[kind] ?? r.kind} · {r.nights + r.skipped === 1 ? shortDate(r.first) : `${r.nights + r.skipped} nights, ${shortDate(r.first)} to ${shortDate(r.last)}`}
-                    </span>
-                  </div>
-                  <p className="mt-1.5 text-sm text-ink-2">{w.line}</p>
-                  {w.next && <p className="mt-1.5 text-sm font-medium text-ink">{w.next}</p>}
-                  {w.notes.length > 0 && <p className="mt-1.5 text-xs text-muted">{w.notes.join(" ")}</p>}
-                  {r.impact != null && up && (
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-                      {up.differing === 0 ? (
-                        <span>{up.count} upcoming already set to {signedPct(r.impact)}.</span>
-                      ) : (
-                        <>
-                          <ApplyLearned series={r.series} label={`Set ${up.differing} upcoming to ${signedPct(r.impact)}`} />
-                          {r.verdict === "unclear" && <span>A cautious number: scaled back because it isn&apos;t settled.</span>}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </Card>
-        )}
-        {results.length > 0 && (
-          <p className="mt-2 text-xs text-muted">
-            “Ordinary” is the last eight days of that weekday with nothing on, scaled by how your other days were doing at the time. A result is only called when the nights together clear what chance does about 19 times in 20. Sales only: host fees, prizes and staff aren&apos;t taken off.
-          </p>
         )}
       </Section>
 
