@@ -2,15 +2,18 @@ import { HelpTip, HelpZone } from "@/components/help";
 import { ShowMore } from "@/components/show-more";
 import { Card, cx, EmptyState, LinkButton, PageHeader, Section } from "@/components/ui";
 import { progressLabel } from "@/domain/kegOrders";
+import { BUCKET_LABEL, splitOutTooLong } from "@/domain/kegFleet";
 import { displayCode, sinceLabel } from "@/domain/kegs";
+import { tapLevel } from "@/domain/taps";
 import { requireUser } from "@/server/auth";
 import { kegHome } from "@/server/services/kegFleet";
 import { openOrders } from "@/server/services/kegOrders";
 import { beerDemand, stockSummary, tapBoard } from "@/server/services/kegs";
 import { ArrowRight, ListOrdered, ScanLine, Truck, Warehouse } from "lucide-react";
 import Link from "next/link";
-import { BeerDot, daysText, LeftBar, pctText, sizeShort } from "./bits";
+import { BeerDot, LeftBar, sizeShort } from "./bits";
 import { BUCKET_KEY, FleetArea, Key } from "./fleet/charts";
+import { KEG_STATE_FILL } from "./keg-state";
 import { FleetBar, NeedsList, type FleetPart, type NeedsItem } from "./home";
 import { DueBadge, linesSummary } from "./orders/bits";
 import { QueueWatcher } from "./scanner";
@@ -52,7 +55,7 @@ export default async function KegsPage() {
     key: `dry-${t.line}`,
     tone: "bad" as const,
     title: `${t.keg!.beer} on tap ${t.line} has nothing full behind it`,
-    detail: `${daysText(t.estimate?.daysLeft) ?? pctText(t.estimate?.pctLeft)} · fill it, or plan what goes on that line`,
+    detail: `${tapLevel({ pctLeft: t.estimate?.pctLeft, daysLeft: t.estimate?.daysLeft, overdue: t.estimate?.overdue }).text}. Fill one, or plan what goes on that line`,
     href: `/kegs/k/${t.keg!.code}`,
   }));
   if (manager) {
@@ -60,9 +63,14 @@ export default async function KegsPage() {
     for (const r of (demand?.rows ?? []).filter((r) => r.standing === "core" && r.plan.toFill > 0 && !dryBeers.has(r.beerId)).slice(0, 3)) {
       needs.push({ key: `fill-${r.beerId}`, tone: r.plan.tone === "bad" ? "bad" : "warn", title: `Fill ${plural(r.plan.toFill, "keg")} of ${r.name}`, detail: sayWithoutName(r.plan.sentence, r.name), href: "/kegs/demand" });
     }
-    const outKegs = home?.out.reduce((s, g) => s + g.kegs.length, 0) ?? 0;
-    if (home && outKegs > 0) {
-      needs.push({ key: "out", tone: "warn", title: `${plural(outKegs, "keg")} out at ${plural(home.out.length, "account")} for more than ${home.overdueDays} days`, detail: `Longest: ${home.out[0].account}, ${home.out[0].longest} days`, href: "/kegs/accounts" });
+    const { late, lost } = splitOutTooLong(home?.out ?? []);
+    const lateKegs = late.reduce((s, g) => s + g.kegs.length, 0);
+    const lostKegs = lost.reduce((s, g) => s + g.kegs.length, 0);
+    if (home && lateKegs > 0) {
+      needs.push({ key: "out", tone: "warn", title: `${plural(lateKegs, "keg")} out at ${plural(late.length, "account")} for more than ${home.overdueDays} days`, detail: `Longest: ${late[0].account}, ${late[0].longest} days`, href: "/kegs/accounts" });
+    }
+    if (home && lostKegs > 0) {
+      needs.push({ key: "lost", tone: "warn", title: `${plural(lostKegs, "keg")} out so long they're probably lost`, detail: `At ${plural(lost.length, "account")}. Ask for them back, or retire them`, href: "/kegs/fleet#lost" });
     }
     if (home && home.idle.length > 0) {
       needs.push({ key: "idle", tone: "warn", title: `${plural(home.idle.length, "keg")} not scanned in ${home.idleDays} days`, detail: "Find and scan them, or retire them", href: "/kegs/fleet#look" });
@@ -72,11 +80,11 @@ export default async function KegsPage() {
   const s = home?.byStatus;
   const parts: FleetPart[] = s
     ? [
-        { key: "full", label: "Full", count: s.FILLED + s.COLD, href: "/kegs/cooler", fill: "var(--area)", opacity: 0.85 },
-        { key: "tap", label: "On tap", count: s.ON_TAP, href: "/kegs/all?status=ON_TAP", fill: "var(--ink)" },
-        { key: "out", label: "Out", count: s.OUT, href: "/kegs/accounts", fill: "var(--ink-2)", opacity: 0.55 },
-        { key: "dirty", label: "To clean", count: s.CLEANING + s.KICKED, href: "/kegs/all?status=CLEANING", fill: "var(--warn)", opacity: 0.6 },
-        { key: "empty", label: "Empty", count: s.EMPTY, href: "/kegs/all?status=EMPTY", fill: "var(--border-strong)" },
+        { key: "full", label: BUCKET_LABEL.full, count: s.FILLED + s.COLD, href: "/kegs/cooler", fill: KEG_STATE_FILL.full },
+        { key: "tap", label: BUCKET_LABEL.tap, count: s.ON_TAP, href: "/kegs/all?status=ON_TAP", fill: KEG_STATE_FILL.tap },
+        { key: "out", label: BUCKET_LABEL.out, count: s.OUT, href: "/kegs/accounts", fill: KEG_STATE_FILL.out },
+        { key: "dirty", label: BUCKET_LABEL.dirty, count: s.CLEANING + s.KICKED, href: "/kegs/all?status=CLEANING", fill: KEG_STATE_FILL.dirty },
+        { key: "clean", label: BUCKET_LABEL.clean, count: s.EMPTY, href: "/kegs/all?status=EMPTY", fill: KEG_STATE_FILL.clean },
       ]
     : [];
   const scan = (
@@ -103,6 +111,12 @@ export default async function KegsPage() {
         </LinkButton>
       </HelpZone>
 
+      {needs.length > 0 && (
+        <Section title={manager ? "Needs you" : `Nothing full behind ${dry.length === 1 ? "this one" : "these"}`}>
+          <NeedsList items={needs} />
+        </Section>
+      )}
+
       {manager && home && home.inService > 0 && (
         <Section
           help="kegs.home.fleet"
@@ -122,12 +136,6 @@ export default async function KegsPage() {
               </div>
             )}
           </Card>
-        </Section>
-      )}
-
-      {needs.length > 0 && (
-        <Section title={manager ? "Needs you" : `Nothing full behind ${dry.length === 1 ? "this one" : "these"}`}>
-          <NeedsList items={needs} />
         </Section>
       )}
 
@@ -173,8 +181,7 @@ export default async function KegsPage() {
                   </div>
                   <div className="mt-1.5"><LeftBar pct={t.estimate?.pctLeft ?? null} color={t.keg.color} /></div>
                   <div className="num mt-1 flex flex-wrap gap-x-3 text-xs text-muted">
-                    <span className={t.estimate?.overdue ? "font-medium text-warn" : ""}>{t.estimate?.overdue ? "Should have kicked — check it" : pctText(t.estimate?.pctLeft)}</span>
-                    {daysText(t.estimate?.daysLeft) && <span>{daysText(t.estimate?.daysLeft)}</span>}
+                    <TapLevelText estimate={t.estimate} />
                     {t.keg.tappedAt && <span>on {sinceLabel(new Date(t.keg.tappedAt))}</span>}
                     <span className={t.backups === 0 && t.keg.core ? "text-bad" : ""}>{t.backups} full behind it</span>
                   </div>
@@ -230,4 +237,10 @@ export default async function KegsPage() {
       </Section>
     </>
   );
+}
+
+/** How much is left on a tap, as one signal. */
+function TapLevelText({ estimate }: { estimate: { pctLeft: number | null; daysLeft: number | null; overdue: boolean } | null | undefined }) {
+  const level = tapLevel({ pctLeft: estimate?.pctLeft, daysLeft: estimate?.daysLeft, overdue: estimate?.overdue });
+  return <span className={level.tone === "warn" ? "font-medium text-warn" : ""}>{level.text}</span>;
 }

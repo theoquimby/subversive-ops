@@ -84,7 +84,7 @@ export function KegImportFlow() {
           <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-surface-2 text-ink-2"><FileUp className="size-5" /></span>
           <div className="min-w-0">
             <div className="text-sm font-medium">{reading ? `Reading ${reading}…` : "Drop every export here, or tap to choose"}</div>
-            <div className="text-xs text-muted">Kegs, products, batches, customers, deliveries, returns, the activity log — CSV, Excel (all tabs) or JSON. Several at once is fine.</div>
+            <div className="text-xs text-muted">Kegs, products, batches, customers, deliveries, returns, the activity log: CSV, Excel (all tabs) or JSON. Several at once is fine.</div>
           </div>
           <input ref={input} type="file" multiple accept=".csv,.xlsx,.xls,.ods,.json" className="sr-only" tabIndex={-1} onChange={(e) => { void addFiles([...(e.target.files ?? [])]); e.target.value = ""; }} />
         </div>

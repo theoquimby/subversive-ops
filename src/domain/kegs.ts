@@ -70,13 +70,13 @@ export type KegStatus = "EMPTY" | "FILLED" | "COLD" | "ON_TAP" | "KICKED" | "OUT
 export type KegOwner = "OURS" | "DEPOSIT" | "BORROWED";
 
 export const STATUS_META: Record<KegStatus, { label: string; short: string; tone: "good" | "warn" | "bad" | "neutral"; full: boolean }> = {
-  EMPTY: { label: "Empty, clean", short: "Empty", tone: "neutral", full: false },
+  EMPTY: { label: "Clean, empty", short: "Clean", tone: "neutral", full: false },
   FILLED: { label: "Filled", short: "Filled", tone: "good", full: true },
-  COLD: { label: "Full, in cold storage", short: "Full", tone: "good", full: true },
+  COLD: { label: "Full, in cold storage", short: "Cold", tone: "good", full: true },
   ON_TAP: { label: "On tap", short: "On tap", tone: "good", full: false },
   KICKED: { label: "Kicked", short: "Kicked", tone: "warn", full: false },
   OUT: { label: "Out to an account", short: "Out", tone: "neutral", full: false },
-  CLEANING: { label: "Back, needs cleaning", short: "To clean", tone: "warn", full: false },
+  CLEANING: { label: "Dirty, back to be cleaned", short: "Dirty", tone: "warn", full: false },
 };
 export const KEG_STATUSES = Object.keys(STATUS_META) as KegStatus[];
 

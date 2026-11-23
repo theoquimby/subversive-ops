@@ -1,4 +1,5 @@
-import { Badge, Card, cx, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
+import { Verdict } from "@/components/chapter";
+import { Badge, Card, cx, LinkButton, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { displayCode } from "@/domain/kegs";
 import { requireUser } from "@/server/auth";
 import { accountPage, type AccountRange } from "@/server/services/kegAccounts";
@@ -8,7 +9,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BeerDot, sizeShort } from "../../bits";
 import { AccountDetails } from "../accounts-client";
-import { bbl, Chip, dated, daysWord, gal, kindLabel } from "../bits";
+import { bbl, Chip, dated, daysWord, gal, kegsWord, kindLabel } from "../bits";
 import { DeliveryBars } from "../charts";
 import { OrderTable } from "../../orders/bits";
 import { ShowMore } from "@/components/show-more";
@@ -49,12 +50,16 @@ export default async function KegAccountPage({ params, searchParams }: { params:
         actions={<div className="flex gap-1.5"><Chip href={`/kegs/accounts/${a.id}`} active={range === "12m"}>12 months</Chip><Chip href={`/kegs/accounts/${a.id}?range=all`} active={range === "all"}>All time</Chip></div>}
       />
 
-      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Kegs here now" value={n.kegsOut} tone={late ? "warn" : undefined} hint={longest == null ? "None out here" : late ? `${late} here more than ${daysWord(r.overdueDays)}` : `Longest ${daysWord(longest)}`} />
-        <Stat label="Deliveries" value={n.deliveries12} hint={`In the last 12 months, ${since}`} />
-        <Stat label="Barrels delivered" value={bbl(n.gallons12)} hint={`${gal(n.gallons12)} gallons, last 12 months`} />
-        <Stat label="Days a keg stays" value={n.medianDays ?? "—"} hint={n.returns ? `The middle of ${n.returns} scanned return${n.returns === 1 ? "" : "s"}, all time` : "Shows once a keg is scanned back"} />
-      </div>
+      <Verdict
+        badge={late ? { tone: "warn" } : undefined}
+        title={late ? `${kegsWord(late)} of the ${kegsWord(n.kegsOut)} here ${late === 1 ? "has" : "have"} been out more than ${daysWord(r.overdueDays)}` : n.kegsOut ? `${kegsWord(n.kegsOut)} here now, the longest for ${daysWord(longest ?? 0)}` : "No kegs out here right now"}
+        line={late ? "Ask for the empties back on the next delivery." : undefined}
+        stats={[
+          { label: "Deliveries", value: n.deliveries12, hint: `In the last 12 months, ${since}` },
+          { label: "Barrels delivered", value: bbl(n.gallons12), hint: `${gal(n.gallons12)} gallons, last 12 months` },
+          { label: "Days a keg stays", value: n.medianDays ?? "Not known yet", tone: n.medianDays == null ? "unknown" : "neutral", hint: n.returns ? `The middle of ${n.returns} scanned return${n.returns === 1 ? "" : "s"}, all time` : "Shows once a keg is scanned back" },
+        ]}
+      />
 
       <div className="grid gap-x-8 lg:grid-cols-2">
         <Section title="Details" description="Type in a field to change it. It saves when you leave the field.">

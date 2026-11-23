@@ -189,7 +189,7 @@ describe("the scan gap", () => {
 });
 
 describe("fleet slack and strain", () => {
-  const pt = (i: number, p: Partial<WeekPoint>): WeekPoint => ({ week: `w${i}`, full: 0, out: 0, dirty: 0, clean: 0, ...p });
+  const pt = (i: number, p: Partial<WeekPoint>): WeekPoint => ({ week: `w${i}`, full: 0, tap: 0, out: 0, dirty: 0, clean: 0, ...p });
   const eight = (p: Partial<WeekPoint>) => Array.from({ length: LOAD.weeks }, (_, i) => pt(i, p));
 
   it("looks at the eight full weeks before this one", () => {
@@ -205,7 +205,7 @@ describe("fleet slack and strain", () => {
   it("calls slack when more than half sat empty every week, and not at exactly half", () => {
     expect(fleetLoad(eight({ clean: 30, dirty: 20, full: 30, out: 20 }))).toBeNull(); // exactly half
     const s = fleetLoad([...eight({ clean: 31, dirty: 20, full: 29, out: 20 }).slice(1), pt(9, { clean: 40, dirty: 30, full: 20, out: 10 })]);
-    expect(s).toEqual({ kind: "slack", weeks: 8, kegs: 100, atLeast: 51, latest: { week: "w9", full: 20, out: 10, dirty: 30, clean: 40 } });
+    expect(s).toEqual({ kind: "slack", weeks: 8, kegs: 100, atLeast: 51, latest: { week: "w9", full: 20, tap: 0, out: 10, dirty: 30, clean: 40 } });
   });
   it("needs every one of the weeks", () => {
     const weeks = eight({ clean: 60, full: 40 });
@@ -218,6 +218,8 @@ describe("fleet slack and strain", () => {
   it("calls strain when nine in ten were full or out every week, from exactly nine in ten", () => {
     expect(fleetLoad(eight({ full: 50, out: 40, dirty: 5, clean: 5 }))).toMatchObject({ kind: "strain", kegs: 100, atLeast: 90 });
     expect(fleetLoad(eight({ full: 50, out: 39, dirty: 6, clean: 5 }))).toBeNull();
+    // Kegs on tap here count as in use, like kegs out at an account.
+    expect(fleetLoad(eight({ full: 50, tap: 10, out: 30, dirty: 5, clean: 5 }))).toMatchObject({ kind: "strain", kegs: 100, atLeast: 90 });
   });
   it("is one sentence for the Insights tile", () => {
     expect(fleetLoadLine(null)).toBeNull();
@@ -237,7 +239,7 @@ describe("fleet slack and strain", () => {
 
 describe("findings for the Insights feed", () => {
   const cyc = (went: Cycle["went"]): Cycle => ({ kegId: "K", beerId: null, start: "2026-11-01", scannedFill: true, went, end: null, days: null });
-  const load = fleetLoad(Array.from({ length: 8 }, (_, i) => ({ week: `w${i}`, full: 20, out: 10, dirty: 30, clean: 40 })));
+  const load = fleetLoad(Array.from({ length: 8 }, (_, i) => ({ week: `w${i}`, full: 20, tap: 0, out: 10, dirty: 30, clean: 40 })));
   const gap = scanGap([...Array.from({ length: 30 }, () => cyc("none")), ...Array.from({ length: 10 }, () => cyc("tapped"))], TUE);
 
   it("gives at most two, the scan gap first", () => {

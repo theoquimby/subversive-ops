@@ -12,11 +12,12 @@
 import { addDays, daysBetween, weekday, type ISODate } from "./dates";
 import { KEG_SIZE_LIST, KEG_STATUSES, type KegStatus } from "./kegs";
 
-export type Bucket = "full" | "out" | "dirty" | "clean";
-export const BUCKETS: Bucket[] = ["full", "out", "dirty", "clean"];
-export const BUCKET_LABEL: Record<Bucket, string> = { full: "Full", out: "On tap or out", dirty: "Dirty", clean: "Clean" };
+/** The five keg states every keg page shows, in this order and with these words. */
+export type Bucket = "full" | "tap" | "out" | "dirty" | "clean";
+export const BUCKETS: Bucket[] = ["full", "tap", "out", "dirty", "clean"];
+export const BUCKET_LABEL: Record<Bucket, string> = { full: "Full", tap: "On tap", out: "Out", dirty: "Dirty", clean: "Clean" };
 
-const BUCKET: Record<KegStatus, Bucket> = { FILLED: "full", COLD: "full", ON_TAP: "out", OUT: "out", KICKED: "dirty", CLEANING: "dirty", EMPTY: "clean" };
+const BUCKET: Record<KegStatus, Bucket> = { FILLED: "full", COLD: "full", ON_TAP: "tap", OUT: "out", KICKED: "dirty", CLEANING: "dirty", EMPTY: "clean" };
 export const bucketOf = (s: KegStatus): Bucket => BUCKET[s];
 
 /** One real scan. `day` is the business date; `at` is an ISO instant used only to order scans. */
@@ -84,7 +85,7 @@ export function monthsBetween(from: ISODate, to: ISODate): string[] {
 
 // ---- Where the fleet was ----------------------------------------------------------------------
 
-export interface WeekPoint { week: ISODate; full: number; out: number; dirty: number; clean: number }
+export interface WeekPoint { week: ISODate; full: number; tap: number; out: number; dirty: number; clean: number }
 
 /**
  * How many kegs sat in each bucket at the end of each week (its Sunday). A keg
@@ -92,7 +93,7 @@ export interface WeekPoint { week: ISODate; full: number; out: number; dirty: nu
  * the week of its last scan.
  */
 export function weeklyFleet(events: FleetEvent[], kegs: Pick<FleetKeg, "id" | "active">[], weeks: ISODate[]): WeekPoint[] {
-  const points: WeekPoint[] = weeks.map((week) => ({ week, full: 0, out: 0, dirty: 0, clean: 0 }));
+  const points: WeekPoint[] = weeks.map((week) => ({ week, full: 0, tap: 0, out: 0, dirty: 0, clean: 0 }));
   const active = new Map(kegs.map((k) => [k.id, k.active]));
   for (const [kegId, list] of perKeg(events)) {
     const lastDay = list[list.length - 1].day;
@@ -267,6 +268,22 @@ export function outTooLong(kegs: FleetKeg[], events: FleetEvent[], today: ISODat
   }
   for (const g of groups.values()) g.kegs.sort((a, b) => b.days - a.days);
   return [...groups.values()].sort((a, b) => b.longest - a.longest || a.account.localeCompare(b.account));
+}
+
+/** Out at an account this long, a keg is probably not coming back: chase it as lost, not as late. */
+export const PROBABLY_LOST_DAYS = 180;
+
+/** Splits kegs out too long into the late ones and the ones out so long they're probably lost, each still by account, longest first. */
+export function splitOutTooLong(groups: OutGroup[], lostDays = PROBABLY_LOST_DAYS): { late: OutGroup[]; lost: OutGroup[] } {
+  const pick = (keep: (days: number) => boolean) =>
+    groups
+      .map((g) => {
+        const kegs = g.kegs.filter((k) => keep(k.days));
+        return { account: g.account, kegs, longest: Math.max(0, ...kegs.map((k) => k.days)) };
+      })
+      .filter((g) => g.kegs.length > 0)
+      .sort((a, b) => b.longest - a.longest || a.account.localeCompare(b.account));
+  return { late: pick((d) => d < lostDays), lost: pick((d) => d >= lostDays) };
 }
 
 export interface IdleKeg { id: string; code: string; sizeId: string; status: KegStatus; beer: string | null; lastSeen: ISODate | null; days: number }

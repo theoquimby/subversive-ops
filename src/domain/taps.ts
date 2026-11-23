@@ -126,6 +126,28 @@ export function tapBadge(pctLeft: number | null | undefined, tappedAt: Date | st
 
 export const BADGE_LABEL: Record<"new" | "almost", string> = { new: "New", almost: "Almost gone" };
 
+export interface TapLevel {
+  text: string;
+  tone: "warn" | "neutral" | "unknown";
+  /** Running low (or should already be empty): the row's one warning. */
+  almost: boolean;
+}
+
+/**
+ * How much is left on a tap, as one signal: "Should have kicked", "Nearly out",
+ * "Almost gone: ~10% left, ~2 days" or "~60% left, ~6 days". Never two of those
+ * on one row.
+ */
+export function tapLevel(e: { pctLeft: number | null | undefined; daysLeft: number | null | undefined; overdue: boolean | null | undefined }): TapLevel {
+  if (e.overdue) return { text: "Should have kicked by now: check it", tone: "warn", almost: true };
+  if (e.pctLeft == null) return { text: "Level not known yet", tone: "unknown", almost: false };
+  if (e.pctLeft <= 0.02 || (e.daysLeft != null && e.daysLeft < 1)) return { text: "Nearly out", tone: "warn", almost: true };
+  const share = `~${Math.round(e.pctLeft * 20) * 5}% left`;
+  const n = e.daysLeft == null ? null : Math.round(e.daysLeft);
+  const left = n == null ? share : `${share}, ~${n} day${n === 1 ? "" : "s"}`;
+  return e.pctLeft < ALMOST_GONE ? { text: `Almost gone: ${left}`, tone: "warn", almost: true } : { text: left, tone: "neutral", almost: false };
+}
+
 // ---- Order and coming soon --------------------------------------------------------------------
 
 /**

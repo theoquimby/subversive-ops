@@ -19,7 +19,6 @@ export default async function TapListPage() {
       <PageHeader
         help="taps.list"
         title="Tap list"
-        back={{ href: "/kegs", label: "Kegs" }}
         description={manager ? "What's pouring, in the order the TV board and the website show it." : "What's pouring now and about how much is left."}
         actions={manager ? (
           <div className="flex flex-wrap gap-2">

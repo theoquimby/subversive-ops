@@ -103,7 +103,7 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
             <FilterChip key={b.id} on={beer === b.id} onClick={() => setBeer(beer === b.id ? "" : b.id)} color={b.color}>{b.name} <span className="num opacity-70">{counts.get(b.id) ?? 0}</span>{b.retired && <span className="text-[11px] opacity-70">retired</span>}</FilterChip>
           ))}
         </ShowMore>
-        <span className="ml-auto self-center text-xs text-muted">{empties} empty · {dirty} to clean</span>
+        <span className="ml-auto self-center text-xs text-muted">{empties} clean · {dirty} dirty</span>
       </div>
 
       {shownAreas.length > 1 && (
@@ -156,10 +156,29 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
 
       {elsewhere.filter(visible).length > 0 && (
         <section>
-          <h3 className="mb-1.5 flex items-center justify-between px-1 text-xs font-semibold text-ink-2">Elsewhere<span className="num font-normal text-muted">{elsewhere.filter(visible).length}</span></h3>
-          <ShowMore limit={10} noun={["keg", "kegs"]} className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-            {nextFirst(elsewhere.filter(visible), nextId).map((k) => <KegRow key={k.id} k={k} highlight={k.id === nextId} showArea onTap={() => setMoving(k)} />)}
-          </ShowMore>
+          <h3 className="mb-1.5 flex items-center justify-between px-1 text-xs font-semibold text-ink-2">Not on the board<span className="num font-normal text-muted">{elsewhere.filter(visible).length}</span></h3>
+          {manager ? (
+            // A manager gets a link per place into All kegs, which can search, sort and export; a list of 150 kegs here would bury the board.
+            <div className="rounded-xl border border-border bg-surface px-4 py-3">
+              {next && elsewhere.some((k) => k.id === next.id) && (
+                <div className="-mx-4 -mt-3 mb-3 overflow-hidden rounded-t-xl border-b border-border"><KegRow k={next} highlight showArea onTap={() => setMoving(next)} /></div>
+              )}
+              <p className="text-sm text-ink-2">Kegs with no spot yet, or in a place the board doesn&apos;t show. Open them in All kegs:</p>
+              <ul className="mt-2 flex flex-wrap gap-1.5">
+                {placesOf(elsewhere.filter(visible)).map(([place, n]) => (
+                  <li key={place}>
+                    <Link href={`/kegs/all?where=${encodeURIComponent(place)}${beer ? `&beer=${beer}` : ""}`} className="inline-flex h-10 items-center gap-1.5 rounded-full border border-border px-3 text-sm text-ink-2 transition-colors duration-120 hover:bg-surface-2 sm:h-8">
+                      {place} <span className="num text-muted">{n}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <ShowMore limit={10} noun={["keg", "kegs"]} className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+              {nextFirst(elsewhere.filter(visible), nextId).map((k) => <KegRow key={k.id} k={k} highlight={k.id === nextId} showArea onTap={() => setMoving(k)} />)}
+            </ShowMore>
+          )}
         </section>
       )}
       {manager && <p className="text-xs text-muted">Spots are set on <Link className="underline" href="/kegs/setup#spots">Kegs → Setup</Link>.</p>}
@@ -196,6 +215,13 @@ export function CoolerBoard({ areas, boardAreas, spots, kegs, beers, initialBeer
   );
 }
 
+/** How many kegs in each place, by the words All kegs filters on ("No spot yet" or the area), most first. */
+const placesOf = (list: BoardKeg[]): [string, number][] => {
+  const m = new Map<string, number>();
+  for (const k of list) m.set(k.area ?? "No spot yet", (m.get(k.area ?? "No spot yet") ?? 0) + 1);
+  return [...m].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+};
+
 /** The keg to take next leads its list, so a long list never hides it. */
 const nextFirst = (list: BoardKeg[], nextId: string | null) => (nextId && list.some((k) => k.id === nextId) ? [...list.filter((k) => k.id === nextId), ...list.filter((k) => k.id !== nextId)] : list);
 
@@ -217,7 +243,7 @@ function KegTile({ k, dim, highlight, picked, draggable, onPick }: { k: BoardKeg
       draggable={draggable}
       onDragStart={(e) => { e.dataTransfer.setData("text/keg", k.id); e.dataTransfer.effectAllowed = "move"; }}
       onClick={(e) => { e.stopPropagation(); onPick(); }}
-      title={`${k.beer ?? "Empty"} · ${STATUS_META[k.status].label} · ${displayCode(k.code)}`}
+      title={`${k.beer ?? "No beer"} · ${STATUS_META[k.status].label} · ${displayCode(k.code)}`}
       className={cx(
         "relative flex h-16 cursor-grab flex-col justify-between rounded-xl border-2 p-1.5 text-left text-[11px] leading-tight transition-[opacity,transform,box-shadow] duration-180 active:cursor-grabbing",
         dim && "opacity-25",
@@ -226,7 +252,7 @@ function KegTile({ k, dim, highlight, picked, draggable, onPick }: { k: BoardKeg
       )}
       style={full ? { background: c.bg, color: c.fg, borderColor: c.bg } : { borderColor: k.status === "EMPTY" ? "var(--border-strong)" : c.bg, color: "var(--ink-2)", borderStyle: "dashed" }}
     >
-      <span className="line-clamp-2 font-semibold">{k.beer ?? (k.status === "EMPTY" ? "Empty" : "—")}</span>
+      <span className="line-clamp-2 font-semibold">{k.beer ?? (k.status === "EMPTY" ? "Clean" : "No beer")}</span>
       <span className="num flex justify-between gap-1 truncate opacity-80"><span className="whitespace-nowrap">{kegSizeInfo(k.sizeId).short}</span>{!full && k.status !== "EMPTY" && <span className="truncate">{STATUS_META[k.status as KegStatus].short}</span>}</span>
     </button>
   );

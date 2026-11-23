@@ -24,7 +24,7 @@ export function WeeklyPints({ history, forecast }: { history: { week: string; pi
       ))}
       {bars.map((b, i) => (
         <g key={b.week}>
-          <title>{`${shortDate(b.week)}: ${b.f ? `about ${Math.round(b.lo ?? 0)}–${Math.round(b.hi ?? 0)} pints (forecast)` : `${Math.round(b.v)} pints`}`}</title>
+          <title>{`${shortDate(b.week)}: ${b.f ? `about ${Math.round(b.lo ?? 0)} to ${Math.round(b.hi ?? 0)} pints (forecast)` : `${Math.round(b.v)} pints`}`}</title>
           <rect x={2 + i * bw + 1} y={y(b.v)} width={Math.max(1, bw - 2)} height={Math.max(0, H - pad - y(b.v))} rx={1.5} fill={b.f ? "var(--area)" : "var(--border-strong)"} opacity={b.f ? 0.85 : 1} />
           {b.f && b.lo != null && b.hi != null && <line x1={2 + i * bw + bw / 2} x2={2 + i * bw + bw / 2} y1={y(b.hi)} y2={y(b.lo)} stroke="var(--ink)" strokeWidth={1.5} opacity={0.6} />}
         </g>

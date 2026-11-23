@@ -822,7 +822,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
           className="h-10 w-full rounded-lg border border-border-strong bg-surface pr-24 pl-9 text-base text-ink transition-[border-color,box-shadow] duration-120 ease-motion placeholder:text-muted/70 hover:border-ink-2/40 focus:border-ink-2 focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--ink)_7%,transparent)] focus:outline-none sm:h-9 sm:text-sm [&::-webkit-search-cancel-button]:hidden"
         />
         <span className="pointer-events-none absolute top-1/2 right-2.5 flex -translate-y-1/2 items-center gap-1.5 text-xs text-muted" aria-live="polite">
-          <span className="num">{remote ? (remoteLoading ? "…" : totalCount.toLocaleString("en-US")) : isFiltered ? `${filteredCount} of ${rows.length}` : rows.length}</span>
+          <span className="num">{remote ? (remoteLoading ? "…" : totalCount.toLocaleString("en-US")) : isFiltered ? `${filteredCount} of ${rows.length}` : filteredCount}</span>
           {!qInput && <kbd className="hidden rounded border border-border px-1 font-sans text-[10px] leading-4 text-muted sm:inline">/</kbd>}
         </span>
         {qInput && (

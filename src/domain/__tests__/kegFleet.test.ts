@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { KegStatus } from "../kegs";
-import { bucketOf, cycles, fillsByMonth, fleetStats, monthsBetween, notSeenLately, outTooLong, statusSizeGrid, weeklyFleet, weekStarts, type FleetEvent, type FleetKeg } from "../kegFleet";
+import { BUCKET_LABEL, BUCKETS, bucketOf, cycles, fillsByMonth, fleetStats, monthsBetween, notSeenLately, outTooLong, PROBABLY_LOST_DAYS, splitOutTooLong, statusSizeGrid, weeklyFleet, weekStarts, type FleetEvent, type FleetKeg } from "../kegFleet";
 
 const STATUS: Record<string, KegStatus | null> = { CREATED: "EMPTY", FILLED: "FILLED", STORED: "COLD", TAPPED: "ON_TAP", KICKED: "KICKED", OUT: "OUT", RETURNED: "CLEANING", CLEANED: "EMPTY", EMPTIED: "EMPTY", MOVED: null, NOTE: null };
 
@@ -9,8 +9,9 @@ const ev = (kegId: string, day: string, action: string, extra: Partial<FleetEven
 const keg = (id: string, patch: Partial<FleetKeg> = {}): FleetKeg => ({ id, code: id, sizeId: "sixtel", status: "EMPTY", active: true, beer: null, account: null, createdDay: "2026-01-01", ...patch });
 
 describe("buckets", () => {
-  it("groups the seven statuses into four", () => {
-    expect((["FILLED", "COLD", "ON_TAP", "OUT", "KICKED", "CLEANING", "EMPTY"] as KegStatus[]).map(bucketOf)).toEqual(["full", "full", "out", "out", "dirty", "dirty", "clean"]);
+  it("groups the seven statuses into the five keg states every page uses", () => {
+    expect((["FILLED", "COLD", "ON_TAP", "OUT", "KICKED", "CLEANING", "EMPTY"] as KegStatus[]).map(bucketOf)).toEqual(["full", "full", "tap", "out", "dirty", "dirty", "clean"]);
+    expect(BUCKETS.map((b) => BUCKET_LABEL[b])).toEqual(["Full", "On tap", "Out", "Dirty", "Clean"]);
   });
 });
 
@@ -31,10 +32,10 @@ describe("where the fleet was, week by week", () => {
     const events = [ev("A", "2026-03-03", "CLEANED"), ev("A", "2026-03-10", "FILLED"), ev("A", "2026-03-17", "OUT"), ev("A", "2026-03-26", "RETURNED"), ev("B", "2026-03-12", "FILLED")];
     const out = weeklyFleet(events, [keg("A"), keg("B")], weeks);
     expect(out).toEqual([
-      { week: "2026-03-02", full: 0, out: 0, dirty: 0, clean: 1 },
-      { week: "2026-03-09", full: 2, out: 0, dirty: 0, clean: 0 },
-      { week: "2026-03-16", full: 1, out: 1, dirty: 0, clean: 0 },
-      { week: "2026-03-23", full: 1, out: 0, dirty: 1, clean: 0 },
+      { week: "2026-03-02", full: 0, tap: 0, out: 0, dirty: 0, clean: 1 },
+      { week: "2026-03-09", full: 2, tap: 0, out: 0, dirty: 0, clean: 0 },
+      { week: "2026-03-16", full: 1, tap: 0, out: 1, dirty: 0, clean: 0 },
+      { week: "2026-03-23", full: 1, tap: 0, out: 0, dirty: 1, clean: 0 },
     ]);
   });
   it("ignores notes and moves, which carry no status", () => {
@@ -46,7 +47,7 @@ describe("where the fleet was, week by week", () => {
     expect(out.map((w) => w.full)).toEqual([1, 1, 0, 0]);
   });
   it("is all zeros with no history", () => {
-    expect(weeklyFleet([], [keg("A")], weeks).every((w) => w.full + w.out + w.dirty + w.clean === 0)).toBe(true);
+    expect(weeklyFleet([], [keg("A")], weeks).every((w) => w.full + w.tap + w.out + w.dirty + w.clean === 0)).toBe(true);
   });
 });
 
@@ -148,5 +149,24 @@ describe("needs a look", () => {
     const events = [ev("A", "2026-02-01", "FILLED"), ev("B", "2026-06-01", "CLEANED"), ev("C", "2025-01-01", "OUT"), ev("D", "2025-01-01", "FILLED")];
     const idle = notSeenLately(kegs, events, today, 90);
     expect(idle.map((k) => [k.code, k.lastSeen, k.days])).toEqual([["F", null, 180], ["A", "2026-02-01", 149]]);
+  });
+});
+
+describe("out too long, and probably lost", () => {
+  const k = (id: string, days: number) => ({ id, code: id, sizeId: "sixtel", beer: null, days });
+  it("splits each account's late kegs from the ones out so long they're probably gone", () => {
+    const groups = [
+      { account: "Tap House", kegs: [k("A", 1243), k("B", 40), k("C", 18)], longest: 1243 },
+      { account: "Deli", kegs: [k("D", 400)], longest: 400 },
+      { account: "Bar", kegs: [k("E", 30)], longest: 30 },
+    ];
+    const { late, lost } = splitOutTooLong(groups);
+    expect(late.map((g) => [g.account, g.kegs.map((x) => x.id), g.longest])).toEqual([["Tap House", ["B", "C"], 40], ["Bar", ["E"], 30]]);
+    expect(lost.map((g) => [g.account, g.kegs.map((x) => x.id), g.longest])).toEqual([["Tap House", ["A"], 1243], ["Deli", ["D"], 400]]);
+  });
+  it("counts a keg as lost from the threshold on", () => {
+    const { late, lost } = splitOutTooLong([{ account: "X", kegs: [k("A", PROBABLY_LOST_DAYS), k("B", PROBABLY_LOST_DAYS - 1)], longest: PROBABLY_LOST_DAYS }]);
+    expect(lost[0].kegs.map((x) => x.id)).toEqual(["A"]);
+    expect(late[0].kegs.map((x) => x.id)).toEqual(["B"]);
   });
 });

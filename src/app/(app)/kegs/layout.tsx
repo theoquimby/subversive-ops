@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { KegStateVars } from "./keg-state";
 import { KegSectionTabs } from "./section-tabs";
 
 /**
@@ -10,6 +11,7 @@ import { KegSectionTabs } from "./section-tabs";
 export default function KegsLayout({ children }: { children: ReactNode }) {
   return (
     <>
+      <KegStateVars />
       <KegSectionTabs />
       {children}
     </>
