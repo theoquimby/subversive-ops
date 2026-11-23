@@ -126,7 +126,7 @@ export async function TodayBlock({ today }: { today: ISODate }) {
               </div>
             </div>
           </div>
-          <div className="border-t border-border p-5 sm:p-6 lg:border-t-0 lg:border-l">
+          <div className="hidden border-t border-border p-5 sm:block sm:p-6 lg:border-t-0 lg:border-l">
             <div className="mb-3 text-[0.8rem] font-medium text-muted">Hour by hour</div>
             <TodayChart hours={live.hours} hour={live.hour} minute={live.minute} />
           </div>
