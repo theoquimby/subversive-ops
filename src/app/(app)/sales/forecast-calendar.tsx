@@ -17,10 +17,16 @@ export interface CalDay {
   past: boolean;
   today: boolean;
   closed: boolean;
+  /** A past day whose sales haven't come in from Square yet: not closed, not zero. */
+  missing?: boolean;
   forecast: number | null;
   actual: number | null;
   /** Past days: what we'd have forecast the evening before. */
   backtest: number | null;
+  /** A usual day of this weekday, as the forecast sees it now; null with none to compare with. */
+  usual: number | null;
+  /** The shade against that usual day, 0 (well under) to 4 (much busier); null when closed or not comparable. */
+  tint: 0 | 1 | 2 | 3 | 4 | null;
   baseline: number;
   samples: number;
   /** The usual-day average caps a freak day at one-and-a-half usual ones. */
@@ -73,6 +79,17 @@ const ICONS = {
   fog: CloudFog,
 };
 
+/*
+ * The calendar shade: one blue (sales) in five steps against a usual day of the weekday, lightest the
+ * quietest. Mixed into the surface so it flips with the theme. Checked with the dataviz ramp validator in
+ * both modes (monotone lightness, every step at least 0.06 apart); values on the darker steps are in ink.
+ */
+const TINT_MIX = [8, 24, 40, 56, 72];
+const tintBg = (t: CalDay["tint"]) => (t == null ? undefined : `color-mix(in oklab, var(--money-sales) ${TINT_MIX[t]}%, var(--surface))`);
+const TINT_KEY = ["Well under", "A little under", "About usual", "Busier", "Much busier"];
+/** Closed days are hatched, so they never read as a quiet shade. */
+const HATCH = "repeating-linear-gradient(135deg, var(--surface-2) 0 6px, var(--surface) 6px 12px)";
+
 const compact = (n: number) => (n >= 1000 ? `$${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : `$${Math.round(n)}`);
 const signed = (m: number) => {
   const p = Math.round((m - 1) * 100);
@@ -109,34 +126,38 @@ export function ForecastCalendar({ days, weatherNote }: { days: CalDay[]; weathe
           {days.map((d, i) => {
             const value = d.past ? d.actual : d.forecast;
             const showMonth = i === 0 || d.dayOfMonth === 1;
+            const deep = d.tint != null && d.tint >= 3;
+            const holiday = d.holiday?.label ?? null;
             return (
               <button
                 key={d.date}
                 type="button"
                 onClick={() => setSelected(d.date)}
-                aria-label={`${dayDate(d.date)}: ${d.closed ? "closed" : value != null ? money(value, { whole: true }) : "no forecast"}`}
+                aria-label={`${dayDate(d.date)}: ${d.missing ? "sales not in yet" : d.closed ? "closed" : value != null ? `${money(value, { whole: true })} ${d.past ? "sold" : "forecast"}` : "no forecast"}${d.tint != null ? `, ${TINT_KEY[d.tint].toLowerCase()} for a ${d.weekdayName}` : ""}${holiday ? `, ${holiday}` : ""}`}
+                style={{ background: d.closed ? HATCH : tintBg(d.tint) }}
                 className={cx(
                   "group relative flex min-h-[4.5rem] flex-col items-stretch gap-0.5 border-border p-1.5 text-left transition-colors sm:min-h-[7.25rem] sm:p-2.5",
                   i % 7 !== 6 && "border-r",
                   i < days.length - 7 && "border-b",
-                  d.closed ? "bg-surface-2/70" : "hover:bg-surface-2/60",
+                  !d.closed && "hover:brightness-[0.97] dark:hover:brightness-110",
                   selected === d.date && "ring-2 ring-ink ring-inset",
                 )}
               >
                 <div className="flex items-center justify-between gap-1">
-                  <span className={cx("num text-xs", d.today ? "inline-grid size-5 place-items-center rounded-full bg-primary font-semibold text-primary-ink" : d.past ? "text-muted" : "text-ink-2")}>
+                  <span className={cx("num text-xs", d.today ? "inline-grid size-5 place-items-center rounded-full bg-primary font-semibold text-primary-ink" : deep ? "text-ink" : "text-ink-2")}>
                     {d.dayOfMonth}
                   </span>
                   {showMonth && <span className="hidden text-[11px] text-muted lg:inline">{dayDate(d.date).split(", ")[1]?.split(" ")[0]}</span>}
-                  {d.weather && (<span className="ml-auto hidden sm:block"><WeatherBadge w={d.weather} /></span>)}
+                  {d.weather && (<span className="ml-auto hidden sm:block"><WeatherBadge w={d.weather} className={deep ? "text-ink" : "text-ink-2"} /></span>)}
                 </div>
-                {d.closed ? (
-                  <span className="mt-0.5 text-xs text-muted sm:text-sm">Closed</span>
+                {d.missing ? (
+                  <span className="mt-0.5 text-xs text-muted">Not in yet</span>
+                ) : d.closed ? (
+                  <span className="mt-0.5 text-xs font-medium text-ink-2 sm:text-sm">Closed</span>
                 ) : value != null ? (
                   <>
-                    <span className={cx("num font-semibold tracking-tight sm:hidden", d.past ? "text-[12px] text-ink-2" : "text-[12px] text-ink")}>{compact(value)}</span>
-                    <span className={cx("num hidden text-[1.05rem] font-semibold tracking-tight sm:inline", d.past ? "text-ink-2" : "text-ink")}>{money(value, { whole: true })}</span>
-                    <span className="hidden text-[11px] text-muted sm:inline">{d.past ? "actual" : "forecast"}</span>
+                    <span className={cx("num text-[12px] font-semibold tracking-tight sm:hidden", d.past && !deep ? "text-ink-2" : "text-ink")}>{compact(value)}</span>
+                    <span className={cx("num hidden text-[1.05rem] font-semibold tracking-tight sm:inline", d.past && !deep ? "text-ink-2" : "text-ink")}>{money(value, { whole: true })}</span>
                   </>
                 ) : (
                   <span className="text-xs text-muted">—</span>
@@ -149,12 +170,15 @@ export function ForecastCalendar({ days, weatherNote }: { days: CalDay[]; weathe
                       const I = ICONS[d.weather.icon];
                       return <I className="size-3 text-muted" strokeWidth={1.75} />;
                     })()}
-                  {d.events.length > 0 && <span className="size-1.5 rounded-full bg-ink-2" />}
+                  {(d.events.length > 0 || holiday) && <span className="size-1.5 rounded-full bg-ink-2" />}
                   {d.manual !== 1 && <span className="size-1.5 rounded-full bg-warn" />}
                 </div>
                 <div className="mt-auto hidden min-w-0 flex-col gap-0.5 sm:flex">
+                  {holiday && (
+                    <span className="truncate rounded bg-surface px-1 py-px text-[11px] leading-4 font-medium text-ink ring-1 ring-border-strong">{holiday}</span>
+                  )}
                   {d.events.slice(0, 2).map((e) => (
-                    <span key={e.id} className={cx("truncate rounded px-1 py-px text-[11px] leading-4", e.kind === "CLOSURE" ? "bg-surface-2 text-muted" : "bg-surface-2 text-ink-2")}>
+                    <span key={e.id} className="truncate rounded bg-surface px-1 py-px text-[11px] leading-4 text-ink ring-1 ring-border">
                       {e.title}
                     </span>
                   ))}
@@ -173,6 +197,21 @@ export function ForecastCalendar({ days, weatherNote }: { days: CalDay[]; weathe
             );
           })}
         </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <span className="mr-0.5">Against a usual day of that weekday:</span>
+          {TINT_KEY.map((k, t) => (
+            <span key={k} className="inline-flex items-center gap-1">
+              <span aria-hidden className="inline-block size-3 rounded-[3px] ring-1 ring-border" style={{ background: tintBg(t as CalDay["tint"]) }} />
+              <span className={t === 0 || t === 4 ? "" : "sr-only"}>{k}</span>
+            </span>
+          ))}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="inline-block size-3 rounded-[3px] ring-1 ring-border" style={{ background: HATCH }} /> Closed
+        </span>
+        <span>Past days show what sold.</span>
       </div>
       {weatherNote && <p className="mt-2 text-xs text-muted">{weatherNote}</p>}
       {day && (
@@ -326,7 +365,7 @@ function DayPanel({ day, onClose, onPrev, onNext }: { day: CalDay; onClose: () =
                           ? "No weather forecast this far out yet."
                           : day.weatherFactor !== 1
                             ? `${WEATHER_KIND_LABEL[day.weatherKind ?? "fair"]} ${day.weatherFar ? "likely" : "expected"}. Learned from ${day.weatherDays} days like it here${day.weatherFar ? "; this far out it's a chance, so only part of the usual effect is applied." : `: we sell about ${Math.round(Math.abs(1 - day.weatherFactor) * 100)}% ${day.weatherFactor < 1 ? "less" : "more"}.`}`
-                            : `${day.weather.label}, high ${day.weather.highF}°F — no effect.`
+                            : `${day.weather.label}, high ${day.weather.highF}°F: no effect.`
                       }
                       value={signed(day.weatherFactor)}
                       muted={day.weatherFactor === 1}
@@ -402,8 +441,9 @@ function PastSummary({ day }: { day: CalDay }) {
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-[0.8rem] font-medium text-muted">Actual sales</div>
-        <div className="num mt-1 text-[1.75rem] font-semibold tracking-tight">{day.closed ? "Closed" : money(day.actual ?? 0, { whole: true })}</div>
+        <div className="text-[0.8rem] font-medium text-muted">Sales</div>
+        <div className="num mt-1 text-[1.75rem] font-semibold tracking-tight">{day.missing ? <span className="text-muted">Not in yet</span> : day.closed ? "Closed" : money(day.actual ?? 0, { whole: true })}</div>
+        {day.missing && <p className="mt-1 text-sm text-muted">This day&apos;s sales haven&apos;t come in from Square yet. They arrive with the next sync.</p>}
         {day.backtest != null && !day.closed && (
           <div className="mt-1 text-sm text-muted">
             Forecast the day before: <span className="num text-ink-2">{money(day.backtest, { whole: true })}</span>
@@ -554,7 +594,7 @@ export function HourlyChart({ hours, orders, height = 170 }: { hours: number[]; 
       {hp && (
         <div className="pointer-events-none absolute top-0 -translate-x-1/2 rounded-md border border-border bg-surface px-2 py-1 text-xs shadow-sm" style={{ left: `${(x(hover!) / W) * 100}%` }}>
           <div className="text-muted">
-            {hourLabel(hp.h)}–{hourLabel(hp.h + 1)}
+            {hourLabel(hp.h)} to {hourLabel(hp.h + 1)}
           </div>
           <div className="num font-medium text-ink">{money(hp.y, { whole: true })}</div>
           {orders && orders[hp.h] >= 0.5 && <div className="num text-muted">~{Math.round(orders[hp.h])} orders</div>}
