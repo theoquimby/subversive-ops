@@ -208,13 +208,18 @@ export function salesTone(actual: number, target: number | null): Tone {
 }
 
 /**
- * Actual vs theoretical cost % (e.g. from the last two counts): within a point
- * is normal noise, up to 2.5 points is worth a look, beyond that is a leak.
+ * Actual vs theoretical cost % (e.g. from the last two counts). At or under the
+ * recipes is good; within a point over is normal noise (no colour, never green:
+ * stock did go missing); up to 2.5 points over is worth a look, beyond that is a
+ * leak. Well under the recipes (2.5 points or more) is worth a look too: usually a
+ * delivery that wasn't checked in, or a counting slip.
  */
 export function gapTone(actualPct: number | null, theoreticalPct: number | null): Tone {
   if (actualPct == null || theoreticalPct == null) return "neutral";
   const gap = actualPct - theoreticalPct;
-  if (gap <= 0.01) return "good";
+  if (gap < -0.025) return "warn";
+  if (gap <= 0) return "good";
+  if (gap <= 0.01) return "neutral";
   return gap <= 0.025 ? "warn" : "bad";
 }
 

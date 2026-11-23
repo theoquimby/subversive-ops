@@ -81,7 +81,11 @@ describe("toCsv", () => {
 
 describe("gapTone", () => {
   it("rates actual against theoretical cost", () => {
-    expect(gapTone(0.3, 0.295)).toBe("good");
+    expect(gapTone(0.29, 0.3)).toBe("good");
+    expect(gapTone(0.3, 0.3)).toBe("good");
+    // Over the recipes is never green, even within a point (the Margin gap showed a green 15.4% beside a red $115).
+    expect(gapTone(0.3, 0.295)).toBe("neutral");
+    expect(gapTone(0.25, 0.3)).toBe("warn");
     expect(gapTone(0.32, 0.3)).toBe("warn");
     expect(gapTone(0.34, 0.3)).toBe("bad");
     expect(gapTone(null, 0.3)).toBe("neutral");

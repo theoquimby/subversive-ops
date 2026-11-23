@@ -1,4 +1,10 @@
-import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Table, Td, Th, Tr } from "@/components/ui";
+import { Verdict } from "@/components/chapter";
+import { daysBetween } from "@/domain/dates";
+import { countAge, gapStory } from "@/domain/varianceStory";
+import { businessToday } from "@/server/services/sales";
+import { Bars } from "../sales/bars";
+import { ArrowRight } from "lucide-react";
 import type { BaseUnit } from "@/domain/units";
 import { dayDate, money, pct, qty, shortDate, signedPct } from "@/lib/format";
 import { DISPLAY_UNIT } from "@/lib/units-display";
@@ -28,8 +34,8 @@ function explain(row: VarianceLine): string | null {
     const others = e.others ? ` (and the ${e.others} other item${e.others === 1 ? "" : "s"} using it)` : "";
     // Counted items read better as "1 extra for every 3 burgers" than "0.3 extra per burger".
     per = each && v > 0 && v < 1
-      ? ` — about one ${word} for every ${Math.max(2, Math.round(1 / v))} orders of ${e.dish.name}${others}`
-      : ` — about ${qty(v, v < 0.1 ? 2 : 1)}${each ? "" : ` ${pu.unit}`} ${word} per ${e.dish.name}${others}`;
+      ? `: about one ${word} for every ${Math.max(2, Math.round(1 / v))} orders of ${e.dish.name}${others}`
+      : `: about ${qty(v, v < 0.1 ? 2 : 1)}${each ? "" : ` ${pu.unit}`} ${word} per ${e.dish.name}${others}`;
   }
   const bev = row.group === "beverage";
   switch (e.cause) {
@@ -54,7 +60,7 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
       <>
         <PageHeader help="variance.page" title="Margin gap" description="What your recipes say you used vs what actually left the shelves." />
         <HelpZone id="variance.empty"><EmptyState title="Needs two counts" action={<LinkButton href="/count" variant="primary">Start a count</LinkButton>}>
-          Count once now and again in a week. The gap between the two — after sales and logged waste — shows where food cost is leaking.
+          Count once now and again in a week. The gap between the two, after sales and logged waste, shows where food cost is leaking.
         </EmptyState></HelpZone>
       </>
     );
@@ -81,41 +87,24 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
   const rows = group === "all" ? r.rows : r.rows.filter((row) => row.group === group);
   const skipped = rows.filter((row) => row.unexplainedCost == null);
   const salesWord = group === "beverage" ? "drink sales" : group === "food" ? "food sales" : "sales";
+  const story = gapStory({
+    ...t,
+    salesWord,
+    rows: rows.filter((row) => row.unexplainedCost != null).map((row) => ({ name: row.name, cost: row.unexplainedCost!, cause: row.explanation?.cause ?? null, dish: row.explanation?.dish?.name ?? null, group: row.group === "beverage" ? "beverage" : "food" })),
+  });
+  // One tone for the finding, on every figure that describes it.
+  const tone = story.tone;
+  const age = countAge(daysBetween(points[0].date, businessToday()));
+  const viewingLatest = end.id === points[0].id;
+  // The picture: the biggest gaps either way, the rest in one bar.
+  const gaps = rows.filter((row) => row.unexplainedCost != null && Math.abs(row.unexplainedCost) >= 0.5);
+  const top = gaps.slice(0, 8);
+  const rest = gaps.slice(8).reduce((sum, row) => sum + row.unexplainedCost!, 0);
+  const signed = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${money(Math.abs(n), { whole: true })}`;
 
-  return (
+  const byIngredient = (
     <>
-      <PageHeader
-        help="variance.page"
-        title="Margin gap"
-        description={`${dayDate(r.from)} → ${dayDate(r.to)} · ${r.days} days between counts`}
-      />
-      <HelpZone id="variance.period" tour="variance.period" className="-mt-4 mb-8">
-        <PeriodPicker points={points.map((p) => ({ id: p.id, label: `${shortDate(p.date)} · ${p.area}`, hint: `${dayDate(p.date)} · ${p.lines} items` }))} start={start.id} end={end.id} group={group} />
-      </HelpZone>
-
-      <HelpZone id="variance.stats" tour="variance.stats" className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={<span className="inline-flex items-center gap-1.5">Cost if recipes were followed <HelpTip id="variance.theoretical" /></span>} value={pct(theoPct)} hint={`${money(t.theoreticalCost, { whole: true })} on ${money(t.sales, { whole: true })} ${salesWord}`} />
-        <Stat label={<span className="inline-flex items-center gap-1.5">Actual cost <HelpTip id="variance.actual" /></span>} value={pct(actPct)} hint={`${money(t.actualCost, { whole: true })} used`} tone={gapTone(actPct, theoPct) === "neutral" ? undefined : gapTone(actPct, theoPct)} />
-        <Stat label="Logged waste" value={money(t.wasteCost, { whole: true })} hint="Accounted for" />
-        <Stat label={<span className="inline-flex items-center gap-1.5">Unexplained <HelpTip id="variance.unexplained" /></span>} value={money(t.unexplainedCost, { whole: true })} hint={t.sales > 0 ? `${pct(t.unexplainedCost / t.sales)} of ${salesWord}` : undefined} tone={t.unexplainedCost > 0 ? "bad" : "good"} />
-      </HelpZone>
-      {group === "all" && (
-        <HelpZone id="variance.split" className="-mt-6 mb-10 flex flex-wrap gap-x-6 gap-y-1 text-sm text-ink-2">
-          {(["food", "beverage"] as const).map((k) => {
-            const x = r.groups[k];
-            return (
-              <Link key={k} href={`/variance?start=${start.id}&end=${end.id}&group=${k}`} className="inline-flex items-center gap-1.5 hover:underline">
-                {k === "food" ? "Food" : "Beverage"}: actual
-                {x.actualPct != null ? <Badge tone={gapTone(x.actualPct, x.theoreticalPct)}>{pct(x.actualPct)}</Badge> : " —"}
-                <span className="text-muted">vs {pct(x.theoreticalPct)} if recipes were followed</span>
-              </Link>
-            );
-          })}
-        </HelpZone>
-      )}
-
-      <HelpZone id="variance.byIngredient" tour="variance.by-ingredient">
-      <Section title="By ingredient" description="Biggest dollar gaps first. Positive = more went out than sales and waste explain.">
+      <p className="mb-2 text-xs text-muted">Biggest dollar gaps first. Positive means more went out than sales and waste explain.</p>
         <Table>
           <thead>
             <tr>
@@ -160,7 +149,7 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
         </Table>
         {skipped.length > 0 && (
           <HelpZone id="variance.skipped" className="mt-3"><details className="text-sm">
-            <summary className="cursor-pointer text-muted hover:text-ink">{skipped.length} ingredient{skipped.length === 1 ? "" : "s"} not in the totals — count them at both ends to include them</summary>
+            <summary className="cursor-pointer text-muted hover:text-ink">{skipped.length} ingredient{skipped.length === 1 ? "" : "s"} not in the totals: count them at both ends to include them</summary>
             <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
               {skipped.map((row) => (
                 <li key={row.ingredientId} className="flex justify-between gap-3 border-b border-border py-1.5">
@@ -171,8 +160,77 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
             </ul>
           </details></HelpZone>
         )}
-      </Section>
+    </>
+
+  );
+
+  return (
+    <>
+      <PageHeader
+        help="variance.page"
+        title="Margin gap"
+        description={`${dayDate(r.from)} to ${dayDate(r.to)} · ${r.days} days between counts`}
+      />
+      <HelpZone id="variance.period" tour="variance.period" className="-mt-4 mb-4">
+        <PeriodPicker points={points.map((p) => ({ id: p.id, label: `${shortDate(p.date)} · ${p.area}`, hint: `${dayDate(p.date)} · ${p.lines} items` }))} start={start.id} end={end.id} group={group} />
       </HelpZone>
+
+      <Card className={cx("mb-4 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between", age.stale && "border-warn/40")}>
+        <p className="text-sm text-ink-2">
+          <span className={cx("font-medium", age.stale ? "text-warn" : "text-ink")}>The last count was {age.words}.</span>{" "}
+          {age.stale ? "Count again to see this week's gap; this one ends on the last count." : viewingLatest ? "This is the latest stretch between counts." : "Pick the latest count above to see the newest stretch."}
+        </p>
+        <LinkButton href="/count" variant={age.stale ? "primary" : "secondary"} className="shrink-0">Start a count</LinkButton>
+      </Card>
+
+      <HelpZone id="variance.stats" tour="variance.stats">
+        <Verdict
+          badge={{ tone }}
+          title={story.headline}
+          line={story.line}
+          stats={[
+            { label: <span className="inline-flex items-center gap-1.5">Cost if recipes were followed <HelpTip id="variance.theoretical" /></span>, value: pct(theoPct), hint: `${money(t.theoreticalCost, { whole: true })} on ${money(t.sales, { whole: true })} ${salesWord}` },
+            { label: <span className="inline-flex items-center gap-1.5">Actual cost <HelpTip id="variance.actual" /></span>, value: pct(actPct), hint: `${money(t.actualCost, { whole: true })} used, ${money(t.wasteCost, { whole: true })} of it logged waste`, tone },
+            { label: <span className="inline-flex items-center gap-1.5">Unexplained <HelpTip id="variance.unexplained" /></span>, value: signed(t.unexplainedCost), hint: t.sales > 0 ? `${pct(Math.abs(t.unexplainedCost) / t.sales)} of ${salesWord}` : undefined, tone },
+          ]}
+          numbers={<HelpZone id="variance.byIngredient" tour="variance.by-ingredient">{byIngredient}</HelpZone>}
+        >
+          {top.length > 0 && (
+            <>
+              <h3 className="mb-3 text-sm font-medium text-ink">Unexplained, by ingredient</h3>
+              <Bars
+                ariaLabel="Dollars more (or less) than sales and waste explain, by ingredient"
+                rows={[
+                  ...top.map((row) => ({ key: row.ingredientId, label: row.name, hint: row.group === "beverage" ? "beverage" : row.category, value: row.unexplainedCost!, display: signed(row.unexplainedCost!), color: row.unexplainedCost! > 0 ? "var(--money-goods)" : "var(--money-forecast)", mark: story.lead?.name === row.name })),
+                  ...(gaps.length > 8 ? [{ key: "rest", label: `${gaps.length - 8} more`, value: rest, display: signed(rest), color: rest > 0 ? "var(--money-goods)" : "var(--money-forecast)" }] : []),
+                ]}
+              />
+              <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+                <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-[3px] bg-[var(--money-goods)]" /> More went out than sales and waste explain</span>
+                <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block size-2.5 rounded-[3px] bg-[var(--money-forecast)]" /> Less went out than the recipes say</span>
+              </p>
+            </>
+          )}
+          <div className="mt-5 flex gap-2.5 rounded-lg bg-surface-2 px-3.5 py-3 text-sm text-ink">
+            <ArrowRight aria-hidden className="mt-0.5 size-4 shrink-0 text-muted" />
+            <p className="max-w-2xl font-medium">{story.action}</p>
+          </div>
+        </Verdict>
+      </HelpZone>
+      {group === "all" && (
+        <HelpZone id="variance.split" className="mb-10 flex flex-wrap gap-x-6 gap-y-2 px-1 text-sm text-ink-2">
+          {(["food", "beverage"] as const).map((k) => {
+            const x = r.groups[k];
+            return (
+              <Link key={k} href={`/variance?start=${start.id}&end=${end.id}&group=${k}`} className="inline-flex items-center gap-1.5 hover:underline">
+                {k === "food" ? "Food" : "Beverage"}: actual
+                {x.actualPct != null ? <Badge tone={gapTone(x.actualPct, x.theoreticalPct)}>{pct(x.actualPct)}</Badge> : " no sales"}
+                <span className="text-muted">vs {pct(x.theoreticalPct)} if recipes were followed</span>
+              </Link>
+            );
+          })}
+        </HelpZone>
+      )}
 
       <HelpZone id="variance.reading"><Card className="p-5 text-sm text-ink-2">
         <div className="font-medium text-ink">Reading this</div>
