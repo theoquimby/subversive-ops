@@ -102,6 +102,28 @@ export function checkMethod(before: readonly Scored[], after: readonly Scored[],
   return { all, recent, strayDays, use };
 }
 
+export interface HistoryCheck {
+  /** Every day both replays forecast: days with hourly sales, which is all the live forecast ever sees. */
+  all: MethodSide | null;
+  /** The last twelve months of those. */
+  recent: MethodSide | null;
+  /** Open days known only from item sales (brought in before hourly sales were kept). */
+  itemOnlyDays: number;
+  /** Read the full history live: closer over all of it, and no worse over the last twelve months. */
+  use: boolean;
+}
+
+/**
+ * The live forecast reads hourly sales; the full history adds the days known only from item sales. Compare
+ * the replay on hourly sales alone (`hourlyOnly`) with the replay on the full history (`full`), on the days
+ * both forecast, with the same bar as the refinements above. Item-only days drop out of the comparison
+ * (the hourly replay never forecasts them), so it scores only what the switch would change for real days.
+ */
+export function checkHistory(hourlyOnly: readonly Scored[], full: readonly Scored[], today: ISODate, itemOnlyDays: number): HistoryCheck {
+  const c = checkMethod(hourlyOnly, full, today, 0);
+  return { all: c.all, recent: c.recent, itemOnlyDays, use: c.use };
+}
+
 /** Bumped whenever the refinements change, so what's stored is decided again at once. */
 export const METHOD_RULES = 1;
 
@@ -110,15 +132,17 @@ export interface StoredMethod {
   learnedOn: ISODate;
   /** Leave stray-sale days out and cap freak days. */
   refined: boolean;
+  /** Read the full history (item sales before hourly sales were kept), not hourly sales alone. */
+  fullHistory: boolean;
 }
 
-export const toStoredMethod = (check: MethodCheck, learnedOn: ISODate): StoredMethod => ({ rules: METHOD_RULES, learnedOn, refined: check.use });
+export const toStoredMethod = (check: MethodCheck, learnedOn: ISODate, history?: HistoryCheck): StoredMethod => ({ rules: METHOD_RULES, learnedOn, refined: check.use, fullHistory: !!history?.use });
 
 export function parseStoredMethod(json: string | null | undefined): StoredMethod | null {
   if (!json) return null;
   try {
     const v = JSON.parse(json) as StoredMethod;
-    return typeof v?.learnedOn === "string" && v.rules === METHOD_RULES ? { rules: METHOD_RULES, learnedOn: v.learnedOn, refined: v.refined === true } : null;
+    return typeof v?.learnedOn === "string" && v.rules === METHOD_RULES ? { rules: METHOD_RULES, learnedOn: v.learnedOn, refined: v.refined === true, fullHistory: v.fullHistory === true } : null;
   } catch {
     return null;
   }

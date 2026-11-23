@@ -1086,7 +1086,7 @@ Any change to how Ops forecasts has to beat the current method on this page befo
     area: "sales",
     route: "/sales/scorecard",
     title: "The numbers behind it",
-    body: "Every table the summary is built from, folded away: how far ahead, the usual day, weather, holidays, weekdays, event days, months, online signals, the forecasts kept each night, and every scored day. Open a line to see it.",
+    body: "Every table the summary is built from, folded away: how far ahead, the usual day (and whether older item-sales history helps), weather, holidays, weekdays, event days, months, online signals, the forecasts kept each night, and every scored day. Open a line to see it.",
     related: ["sales.scorecard", "sales.scorecard.weather", "sales.scorecard.days"],
   },
   {

@@ -189,11 +189,11 @@ export const dailySalesHistory = cache(async (from: ISODate, to: ISODate) => {
 });
 
 /**
- * Every day's sales, the way the forecast and its scorecard read them: the hourly table where it has the
- * day, item sales where it doesn't (history brought in from Square before hourly sales were kept). The
- * scorecard replays the forecast on exactly this, so the live forecast reads it too: otherwise a year of
- * loaded history is scored but never used (no seasonality). `dailyOnly` counts the days from item sales.
- * Once per render per range.
+ * Every day's sales: the hourly table where it has the day, item sales where it doesn't (history brought in
+ * from Square before hourly sales were kept). The scorecard replays the forecast on this, and the live
+ * forecast reads it too once that replay shows it lands closer than hourly sales alone (`fullHistory` in the
+ * stored method). `dailyOnly` counts the open days from item sales; `fromHourly` is every day the hourly
+ * table has. Once per render per range.
  */
 export const fullSalesHistory = cache(async (from: ISODate, to: ISODate) => {
   const where = { date: { gte: parseISODate(from), lt: parseISODate(to) } };
@@ -209,7 +209,7 @@ export const fullSalesHistory = cache(async (from: ISODate, to: ISODate) => {
     fromHourly.add(d);
   }
   const openDays = new Set([...sales].filter(([, v]) => v > 0).map(([d]) => d));
-  return { sales, openDays, dailyOnly: [...openDays].filter((d) => !fromHourly.has(d)).length };
+  return { sales, openDays, dailyOnly: [...openDays].filter((d) => !fromHourly.has(d)).length, fromHourly };
 });
 
 /** Events in [from, to), read once per render per range. */
@@ -225,10 +225,10 @@ export async function pastEventDays(from: ISODate, to: ISODate) {
 
 /** History for baselines: sales, open days, and open days minus event days (once per render per range). */
 const baselineHistory = cache(async (from: ISODate, to: ISODate) => {
-  // Hourly sales only, for now: reading the merged item-sales history too (as the scorecard replay does) would
-  // change every live forecast, so it waits until the scorecard shows it beats this (the owner's rule for any
-  // forecast change). fullSalesHistory below is what that switch would use.
-  const [h, events, method] = await Promise.all([dailySalesHistory(from, to), pastEventDays(from, to), storedMethod()]);
+  // Hourly sales alone, unless the scorecard's replay found the full history (item sales from before hourly
+  // sales were kept) lands closer: the owner's rule for any change to the forecast.
+  const method = await storedMethod();
+  const [h, events] = await Promise.all([method?.fullHistory ? fullSalesHistory(from, to) : dailySalesHistory(from, to), pastEventDays(from, to)]);
   // When the replay favours it, a day with only a stray sale isn't an open day for the usual-day average.
   const refined = !!method?.refined;
   const open = refined ? realOpenDays(h.sales) : h.openDays;

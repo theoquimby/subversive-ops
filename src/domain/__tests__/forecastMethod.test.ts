@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addDays, dateRange, weekday } from "../dates";
 import { forecastSeries } from "../forecast";
-import { CAP_HIGH, checkMethod, parseStoredMethod, realOpenDays, toStoredMethod } from "../forecastMethod";
+import { CAP_HIGH, checkHistory, checkMethod, parseStoredMethod, realOpenDays, toStoredMethod } from "../forecastMethod";
 
 describe("realOpenDays", () => {
   // Open Wednesday to Sunday at about $1,500; closed Monday and Tuesday.
@@ -92,5 +92,33 @@ describe("checkMethod", () => {
     expect(parseStoredMethod(JSON.stringify(stored))).toEqual(stored);
     expect(parseStoredMethod(JSON.stringify({ ...stored, rules: 0 }))).toBeNull();
     expect(parseStoredMethod("junk")).toBeNull();
+  });
+});
+
+describe("checkHistory", () => {
+  const days = dateRange("2025-06-01", "2026-11-18");
+  const scored = (miss: (d: string) => number, from = "0000") => days.filter((d) => d >= from).map((date) => ({ date, actual: 1000, f1: 1000 * (1 + miss(date)) }));
+  const hourly = scored(() => 0.3, "2025-09-01");
+
+  it("switches to the full history only when it lands closer on the days the live forecast scores", () => {
+    const c = checkHistory(hourly, scored(() => 0.25), "2026-11-18", 92);
+    // Item-only days before September are in the full replay but not the hourly one, so they don't count.
+    expect(c.all).toMatchObject({ days: hourly.length, before: 0.3, after: 0.25 });
+    expect(c).toMatchObject({ itemOnlyDays: 92, use: true });
+  });
+
+  it("stays on hourly sales when the gain is small, the last year is worse, or there's nothing to test", () => {
+    expect(checkHistory(hourly, scored(() => 0.299), "2026-11-18", 92).use).toBe(false);
+    expect(checkHistory(hourly, scored((d) => (d >= "2025-11-18" ? 0.31 : 0.1)), "2026-11-18", 92).use).toBe(false);
+    expect(checkHistory([], [], "2026-11-18", 0)).toMatchObject({ all: null, recent: null, itemOnlyDays: 0, use: false });
+  });
+
+  it("is kept with the method, and a verdict stored before it existed reads as hourly sales only", () => {
+    const method = checkMethod(hourly, hourly, "2026-11-18", 0);
+    const stored = toStoredMethod(method, "2026-11-18", checkHistory(hourly, scored(() => 0.25), "2026-11-18", 92));
+    expect(stored.fullHistory).toBe(true);
+    expect(parseStoredMethod(JSON.stringify(stored))).toEqual(stored);
+    expect(parseStoredMethod(JSON.stringify({ rules: 1, learnedOn: "2026-11-18", refined: true }))).toEqual({ rules: 1, learnedOn: "2026-11-18", refined: true, fullHistory: false });
+    expect(toStoredMethod(method, "2026-11-18").fullHistory).toBe(false);
   });
 });

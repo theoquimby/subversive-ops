@@ -118,6 +118,12 @@ export default async function ScorecardPage() {
     : mc.all
       ? "Tested: leaving out stray-sale days and capping freak days isn't closer, so it's not in use"
       : "Not enough history to test yet";
+  const hc = s.method.history;
+  const historyLine = hc.itemOnlyDays === 0
+    ? "Every day here has hourly sales, so the live forecast reads exactly this history."
+    : hc.use
+      ? `The live forecast reads this history too, the ${qty(hc.itemOnlyDays, 0)} older days known only from item sales included: that landed closer than hourly sales alone.`
+      : `The live forecast reads hourly sales alone: adding the ${qty(hc.itemOnlyDays, 0)} older days known only from item sales ${hc.all ? "didn't land closer" : "can't be tested yet"} (see The usual day).`;
   const hol = s.holidays;
   const holOn = hol.effects.kinds.filter((k) => k.used);
   const holidayGist = holOn.length || hol.closed.length
@@ -320,7 +326,7 @@ export default async function ScorecardPage() {
       <Section
         help="sales.scorecard.numbers"
         title="The numbers behind it"
-        description={`${qty(a.f1!.days, 0)} open days from ${dated(a.from!)} to ${dated(a.to!)}, each forecast again using only what was known the evening before. Open any line for the detail. The live forecast reads the same history, item sales from before hourly sales were kept included.`}
+        description={`${qty(a.f1!.days, 0)} open days from ${dated(a.from!)} to ${dated(a.to!)}, each forecast again using only what was known the evening before. Open any line for the detail. ${historyLine}`}
       >
         <Card className="overflow-hidden">
 
@@ -358,6 +364,41 @@ export default async function ScorecardPage() {
               Switched on only when it&apos;s at least 1% closer over all your history and no worse over the last 12 months; decided again every night.
               {mc.strayDays > 0 && ` ${qty(mc.strayDays, 0)} ${mc.strayDays === 1 ? "day" : "days"} with only a stray sale ${mc.use ? "are no longer counted as open days, so they aren't scored on this page either" : "would no longer count as open days"}.`}
             </p>
+            {hc.itemOnlyDays > 0 && (
+              <>
+                <h4 className="mt-7 mb-1 text-sm font-medium text-ink">Older history from item sales</h4>
+                <p className="mb-3 text-sm text-ink-2">
+                  {qty(hc.itemOnlyDays, 0)} older {hc.itemOnlyDays === 1 ? "day is" : "days are"} known only from item sales, from before hourly sales were kept. Reading them gives the forecast more of last year to go by. It&apos;s tested on the days with hourly sales: the forecast as it is, against the same forecast with the older days added.
+                </p>
+                {hc.all ? (
+                  <Table>
+                    <thead>
+                      <tr>
+                        <Th>Replayed over</Th>
+                        <Th align="right" className="hidden sm:table-cell">Days</Th>
+                        <Th align="right">Miss without → with</Th>
+                        <Th align="right">In the forecast</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {([["All your history", hc.all], ["The last 12 months", hc.recent]] as const).map(([label, m]) =>
+                        m ? (
+                          <Tr key={label}>
+                            <Td><span className="font-medium text-ink">{label}</span></Td>
+                            <Td align="right" className="num hidden text-ink-2 sm:table-cell">{qty(m.days, 0)}</Td>
+                            <Td align="right" className="num whitespace-nowrap text-ink-2">{pct(m.before, 1)} → {pct(m.after, 1)}</Td>
+                            <Td align="right">{hc.use ? <Badge tone="good">On</Badge> : <Badge>Off</Badge>}</Td>
+                          </Tr>
+                        ) : null,
+                      )}
+                    </tbody>
+                  </Table>
+                ) : (
+                  <p className="text-sm text-muted">This needs more days with hourly sales before it can be tested.</p>
+                )}
+                <p className="mt-2 text-xs text-muted">Same rule: on only when it&apos;s at least 1% closer over at least 200 days and no worse over the last 12 months; decided again every night.</p>
+              </>
+            )}
           </Fold>
 
           <Fold title="By weather" gist={fxOn.length ? `In the forecast: ${fxOn.map((k) => `${WEATHER_KIND_LABEL[k.kind].toLowerCase()} ${plans(k.factor)}`).join(", ")}` : `Weather on file for ${qty(weatherDays, 0)} of ${qty(s.days.length, 0)} days`}>

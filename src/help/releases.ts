@@ -24,6 +24,14 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.53",
+    date: "2026-11-23",
+    title: "Older sales tested before the forecast uses them",
+    summary: "The live forecast reads hourly sales. The scorecard now also replays it with the older days known only from item sales added, and the forecast reads them only if that lands closer.",
+    entries: ["2026-11-23.older-history"],
+    fixed: ["The scorecard no longer says the live forecast reads the older item-sales history when it doesn't."],
+  },
+  {
     version: "1.52",
     date: "2026-11-23",
     title: "Every page leads with what matters",
