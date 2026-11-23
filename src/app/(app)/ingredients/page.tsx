@@ -77,7 +77,7 @@ export default async function IngredientsPage({ searchParams }: { searchParams: 
       <PageHeader
         help="ingredients.page"
         title="Ingredients"
-        description="Click any cell to edit — Enter moves down, Tab across, and you can paste a column from a spreadsheet. Click a row’s name area for its products, prices and recipes."
+        description="Click any cell to edit: Enter moves down, Tab across, and you can paste a column from a spreadsheet. Open a row for its products, prices and recipes."
         actions={<LinkButton href="/ingredients/new" variant="primary">New ingredient</LinkButton>}
       />
       {(archived.length > 0 || showArchived) && (

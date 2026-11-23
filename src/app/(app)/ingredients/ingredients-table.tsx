@@ -40,6 +40,8 @@ export interface IngredientRow {
 }
 
 const below = (i: IngredientRow) => i.par != null && i.onHand != null && i.onHand < i.par;
+/** Counted, and the estimate says none is left. */
+const empty = (i: IngredientRow) => i.onHand != null && i.onHand <= 0;
 const ALLERGEN_OPTIONS = ALLERGENS.map((a) => ({ value: a.id, label: a.label }));
 const shortAllergen = (id: string) => ALLERGENS.find((a) => a.id === id)?.short ?? id;
 
@@ -68,21 +70,6 @@ export function IngredientsTable({ rows, areas: areaNames }: { rows: IngredientR
         </div>
       ),
     },
-    { id: "category", header: "Category", edit: true, width: 150, sort: (i) => i.category, csv: (i) => i.category, cell: (i) => <GridCell grid="ing" col="category" value={i.category} onSave={setIngredientField.bind(null, i.id, "category")} ariaLabel="Category" /> },
-    { id: "storage", header: "Storage", edit: true, width: 190, sort: (i) => i.storage, csv: (i) => i.storage, cell: (i) => <GridCell grid="ing" col="storage" value={i.storage} onSave={setIngredientField.bind(null, i.id, "storageArea")} ariaLabel="Storage area" /> },
-    {
-      id: "cost",
-      header: "Cost",
-      help: "ingredients.cost",
-      align: "right",
-      firstDir: "desc",
-      sort: (i) => i.cost,
-      csv: (i) => i.cost,
-      cell: (i) => (i.cost == null ? <span className="text-warn">No price</span> : <span className="whitespace-nowrap">{money(i.cost)}<span className="text-muted">/{i.costUnit}</span></span>),
-    },
-    { id: "yield", header: "Yield", help: "ingredients.yield", align: "right", edit: true, width: 96, sort: (i) => i.yieldPct, csv: (i) => i.yieldPct, cell: (i) => <GridCell grid="ing" col="yield" type="number" suffix="%" value={i.yieldPct} onSave={setIngredientField.bind(null, i.id, "yieldPct")} ariaLabel="Yield percent" /> },
-    { id: "buffer", header: "Buffer", help: "ingredients.buffer", align: "right", edit: true, width: 96, sort: (i) => i.bufferPct, csv: (i) => i.bufferPct, cell: (i) => <GridCell grid="ing" col="buffer" type="number" suffix="%" value={i.bufferPct} onSave={setIngredientField.bind(null, i.id, "safetyPct")} ariaLabel="Order buffer percent" /> },
-    { id: "countIn", header: "Count in", help: "ingredients.countIn", edit: true, width: 120, sort: (i) => i.countUnit, csv: (i) => i.countUnit, cell: (i) => <GridSelect value={i.countUnit} options={i.units.map((u) => ({ value: u, label: u }))} onSave={setIngredientField.bind(null, i.id, "countUnit")} ariaLabel="Count unit" /> },
     {
       id: "onHand",
       header: "On hand (est.)",
@@ -100,6 +87,18 @@ export function IngredientsTable({ rows, areas: areaNames }: { rows: IngredientR
         ),
     },
     { id: "par", header: "Min on hand", help: "ingredients.minOnHand", align: "right", edit: true, width: 120, sort: (i) => i.par, csv: (i) => i.par, cell: (i) => <MinOnHandCell id={i.id} value={i.par} unit={i.countUnit} /> },
+    { id: "category", header: "Category", edit: true, width: 150, sort: (i) => i.category, csv: (i) => i.category, cell: (i) => <GridCell grid="ing" col="category" value={i.category} onSave={setIngredientField.bind(null, i.id, "category")} ariaLabel="Category" /> },
+    { id: "storage", header: "Storage", edit: true, width: 190, sort: (i) => i.storage, csv: (i) => i.storage, cell: (i) => <GridCell grid="ing" col="storage" value={i.storage} onSave={setIngredientField.bind(null, i.id, "storageArea")} ariaLabel="Storage area" /> },
+    {
+      id: "cost",
+      header: "Cost",
+      help: "ingredients.cost",
+      align: "right",
+      firstDir: "desc",
+      sort: (i) => i.cost,
+      csv: (i) => i.cost,
+      cell: (i) => (i.cost == null ? <span className="text-warn">No price</span> : <span className="whitespace-nowrap">{money(i.cost)}<span className="text-muted">/{i.costUnit}</span></span>),
+    },
     {
       id: "allergens",
       header: "Allergens",
@@ -109,6 +108,9 @@ export function IngredientsTable({ rows, areas: areaNames }: { rows: IngredientR
       csv: (i) => i.allergens.map(allergenLabel).join("; "),
       cell: (i) => (i.allergens.length ? <span className="text-ink-2">{i.allergens.map(shortAllergen).join(", ")}</span> : <span className="text-muted">—</span>),
     },
+    { id: "yield", header: "Yield", help: "ingredients.yield", align: "right", edit: true, width: 96, sort: (i) => i.yieldPct, csv: (i) => i.yieldPct, cell: (i) => <GridCell grid="ing" col="yield" type="number" suffix="%" value={i.yieldPct} onSave={setIngredientField.bind(null, i.id, "yieldPct")} ariaLabel="Yield percent" /> },
+    { id: "buffer", header: "Buffer", help: "ingredients.buffer", align: "right", edit: true, width: 96, sort: (i) => i.bufferPct, csv: (i) => i.bufferPct, cell: (i) => <GridCell grid="ing" col="buffer" type="number" suffix="%" value={i.bufferPct} onSave={setIngredientField.bind(null, i.id, "safetyPct")} ariaLabel="Order buffer percent" /> },
+    { id: "countIn", header: "Count in", help: "ingredients.countIn", edit: true, width: 120, sort: (i) => i.countUnit, csv: (i) => i.countUnit, cell: (i) => <GridSelect value={i.countUnit} options={i.units.map((u) => ({ value: u, label: u }))} onSave={setIngredientField.bind(null, i.id, "countUnit")} ariaLabel="Count unit" /> },
     { id: "recipes", header: "Used in", align: "right", firstDir: "desc", sort: (i) => i.recipes.length, csv: (i) => i.recipes.length, cell: (i) => (i.recipes.length ? <span className="text-ink-2">{i.recipes.length}</span> : <span className="text-muted">—</span>), defaultHidden: true },
     { id: "products", header: "Products", align: "right", firstDir: "desc", sort: (i) => i.products.length, csv: (i) => i.products.length, cell: (i) => <span className="text-ink-2">{i.products.length || "—"}</span>, defaultHidden: true },
   ], []);
@@ -120,7 +122,9 @@ export function IngredientsTable({ rows, areas: areaNames }: { rows: IngredientR
     { id: "nosupplier", label: "No supplier", kind: "toggle", test: (i) => !i.hasSupplier, tone: "warn" },
     { id: "noprice", label: "No price", kind: "toggle", test: (i) => i.cost == null, tone: "warn" },
     { id: "below", label: "Below minimum", kind: "toggle", test: below, tone: "bad", param: "below" },
-    { id: "notcounted", label: "Not counted", kind: "toggle", test: (i) => i.onHand == null },
+    { id: "notcounted", label: "Not counted", kind: "toggle", test: (i) => i.onHand == null, tone: "unknown", param: "notcounted" },
+    { id: "empty", label: "None on hand", kind: "toggle", test: empty, tone: "warn", param: "empty" },
+    { id: "nomin", label: "No minimum set", kind: "toggle", test: (i) => i.par == null, param: "nomin" },
     { id: "unused", label: "Not in any recipe", kind: "toggle", test: (i) => i.recipes.length === 0 },
   ], [areas, rows]);
 
@@ -142,18 +146,24 @@ export function IngredientsTable({ rows, areas: areaNames }: { rows: IngredientR
       filters={filters}
       groups={groups}
       empty={<EmptyState title="No ingredients yet" action={<LinkButton href="/ingredients/new">Add one</LinkButton>}>Add ingredients by hand, import a sheet, or link supplier products on Prices.</EmptyState>}
-      summary={(vis) => [
-        { value: vis.length, label: vis.length === 1 ? "ingredient" : "ingredients" },
-        { value: vis.filter((i) => !i.hasSupplier).length, label: "with no supplier", tone: "warn", filter: { id: "nosupplier" } },
-        { value: vis.filter((i) => i.cost == null).length, label: "without a price", tone: "warn", filter: { id: "noprice" } },
-        { value: vis.filter(below).length, label: "below minimum", tone: "bad", filter: { id: "below" } },
-        { value: vis.filter((i) => !i.recipes.length).length, label: "not in a recipe", filter: { id: "unused" } },
-      ]}
+      summary={(vis) => {
+        const withMin = vis.filter((i) => i.par != null).length;
+        return [
+          { value: vis.length, label: vis.length === 1 ? "ingredient" : "ingredients" },
+          { value: vis.filter((i) => i.onHand == null).length, label: "not counted", tone: "unknown", filter: { id: "notcounted" } },
+          { value: vis.filter(empty).length, label: "with none on hand", tone: "warn", filter: { id: "empty" } },
+          // "0 below minimum" means nothing when no minimums are set: say that instead.
+          ...(withMin > 0 ? [{ value: vis.filter(below).length, label: "below minimum", tone: "bad" as const, filter: { id: "below" } }] : []),
+          { value: vis.length - withMin, label: "with no minimum", filter: { id: "nomin" } },
+          { value: vis.filter((i) => !i.hasSupplier).length, label: "with no supplier", tone: "warn", filter: { id: "nosupplier" } },
+          { value: vis.filter((i) => i.cost == null).length, label: "without a price", tone: "warn", filter: { id: "noprice" } },
+        ];
+      }}
       card={(i) => ({
         title: i.name,
         subtitle: <>{i.category} · {i.storage}{i.recipes.length ? ` · in ${i.recipes.length} recipe${i.recipes.length === 1 ? "" : "s"}` : ""}</>,
         value: i.cost == null ? <span className="text-warn">No price</span> : <>{money(i.cost)}<span className="text-xs font-normal text-muted">/{i.costUnit}</span></>,
-        sub: i.onHand == null ? "not counted" : <span className={below(i) ? "text-warn" : undefined}>{fmtQty(i.onHand, 1)} {i.countUnit}</span>,
+        sub: i.onHand == null ? "not counted yet" : <span className={below(i) ? "text-warn" : undefined}>{fmtQty(i.onHand, 1)} {i.countUnit}</span>,
       })}
       rowHref={(i) => `/ingredients/${i.id}`}
       drawerTitle={(i) => i.name}
