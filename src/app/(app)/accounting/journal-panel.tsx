@@ -6,6 +6,7 @@ import { Badge, Button, Card, cx, DatePicker, Field, LinkButton, Select, Table, 
 import { JOURNAL_ACCOUNT_KEYS, JOURNAL_ACCOUNT_LABELS, journalAccountChoices, journalTotals, type JournalAccountKey } from "@/domain/salesJournal";
 import { money, shortDate } from "@/lib/format";
 import type { EntryState, JournalOverview } from "@/server/services/monthEndJournal";
+import { Numbers } from "@/components/chapter";
 import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Fragment, useState, useTransition } from "react";
@@ -15,7 +16,7 @@ const STATE: Record<EntryState, { label: string; tone: Tone }> = {
   "not-sent": { label: "Not sent", tone: "neutral" },
   sent: { label: "In QuickBooks", tone: "good" },
   changed: { label: "Changed since sent", tone: "warn" },
-  "not-ready": { label: "Waiting on Square", tone: "neutral" },
+  "not-ready": { label: "Waiting on Square", tone: "unknown" },
   error: { label: "Didn't go", tone: "bad" },
   blocked: { label: "Blocked", tone: "warn" },
   "before-start": { label: "Before start date", tone: "neutral" },
@@ -130,8 +131,7 @@ export function JournalPanel({ o, from, to }: { o: JournalOverview; from: string
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted">
-          {o.entries.length ? `${o.entries.length} ${o.entries.length === 1 ? "entry" : "entries"} for this period.` : "No Square sales in this period yet."}
-          {o.counts.sent ? ` ${o.counts.sent} in QuickBooks.` : ""}
+          {o.entries.length ? `${o.entries.length} ${o.entries.length === 1 ? "entry" : "entries"} for this period: ${stateSummary(o.entries)}.` : "No Square sales in this period yet."}
         </p>
         {live && sendable.length > 0 && (
           <Button variant="primary" disabled={pending} onClick={sendAll} data-tour="accounting.journal.send">
@@ -142,6 +142,7 @@ export function JournalPanel({ o, from, to }: { o: JournalOverview; from: string
       {msg && <p role={msg.ok ? "status" : "alert"} className={cx("text-sm", msg.ok ? "text-good" : "text-bad")}>{msg.text}</p>}
 
       {o.entries.length > 0 && (
+        <Numbers label={`The ${o.entries.length === 1 ? "entry" : `${o.entries.length} entries`}`}>
         <Table>
           <thead>
             <tr>
@@ -194,9 +195,17 @@ export function JournalPanel({ o, from, to }: { o: JournalOverview; from: string
             })}
           </tbody>
         </Table>
+        </Numbers>
       )}
     </div>
   );
+}
+
+/** "31 waiting on Square", "2 in QuickBooks, 3 not sent": the entries by state, biggest first. */
+function stateSummary(entries: JournalOverview["entries"]): string {
+  const by = new Map<string, number>();
+  for (const e of entries) by.set(STATE[e.state].label, (by.get(STATE[e.state].label) ?? 0) + 1);
+  return [...by].sort((a, b) => b[1] - a[1]).map(([label, n]) => `${n} ${label.charAt(0).toLowerCase()}${label.slice(1)}`).join(", ");
 }
 
 function EntryPreview({ e }: { e: JournalOverview["entries"][number] }) {
