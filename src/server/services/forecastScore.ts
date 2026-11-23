@@ -5,13 +5,16 @@ import { CAP_HIGH, checkMethod, realOpenDays, toStoredMethod, type MethodCheck, 
 import { learnHolidayEffects, toStoredHolidays, upcomingHolidays, usuallyClosed, type HolidayEffects, type StoredHolidays, type UpcomingHoliday } from "@/domain/holidayEffect";
 import type { HolidayKind } from "@/domain/holidays";
 import { combinedLevelNow, settledSpan, testCombined, testSignals, toStoredSignal, type SignalResult, type SignalSeries, type StoredSignal } from "@/domain/leadSignals";
+import { ACCURACY_RULES, toStoredAccuracy, TRUST_WINDOW_DAYS, type StoredAccuracy } from "@/domain/forecastTrust";
 import { learnWeatherEffects, toStored, type WeatherEffects } from "@/domain/weatherEffect";
 import { ARCHIVE_LAG_DAYS, backfillSpans, NOAA_DAILY_TYPES, NOAA_STATION, parseNceiDaily } from "@/domain/weatherHistory";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
-import { dailySalesForecast, eventsBetween, pastEventDays, saveWeatherRows, HOLIDAYS_KEY, METHOD_KEY, ONLINE_SIGNAL_KEY, storedHolidays, storedMethod, storedOnlineSignal, storedWeatherEffects, WEATHER_EFFECTS_KEY, weatherMap } from "./forecasting";
+import { dailySalesForecast, eventsBetween, fullSalesHistory, pastEventDays, saveWeatherRows, HOLIDAYS_KEY, METHOD_KEY, ONLINE_SIGNAL_KEY, storedHolidays, storedMethod, storedOnlineSignal, storedWeatherEffects, WEATHER_EFFECTS_KEY, weatherMap } from "./forecasting";
 import { getAdjustments } from "./planning";
 import { businessToday } from "./sales";
+import { settingValue } from "./setting-read";
+import { cache } from "react";
 
 /** The first day with any sales on file (hourly or item sales); null before Square has synced. */
 export async function firstSaleDate(): Promise<ISODate | null> {
@@ -104,8 +107,9 @@ export async function backfillWeather(maxSpans = 10): Promise<{ days: number; sp
 /** v2: weather by kind (rain, heavy rain, snow, heat, cold) in place of one rain factor.
  * v3: online interest (Google searches and listing activity) on top of v2.
  * v4: holidays and school breaks on top of v3.
- * v5: the usual-day average leaves out stray-sale days and caps freak days, when the replay favours it. */
-export const FORECAST_MODEL = "v5";
+ * v5: the usual-day average leaves out stray-sale days and caps freak days, when the replay favours it.
+ * v6: the live forecast reads item-sales history from before hourly sales were kept, as the replay always has (seasonality). */
+export const FORECAST_MODEL = "v6";
 const LOG_DAYS_AHEAD = 14;
 
 /** Keep tonight's forecast for today and the next two weeks, so it can be scored against what then sells. */
@@ -132,27 +136,6 @@ export async function logForecasts(): Promise<number> {
 
 // ---- The scorecard ------------------------------------------------------------------
 
-/**
- * Every day's sales back to the first one: the hourly table where it has the
- * day, item sales where it doesn't (older history brought in before hourly
- * sales were kept). `dailyOnly` counts the days that came from item sales.
- */
-async function fullSalesHistory(first: ISODate, today: ISODate) {
-  const where = { date: { gte: parseISODate(first), lt: parseISODate(today) } };
-  const [hourly, daily] = await Promise.all([
-    db.hourlySale.groupBy({ by: ["date"], _sum: { netSales: true }, where }),
-    db.dailySale.groupBy({ by: ["date"], _sum: { netSales: true }, where }),
-  ]);
-  const sales = new Map<ISODate, number>(daily.map((r) => [toISODate(r.date), r._sum.netSales?.toNumber() ?? 0]));
-  const fromHourly = new Set<ISODate>();
-  for (const r of hourly) {
-    const d = toISODate(r.date);
-    sales.set(d, r._sum.netSales?.toNumber() ?? 0);
-    fromHourly.add(d);
-  }
-  const openDays = new Set([...sales].filter(([, v]) => v > 0).map(([d]) => d));
-  return { sales, openDays, dailyOnly: [...openDays].filter((d) => !fromHourly.has(d)).length };
-}
 
 /**
  * The online numbers on file, one series a day each: the Google listing
@@ -222,6 +205,8 @@ export interface Scorecard {
   all: ScoreSummary;
   /** The last 90 days on their own: how it's doing lately. */
   recent: ScoreSummary;
+  /** What the Sales page reads to say the same thing without the replay (see src/domain/forecastTrust.ts). */
+  accuracy: StoredAccuracy;
   byWeekday: GroupScore[];
   byMonth: GroupScore[];
   byWeather: GroupScore[];
@@ -251,7 +236,7 @@ export async function forecastScorecard(): Promise<Scorecard> {
   const first = await firstSaleDate();
   const coverage = await weatherCoverage();
   const none = summarize([]);
-  if (!first) return { today, firstSale: null, days: [], openDays: 0, dailyOnly: 0, all: none, recent: none, byWeekday: [], byMonth: [], byWeather: [], byEvent: [], weather: coverage, weatherEffects: learnWeatherEffects([]).effects, withWeather: { without: null, with: null }, method: { check: checkMethod([], [], today, 0), stored: toStoredMethod(checkMethod([], [], today, 0), today) }, holidays: { effects: learnHolidayEffects([]).effects, closed: [], upcoming: [], stored: toStoredHolidays(learnHolidayEffects([]).effects, [], today) }, signals: [], online: { members: [], near: null, week: null, stored: toStoredSignal({ learnedOn: today, members: [], level: null, near: null, week: null }) }, logged: { since: null, dayBefore: null, weekAhead: null } };
+  if (!first) return { today, firstSale: null, days: [], openDays: 0, dailyOnly: 0, all: none, recent: none, accuracy: toStoredAccuracy([], today, today), byWeekday: [], byMonth: [], byWeather: [], byEvent: [], weather: coverage, weatherEffects: learnWeatherEffects([]).effects, withWeather: { without: null, with: null }, method: { check: checkMethod([], [], today, 0), stored: toStoredMethod(checkMethod([], [], today, 0), today) }, holidays: { effects: learnHolidayEffects([]).effects, closed: [], upcoming: [], stored: toStoredHolidays(learnHolidayEffects([]).effects, [], today) }, signals: [], online: { members: [], near: null, week: null, stored: toStoredSignal({ learnedOn: today, members: [], level: null, near: null, week: null }) }, logged: { since: null, dayBefore: null, weekAhead: null } };
 
   const [history, eventDays, events, manual, weather, logged, series] = await Promise.all([
     fullSalesHistory(first, today),
@@ -283,7 +268,7 @@ export async function forecastScorecard(): Promise<Scorecard> {
   const method = checkMethod(plain, refined, today, history.openDays.size - realOpen.size);
   const days = method.use ? refined : plain;
   const openDays = method.use ? realOpen : history.openDays;
-  const cutoff = addDays(today, -90);
+  const cutoff = addDays(today, -TRUST_WINDOW_DAYS);
   const learned = learnWeatherEffects(days);
   const scoredDays = days.filter((d) => d.f1 != null);
   // Holidays are learned against the forecast with weather in it, and online interest against the forecast with
@@ -309,6 +294,7 @@ export async function forecastScorecard(): Promise<Scorecard> {
     dailyOnly: history.dailyOnly,
     all: summarize(days),
     recent: summarize(days.filter((d) => d.date >= cutoff)),
+    accuracy: toStoredAccuracy(days, cutoff, today),
     byWeekday: groupScore(days, "f1", (d) => String(d.weekday)).sort((a, b) => ((Number(a.key) + 6) % 7) - ((Number(b.key) + 6) % 7)),
     byMonth: groupScore(days, "f1", (d) => d.date.slice(5, 7)).sort((a, b) => a.key.localeCompare(b.key)),
     byWeather: groupScore(days, "f1", (d) => d.weather),
@@ -334,6 +320,23 @@ export async function forecastScorecard(): Promise<Scorecard> {
 
 // ---- Weather effects for the live forecast ------------------------------------------------
 
+export const ACCURACY_KEY = "forecast.accuracy";
+
+/**
+ * How far to trust the forecast, as the nightly replay last found it: the same scores the scorecard shows,
+ * so the Sales page says exactly what the scorecard says. Null before the first replay (or after the rules change).
+ */
+export const storedAccuracy = cache(async (): Promise<StoredAccuracy | null> => {
+  const raw = await settingValue(ACCURACY_KEY);
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as StoredAccuracy;
+    return v.rules === ACCURACY_RULES ? v : null;
+  } catch {
+    return null;
+  }
+});
+
 /** Keep the learned factors where the live forecast reads them. */
 export async function saveWeatherEffects(effects: WeatherEffects, today: ISODate) {
   const value = JSON.stringify(toStored(effects, today));
@@ -341,17 +344,17 @@ export async function saveWeatherEffects(effects: WeatherEffects, today: ISODate
 }
 
 /** Keep everything the replay learned where the live forecast reads it: weather by kind, holidays, and online interest. */
-export async function saveLearned(s: Pick<Scorecard, "today" | "weatherEffects" | "online" | "holidays" | "method">) {
+export async function saveLearned(s: Pick<Scorecard, "today" | "weatherEffects" | "online" | "holidays" | "method" | "accuracy">) {
   await saveWeatherEffects(s.weatherEffects, s.today);
-  for (const [key, value] of [[ONLINE_SIGNAL_KEY, JSON.stringify(s.online.stored)], [HOLIDAYS_KEY, JSON.stringify(s.holidays.stored)], [METHOD_KEY, JSON.stringify(s.method.stored)]]) {
+  for (const [key, value] of [[ONLINE_SIGNAL_KEY, JSON.stringify(s.online.stored)], [HOLIDAYS_KEY, JSON.stringify(s.holidays.stored)], [METHOD_KEY, JSON.stringify(s.method.stored)], [ACCURACY_KEY, JSON.stringify(s.accuracy)]]) {
     await db.setting.upsert({ where: { key }, create: { key, value }, update: { value } });
   }
 }
 
 /** True when any of them hasn't been learned today (first run, or a missed night). */
 export async function learnedIsStale(today: ISODate): Promise<boolean> {
-  const [w, o, h, m] = await Promise.all([storedWeatherEffects(), storedOnlineSignal(), storedHolidays(), storedMethod()]);
-  return w?.learnedOn !== today || o?.learnedOn !== today || h?.learnedOn !== today || m?.learnedOn !== today;
+  const [w, o, h, m, a] = await Promise.all([storedWeatherEffects(), storedOnlineSignal(), storedHolidays(), storedMethod(), storedAccuracy()]);
+  return w?.learnedOn !== today || o?.learnedOn !== today || h?.learnedOn !== today || m?.learnedOn !== today || a?.learnedOn !== today;
 }
 
 /** Replay every past day, learn what weather, holidays and online interest do to sales, and keep it for the live forecast. Runs nightly. */

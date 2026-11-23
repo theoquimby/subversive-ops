@@ -188,6 +188,30 @@ export const dailySalesHistory = cache(async (from: ISODate, to: ISODate) => {
   return { sales, openDays };
 });
 
+/**
+ * Every day's sales, the way the forecast and its scorecard read them: the hourly table where it has the
+ * day, item sales where it doesn't (history brought in from Square before hourly sales were kept). The
+ * scorecard replays the forecast on exactly this, so the live forecast reads it too: otherwise a year of
+ * loaded history is scored but never used (no seasonality). `dailyOnly` counts the days from item sales.
+ * Once per render per range.
+ */
+export const fullSalesHistory = cache(async (from: ISODate, to: ISODate) => {
+  const where = { date: { gte: parseISODate(from), lt: parseISODate(to) } };
+  const [hourly, daily] = await Promise.all([
+    db.hourlySale.groupBy({ by: ["date"], _sum: { netSales: true }, where }),
+    db.dailySale.groupBy({ by: ["date"], _sum: { netSales: true }, where }),
+  ]);
+  const sales = new Map<ISODate, number>(daily.map((r) => [toISODate(r.date), r._sum.netSales?.toNumber() ?? 0]));
+  const fromHourly = new Set<ISODate>();
+  for (const r of hourly) {
+    const d = toISODate(r.date);
+    sales.set(d, r._sum.netSales?.toNumber() ?? 0);
+    fromHourly.add(d);
+  }
+  const openDays = new Set([...sales].filter(([, v]) => v > 0).map(([d]) => d));
+  return { sales, openDays, dailyOnly: [...openDays].filter((d) => !fromHourly.has(d)).length };
+});
+
 /** Events in [from, to), read once per render per range. */
 export const eventsBetween = cache((from: ISODate, to: ISODate) =>
   db.event.findMany({ where: { date: { gte: parseISODate(from), lt: parseISODate(to) } }, select: { date: true, impact: true, kind: true } }),
@@ -201,7 +225,7 @@ export async function pastEventDays(from: ISODate, to: ISODate) {
 
 /** History for baselines: sales, open days, and open days minus event days (once per render per range). */
 const baselineHistory = cache(async (from: ISODate, to: ISODate) => {
-  const [h, events, method] = await Promise.all([dailySalesHistory(from, to), pastEventDays(from, to), storedMethod()]);
+  const [h, events, method] = await Promise.all([fullSalesHistory(from, to), pastEventDays(from, to), storedMethod()]);
   // When the replay favours it, a day with only a stray sale isn't an open day for the usual-day average.
   const refined = !!method?.refined;
   const open = refined ? realOpenDays(h.sales) : h.openDays;

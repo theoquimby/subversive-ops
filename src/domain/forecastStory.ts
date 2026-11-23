@@ -11,6 +11,7 @@ import type { UpcomingHoliday } from "./holidayEffect";
 import { HOLIDAY_LABEL } from "./holidays";
 import { onlineFactor, type SignalResult, type StoredSignal } from "./leadSignals";
 import type { WeatherEffects } from "./weatherEffect";
+import { forecastTrust, roundMoney } from "./forecastTrust";
 import { WEATHER_KIND_LABEL, type WeatherKind } from "./weatherHistory";
 
 export type StoryTone = "good" | "warn" | "bad" | "neutral";
@@ -56,8 +57,6 @@ const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
 const pct = (n: number) => `${Math.round(Math.abs(n) * 100)}%`;
 const dollars = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 const list = (items: string[]) => (items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`);
-/** Round to a figure someone would say out loud: nearest $25 under $500, else nearest $50. */
-const roundMoney = (n: number) => (n < 500 ? Math.round(n / 25) * 25 : Math.round(n / 50) * 50);
 
 /** Enough days in a group to say something about it. */
 export const STORY_MIN_DAYS = 20;
@@ -85,27 +84,13 @@ export function forecastStory(i: {
 }): ForecastStory | null {
   const all = i.all.f1;
   if (!all) return null;
-  const useRecent = (i.recent.f1?.days ?? 0) >= 30;
+  // How far to trust it: the one measure the Sales page shows too (src/domain/forecastTrust.ts).
+  const recentDays = i.recent.from ? i.days.filter((d) => d.date >= i.recent.from!) : [];
+  const avg = (list: readonly ScoreDay[]) => (list.length ? list.reduce((s, d) => s + d.actual, 0) / list.length : 0);
+  const t = forecastTrust({ recent: i.recent.f1, all, avgDay: { recent: avg(recentDays), all: avg(i.days) } })!;
+  const useRecent = t.basis === "recent";
   const basis = useRecent ? i.recent.f1! : all;
-  // A typical day's sales over the same stretch the verdict is about.
-  const pool = useRecent && i.recent.from ? i.days.filter((d) => d.date >= i.recent.from!) : i.days;
-  const avgDay = pool.length ? pool.reduce((s, d) => s + d.actual, 0) / pool.length : 0;
-  const missDollars = roundMoney(basis.wape * avgDay);
-  const closeInTen = Math.round(basis.within15 * 10);
-  const when = useRecent ? "Over the last 90 days" : "Over your history";
-
-  const level: ForecastStory["level"] = basis.wape <= 0.15 ? "trust" : basis.wape <= 0.3 ? "guide" : "rough";
-  const headline = level === "trust" ? "You can plan on the forecast" : level === "guide" ? "Use the forecast as a guide, and leave a cushion" : "Treat the forecast as a starting point, not a plan";
-  const line =
-    level === "trust"
-      ? `${when} a typical day landed within about ${dollars(missDollars)} of the forecast (${pct(basis.wape)}). Orders and schedules built on it are on solid ground.`
-      : level === "guide"
-        ? `${when} a typical day was off by about ${dollars(missDollars)} (${pct(basis.wape)}). Build orders and schedules on it, but leave room for a day that size either way.`
-        : `${when} a typical day was off by about ${dollars(missDollars)} (${pct(basis.wape)}), and only ${closeInTen} days in 10 landed close. Use it to see the shape of the week, then go by what you know.`;
-
-  const worse = useRecent && basis.wape >= all.wape * 1.2;
-  const better = useRecent && basis.wape <= all.wape * 0.8;
-  const trend = worse ? ` That's rougher than usual: over all your history it's ${pct(all.wape)}.` : better ? ` That's better than usual: over all your history it's ${pct(all.wape)}.` : "";
+  const { missDollars, closeInTen, when, level, headline } = t;
 
   const points: StoryPoint[] = [];
 
@@ -313,5 +298,5 @@ export function forecastStory(i: {
     .filter(Boolean)
     .join(" ");
 
-  return { level, headline, line: line + trend, missDollars, missShare: basis.wape, closeInTen, skill, basis: useRecent ? "recent" : "all", points: [...points].sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key)).slice(0, MAX_POINTS), next };
+  return { level, headline, line: t.line, missDollars, missShare: basis.wape, closeInTen, skill, basis: useRecent ? "recent" : "all", points: [...points].sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key)).slice(0, MAX_POINTS), next };
 }
