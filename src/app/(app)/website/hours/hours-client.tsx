@@ -115,7 +115,7 @@ function ContactCard({ contact, feed, phoneNote }: { contact: { name: string; ad
   return (
     <Card className="divide-y divide-border">
       {line("Name", contact.name, !!feed.name, "")}
-      {line("Address", contact.address, !!addr, "Write it as street, town, state zip — the website keeps its own until then")}
+      {line("Address", contact.address, !!addr, "Write it as street, town, state zip. The website keeps its own until then")}
       {line("Phone", contact.phone, !!phone, "Not a US number the website can call")}
       <div className="grid grid-cols-[5rem_1fr] items-center gap-2 px-3 py-1.5 text-sm">
         <span className="text-muted">Phone note</span>

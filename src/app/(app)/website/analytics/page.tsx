@@ -3,7 +3,9 @@ import { ArrowDownRight, ArrowUpRight, ChevronRight, MapPin, Search } from "luci
 import { HelpTip, HelpZone } from "@/components/help";
 import { Badge, Card, cx, EmptyState, LinkButton, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { EVENT_LABEL, MEDIUM_LABEL, parsePeriod, PERIODS, sourceLabel, type Medium } from "@/domain/webAnalytics";
-import { money, pct, shortDate } from "@/lib/format";
+import { RangeChips } from "../../online/bits";
+import { CHANNEL } from "../../online/channel";
+import { businessDateOf, money, pct, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { publicOrigin } from "@/server/services/public-url";
 import { db } from "@/server/db";
@@ -15,10 +17,11 @@ import { LinkToggle, RefreshButton, TrackingSetup } from "./client";
 
 export const metadata = { title: "Website analytics" };
 
-export default async function WebsiteAnalyticsPage({ searchParams }: { searchParams: Promise<{ p?: string }> }) {
+export default async function WebsiteAnalyticsPage({ searchParams }: { searchParams: Promise<{ range?: string; p?: string }> }) {
   await requireUser("MANAGER");
   const sp = await searchParams;
-  const periodId = parsePeriod(sp.p);
+  // ?range= like every Online page; ?p= from links saved before.
+  const periodId = parsePeriod(sp.range ?? sp.p);
   const [d, lastHit, ops, findings] = await Promise.all([webDashboard(periodId), db.webHit.findFirst({ orderBy: { at: "desc" }, select: { at: true } }), publicOrigin(), cachedWebFindings()]);
   const label = PERIODS.find((p) => p.id === periodId)!.label;
 
@@ -28,23 +31,18 @@ export default async function WebsiteAnalyticsPage({ searchParams }: { searchPar
         <p className="max-w-2xl text-sm text-muted">Who visits the website, where they come from, and what they do next: call, get directions, order, book or ask about a private event. No cookies, no tracking people.</p>
       </HelpZone>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3" data-tour="webanalytics.period">
-        <div className="flex flex-wrap items-center gap-1 rounded-lg bg-surface-2 p-1" role="group" aria-label="Period">
-          {PERIODS.map((p) => (
-            <Link key={p.id} href={p.id === "28d" ? "/website/analytics" : `/website/analytics?p=${p.id}`} scroll={false} aria-current={p.id === periodId ? "page" : undefined} className={cx("inline-flex h-10 items-center rounded-md px-3 text-sm font-medium transition-colors sm:h-8", p.id === periodId ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink")}>
-              {p.label}
-            </Link>
-          ))}
-        </div>
+        <RangeChips base="/website/analytics" range={periodId} />
         <div className="flex items-center gap-3 text-xs text-muted">
           <span>
-            {shortDate(d.from)} – {shortDate(d.to)} · compared with the {label} before
+            {shortDate(d.from)} to {shortDate(d.to)}, compared with the {label} before
           </span>
           <RefreshButton />
         </div>
       </div>
 
-      {!d.hasData ? (
-        <NoData d={d} lastHit={lastHit?.at ?? null} />
+      {/* An old test visit isn't tracking: with no visits in the period there is nothing to chart, only the setup. */}
+      {!d.hasData || d.kpis.sessions.cur === 0 ? (
+        <NoData d={d} lastHit={lastHit?.at ?? null} label={label} />
       ) : (
         <>
           <Kpis d={d} label={label} />
@@ -134,7 +132,7 @@ function Funnel({ d }: { d: WebDashboard }) {
                 <span className="num shrink-0 font-semibold">{n0(s.value)}</span>
               </div>
               <div className="mt-1.5 h-7 w-full rounded-md" style={{ background: "color-mix(in oklab, var(--ink) 6%, var(--surface))" }}>
-                <div className="flex h-full items-center rounded-md px-2 text-xs font-medium text-white" style={{ width: `${first ? Math.max(3, (s.value / first) * 100) : 0}%`, background: i === 0 ? "color-mix(in oklab, var(--series-1) 45%, var(--surface))" : i === 1 ? "color-mix(in oklab, var(--series-1) 72%, var(--surface))" : "var(--series-1)" }}>
+                <div className="flex h-full items-center rounded-md px-2 text-xs font-medium" style={{ width: `${first ? Math.max(3, (s.value / first) * 100) : 0}%`, background: i === 0 ? `color-mix(in oklab, ${CHANNEL.website} 40%, var(--surface))` : i === 1 ? `color-mix(in oklab, ${CHANNEL.website} 70%, var(--surface))` : CHANNEL.website, color: i === 0 ? "var(--ink)" : "#fff" }}>
                   {s.ofStart != null && s.ofStart >= 0.12 ? pct(s.ofStart, 0) : ""}
                 </div>
               </div>
@@ -180,7 +178,7 @@ function Sources({ d }: { d: WebDashboard }) {
   const max = Math.min(1, Math.max(overall * 2.2, ...d.sources.map((s) => (s.vsAll === "few" ? 0 : (s.high ?? 0)))) * 1.05) || 0.1;
   const top = d.sources[0]?.sessions ?? 0;
   return (
-    <Section title="Where visits come from" description="Each visit is credited to where it started. The dot is the share of visits that took an action; the band is its likely range; the thin line is the whole site." help="website.analytics.sources">
+    <Section title="Where visits come from" description="Each visit is credited to where it started. The dot is how often visits from there took an action, the shaded band is how sure that is (wider means fewer visits), and the thin line is the whole site." help="website.analytics.sources">
       <div id="sources" className="scroll-mt-20" data-tour="webanalytics.sources">
         <Table>
           <thead>
@@ -218,7 +216,7 @@ function Sources({ d }: { d: WebDashboard }) {
             ))}
           </tbody>
         </Table>
-        <p className="mt-2 text-xs text-muted">“Better” and “Lower” only show when the difference is bigger than chance ({pct(overall, 1)} of all visits act). Under 30 visits is too few to judge.</p>
+        <p className="mt-2 text-xs text-muted">“Better” and “Lower” only show when the difference is too big to be luck ({pct(overall, 1)} of all visits act). Under 30 visits is too few to judge.</p>
         {d.campaigns.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2 text-xs">
             <span className="text-muted">Tagged links:</span>
@@ -254,7 +252,7 @@ function Pages({ d }: { d: WebDashboard }) {
           {d.pages.map((p) => (
             <Tr key={p.path}>
               <Td className="max-w-[10rem] sm:max-w-none">
-                <div className="truncate font-mono text-[0.8rem]">{p.path}</div>
+                <div className="truncate text-[0.85rem]">{p.path === "/" ? "Home page" : p.path}</div>
                 <ShareBar value={p.views} max={max} className="mt-1 max-w-32" />
               </Td>
               <Td align="right">{n0(p.views)}</Td>
@@ -286,7 +284,7 @@ function EventPages({ d }: { d: WebDashboard }) {
         <tbody>
           {d.eventPages.map((e) => (
             <Tr key={e.path}>
-              <Td className="max-w-[11rem] truncate font-mono text-[0.8rem] sm:max-w-none">{e.path.replace(/^\/events\//, "")}</Td>
+              <Td className="max-w-[11rem] truncate text-[0.85rem] sm:max-w-none">{e.path.replace(/^\/events\//, "")}</Td>
               <Td align="right">{n0(e.views)}</Td>
               <Td align="right">{n0(e.tickets)}</Td>
               <Td align="right" className="hidden sm:table-cell">{n0(e.rsvps)}</Td>
@@ -363,7 +361,8 @@ function SalesLink({ d }: { d: WebDashboard }) {
             </div>
           )}
           <p className="mt-3 text-xs text-muted">
-            How we worked this out: log of each day&apos;s Square sales against the day&apos;s website actions, with a separate level for each weekday and a straight-line trend; event days and closed days left out; it only counts when the 90% range for the effect is clear of zero over at least 8 weeks of days. Even then it shows the two move together, not that one causes the other.
+            Each day&apos;s sales are set against that day&apos;s website actions, Mondays with Mondays and so on, leaving out event days and closed days. It needs at least 8 weeks of days to say anything, and even then it shows the two move together, not that one causes the other.{" "}
+            <HelpTip id="website.analytics.salesLink" />
           </p>
         </Card>
       </div>
@@ -443,13 +442,17 @@ function Google() {
   );
 }
 
-function NoData({ d, lastHit }: { d: WebDashboard; lastHit: Date | null }) {
+function NoData({ d, lastHit, label }: { d: WebDashboard; lastHit: Date | null; label: string }) {
+  const title = !d.origins.length ? "Tell the app the website's address" : lastHit ? `No visits in the last ${label}` : "Waiting for the first visit";
+  const body = !d.origins.length
+    ? "Add the website's address on the Website overview (or below), then add the snippet to the website."
+    : lastHit
+      ? `The last visit arrived ${shortDate(businessDateOf(lastHit))}. The website has probably lost its small analytics snippet: put it back (below) and visits show here within a minute.`
+      : "The website needs the small analytics snippet (below). Visits show here within a minute of it going live. Nothing has arrived yet.";
   return (
     <div className="mb-10">
-      <EmptyState title={d.origins.length ? "Waiting for the first visit" : "Tell the app the website's address"} action={<LinkButton href="#tracking" variant="primary">See the setup</LinkButton>}>
-        {d.origins.length
-          ? `The website needs the small analytics snippet (below). Visits show here within a minute of it going live.${lastHit ? "" : " Nothing has arrived yet."}`
-          : "Add the website's address on the Website overview (or below), then add the snippet to the website."}
+      <EmptyState title={title} action={<LinkButton href="#tracking" variant="primary">See the setup</LinkButton>}>
+        {body}
       </EmptyState>
       <HelpTip id="website.analytics.setup" className="mt-2" />
     </div>

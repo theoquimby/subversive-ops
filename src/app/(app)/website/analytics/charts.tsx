@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { cx } from "@/components/ui";
+import { Numbers } from "@/components/chapter";
+import { cx, Table, Td, Th, Tr } from "@/components/ui";
+import { CHANNEL } from "../../online/channel";
 
 /**
  * Hand-built SVG charts for website analytics, in the app's chart language:
  * 2px lines, ≤ 10px bars with a rounded data end, a recessive hairline grid,
- * one accent hue (--series-1) for "this period" and neutral grey for context,
- * a crosshair + tooltip on hover (tap on phones), and a hidden table twin for
- * screen readers. One axis per chart, always.
+ * the website's channel colour (the same as on Online) for "this period" and
+ * neutral grey for context, a crosshair + tooltip on hover (tap on phones), and
+ * the same numbers in a table folded under the chart. One axis per chart, always.
  */
 
-const ACCENT = "var(--series-1)";
+const ACCENT = CHANNEL.website;
 const CONTEXT = "color-mix(in oklab, var(--ink) 30%, var(--surface))";
 const CONTEXT_SOFT = "color-mix(in oklab, var(--ink) 12%, var(--surface))";
 
@@ -51,19 +53,30 @@ function Tip({ x, w, children }: { x: number; w: number; children: ReactNode }) 
   );
 }
 
-function SrTable({ caption, head, rows }: { caption: string; head: string[]; rows: (string | number)[][] }) {
+/** The chart's numbers, folded under it: there for a screen reader or a curious eye, out of everyone else's way. */
+function DayTable({ caption, head, rows }: { caption: string; head: string[]; rows: (string | number)[][] }) {
   return (
-    <table className="sr-only">
-      <caption>{caption}</caption>
-      <thead>
-        <tr>{head.map((h) => <th key={h} scope="col">{h}</th>)}</tr>
-      </thead>
-      <tbody>
-        {rows.map((r, i) => (
-          <tr key={i}>{r.map((c, j) => (j === 0 ? <th key={j} scope="row">{c}</th> : <td key={j}>{c}</td>))}</tr>
-        ))}
-      </tbody>
-    </table>
+    <Numbers label="Day by day">
+      <Table>
+        <caption className="sr-only">{caption}</caption>
+        <thead>
+          <tr>
+            {head.map((h, j) => (
+              <Th key={h} align={j === 0 ? "left" : "right"}>{h}</Th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <Tr key={i}>
+              {r.map((c, j) => (
+                <Td key={j} align={j === 0 ? "left" : "right"} className={j === 0 ? "text-ink-2" : "num text-ink"}>{c}</Td>
+              ))}
+            </Tr>
+          ))}
+        </tbody>
+      </Table>
+    </Numbers>
   );
 }
 
@@ -99,6 +112,7 @@ export function TrendChart({ points, label, prevLabel, height = 200, money = fal
   const area = `${path((p) => p.cur)} L${sx(n - 1).toFixed(1)},${sy(0)} L${sx(0).toFixed(1)},${sy(0)} Z`;
   const hasPrev = points.some((p) => p.prev != null && p.prev > 0);
   const fmt = money ? fmtMoney : fmtNum;
+  const exact = (v: number) => `${money ? "$" : ""}${Math.round(v).toLocaleString("en-US")}`;
   const step = n > 1 ? (w - pad.l - pad.r) / (n - 1) : w;
   const h = hover == null ? null : points[hover];
   const ticks = [0, max / 2, max];
@@ -110,18 +124,18 @@ export function TrendChart({ points, label, prevLabel, height = 200, money = fal
         <svg width={w} height={H} className="block" aria-hidden>
           <defs>
             <linearGradient id="wa-area" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0" stopColor="var(--series-1)" stopOpacity="0.16" />
-              <stop offset="1" stopColor="var(--series-1)" stopOpacity="0" />
+              <stop offset="0" stopColor={ACCENT} stopOpacity="0.16" />
+              <stop offset="1" stopColor={ACCENT} stopOpacity="0" />
             </linearGradient>
           </defs>
           {ticks.map((t) => (
             <g key={t}>
               <line x1={pad.l} x2={w - pad.r} y1={sy(t)} y2={sy(t)} stroke="var(--border)" />
-              <text x={pad.l - 6} y={sy(t)} dy="0.32em" textAnchor="end" className="num fill-muted text-[10.5px]">{fmt(t)}</text>
+              <text x={pad.l - 6} y={sy(t)} dy="0.32em" textAnchor="end" className="num fill-muted text-[11px]">{fmt(t)}</text>
             </g>
           ))}
           {xl.map((i) => (
-            <text key={i} x={sx(i)} y={H - 5} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} className="fill-muted text-[10.5px]">{fmtDay(points[i].x)}</text>
+            <text key={i} x={sx(i)} y={H - 5} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} className="fill-muted text-[11px]">{fmtDay(points[i].x)}</text>
           ))}
           {n > 1 && <path d={area} fill="url(#wa-area)" />}
           {hasPrev && <path d={path((p) => p.prev ?? null)} fill="none" stroke={CONTEXT} strokeWidth={1.5} strokeDasharray="3 3" strokeLinejoin="round" />}
@@ -149,7 +163,7 @@ export function TrendChart({ points, label, prevLabel, height = 200, money = fal
         <Key>{label}</Key>
         {hasPrev && <Key dashed color={CONTEXT}>{prevLabel ?? "Previous period"}</Key>}
       </figcaption>
-      <SrTable caption={label} head={["Day", label, ...(hasPrev ? ["Previous period"] : [])]} rows={points.map((p) => [p.x, p.cur, ...(hasPrev ? [p.prev ?? ""] : [])])} />
+      <DayTable caption={label} head={["Day", label, ...(hasPrev ? [prevLabel ?? "The period before"] : [])]} rows={points.map((p) => [fmtDay(p.x, true), exact(p.cur), ...(hasPrev ? [p.prev != null ? exact(p.prev) : "—"] : [])])} />
     </figure>
   );
 }
@@ -175,20 +189,20 @@ export function LinkChart({ days, what }: { days: { x: string; sales: number | n
     <figure className="min-w-0">
       <div ref={ref} className="relative w-full select-none" onMouseLeave={() => setHover(null)}>
         <svg width={w} height={H} className="block" aria-hidden>
-          <text x={pad.l} y={top1 - 4} className="fill-muted text-[10.5px] font-medium">Square sales a day</text>
+          <text x={pad.l} y={top1 - 4} className="fill-muted text-[11px] font-medium">Square sales a day</text>
           <line x1={pad.l} x2={w - pad.r} y1={top1 + band} y2={top1 + band} stroke="var(--border)" />
-          <text x={pad.l - 6} y={top1 + 6} dy="0.32em" textAnchor="end" className="num fill-muted text-[10.5px]">{fmtMoney(sMax)}</text>
+          <text x={pad.l - 6} y={top1 + 6} dy="0.32em" textAnchor="end" className="num fill-muted text-[11px]">{fmtMoney(sMax)}</text>
           {days.map((v, i) =>
             v.sales ? <rect key={`s${v.x}`} x={x(i) + (bw > 3 ? 0.5 : 0)} y={top1 + band - (v.sales / sMax) * band} width={Math.max(0.8, bw - (bw > 3 ? 1 : 0))} height={(v.sales / sMax) * band} rx={bw > 4 ? 1.5 : 0} fill={hover === i ? "var(--ink-2)" : v.event ? CONTEXT_SOFT : CONTEXT} /> : null,
           )}
-          <text x={pad.l} y={top2 - 4} className="fill-muted text-[10.5px] font-medium">{what[0].toUpperCase() + what.slice(1)} on the website</text>
+          <text x={pad.l} y={top2 - 4} className="fill-muted text-[11px] font-medium">{what[0].toUpperCase() + what.slice(1)} on the website</text>
           <line x1={pad.l} x2={w - pad.r} y1={top2 + band} y2={top2 + band} stroke="var(--border)" />
-          <text x={pad.l - 6} y={top2 + 6} dy="0.32em" textAnchor="end" className="num fill-muted text-[10.5px]">{fmtNum(aMax)}</text>
+          <text x={pad.l - 6} y={top2 + 6} dy="0.32em" textAnchor="end" className="num fill-muted text-[11px]">{fmtNum(aMax)}</text>
           {days.map((v, i) => (v.actions ? <rect key={`a${v.x}`} x={x(i) + (bw > 3 ? 0.5 : 0)} y={top2 + band - (v.actions / aMax) * band} width={Math.max(0.8, bw - (bw > 3 ? 1 : 0))} height={(v.actions / aMax) * band} rx={bw > 4 ? 1.5 : 0} fill={ACCENT} opacity={hover == null || hover === i ? 1 : 0.55} /> : null))}
           {n > 1 && (
             <>
-              <text x={pad.l} y={H - 4} className="fill-muted text-[10.5px]">{fmtDay(days[0].x)}</text>
-              <text x={w - pad.r} y={H - 4} textAnchor="end" className="fill-muted text-[10.5px]">{fmtDay(days[n - 1].x)}</text>
+              <text x={pad.l} y={H - 4} className="fill-muted text-[11px]">{fmtDay(days[0].x)}</text>
+              <text x={w - pad.r} y={H - 4} textAnchor="end" className="fill-muted text-[11px]">{fmtDay(days[n - 1].x)}</text>
             </>
           )}
           {days.map((v, i) => (
@@ -203,7 +217,7 @@ export function LinkChart({ days, what }: { days: { x: string; sales: number | n
           </Tip>
         )}
       </div>
-      <SrTable caption={`Square sales and ${what} by day`} head={["Day", "Sales", what]} rows={days.map((v) => [v.x, v.sales ?? 0, v.actions])} />
+      <DayTable caption={`Square sales and ${what} by day`} head={["Day", "Sales", what[0].toUpperCase() + what.slice(1)]} rows={days.map((v) => [fmtDay(v.x, true), v.sales ? `$${Math.round(v.sales).toLocaleString("en-US")}` : "Closed", v.actions])} />
     </figure>
   );
 }
@@ -214,10 +228,10 @@ export function RateRange({ rate, low, high, overall, max }: { rate: number | nu
   if (rate == null) return <span className="text-muted">—</span>;
   const pos = (v: number) => `${Math.min(100, (v / max) * 100)}%`;
   return (
-    <div className="relative h-4 w-full min-w-24" role="img" aria-label={`${Math.round(rate * 100)}%, likely ${Math.round((low ?? rate) * 100)}–${Math.round((high ?? rate) * 100)}%`}>
+    <div className="relative h-4 w-full min-w-24" role="img" aria-label={`${Math.round(rate * 100)}%, likely between ${Math.round((low ?? rate) * 100)}% and ${Math.round((high ?? rate) * 100)}%`}>
       <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border" />
       <div className="absolute top-0.5 bottom-0.5 w-px bg-ink-2/50" style={{ left: pos(overall) }} title="Whole site" />
-      {low != null && high != null && <div className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full" style={{ left: pos(low), width: `calc(${pos(high)} - ${pos(low)})`, background: "color-mix(in oklab, var(--series-1) 35%, var(--surface))" }} />}
+      {low != null && high != null && <div className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full" style={{ left: pos(low), width: `calc(${pos(high)} - ${pos(low)})`, background: `color-mix(in oklab, ${ACCENT} 35%, var(--surface))` }} />}
       <div className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface" style={{ left: pos(rate), background: ACCENT }} />
     </div>
   );

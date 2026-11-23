@@ -637,19 +637,25 @@ export interface Period {
   days: number;
 }
 
+/** The same periods as Online (whole weeks), so the two pages always show the same days. */
 export const PERIODS = [
   { id: "7d", label: "7 days", days: 7 },
   { id: "28d", label: "28 days", days: 28 },
-  { id: "90d", label: "90 days", days: 90 },
-  { id: "365d", label: "12 months", days: 365 },
+  { id: "3m", label: "3 months", days: 91 },
+  { id: "12m", label: "12 months", days: 364 },
 ] as const;
 export type PeriodId = (typeof PERIODS)[number]["id"];
-export const parsePeriod = (s: string | null | undefined): PeriodId => (PERIODS.some((p) => p.id === s) ? (s as PeriodId) : "28d");
+/** Links saved before the periods matched Online. */
+const OLD_PERIOD: Record<string, PeriodId> = { "90d": "3m", "365d": "12m" };
+export const parsePeriod = (s: string | null | undefined): PeriodId => (PERIODS.some((p) => p.id === s) ? (s as PeriodId) : (s && OLD_PERIOD[s]) || "28d");
 
-/** The chosen window ending yesterday or today, and the same-length window just before it. */
+/**
+ * The chosen window ending yesterday (today is only part of a day, and a part-day reads as a
+ * drop), the same as Online, and the same-length window just before it.
+ */
 export function periods(id: PeriodId, today: ISODate): { cur: Period; prev: Period } {
   const days = PERIODS.find((p) => p.id === id)!.days;
-  const to = today;
+  const to = addDays(today, -1);
   const from = addDays(to, -(days - 1));
   const pto = addDays(from, -1);
   return { cur: { from, to, days }, prev: { from: addDays(pto, -(days - 1)), to: pto, days } };
