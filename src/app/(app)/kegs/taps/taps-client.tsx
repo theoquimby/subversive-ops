@@ -3,12 +3,12 @@
 import { GridSelect } from "@/components/grid";
 import { Badge, Button, Card, cx } from "@/components/ui";
 import { displayCode, sinceLabel } from "@/domain/kegs";
-import { abvText, BADGE_LABEL, priceText } from "@/domain/taps";
+import { abvText, BADGE_LABEL, priceText, tapLevel } from "@/domain/taps";
 import type { TapList, TapListRow } from "@/server/services/taps";
 import { ArrowDown, ArrowUp, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
-import { BeerDot, daysText, LeftBar, pctText, sizeShort } from "../bits";
+import { BeerDot, LeftBar, sizeShort } from "../bits";
 import { moveTap, resetTapOrder, setAutoComingSoon } from "./actions";
 
 export function TapListView({ rows, free, manager }: { rows: TapListRow[]; free: number[]; manager: boolean }) {
@@ -38,7 +38,9 @@ export function TapListView({ rows, free, manager }: { rows: TapListRow[]; free:
   return (
     <>
       <Card className="divide-y divide-border">
-        {ordered.map((t, i) => (
+        {ordered.map((t, i) => {
+          const level = tapLevel(t);
+          return (
           <div key={t.kegId} className="flex items-start gap-3 px-3 py-3 sm:px-4">
             <span className="num mt-0.5 grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-surface-2 text-sm font-semibold" title={`Tap ${t.line}`}>
               {t.line}
@@ -47,22 +49,20 @@ export function TapListView({ rows, free, manager }: { rows: TapListRow[]; free:
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <BeerDot color={t.color} />
                 <span className="min-w-0 truncate font-medium">{t.beer}</span>
-                {t.badge && <Badge tone={t.badge === "almost" ? "warn" : "good"}>{BADGE_LABEL[t.badge]}</Badge>}
-                {t.overdue && <Badge tone="bad">Should have kicked</Badge>}
+                {t.badge === "new" && <Badge tone="neutral">{BADGE_LABEL.new}</Badge>}
               </div>
               <div className="mt-0.5 truncate text-xs text-muted">
-                {[t.style, abvText(t.abv), t.ibu != null ? `${t.ibu} IBU` : null, t.diet].filter(Boolean).join(" · ") || <span>No style or ABV yet{manager ? " — add them on Beers" : ""}</span>}
+                {[t.style, abvText(t.abv), t.ibu != null ? `${t.ibu} IBU` : null, t.diet].filter(Boolean).join(" · ") || <span>No style or ABV yet{manager ? ": add them on Beers" : ""}</span>}
               </div>
               <div className="mt-1.5 max-w-md"><LeftBar pct={t.pctLeft} color={t.color} /></div>
               <div className="num mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">
-                <span className={t.badge === "almost" ? "font-medium text-warn" : ""}>{pctText(t.pctLeft)}</span>
-                {daysText(t.daysLeft) && <span>{daysText(t.daysLeft)}</span>}
+                <span className={level.tone === "warn" ? "font-medium text-warn" : ""}>{level.text}</span>
                 {t.tappedAt && <span>on {sinceLabel(new Date(t.tappedAt))}</span>}
                 <span className={t.backups === 0 ? "text-bad" : ""}>{t.backups} full behind it</span>
                 <span className="hidden sm:inline">{sizeShort(t.sizeId)} · {displayCode(t.kegCode)}</span>
               </div>
               <div className="num mt-1 flex flex-wrap gap-x-3 text-sm">
-                {t.pours.length ? t.pours.map((p) => <span key={p.label}><span className="text-muted">{p.label}</span> {priceText(p.price)}</span>) : <span className="text-xs text-muted">No prices{manager ? " — link Square items or type them on Beers" : ""}</span>}
+                {t.pours.length ? t.pours.map((p) => <span key={p.label}><span className="text-muted">{p.label}</span> {priceText(p.price)}</span>) : <span className="text-xs text-muted">No prices{manager ? ": link Square items or type them on Beers" : ""}</span>}
               </div>
               {manager && t.square && (
                 <div className={cx("mt-1 text-xs", t.square.tone === "good" ? "text-muted" : t.square.tone === "bad" ? "text-bad" : t.square.tone === "warn" ? "text-warn" : "text-muted")}>
@@ -77,7 +77,8 @@ export function TapListView({ rows, free, manager }: { rows: TapListRow[]; free:
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
         {free.length > 0 && (
           <div className="px-4 py-2.5 text-sm text-muted">Free: {free.map((l) => `tap ${l}`).join(", ")}</div>
         )}

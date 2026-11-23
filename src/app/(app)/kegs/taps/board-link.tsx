@@ -21,7 +21,7 @@ export function BoardLink({ url: initial, title, embedUrl }: { url: string; titl
       setCopied(what);
       setTimeout(() => setCopied(null), 1600);
     } catch {
-      setError("Couldn't copy — select the link and copy it by hand.");
+      setError("Couldn't copy. Select the link and copy it by hand.");
     }
   };
 
@@ -42,7 +42,7 @@ export function BoardLink({ url: initial, title, embedUrl }: { url: string; titl
     <div className="rounded-xl border border-border bg-surface">
       <div className="border-b border-border px-4 py-3">
         <div className="text-sm font-medium">TV link</div>
-        <p className="mt-0.5 text-xs text-muted">Open it in the TV's browser (Fire TV Silk, a smart TV, or a Chromecast tab). No sign-in needed — keep it private, anyone with it can see the board.</p>
+        <p className="mt-0.5 text-xs text-muted">Open it in the TV's browser (Fire TV Silk, a smart TV, or a Chromecast tab). No sign-in needed, so keep it private: anyone with it can see the board.</p>
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
           <code className="min-w-0 flex-1 basis-60 truncate rounded-md bg-surface-2 px-2.5 py-2 text-xs" title={url}>{url}</code>
           <div className="flex flex-wrap gap-2">

@@ -1,5 +1,5 @@
 import { ShowMore } from "@/components/show-more";
-import { Badge, Card, cx, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
+import { Badge, Card, cx, LinkButton, PageHeader, Section } from "@/components/ui";
 import { daysBetween } from "@/domain/dates";
 import { money, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
@@ -52,12 +52,23 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       />
       <SplitLinks from={b.splitFrom} into={b.splits} />
 
-      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Volume" value={bblText(b.bbl)} hint={b.bbl ? `about ${Math.round(b.bbl * 248)} pints` : undefined} />
-        <Stat label="ABV" value={abvText(b.abv)} hint={`OG ${gravityIn(b.og, d.unit)} · FG ${gravityIn(b.fg, d.unit)}`} />
-        <Stat label="Ingredient cost" value={b.cost != null ? money(b.cost, { whole: true }) : "Not known yet"} hint={b.cost != null ? "Worked out on brew day" : b.status === "PLANNED" ? "Worked out on brew day" : "Type it in below if you know it"} />
-        <Stat label="Cost per pint" value={b.costPerPint != null ? money(b.costPerPint) : "—"} hint="Ingredients only" />
-      </div>
+      {/* The brew's facts as one strip, not a row of tiles: they describe it, none is the headline. */}
+      <Card className="mb-10 p-4 sm:p-5">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-4">
+          {[
+            { label: "Volume", value: bblText(b.bbl), hint: b.bbl ? `about ${Math.round(b.bbl * 248)} pints` : "Not set yet", known: b.bbl != null },
+            { label: "ABV", value: b.abv != null ? abvText(b.abv) : "Not known yet", hint: b.og != null || b.fg != null ? `OG ${gravityIn(b.og, d.unit)} · FG ${gravityIn(b.fg, d.unit)}` : "From the gravity readings", known: b.abv != null },
+            { label: "Ingredient cost", value: b.cost != null ? money(b.cost, { whole: true }) : "Not known yet", hint: b.cost != null || b.status === "PLANNED" ? "Worked out on brew day" : "Type it in below if you know it", known: b.cost != null },
+            { label: "Cost per pint", value: b.costPerPint != null ? money(b.costPerPint) : "Not known yet", hint: b.costPerPint != null ? "Ingredients only" : "From the ingredient cost and volume", known: b.costPerPint != null },
+          ].map((s) => (
+            <div key={s.label} className="min-w-0">
+              <dt className="text-xs text-muted">{s.label}</dt>
+              <dd className={cx("num mt-0.5 text-lg font-semibold tracking-tight", s.known ? "text-ink" : "text-muted")}>{s.value}</dd>
+              <dd className="mt-0.5 text-xs text-muted">{s.hint}</dd>
+            </div>
+          ))}
+        </dl>
+      </Card>
 
       {live && (
         <Section title="Planned days" description="Dry hop and release from its timing; transfers and packaging are the tank dates below.">

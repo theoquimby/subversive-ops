@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   boardLayout,
+  tapLevel,
   burnInOffset,
   comingSoon,
   formatBoardPours,
@@ -180,5 +181,26 @@ describe("Square check", () => {
   });
   it("is happy when everything lines up", () => {
     expect(squareCheck([link({ menuPrice: 8 }), link({ variation: "Half Pour", squarePrice: 5 })], null, true)).toEqual({ tone: "good", text: "In Square · 2 pours" });
+  });
+});
+
+describe("one level signal per tap", () => {
+  it("says should have kicked, and nothing else, when more was poured than the keg holds", () => {
+    expect(tapLevel({ pctLeft: 0, daysLeft: 0, overdue: true })).toEqual({ text: "Should have kicked by now: check it", tone: "warn", almost: true });
+  });
+  it("says nearly out once it's nearly empty or won't last the day", () => {
+    expect(tapLevel({ pctLeft: 0.02, daysLeft: 3, overdue: false })).toEqual({ text: "Nearly out", tone: "warn", almost: true });
+    expect(tapLevel({ pctLeft: 0.3, daysLeft: 0.5, overdue: false })).toEqual({ text: "Nearly out", tone: "warn", almost: true });
+  });
+  it("says almost gone with the share and days left below the almost-gone line", () => {
+    expect(tapLevel({ pctLeft: 0.1, daysLeft: 2.2, overdue: false })).toEqual({ text: "Almost gone: ~10% left, ~2 days", tone: "warn", almost: true });
+  });
+  it("gives the share and days left otherwise, calmly", () => {
+    expect(tapLevel({ pctLeft: 0.62, daysLeft: 6, overdue: false })).toEqual({ text: "~60% left, ~6 days", tone: "neutral", almost: false });
+    expect(tapLevel({ pctLeft: 0.62, daysLeft: null, overdue: false })).toEqual({ text: "~60% left", tone: "neutral", almost: false });
+    expect(tapLevel({ pctLeft: 0.5, daysLeft: 1.2, overdue: false }).text).toBe("~50% left, ~1 day");
+  });
+  it("says it can't tell when there's no estimate", () => {
+    expect(tapLevel({ pctLeft: null, daysLeft: null, overdue: false })).toEqual({ text: "Level not known yet", tone: "unknown", almost: false });
   });
 });

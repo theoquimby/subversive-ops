@@ -31,7 +31,7 @@ export default async function KegOrderPage({ params }: { params: Promise<{ id: s
         back={{ href: "/kegs/orders", label: "Orders" }}
         description={
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <OrderStatusBadge status={o.status} />
+            <OrderStatusBadge status={o.status} short={!p.complete} />
             <span>{transitLabel(o.transit)}</span>
             {open && <DueBadge dueOn={o.dueOn} today={o.today} />}
             <span className="num">{progressLabel(p)} sent</span>

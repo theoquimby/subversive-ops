@@ -54,7 +54,7 @@ export default async function KegSetupPage() {
   const kc = new Map(kegCounts.map((k) => [k.beerId, k._count._all]));
   return (
     <>
-      <PageHeader help="kegs.setup" title="Keg setup" back={{ href: "/kegs", label: "Kegs" }} description="Beers and the Square items that pour them, spots in the walk-in, tap lines, pour sizes and accounts." />
+      <PageHeader help="kegs.setup" title="Keg setup" description="Beers and the Square items that pour them, spots in the walk-in, tap lines, pour sizes and accounts." />
 
       <CoreHelperSection />
 

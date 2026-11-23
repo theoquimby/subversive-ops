@@ -234,6 +234,14 @@ function timesTypical(bw: BestWorst): string | null {
   return `about ${ratio >= 3 ? Math.round(ratio) : Math.round(ratio * 2) / 2} times`;
 }
 
+/** The period's standout post as a heading: how far past a typical post it went, or just that it went furthest. */
+export function postHeadline(bw: BestWorst | null, channel: SocialChannel): string | null {
+  if (!bw) return null;
+  const times = timesTypical(bw);
+  const name = postName(bw.best);
+  return `${name[0].toUpperCase()}${name.slice(1)} reached ${times ? `${times} a typical post` : `the most ${SOCIAL[channel].audience}`}`;
+}
+
 /** The best and worst post of the period, in a sentence or two. */
 export function postCallout(bw: BestWorst | null, period: string, channel: SocialChannel): string | null {
   if (!bw) return null;

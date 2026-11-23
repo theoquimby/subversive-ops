@@ -1,4 +1,5 @@
-import { Badge, Card, EmptyState, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
+import { Verdict } from "@/components/chapter";
+import { Badge, Card, EmptyState, LinkButton, PageHeader, Section } from "@/components/ui";
 import { shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { beerCosts, beerDemand, type BeerDemandRow } from "@/server/services/kegs";
@@ -13,7 +14,7 @@ import { MonthBars, WeeklyPints } from "./chart";
 export const metadata = { title: "Demand per beer" };
 
 const r1 = (n: number) => (n < 10 ? Math.round(n * 10) / 10 : Math.round(n));
-const range = (lo: number, hi: number) => (Math.round(lo) === Math.round(hi) ? `${Math.round(lo)}` : `${Math.round(lo)}–${Math.round(hi)}`);
+const range = (lo: number, hi: number) => (Math.round(lo) === Math.round(hi) ? `${Math.round(lo)}` : `${Math.round(lo)} to ${Math.round(hi)}`);
 
 type Cost = Awaited<ReturnType<typeof beerCosts>> extends Map<string, infer V> ? V : never;
 
@@ -31,23 +32,28 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
   const rotation = rows.filter((r) => r.standing === "rotation").sort((a, z) => z.onTap - a.onTap || z.full - a.full || a.name.localeCompare(z.name));
   const retired = rows.filter((r) => r.standing === "retired").sort((a, z) => a.name.localeCompare(z.name));
   const short = core.filter((r) => r.plan.toFill > 0);
+  const toFill = short.reduce((s, r) => s + r.plan.toFill, 0);
+  const names = short.slice(0, 3).map((r) => r.name).join(", ") + (short.length > 3 ? ` and ${short.length - 3} more` : "");
   return (
     <>
       <PageHeader
         help="kegs.demand"
         title="Demand per beer"
-        back={{ href: "/kegs", label: "Kegs" }}
         description="Pints a week from Square and the next four weeks. For core beers, full kegs on hand against what you'll need, so you know what to fill next."
       />
 
       <CoreHelperSection />
 
-      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Core beers to fill" value={short.length} tone={short.length ? "warn" : core.length ? "good" : undefined} hint={short.length ? short.slice(0, 3).map((r) => r.name).join(", ") : core.length ? "Every core beer covered for two weeks" : "No core beers picked yet"} />
-        <Stat label="Kegs to fill" value={short.reduce((s, r) => s + r.plan.toFill, 0)} hint="To cover the next two weeks at the busy end" />
-        <Stat label="Pints per 1/2 bbl" value={`~${Math.round(yi.pintsPerHalf)}`} hint={yi.measured ? `From ${yi.samples} kicked kegs` : "Assumed until kegs kick"} help="kegs.yield" />
-        <Stat label="History" value={from ? shortDate(from) : "—"} hint={seasonal ? "Allows for the time of year" : "Under a year: no seasons yet"} />
-      </div>
+      <Verdict
+        badge={short.length ? { tone: "warn" } : core.length ? { tone: "good" } : undefined}
+        title={short.length ? `Fill ${toFill} keg${toFill === 1 ? "" : "s"} for ${short.length === 1 ? "one core beer" : `${short.length} core beers`}: ${names}` : core.length ? "Every core beer is covered for the next two weeks" : "Pick your core beers to get a fill plan"}
+        line={short.length ? "Enough to cover the next two weeks at the busy end. Each beer below says how many and why." : core.length ? "Nothing to fill yet. The beers below show how fast each is pouring." : "Core beers are the ones you never want to run out of; this page plans their fills."}
+        stats={[
+          { label: "Kegs to fill", value: toFill, tone: toFill ? "warn" : "neutral", hint: "To cover the next two weeks" },
+          { label: "Pints per 1/2 bbl", value: `~${Math.round(yi.pintsPerHalf)}`, hint: yi.measured ? `From ${yi.samples} kicked kegs` : "Assumed until kegs kick" },
+          { label: "Sales history from", value: from ? shortDate(from) : "Not in yet", tone: from ? "neutral" : "unknown", hint: seasonal ? "Allows for the time of year" : "Under a year: no seasons yet" },
+        ]}
+      />
 
       {rows.length === 0 ? (
         <EmptyState title="No beers yet" action={<LinkButton href="/kegs/setup" variant="primary">Add beers</LinkButton>}>Add your beers on Setup and say which Square items pour them. Demand comes from Square sales.</EmptyState>

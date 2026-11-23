@@ -30,7 +30,7 @@ export default async function KegHistory({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      <PageHeader help="kegs.history" title="Keg history" back={{ href: "/kegs", label: "Kegs" }} description="Every scan and change: who, when, and from where to where. Nothing here is ever deleted; undone entries are struck through. Search for a keg's code or old sticker to see just that keg." />
+      <PageHeader help="kegs.history" title="Keg history" description="Every scan and change: who, when, and from where to where. Nothing here is ever deleted; undone entries are struck through. Search for a keg's code or old sticker to see just that keg." />
       {shownKeg && (
         <p className="mb-3 text-sm text-ink-2">
           Showing keg <Link href={`/kegs/k/${shownKeg.code}`} className="num font-medium hover:underline">{displayCode(shownKeg.code)}</Link>

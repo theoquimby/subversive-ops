@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Card, cx, DatePicker, Input, Select } from "@/components/ui";
-import { ACTION_DONE, ACTION_LABEL, canMarkDirty, displayCode, kegSizeInfo, nextActions, OWNER_LABEL, sinceLabel, STATUS_META, UNDO_SECONDS, type KegActionId, type KegStatus } from "@/domain/kegs";
+import { ACTION_DONE, ACTION_LABEL, canMarkDirty, displayCode, kegSizeInfo, nextActions, OWNER_LABEL, sinceLabel, UNDO_SECONDS, type KegActionId, type KegStatus } from "@/domain/kegs";
 import { businessDateTime, shortDate } from "@/lib/format";
 import type { KegCard, PanelContext } from "@/server/services/kegs";
 import { ArrowRight, Check, CloudOff, Droplets, MapPin, Undo2 } from "lucide-react";
@@ -37,7 +37,6 @@ export function KegPanel({ card: initial, ctx, role, onDone, compact }: { card: 
   const [pending, start] = useTransition();
   useEffect(() => setCard(initial), [initial]);
 
-  const meta = STATUS_META[card.status];
   const size = kegSizeInfo(card.sizeId);
   const actions = nextActions(card.status);
 
@@ -114,7 +113,7 @@ export function KegPanel({ card: initial, ctx, role, onDone, compact }: { card: 
             <dd className="mt-0.5 flex items-start gap-1.5 font-medium"><MapPin className="mt-0.5 size-3.5 shrink-0 text-muted" />{card.place}</dd>
           </div>
           <div className="bg-surface px-4 py-3">
-            <dt className="text-xs text-muted">{card.status === "ON_TAP" ? "On tap for" : meta.short === "Full" ? "In there for" : "Since"}</dt>
+            <dt className="text-xs text-muted">{card.status === "ON_TAP" ? "On tap for" : card.status === "COLD" ? "In there for" : "Since"}</dt>
             <dd className="mt-0.5 font-medium">{sinceLabel(new Date(card.status === "ON_TAP" && card.fill?.tappedAt ? card.fill.tappedAt : card.statusAt))}</dd>
           </div>
           {card.status === "ON_TAP" && card.estimate && (

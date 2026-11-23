@@ -244,7 +244,7 @@ export async function setBeerField(id: string, field: "name" | "style" | "color"
     case "style": data = { style: value.slice(0, 60) || null }; break;
     case "color": if (!BEER_COLORS.some((c) => c.id === value)) return { error: "Pick a color" }; data = { color: value }; break;
     case "squareNames": data = { squareNames: value.split(/\s*[;,\n]\s*/).map((s) => s.trim()).filter(Boolean).slice(0, 12) }; break;
-    case "minFull": { const n = Number(value); if (!Number.isInteger(n) || n < 0 || n > 50) return { error: "A whole number, 0–50" }; data = { minFull: n }; break; }
+    case "minFull": { const n = Number(value); if (!Number.isInteger(n) || n < 0 || n > 50) return { error: "A whole number, 0 to 50" }; data = { minFull: n }; break; }
     case "house": data = { house: value === "true" }; break;
     // Retiring a beer also ends its core standing, so bringing it back starts it in rotation.
     case "active": data = value === "true" ? { active: true } : { active: false, core: false }; break;
@@ -404,7 +404,7 @@ export async function savePour(variation: string, raw: string): Promise<{ error?
   if (!raw.trim()) delete pours[k];
   else {
     const n = Number(raw.replace(/[^\d.]/g, ""));
-    if (!Number.isFinite(n) || n < 0 || n > 200) return { error: "Ounces, 0–200 (0 = not from a keg)" };
+    if (!Number.isFinite(n) || n < 0 || n > 200) return { error: "Ounces, 0 to 200 (0 means not from a keg)" };
     pours[k] = n;
   }
   await saveKegConfig({ pours });

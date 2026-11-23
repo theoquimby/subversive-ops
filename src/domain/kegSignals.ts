@@ -263,10 +263,10 @@ export function loadWeeks(today: ISODate): ISODate[] {
 export function fleetLoad(points: WeekPoint[]): FleetLoad | null {
   const last = points.slice(-LOAD.weeks);
   if (last.length < LOAD.weeks) return null;
-  const total = (p: WeekPoint) => p.full + p.out + p.dirty + p.clean;
+  const total = (p: WeekPoint) => p.full + p.tap + p.out + p.dirty + p.clean;
   if (last.some((p) => total(p) < LOAD.minKegs)) return null;
   const empty = (p: WeekPoint) => p.clean + p.dirty;
-  const busy = (p: WeekPoint) => p.full + p.out;
+  const busy = (p: WeekPoint) => p.full + p.tap + p.out;
   const latest = last[last.length - 1];
   const result = (kind: FleetLoad["kind"], of: (p: WeekPoint) => number): FleetLoad => ({ kind, weeks: LOAD.weeks, kegs: total(latest), atLeast: Math.min(...last.map(of)), latest });
   if (last.every((p) => empty(p) * 2 > total(p))) return result("slack", empty);
@@ -332,7 +332,7 @@ export function kegSignalFindings(gap: ScanGap, load: FleetLoad | null): LabFind
       title,
       action,
       confidence: 0.5,
-      how: [`At the end of each of the last ${load.weeks} weeks, at least ${load.atLeast} of about ${load.kegs} kegs were empty: clean, or waiting to be cleaned.`, `Last week: ${load.latest.clean} clean, ${load.latest.dirty} dirty, ${load.latest.full} full and ${load.latest.out} on tap or out.`, BY_LAST_SCAN],
+      how: [`At the end of each of the last ${load.weeks} weeks, at least ${load.atLeast} of about ${load.kegs} kegs were empty: clean, or waiting to be cleaned.`, `Last week: ${load.latest.clean} clean, ${load.latest.dirty} dirty, ${load.latest.full} full and ${load.latest.tap + load.latest.out} on tap or out.`, BY_LAST_SCAN],
       inputs: [
         { label: "Kegs counted", value: String(load.kegs) },
         { label: "Empty every week", value: `${load.atLeast}+` },
@@ -351,7 +351,7 @@ export function kegSignalFindings(gap: ScanGap, load: FleetLoad | null): LabFind
       title,
       action,
       confidence: 0.4,
-      how: [`At the end of each of the last ${load.weeks} weeks, at least ${load.atLeast} of about ${load.kegs} kegs were full, on tap or out at an account.`, `Last week: ${load.latest.full} full, ${load.latest.out} on tap or out, ${load.latest.dirty} dirty and ${load.latest.clean} clean.`, BY_LAST_SCAN],
+      how: [`At the end of each of the last ${load.weeks} weeks, at least ${load.atLeast} of about ${load.kegs} kegs were full, on tap or out at an account.`, `Last week: ${load.latest.full} full, ${load.latest.tap + load.latest.out} on tap or out, ${load.latest.dirty} dirty and ${load.latest.clean} clean.`, BY_LAST_SCAN],
       inputs: [
         { label: "Kegs counted", value: String(load.kegs) },
         { label: "Full or out every week", value: `${load.atLeast}+` },

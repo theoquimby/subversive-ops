@@ -1,3 +1,4 @@
+import { Verdict, type FindingTone } from "@/components/chapter";
 import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section, type Tone } from "@/components/ui";
 import { profileLabel, weekdaysText } from "@/domain/brewProfiles";
 import { addDays, daysBetween } from "@/domain/dates";
@@ -17,6 +18,69 @@ export const metadata = { title: "Brewery schedule" };
 
 const WEEKS = 12;
 const monthName = (ym: string) => new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${ym}-01T00:00:00Z`));
+const andList = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : (xs[0] ?? ""));
+
+/**
+ * The finding the schedule opens with: a beer already out or late to brew
+ * first, then tank clashes, then planned brew days that have passed, then
+ * brews due soon. Everything after the first goes in the line under it.
+ */
+function verdictOf(v: ScheduleView): { tone: FindingTone; title: string; line: string | null; action: { href: string; label: string } | null } {
+  const open = v.suggestions.filter((s) => !s.planned);
+  const out = open.filter((s) => s.state === "late" && s.alreadyOut);
+  const late = open.filter((s) => s.state === "late" && !s.alreadyOut);
+  const soon = open.filter((s) => s.state === "soon");
+  const passed = v.planned.filter((b) => b.plannedOn && b.plannedOn < v.today);
+  const points: { tone: FindingTone; title: string; more: string }[] = [];
+  if (out.length) {
+    const one = out.length === 1;
+    points.push({
+      tone: "bad",
+      title: one ? `${out[0].name} is already out: it should have been brewed by ${shortDate(out[0].brewBy)}` : `${andList(out.map((s) => s.name))} are already out`,
+      more: one ? `${out[0].name} is already out.` : `${andList(out.map((s) => s.name))} are already out.`,
+    });
+  }
+  if (late.length) {
+    const one = late.length === 1;
+    points.push({
+      tone: "bad",
+      title: one ? `${late[0].name} is late: it should have been brewed by ${shortDate(late[0].brewBy)}` : `${andList(late.map((s) => s.name))} are late to brew`,
+      more: one ? `${late[0].name} is late too: it should have been brewed by ${shortDate(late[0].brewBy)} and runs out about ${shortDate(late[0].runOutOn)}.` : `${andList(late.map((s) => s.name))} are late to brew too.`,
+    });
+  }
+  if (v.clashes.length) {
+    const t = `${v.clashes.length} tank clash${v.clashes.length === 1 ? "" : "es"} on the schedule`;
+    points.push({ tone: "bad", title: t, more: `${t}, outlined in red below.` });
+  }
+  if (passed.length) {
+    const one = passed.length === 1;
+    points.push({
+      tone: "warn",
+      title: one ? `${passed[0].code} ${passed[0].name} was planned for ${shortDate(passed[0].plannedOn!)} and hasn't been brewed` : `${passed.length} planned brew days have passed`,
+      more: one ? `${passed[0].code} ${passed[0].name}'s brew day (${shortDate(passed[0].plannedOn!)}) has passed: brew it or move it.` : `${passed.length} planned brew days have passed: brew or move them.`,
+    });
+  }
+  if (soon.length) {
+    const first = soon[0];
+    points.push({
+      tone: "warn",
+      title: `Brew ${first.name} by ${shortDate(first.brewBy)}`,
+      more: soon.length === 1 ? `${first.name} is due: brew it by ${shortDate(first.brewBy)}.` : `${andList(soon.map((s) => s.name))} are due in the next two weeks.`,
+    });
+  }
+  if (!points.length) {
+    const next = v.planned.find((b) => b.plannedOn && b.plannedOn >= v.today);
+    return { tone: "good", title: next ? `Nothing is late: the next brew day is ${shortDate(next.plannedOn!)}` : "Nothing is late to brew", line: next ? `${next.code} ${next.name}.` : "Suggested brews show here as keg sales come in.", action: null };
+  }
+  const [head, ...rest] = points;
+  const suggest = out.length || late.length || soon.length;
+  return {
+    tone: head.tone,
+    title: head.title,
+    line: rest.map((p) => p.more).join(" ") || null,
+    action: suggest ? { href: "#suggested-brews", label: "Plan it from Suggested brews" } : passed.length ? { href: "#planned", label: "See planned brews" } : null,
+  };
+}
 
 export default async function Page() {
   await requireUser("MANAGER");
@@ -32,10 +96,29 @@ export default async function Page() {
   }
   const feed = `${origin}/api/brewery/calendar/${token}.ics`;
   const webcal = feed.replace(/^https?:\/\//, "webcal://");
+  const verdict = verdictOf(v);
+  const fermenters = v.rows.filter((r) => r.tank.kind === "FERMENTER");
+  const freeNow = fermenters.filter((r) => !r.bars.some((b) => b.start <= v.today && b.end > v.today)).length;
+  const lateCount = v.suggestions.filter((s) => !s.planned && s.state === "late").length;
+  const nextBrew = v.planned.find((b) => b.plannedOn && b.plannedOn >= v.today);
+  const withBrews = v.months.filter((m) => m.brews.length > 0);
+  const emptyMonths = v.months.length - withBrews.length;
   return (
     <>
       {header}
       <TanksDownNote />
+      <Verdict
+        badge={{ tone: verdict.tone }}
+        title={verdict.title}
+        line={verdict.line}
+        stats={[
+          { label: "Beers out or late to brew", value: lateCount, tone: lateCount ? "bad" : "neutral" },
+          { label: "Next planned brew day", value: nextBrew?.plannedOn ? shortDate(nextBrew.plannedOn) : "None planned", hint: nextBrew ? `${nextBrew.code} ${nextBrew.name}` : undefined },
+          { label: "Fermenters free today", value: `${freeNow} of ${fermenters.length}` },
+        ]}
+      >
+        {verdict.action && <LinkButton href={verdict.action.href} variant="primary">{verdict.action.label}</LinkButton>}
+      </Verdict>
       <PlanArea today={v.today} recipes={v.recipes} beers={v.beers} tanks={v.tanks} suggestions={v.suggestions} />
 
       <Section
@@ -47,14 +130,23 @@ export default async function Page() {
         <TankList v={v} />
       </Section>
 
-      <Section title="Planned brews" description="Move one to a new day and its tanks and dates are worked out again. A locked release stays put.">
-        <PlannedList planned={v.planned} stays={v.plannedStays} today={v.today} tanks={v.tanks} />
-      </Section>
+      <div id="planned" className="scroll-mt-24">
+        <Section title="Planned brews" description="Move one to a new day and its tanks and dates are worked out again. A locked release stays put.">
+          <PlannedList planned={v.planned} stays={v.plannedStays} today={v.today} tanks={v.tanks} />
+        </Section>
+      </div>
 
-      <Section title="Brews by month" description="Every brew this year and what's planned after, by brew day, with its timing, release and orders.">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {v.months.map((m) => <MonthCard key={m.month} month={m.month} brews={m.brews} current={v.today.startsWith(m.month)} past={`${m.month}-31` < v.today} orders={v.orders} today={v.today} />)}
-        </div>
+      <Section
+        title="Brews by month"
+        description={`Every brew this year and what's planned after, by brew day, with its timing, release and orders.${withBrews.length && emptyMonths ? ` ${emptyMonths} month${emptyMonths === 1 ? "" : "s"} with no brew ${emptyMonths === 1 ? "is" : "are"} left out.` : ""}`}
+      >
+        {withBrews.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {withBrews.map((m) => <MonthCard key={m.month} month={m.month} brews={m.brews} current={v.today.startsWith(m.month)} orders={v.orders} today={v.today} />)}
+          </div>
+        ) : (
+          <Card className="px-4 py-3.5 text-sm text-muted">No brews this year yet. Brews show here by month once they&apos;re planned or brewed.</Card>
+        )}
       </Section>
 
       <Section title="Calendar" description="Brew days, dry hops, transfers, packaging and release days in your own calendar, from last month to six months on. It updates itself.">
@@ -221,9 +313,9 @@ function OrdersChip({ list, today }: { list: Orders[string] | undefined; today: 
   return <span title={title}><Badge tone={tone}>Orders: {placed} of {list.length} placed</Badge></span>;
 }
 
-function MonthCard({ month, brews, current, past, orders, today }: { month: string; brews: BatchView[]; current: boolean; past: boolean; orders: Orders; today: string }) {
+function MonthCard({ month, brews, current, orders, today }: { month: string; brews: BatchView[]; current: boolean; orders: Orders; today: string }) {
   return (
-    <Card className={cx("p-4", current && "ring-1 ring-area/40", past && !brews.length && "opacity-70")}>
+    <Card className={cx("p-4", current && "ring-1 ring-area/40")}>
       <div className="flex items-baseline justify-between gap-2">
         <div className="text-sm font-semibold">{monthName(month)}</div>
         <div className="num text-xs text-muted">{brews.length ? `${brews.length} brew${brews.length === 1 ? "" : "s"}` : "None"}</div>

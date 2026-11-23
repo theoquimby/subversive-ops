@@ -20,7 +20,7 @@ const TAG_LABEL: Record<MenuTag, string> = { vegetarian: "Vegetarian", vegan: "V
 const YES_NO = [{ value: "true", label: "Yes" }, { value: "false", label: "No" }];
 const PLACES = [{ value: "", label: "Guess" }, { value: "food", label: "Food" }, { value: "drinks", label: "Drinks" }];
 
-const windowText = (from: string | null | undefined, until: string | null | undefined) => (from || until ? `${from ? shortDate(from) : "Now"} – ${until ? shortDate(until) : "on"}` : "");
+const windowText = (from: string | null | undefined, until: string | null | undefined) => (from && until ? `${shortDate(from)} to ${shortDate(until)}` : from ? `From ${shortDate(from)}` : until ? `Until ${shortDate(until)}` : "");
 
 export interface TapView {
   line: number;
@@ -56,7 +56,7 @@ export function MenuTab(p: {
           <div className="text-sm font-medium text-warn">{p.warnings.length} thing{p.warnings.length === 1 ? "" : "s"} to check</div>
           <ul className="mt-2 space-y-1 text-sm">
             {p.warnings.slice(0, 8).map((w) => (
-              <li key={w.id}><span className="font-medium">{w.name}</span> <span className="text-muted">— {w.message}</span></li>
+              <li key={w.id}><span className="font-medium">{w.name}</span> <span className="text-muted">: {w.message}</span></li>
             ))}
           </ul>
         </Card>

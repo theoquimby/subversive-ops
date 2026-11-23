@@ -1,19 +1,24 @@
+import { Numbers, Verdict } from "@/components/chapter";
 import { HelpTip, HelpZone } from "@/components/help";
-import { Badge, Card, cx, LinkButton, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, Card, cx, LinkButton, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { CASE_GALLONS, FEDERAL_REDUCED_BBL, FORM_INFO, FREQS, GAL_PER_BBL, nextPeriod, parsePeriod, periodKey, periodOf, previousPeriod, returnsDue, type Form, type Period } from "@/domain/beerTax";
-import { money, qty, shortDate } from "@/lib/format";
+import { displayCode } from "@/domain/kegs";
+import { money, pct, qty, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { db } from "@/server/db";
-import { beerTaxReport, brewKegCheck, filingsFor, historySince, taxSettings } from "@/server/services/beerTax";
+import { beerTaxReport, brewKegCheck, filingsFor, historySince, removalScanGap, taxSettings } from "@/server/services/beerTax";
 import { businessToday } from "@/server/services/sales";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { KegMovesTable } from "./moves-table";
 import { AdjustmentForm, AdjustmentList, FiledList, ReturnsDue, TaxSettingsGrid } from "./tax-client";
 
 export const metadata = { title: "Beer tax" };
 
 const bbl = (gal: number) => qty(gal / GAL_PER_BBL, 2);
 const gal = (n: number) => qty(n, 1);
+/** From this share of fills with no tap or delivery scan, the worksheet is called probably under-counted (the Fleet page uses the same line). */
+const GAP_WARN = 0.1;
 
 export default async function BeerTaxPage({ searchParams }: { searchParams: Promise<{ p?: string; form?: string }> }) {
   await requireUser("MANAGER");
@@ -26,7 +31,7 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
   const pressing = due.filter((d) => !d.filed && (!sp.form || d.form === sp.form)).sort((a, b) => a.due.localeCompare(b.due))[0];
   const lastFinished = previousPeriod(periodOf(today, s.freq.federal));
   const period: Period = parsePeriod(sp.p) ?? pressing?.period ?? (since && lastFinished.end < since ? periodOf(today, s.freq.federal) : lastFinished);
-  const [r, beers, kegCheck] = await Promise.all([beerTaxReport(period), db.beer.findMany({ where: { house: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }), brewKegCheck(period)]);
+  const [r, beers, kegCheck, gap] = await Promise.all([beerTaxReport(period), db.beer.findMany({ where: { house: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }), brewKegCheck(period), removalScanGap(period)]);
   const w = r.worksheet;
   const href = (p: Period) => `/beer-tax?p=${periodKey(p)}`;
   const future = period.start > today;
@@ -34,7 +39,9 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
   const typedPackaged = r.moves.filter((m) => m.source === "typed" && m.kind === "packaged").reduce((t, m) => t + m.gallons, 0);
   const brewRows = r.moves.filter((m) => m.source === "brew");
   const brewCases = brewRows.filter((m) => m.kind === "packaged").reduce((t, m) => t + m.gallons, 0);
-  const kegRows = r.moves.filter((m) => m.source === "keg");
+  // Fills aren't removals: the keg list is what left (tapped, sent out, returned).
+  const kegRows = r.moves.filter((m) => m.source === "keg" && m.kind !== "packaged");
+  const under = !future && gap.share != null && gap.share >= GAP_WARN;
   const kegDiffs = kegCheck.filter((k) => k.differs).length;
   const filedHere = filings.filter((f) => f.periodStart === period.start);
 
@@ -54,28 +61,6 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
         description="Your own beer that left the brewery, from the keg history: what to put on the federal excise return, the brewer's report and the New York beer tax return, and when each is due."
       />
 
-      <HelpZone id="beertax.disclaimer" className="mb-6">
-        <Card className="border-warn/40 bg-warn-bg/40 px-4 py-3 text-sm">
-          <span className="font-medium text-warn">A worksheet, not tax advice.</span>{" "}
-          <span className="text-ink-2">The rates (federal ${s.federalRate.toFixed(2)}/bbl, New York ${s.nyRate.toFixed(2)}/gal with the small brewer credit) and due dates are the usual ones for a small brewery. Confirm them with your accountant and change them at the bottom of the page.</span>
-        </Card>
-      </HelpZone>
-
-      <HelpZone id="beertax.returns" tour="beertax.returns" className="mb-10">
-        <Section title={<span className="inline-flex items-center gap-1.5">Returns <HelpTip id="beertax.returns" /></span>} description="The last finished period of each return. Mark one filed once it's in, with what you paid.">
-          {due.length === 0 ? (
-            <Card className="p-4 text-sm text-ink-2">
-              {since ? "Nothing due yet — returns show up here once a period with keg history has finished." : <>No keg history yet, so there&apos;s nothing to report. Returns show up here once kegs are filled, tapped or sent out in the app (or imported from your old keg app). If you file now, keep doing it the way you do today.</>}
-            </Card>
-          ) : <ReturnsDue
-            rows={due.map((d) => ({ form: d.form, name: FORM_INFO[d.form].short, who: FORM_INFO[d.form].who, periodLabel: d.period.label, periodKey: periodKey(d.period), due: d.due, state: d.state, filing: filings.find((f) => f.form === d.form && f.periodStart === d.period.start) ?? null }))}
-            today={today}
-            current={periodKey(period)}
-            amounts={{ federal: w.federalTax, brop: null, ny: w.nyTax }}
-          />}
-        </Section>
-      </HelpZone>
-
       {/* ---- Period picker ---- */}
       <div className="mb-4 flex flex-wrap items-center gap-2" data-tour="beertax.period">
         <div className="flex items-center rounded-lg border border-border bg-surface">
@@ -90,15 +75,55 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
             </Link>
           ))}
         </div>
-        <span className="text-xs text-muted">{shortDate(period.start)} – {shortDate(period.end)}{period.end >= today && !future ? " · still running" : ""}</span>
+        <span className="text-xs text-muted">{shortDate(period.start)} to {shortDate(period.end)}{period.end >= today && !future ? " · still running" : ""}</span>
       </div>
 
-      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4" data-tour="beertax.stats">
-        <Stat help="beertax.taxable" label="Taxable removals" value={`${bbl(w.taxableGal)} bbl`} hint={`${gal(w.taxableGal)} gallons`} />
-        <Stat help="beertax.federal" label="Federal excise" value={money(w.federalTax)} hint={`at $${s.federalRate.toFixed(2)} a barrel`} />
-        <Stat help="beertax.ny" label="New York beer tax" value={money(w.nyTax)} hint={w.nyCredit > 0 ? `${money(w.nyGross)} less ${money(w.nyCredit)} small brewer credit` : `at $${s.nyRate.toFixed(2)} a gallon`} />
-        <Stat help="beertax.packaged" label="Packaged" value={`${bbl(w.packagedGal)} bbl`} hint={`${gal(w.packagedGal)} gallons in kegs and cases`} />
+      <div data-tour="beertax.stats">
+      <Verdict
+        badge={under ? { tone: "warn", label: "Probably under-counted" } : undefined}
+        title={
+          under
+            ? `${gap.none} of ${gap.fills} kegs filled in ${period.label} have no tap or delivery scan, so this worksheet is probably low`
+            : future
+              ? `${period.label} hasn't started`
+              : `${period.label}: ${bbl(w.taxableGal)} bbl taxable, ${money(w.federalTax)} federal and ${money(w.nyTax)} New York`
+        }
+        line={
+          under ? (
+            <>
+              Tax is owed when beer leaves the brewery, but the worksheet only sees kegs scanned onto a tap or out to an account, so it misses those {gap.none} ({pct(gap.share, 0)} of the fills). Scan every keg as it goes on or out, and add what you know left this period under Not in a keg.{" "}
+              <Link href="/kegs/fleet#no-removal-scan" className="inline-flex items-center gap-0.5 font-medium text-ink underline underline-offset-2">Where the scans are missing <ArrowRight className="size-3.5" /></Link>
+            </>
+          ) : gap.fills ? `Every keg filled this period has been tapped, sent out or is still full, so the worksheet sees all the beer that left.` : undefined
+        }
+        stats={[
+          { label: "Taxable removals", value: `${bbl(w.taxableGal)} bbl`, tone: under ? "warn" : "neutral", hint: under ? "Probably under-counted" : `${gal(w.taxableGal)} gallons` },
+          { label: "Federal excise", value: money(w.federalTax), tone: under ? "warn" : "neutral", hint: under ? "Probably under-counted" : `at $${s.federalRate.toFixed(2)} a barrel` },
+          { label: "New York beer tax", value: money(w.nyTax), tone: under ? "warn" : "neutral", hint: under ? "Probably under-counted" : w.nyCredit > 0 ? `${money(w.nyGross)} less ${money(w.nyCredit)} small brewer credit` : `at $${s.nyRate.toFixed(2)} a gallon` },
+        ]}
+      />
       </div>
+
+      <HelpZone id="beertax.returns" tour="beertax.returns" className="mb-10">
+        <Section title={<span className="inline-flex items-center gap-1.5">Returns <HelpTip id="beertax.returns" /></span>} description="The last finished period of each return. Mark one filed once it's in, with what you paid.">
+          {due.length === 0 ? (
+            <Card className="p-4 text-sm text-ink-2">
+              {since ? "Nothing due yet. Returns show up here once a period with keg history has finished." : <>No keg history yet, so there&apos;s nothing to report. Returns show up here once kegs are filled, tapped or sent out in the app (or imported from your old keg app). If you file now, keep doing it the way you do today.</>}
+            </Card>
+          ) : <ReturnsDue
+            rows={due.map((d) => ({ form: d.form, name: FORM_INFO[d.form].short, who: FORM_INFO[d.form].who, periodLabel: d.period.label, periodKey: periodKey(d.period), due: d.due, state: d.state, filing: filings.find((f) => f.form === d.form && f.periodStart === d.period.start) ?? null }))}
+            today={today}
+            current={periodKey(period)}
+            amounts={{ federal: w.federalTax, brop: null, ny: w.nyTax }}
+          />}
+        </Section>
+      </HelpZone>
+
+      <HelpZone id="beertax.disclaimer" className="mb-8">
+        <p className="max-w-3xl text-sm text-ink-2">
+          <span className="font-medium text-ink">A worksheet, not tax advice.</span> The rates (federal ${s.federalRate.toFixed(2)}/bbl, New York ${s.nyRate.toFixed(2)}/gal with the small brewer credit) and due dates are the usual ones for a small brewery. Confirm them with your accountant and change them at the bottom of the page.
+        </p>
+      </HelpZone>
 
       {r.skipped > 0 && (
         <Card className="mb-6 px-4 py-3 text-sm text-ink-2">
@@ -128,7 +153,7 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
               </tbody>
             </Table>
             <p className="mt-2 text-xs text-muted">
-              {qty(ytdBbl, 1)} of the {FEDERAL_REDUCED_BBL.toLocaleString()} barrels at the reduced federal rate used this year. {brewCases > 0 && <>Cases from the brewery: {gal(brewCases)} gal. </>}{typedPackaged > 0 && <>Packaged outside kegs (typed in): {gal(typedPackaged)} gal. </>}{w.lossGal > 0 && <>Dumped or lost: {gal(w.lossGal)} gal.</>}
+              Packaged this period: {bbl(w.packagedGal)} bbl ({gal(w.packagedGal)} gal) in kegs and cases; it&apos;s taxed when it leaves. {qty(ytdBbl, 1)} of the {FEDERAL_REDUCED_BBL.toLocaleString()} barrels at the reduced federal rate used this year. {brewCases > 0 && <>Cases from the brewery: {gal(brewCases)} gal. </>}{typedPackaged > 0 && <>Packaged outside kegs (typed in): {gal(typedPackaged)} gal. </>}{w.lossGal > 0 && <>Dumped or lost: {gal(w.lossGal)} gal.</>}
             </p>
           </Section>
         </HelpZone>
@@ -153,7 +178,7 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
                 </tbody>
               </Table>
             )}
-            <p className="mt-2 text-xs text-muted">Gallons, house beers only — guest beers are taxed by their brewery.</p>
+            <p className="mt-2 text-xs text-muted">Gallons, house beers only: guest beers are taxed by their brewery.</p>
           </Section>
         </HelpZone>
       </div>
@@ -229,22 +254,14 @@ export default async function BeerTaxPage({ searchParams }: { searchParams: Prom
       </HelpZone>
 
       <HelpZone id="beertax.moves" className="mb-10">
-        <Section title={<span className="inline-flex items-center gap-1.5">Keg by keg <HelpTip id="beertax.moves" /></span>} description="Every keg counted above, so you can check it against the cellar log.">
-          {kegRows.length === 0 ? <Card className="p-4 text-sm text-muted">No keg movements in this period.</Card> : (
-            <Table sticky className="max-h-[28rem]">
-              <thead><tr><Th>Date</Th><Th>Keg</Th><Th>Beer</Th><Th className="hidden sm:table-cell">What</Th><Th align="right">Gal</Th></tr></thead>
-              <tbody>
-                {kegRows.map((m, i) => (
-                  <Tr key={`${m.ref}-${m.kind}-${i}`}>
-                    <Td className="num whitespace-nowrap text-muted">{shortDate(m.date)}</Td>
-                    <Td><Link href={`/kegs/k/${m.ref}`} className="num font-medium underline-offset-2 hover:underline">{m.ref}</Link><span className="block text-xs text-muted">{m.size}</span></Td>
-                    <Td>{m.beer}<span className="block text-xs text-muted sm:hidden">{MOVE_LABEL[m.kind]}</span></Td>
-                    <Td className="hidden text-ink-2 sm:table-cell">{MOVE_LABEL[m.kind]}{m.note ? ` · ${m.note}` : ""}</Td>
-                    <Td align="right">{gal(m.gallons)}</Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
+        <Section title={<span className="inline-flex items-center gap-1.5">Keg by keg <HelpTip id="beertax.moves" /></span>} description="Every keg removal counted above: tapped in the taproom, sent to an account or returned. Check it against the cellar log.">
+          {kegRows.length === 0 ? <Card className="p-4 text-sm text-muted">No kegs were tapped, sent out or returned in this period.</Card> : (
+            <Numbers label={kegRows.length === 1 ? "Show the one keg removal" : `Show the ${kegRows.length} keg removals`}>
+                <KegMovesTable
+                  period={periodKey(period)}
+                  rows={kegRows.map((m, i) => ({ key: `${m.ref}-${m.kind}-${i}`, date: m.date, code: m.ref, display: displayCode(m.ref), size: m.size, beer: m.beer, what: MOVE_LABEL[m.kind] ?? m.kind, note: m.note, gallons: m.gallons }))}
+                />
+            </Numbers>
           )}
         </Section>
       </HelpZone>
@@ -273,5 +290,5 @@ function periodLabel(start: string, end: string) {
     const p = periodOf(start, f);
     if (p.start === start && p.end === end) return p.label;
   }
-  return `${shortDate(start)} – ${shortDate(end)}`;
+  return `${shortDate(start)} to ${shortDate(end)}`;
 }

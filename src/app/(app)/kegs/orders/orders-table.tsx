@@ -61,11 +61,12 @@ export function KegOrdersTable({ rows, today, hasOpen }: { rows: OrderListRow[];
         <span className="whitespace-nowrap">
           {o.status === "CANCELLED" ? <Badge>Cancelled</Badge> : o.status === "OPEN" && o.progress.complete ? <Badge tone="good">All {o.progress.sent} sent</Badge> : <span className={o.progress.sent ? "" : "text-muted"}>{progressLabel(o.progress)}</span>}
           {o.status === "CANCELLED" && o.progress.sent > 0 && <span className="block text-xs text-muted">{progressLabel(o.progress)} went out</span>}
+          {o.status === "FULFILLED" && !o.progress.complete && <span className="block text-xs font-medium text-warn">Closed with {o.progress.remaining} not sent</span>}
           {o.short > 0 && <span className="block text-xs text-warn">{o.short} to fill</span>}
         </span>
       ),
     },
-    { id: "status", header: "Status", width: 110, sort: (o) => o.status, csv: (o) => STATUS_LABEL[o.status], cell: (o) => <OrderStatusBadge status={o.status} /> },
+    { id: "status", header: "Status", width: 110, sort: (o) => o.status, csv: (o) => STATUS_LABEL[o.status], cell: (o) => <OrderStatusBadge status={o.status} short={!o.progress.complete} /> },
     { id: "created", header: "Made", width: 100, defaultHidden: true, firstDir: "desc", sort: (o) => o.createdOn, csv: (o) => o.createdOn, cell: (o) => <span className="whitespace-nowrap text-muted">{shortDate(o.createdOn)}</span> },
   ], [today]);
 
@@ -73,6 +74,7 @@ export function KegOrdersTable({ rows, today, hasOpen }: { rows: OrderListRow[];
     { id: "status", label: "Status", kind: "facet", display: "segmented", single: true, allLabel: "All", param: "status", values: (o) => o.status, options: [{ value: "OPEN", label: "Open" }, { value: "FULFILLED", label: "Fulfilled" }, { value: "CANCELLED", label: "Cancelled" }] },
     { id: "due", label: "Due today or late", kind: "toggle", tone: "warn", test: (o) => o.status === "OPEN" && !!o.dueOn && o.dueOn <= today },
     { id: "short", label: "Kegs to fill", kind: "toggle", tone: "warn", test: (o) => o.short > 0 },
+    { id: "closedShort", label: "Closed short", kind: "toggle", tone: "warn", test: (o) => o.status === "FULFILLED" && !o.progress.complete },
     { id: "account", label: "Account", kind: "facet", param: "account", values: (o) => o.accountId, options: accountOptions(rows) },
     { id: "beer", label: "Beer", kind: "facet", values: (o) => o.beers },
     { id: "month", label: "Month", kind: "facet", param: "month", values: (o) => dayOf(o)?.slice(0, 7) ?? "none", options: monthOptions(rows) },
@@ -112,7 +114,7 @@ export function KegOrdersTable({ rows, today, hasOpen }: { rows: OrderListRow[];
         title: o.account,
         subtitle: `Order ${o.number} · ${o.summary || "No lines yet"}`,
         value: o.status === "OPEN" ? <DueBadge dueOn={o.dueOn} today={today} /> : o.closedOn ? shortDate(o.closedOn) : "—",
-        sub: o.status === "OPEN" ? (o.progress.complete ? "All sent" : progressLabel(o.progress)) : STATUS_LABEL[o.status],
+        sub: o.status === "OPEN" ? (o.progress.complete ? "All sent" : progressLabel(o.progress)) : o.status === "FULFILLED" && !o.progress.complete ? <span className="text-warn">Closed with {o.progress.remaining} not sent</span> : STATUS_LABEL[o.status],
       })}
     />
   );

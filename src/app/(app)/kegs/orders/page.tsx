@@ -1,10 +1,14 @@
+import { Verdict } from "@/components/chapter";
 import { HelpTip } from "@/components/help";
 import { ShowMore } from "@/components/show-more";
 import { cx, EmptyState, LinkButton, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
 import { businessDateOf } from "@/lib/format";
 import { requireUser } from "@/server/auth";
+import { splitOutTooLong } from "@/domain/kegFleet";
+import { fleetNeedsLook } from "@/server/services/kegFleet";
 import { ordersList, type OrderRow } from "@/server/services/kegOrders";
-import { Plus } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
+import Link from "next/link";
 import { BeerDot, sizeShort } from "../bits";
 import { linesSummary } from "./bits";
 import { KegOrdersTable, type OrderListRow } from "./orders-table";
@@ -30,24 +34,49 @@ const listRow = (o: OrderRow): OrderListRow => ({
 
 export default async function KegOrdersPage() {
   await requireUser("MANAGER");
-  const r = await ordersList();
+  const [r, look] = await Promise.all([ordersList(), fleetNeedsLook()]);
   const newOrder = <LinkButton href="/kegs/orders/new" variant="primary" className="h-10 sm:h-9"><Plus className="size-4" /> New order</LinkButton>;
   const toFill = r.availability.reduce((s, a) => s + a.preordered, 0);
   const rows = [...r.open, ...r.closed].map(listRow);
+  // The verdict: what's due, and the empties that should have come back by now.
+  const due = r.open.filter((o) => o.dueOn && o.dueOn <= r.today).length;
+  const short = r.open.reduce((s, o) => s + o.short, 0);
+  const { late, lost } = splitOutTooLong(look.out);
+  const lateKegs = late.reduce((s, g) => s + g.kegs.length, 0);
+  const lostKegs = lost.reduce((s, g) => s + g.kegs.length, 0);
+  const overdueAccounts = new Set([...late, ...lost].map((g) => g.account)).size;
+  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  const dueWords = due ? `${plural(due, "order")} due today or late` : r.open.length ? "Nothing due today" : "No open orders";
+  const backWords = lateKegs + lostKegs ? `${plural(lateKegs + lostKegs, "keg")} overdue back from ${plural(overdueAccounts, "account")}` : "every keg out is back on time";
 
   return (
     <>
       <PageHeader
         help="kegs.orders"
         title="Orders"
-        back={{ href: "/kegs", label: "Kegs" }}
         description="Kegs your wholesale accounts have asked for. Fill an order by scanning each keg as it leaves, and the app checks it's the right beer and size."
         actions={newOrder}
       />
 
+      <Verdict
+        badge={{ tone: due || lateKegs + lostKegs ? "warn" : "good" }}
+        title={`${dueWords}, and ${backWords}`}
+        line={
+          <>
+            {due ? "Fill and scan those out first. " : ""}
+            {lateKegs + lostKegs ? <>Ask for the empties on the next delivery{lostKegs ? `; ${plural(lostKegs, "keg has", "kegs have")} been out so long ${lostKegs === 1 ? "it's" : "they're"} probably lost` : ""}. <Link href="/kegs/fleet#look" className="inline-flex items-center gap-0.5 font-medium text-ink underline underline-offset-2">See which <ArrowRight className="size-3.5" /></Link></> : null}
+          </>
+        }
+        stats={[
+          { label: "Open orders", value: r.open.length, hint: due ? `${due} due today or late` : "None due today" },
+          { label: "Kegs still to fill", value: short, tone: short ? "warn" : "neutral", hint: short ? "Not enough full kegs yet" : r.open.length ? "Every open order can be filled" : "No open orders" },
+          { label: "Kegs overdue back", value: lateKegs + lostKegs, tone: lateKegs + lostKegs ? "warn" : "neutral", hint: lostKegs ? `${lostKegs} probably lost` : `Out more than ${look.overdueDays} days` },
+        ]}
+      />
+
       <Section
         title="Every order"
-        description={rows.length ? `${r.open.length} open, the soonest first; finished ones under their own tabs, the latest first.${r.closedTotal > r.closed.length ? ` The latest ${r.closed.length} of ${r.closedTotal} finished orders.` : ""} Tap one to see it, change it or scan its kegs.` : undefined}
+        description={rows.length ? `${r.open.length ? `${r.open.length} open, the soonest first; finished ones` : "None open; finished ones are"} under their own tabs, the latest first.${r.closedTotal > r.closed.length ? ` The latest ${r.closed.length} of ${r.closedTotal} finished orders.` : ""} Tap one to see it, change it or scan its kegs.` : undefined}
       >
         {rows.length === 0 ? (
           <EmptyState title="No orders yet" action={newOrder}>When an account asks for kegs, make an order: who it&apos;s for, when, and how many of each beer and size. Then scan the kegs out against it.</EmptyState>

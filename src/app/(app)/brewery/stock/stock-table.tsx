@@ -14,16 +14,19 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { deleteMoveAction, moveToKitchenAction, saveAdjustAction, saveReceivedAction, stockHistoryAction } from "./actions";
 
-const TONE: Record<StockStatus, Tone> = { short: "bad", soon: "warn", fine: "good" };
-const RANK: Record<StockStatus, number> = { short: 0, soon: 1, fine: 2 };
+const TONE: Record<StockStatus, Tone> = { uncounted: "unknown", short: "bad", soon: "warn", fine: "good" };
+const RANK: Record<StockStatus, number> = { short: 0, uncounted: 1, soon: 2, fine: 3 };
+const STATUSES: StockStatus[] = ["short", "uncounted", "soon", "fine"];
 const amount = (n: number | null, unit: string, digits = 1) => (n == null ? "—" : `${qty(n, digits)} ${unit}`);
 const cover = (w: number | null) => (w == null ? "—" : w >= 52 ? "a year+" : `${w < 10 ? w.toFixed(1) : Math.round(w)} wk`);
+/** Never counted: what's on the shelf isn't known, so no amount (only what came in since, if anything did). */
+const onHandText = (r: BrewStockRow) => (r.counted ? amount(r.onHand, r.unit) : "—");
 
 function StatusBadge({ r }: { r: BrewStockRow }) {
   return (
     <span className="inline-flex flex-col items-start gap-0.5">
       <Badge tone={TONE[r.status]}>{STATUS_LABEL[r.status]}</Badge>
-      {r.firstShortOn && <span className="text-[0.7rem] text-muted">runs short {shortDate(r.firstShortOn)}</span>}
+      {r.counted && r.firstShortOn && <span className="text-[0.7rem] text-muted">runs short {shortDate(r.firstShortOn)}</span>}
     </span>
   );
 }
@@ -51,12 +54,12 @@ export function StockTable({ rows, today }: { rows: BrewStockRow[]; today: strin
       width: 110,
       firstDir: "desc",
       help: "brewery.stock.onHand",
-      sort: (r) => r.onHandBase,
-      csv: (r) => r.onHand,
+      sort: (r) => (r.counted ? r.onHandBase : null),
+      csv: (r) => (r.counted ? r.onHand : ""),
       cell: (r) => (
-        <span className={cx("num whitespace-nowrap", r.onHandBase < 0 ? "text-bad" : !r.counted ? "text-muted" : "text-ink")}>
-          {amount(r.onHand, r.unit)}
-          {!r.counted && <span className="block text-[0.7rem] text-muted">never counted</span>}
+        <span className={cx("num whitespace-nowrap", r.counted && r.onHandBase < 0 ? "text-bad" : !r.counted ? "text-muted" : "text-ink")}>
+          {onHandText(r)}
+          {!r.counted && <span className="block text-[0.7rem] text-muted">{r.onHandBase > 0 ? `never counted · ${amount(r.onHand, r.unit)} in since` : "never counted"}</span>}
         </span>
       ),
     },
@@ -78,14 +81,13 @@ export function StockTable({ rows, today }: { rows: BrewStockRow[]; today: strin
         </span>
       ),
     },
-    { id: "cover", header: "Weeks of cover", align: "right", width: 110, firstDir: "asc", sort: (r) => r.weeksCover, csv: (r) => (r.weeksCover == null ? "" : Number(r.weeksCover.toFixed(1))), cell: (r) => <span className="num text-ink-2">{cover(r.weeksCover)}</span> },
+    { id: "cover", header: "Weeks of cover", align: "right", width: 110, firstDir: "asc", sort: (r) => (r.counted ? r.weeksCover : null), csv: (r) => (r.weeksCover == null || !r.counted ? "" : Number(r.weeksCover.toFixed(1))), cell: (r) => <span className="num text-ink-2">{r.counted ? cover(r.weeksCover) : "—"}</span> },
     { id: "status", header: "Status", width: 130, sort: (r) => RANK[r.status], csv: (r) => STATUS_LABEL[r.status], cell: (r) => <StatusBadge r={r} /> },
   ], []);
 
   const filters = useMemo<Filter<BrewStockRow>[]>(() => [
-    { id: "status", label: "Status", kind: "facet", values: (r) => r.status, options: (["short", "soon", "fine"] as StockStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] })) },
+    { id: "status", label: "Status", kind: "facet", values: (r) => r.status, options: STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] })) },
     { id: "category", label: "Kind", kind: "facet", values: (r) => r.category, options: BREWING_CATEGORIES.map((c) => ({ value: c, label: c })) },
-    { id: "uncounted", label: "Never counted", kind: "toggle", test: (r) => !r.counted },
     { id: "supplier", label: "Supplier", kind: "facet", values: (r) => r.supplier ?? "No supplier" },
   ], []);
 
@@ -114,12 +116,12 @@ export function StockTable({ rows, today }: { rows: BrewStockRow[]; today: strin
         { value: vis.length, label: vis.length === 1 ? "ingredient" : "ingredients" },
         { value: vis.filter((r) => r.status === "short").length, label: "short", tone: "bad", filter: { id: "status", value: "short" } },
         { value: vis.filter((r) => r.status === "soon").length, label: "to order soon", tone: "warn", filter: { id: "status", value: "soon" } },
-        { value: vis.filter((r) => !r.counted).length, label: "never counted", filter: { id: "uncounted" } },
+        { value: vis.filter((r) => r.status === "uncounted").length, label: "never counted", filter: { id: "status", value: "uncounted" } },
       ]}
       card={(r) => ({
         title: r.name,
-        subtitle: <>{r.category} · <span className={r.status === "short" ? "text-bad" : r.status === "soon" ? "text-warn" : undefined}>{STATUS_LABEL[r.status]}</span>{r.firstShortOn ? ` from ${shortDate(r.firstShortOn)}` : ""}</>,
-        value: <span className={r.onHandBase < 0 ? "text-bad" : undefined}>{amount(r.onHand, r.unit)}</span>,
+        subtitle: <>{r.category} · <span className={r.status === "short" ? "text-bad" : r.status === "soon" ? "text-warn" : r.status === "uncounted" ? "text-muted" : undefined}>{STATUS_LABEL[r.status]}</span>{r.counted && r.firstShortOn ? ` from ${shortDate(r.firstShortOn)}` : ""}</>,
+        value: <span className={r.counted && r.onHandBase < 0 ? "text-bad" : !r.counted ? "text-muted" : undefined}>{onHandText(r)}</span>,
         sub: r.needed ? `brews need ${amount(r.needed, r.unit)}` : r.counted ? `counted ${r.lastCounted ? shortDate(r.lastCounted) : ""}` : "never counted",
       })}
       drawerTitle={(r) => r.name}
@@ -149,7 +151,7 @@ function StockDrawer({ row, close }: { row: BrewStockRow; today: string; close: 
     <div className="space-y-6">
       {toast}
       <div className="grid grid-cols-2 gap-3 text-sm">
-        <div><div className="text-xs text-muted">On hand</div><div className={cx("num text-lg font-semibold", row.onHandBase < 0 && "text-bad")}>{amount(row.onHand, row.unit)}</div></div>
+        <div><div className="text-xs text-muted">On hand</div><div className={cx("num text-lg font-semibold", row.counted && row.onHandBase < 0 && "text-bad", !row.counted && "text-muted")}>{onHandText(row)}</div>{!row.counted && <div className="text-xs text-muted">Not counted yet</div>}</div>
         <div><div className="text-xs text-muted">Status</div><StatusBadge r={row} /></div>
         <div><div className="text-xs text-muted">Planned brews need (8 weeks)</div><div className="num">{row.needed ? amount(row.needed, row.unit) : "—"}</div></div>
         <div><div className="text-xs text-muted">Last counted</div><div className="num">{row.lastCounted ? shortDate(row.lastCounted) : "Never"}</div></div>

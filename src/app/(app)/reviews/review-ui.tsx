@@ -80,7 +80,7 @@ function PasteSheet({ onClose }: { onClose: (msg?: string) => void }) {
         <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
           <div>
             <div className="text-base font-semibold">Paste reviews</div>
-            <p className="mt-0.5 text-sm text-muted">Copy reviews from Google, Yelp or TripAdvisor and paste them here. Leave a blank line between reviews — names, stars and dates are picked up where they appear.</p>
+            <p className="mt-0.5 text-sm text-muted">Copy reviews from Google, Yelp or TripAdvisor and paste them here. Leave a blank line between reviews. Names, stars and dates are picked up where they appear.</p>
           </div>
           <button onClick={() => onClose()} className="-mr-2 rounded-md p-2 text-muted hover:bg-surface-2 hover:text-ink" aria-label="Close">
             <X className="size-5" strokeWidth={1.75} />

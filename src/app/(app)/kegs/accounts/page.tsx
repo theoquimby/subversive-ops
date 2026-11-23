@@ -1,4 +1,5 @@
-import { EmptyState, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
+import { Verdict } from "@/components/chapter";
+import { EmptyState, LinkButton, PageHeader, Section } from "@/components/ui";
 import { requireUser } from "@/server/auth";
 import { accountsList } from "@/server/services/kegAccounts";
 import { ChartColumn } from "lucide-react";
@@ -13,13 +14,14 @@ export default async function KegAccountsPage() {
   await requireUser("MANAGER");
   const r = await accountsList();
   const withKegs = r.rows.filter((a) => a.kegsOut > 0).length;
+  const overdueAt = r.rows.filter((a) => a.overdue).length;
+  const accountsWord = (n: number) => `${n} account${n === 1 ? "" : "s"}`;
 
   return (
     <>
       <PageHeader
         help="kegs.accounts"
         title="Accounts"
-        back={{ href: "/kegs", label: "Kegs" }}
         description="Everywhere your kegs go out to: what's there now, how long it has been there, and how often each account takes a delivery. Counted from keg scans."
         actions={<LinkButton href="/kegs/reports" className="h-10 sm:h-9"><ChartColumn className="size-4" /> Reports</LinkButton>}
       />
@@ -28,13 +30,16 @@ export default async function KegAccountsPage() {
         <EmptyState title="No accounts yet" action={<AddAccount />}>Add the bars, restaurants and people your kegs go out to. Staff pick one when they scan a keg out, and its history builds up here.</EmptyState>
       ) : (
         <>
-          <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-3">
-            <Stat label="Kegs out now" value={r.kegsOut} hint={r.kegsOut ? `At ${withKegs} account${withKegs === 1 ? "" : "s"}${r.noAccount ? ` · ${r.noAccount} with no account recorded` : ""}` : "Every keg is home"} />
-            <Stat label={`Out over ${daysWord(r.overdueDays)}`} value={r.kegsOverdue} tone={r.kegsOverdue ? "warn" : "good"} hint={r.kegsOverdue ? "Worth a call or a pickup" : "Nothing out too long"} />
-            <div className="col-span-2 lg:col-span-1">
-              <Stat label="Deliveries, last 12 months" value={r.deliveries12} hint="Kegs scanned out to an account" />
-            </div>
-          </div>
+          <Verdict
+            badge={{ tone: r.kegsOverdue ? "warn" : "good" }}
+            title={r.kegsOverdue ? `${kegsWord(r.kegsOverdue)} out more than ${daysWord(r.overdueDays)}, at ${accountsWord(overdueAt)}` : r.kegsOut ? `Every keg out has been there less than ${daysWord(r.overdueDays)}` : "Every keg is home"}
+            line={r.kegsOverdue ? "Worth a call, or a pickup on the next delivery. The accounts with a keg out too long are flagged below." : undefined}
+            stats={[
+              { label: "Kegs out now", value: r.kegsOut, hint: r.kegsOut ? `At ${accountsWord(withKegs)}${r.noAccount ? `, ${r.noAccount} with no account recorded` : ""}` : "Every keg is home" },
+              { label: `Out over ${daysWord(r.overdueDays)}`, value: r.kegsOverdue, tone: r.kegsOverdue ? "warn" : "neutral", hint: r.kegsOverdue ? <Link href="/kegs/fleet#look" className="underline underline-offset-2 hover:text-ink">See which kegs</Link> : "Nothing out too long" },
+              { label: "Deliveries, last 12 months", value: r.deliveries12, hint: "Kegs scanned out to an account" },
+            ]}
+          />
 
           <Section title="Every account" description={`The most kegs out first. A wait is flagged once a keg has been there more than ${daysWord(r.overdueDays)}; change that number on Setup. Accounts no longer used are under their own tab.`}>
             <AccountsTable rows={r.rows} overdueDays={r.overdueDays} />

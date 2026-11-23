@@ -280,7 +280,7 @@ export async function sendPing(tags: WebsiteTag[]): Promise<PingResult> {
       r =
         res.status === 200
           ? { at, ok: true, status: 200, message: "The website refreshed", tags }
-          : { at, ok: false, status: res.status, message: res.status === 401 ? "The website turned the secret down — it must match REVALIDATE_SECRET on the website" : res.status === 404 ? "The website has no refresh address at /api/revalidate" : `The website answered ${res.status}`, tags };
+          : { at, ok: false, status: res.status, message: res.status === 401 ? "The website turned the secret down. It must match REVALIDATE_SECRET on the website" : res.status === 404 ? "The website has no refresh address at /api/revalidate" : `The website answered ${res.status}`, tags };
     }
   } catch (e) {
     const err = e as Error;

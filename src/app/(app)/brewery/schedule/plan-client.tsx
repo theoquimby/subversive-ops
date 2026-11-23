@@ -147,9 +147,9 @@ export function PlanArea({ today, recipes, beers, tanks, suggestions }: { today:
   const planned = suggestions.filter((s) => s.planned);
 
   return (
-    <div className="mb-10 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+    <div className="mb-10 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
       {toast}
-      <div ref={formRef} id="plan" className="scroll-mt-24">
+      <div ref={formRef} id="plan" className="min-w-0 scroll-mt-24">
         <Card className="p-4 sm:p-5">
           <div className="mb-3 flex items-center gap-2 text-[0.95rem] font-semibold"><CalendarPlus className="size-4 text-area" />Plan a brew</div>
           <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ok) save(); }}>
@@ -171,7 +171,8 @@ export function PlanArea({ today, recipes, beers, tanks, suggestions }: { today:
         </Card>
       </div>
 
-      <section aria-labelledby="suggested">
+      {/* On a phone, what to brew comes before the form; Plan it scrolls down to the form. */}
+      <section aria-labelledby="suggested" id="suggested-brews" className="order-first scroll-mt-24 min-w-0 lg:order-none">
         <div className="mb-3">
           <h2 id="suggested" className="text-[0.95rem] font-semibold">Suggested brews</h2>
           <p className="mt-0.5 text-sm text-muted">From keg sales: the last day to brew so a full keg is ready before the last one runs out.</p>
@@ -191,7 +192,7 @@ export function PlanArea({ today, recipes, beers, tanks, suggestions }: { today:
                   </div>
                   <div className="num truncate text-xs text-muted">
                     {s.planned
-                      ? s.planned.inTanks ? `${s.planned.code} is in the tanks` : `Planned for ${s.planned.on ? shortDate(s.planned.on) : "—"} (${s.planned.code})`
+                      ? s.planned.inTanks ? `${s.planned.code} is in the tanks` : s.planned.on ? `Planned for ${shortDate(s.planned.on)} (${s.planned.code})` : `Planned, no brew day yet (${s.planned.code})`
                       : s.daysToBrewBy < 0 ? `Should have been brewed by ${shortDate(s.brewBy)} · runs out ~${shortDate(s.runOutOn)}` : `Brew by ${shortDate(s.brewBy)} · runs out ~${shortDate(s.runOutOn)} · ${s.leadDays} days in tanks`}
                   </div>
                 </div>

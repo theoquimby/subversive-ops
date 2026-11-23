@@ -1,7 +1,8 @@
+import { Chapter, InShort, Verdict, type Finding } from "@/components/chapter";
 import { HelpZone } from "@/components/help";
 import { GridCell } from "@/components/grid";
 import { LineChart } from "@/components/line-chart";
-import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section, Stat } from "@/components/ui";
+import { Badge, Card, cx, EmptyState, LinkButton, PageHeader, Section } from "@/components/ui";
 import { addDays } from "@/domain/dates";
 import { OpsDay, operationalHint, rollingRating, themeCounts, themeLabel } from "@/domain/reviews";
 import { money, pct, relativeTime, shortDate, signedPct } from "@/lib/format";
@@ -44,16 +45,47 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
   const avg30 = avg(reviews.filter((r) => r.date > addDays(today, -30)));
   const avgPrev30 = avg(reviews.filter((r) => r.date <= addDays(today, -30) && r.date > addDays(today, -60)));
   const open = reviews.filter(needsReply);
-  const lite = recent.map((r) => ({ rating: r.rating, postedAt: r.date, themes: r.themes, sentiment: r.sentiment }));
+  // With the text, each theme is judged by what the review says about it, not by the review as a whole.
+  const lite = recent.map((r) => ({ rating: r.rating, postedAt: r.date, themes: r.themes, sentiment: r.sentiment, text: r.text }));
   const themes = themeCounts(lite);
-  const worst = [...themes].sort((a, b) => b.negative + b.mixed * 0.5 - (a.negative + a.mixed * 0.5))[0];
+  const worstRaw = [...themes].sort((a, b) => b.negative + b.mixed * 0.5 - (a.negative + a.mixed * 0.5))[0];
+  const worst = worstRaw && worstRaw.negative + worstRaw.mixed > 0 ? worstRaw : null;
   const trend = rollingRating(lite, 5).map((p) => ({ x: p.date, y: Math.round(p.avg * 100) / 100 }));
-  const maxTheme = Math.max(1, ...themes.map((t) => t.total));
 
   const show = FILTERS.some((f) => f.key === rawShow) ? rawShow! : open.length ? "open" : "all";
   const listed = reviews.filter((r) =>
     show === "open" ? needsReply(r) : show === "negative" ? r.rating <= 3 || r.sentiment !== "positive" : show === "positive" ? r.rating >= 4 && r.sentiment === "positive" : true,
   );
+
+  // ---- The story: the verdict, then one chapter per finding --------------------------------
+  const avg90 = avg(recent);
+  const slipping = avg30 != null && avgPrev30 != null && avg30 < avgPrev30 - 0.05;
+  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  const ratingLine =
+    avg90 == null
+      ? "No reviews in the last 90 days."
+      : `${avg90.toFixed(1)} stars from ${plural(recent.length, "review")} in the last 90 days${avg30 != null && avgPrev30 != null ? `; the last 30 days averaged ${avg30.toFixed(1)}, ${avg30 >= avgPrev30 ? "up" : "down"} from ${avgPrev30.toFixed(1)}` : ""}.`;
+  const worstN = worst ? worst.negative + worst.mixed : 0;
+  const replyPoint: Finding | null = open.length
+    ? { tone: "warn", title: `${plural(open.length, "critical review")} need${open.length === 1 ? "s" : ""} a reply`, detail: "Critical or mixed, and nobody has answered yet. A reply drafted in your voice is under each one.", action: "Read each one, edit the draft if it needs it, post it, then press Mark replied." }
+    : null;
+  const themePoint: Finding = worst
+    ? { tone: worstN >= 3 ? "warn" : "neutral", title: `${themeLabel(worst.theme)} is what guests complain about most`, detail: `${plural(worstN, "critical or mixed mention")} in the last 90 days, judged by what each review says about it. A review that praises the beer and faults the service counts against the service only.`, action: fix?.actions[0] ? `${fix.actions[0].title}: see What to fix below.` : null }
+    : { tone: "good", title: "No recurring complaints", detail: "No theme is faulted in the last 90 days of reviews.", action: null };
+  const ratingPoint: Finding = { tone: slipping ? "warn" : "neutral", title: avg90 == null ? "No recent reviews" : `${avg90.toFixed(1)} stars over the last 90 days`, detail: ratingLine, action: null };
+  const verdict = alerts[0]
+    ? { tone: "bad" as const, title: alerts[0].title, line: `${alerts[0].detail}${replyPoint ? ` ${replyPoint.title}.` : ""}` }
+    : replyPoint
+      ? { tone: "warn" as const, title: replyPoint.title, line: `${ratingLine}${worst ? ` Most complaints are about ${themeLabel(worst.theme).toLowerCase()}.` : ""}` }
+      : worst
+        ? { tone: themePoint.tone, title: themePoint.title, line: ratingLine }
+        : { tone: "good" as const, title: "Guests are happy, and every critical review has a reply", line: ratingLine };
+  const contents = [
+    replyPoint && { id: "list", point: replyPoint },
+    { id: "themes", point: themePoint },
+    fix && fix.actions.length > 0 && { id: "fix", point: { tone: "neutral", title: `What to fix this month: ${fix.actions[0].title.charAt(0).toLowerCase()}${fix.actions[0].title.slice(1)}`, detail: "", action: null } as Finding },
+    { id: "trend", point: ratingPoint },
+  ].filter((x): x is { id: string; point: Finding } => !!x);
 
   return (
     <>
@@ -68,32 +100,49 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
         <EmptyState title="No reviews yet">Paste a few reviews from Google, Yelp or TripAdvisor to see themes, reply drafts, and what was going on in operations that day.</EmptyState>
       ) : (
         <>
-          <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4 [&>[data-help-zone]>*]:h-full">
-            <Stat help="reviews.average" label="Average rating, 90 days" value={<Stars value={avg(recent)} />} hint={`${recent.length} review${recent.length === 1 ? "" : "s"}`} />
-            <Stat
-              help="reviews.last30"
-              label="Last 30 days"
-              value={avg30 == null ? "—" : avg30.toFixed(1)}
-              hint={avg30 != null && avgPrev30 != null ? `${avg30 >= avgPrev30 ? "Up" : "Down"} from ${avgPrev30.toFixed(1)} the 30 days before` : "Not enough reviews to compare"}
-              tone={avg30 != null && avgPrev30 != null ? (avg30 >= avgPrev30 ? "good" : "warn") : undefined}
+          <HelpZone id="reviews.average">
+            <Verdict
+              badge={{ tone: verdict.tone }}
+              title={verdict.title}
+              line={verdict.line}
+              stats={[
+                { label: "Average, last 90 days", value: avg90 == null ? "—" : `${avg90.toFixed(1)} ★`, hint: plural(recent.length, "review") },
+                { label: "Last 30 days", value: avg30 == null ? "—" : `${avg30.toFixed(1)} ★`, hint: avg30 != null && avgPrev30 != null ? `${avg30 >= avgPrev30 ? "Up" : "Down"} from ${avgPrev30.toFixed(1)}` : "Too few to compare", tone: avg30 == null ? "unknown" : slipping ? "warn" : undefined },
+                { label: "Need a reply", value: open.length, hint: open.length ? "Critical or mixed" : "All answered", tone: open.length ? "warn" : "good" },
+              ]}
             />
-            <Stat help="reviews.needReply" label="Need a reply" value={open.length} hint="Critical or mixed, not answered" tone={open.length ? "warn" : "good"} />
-            <Stat help="reviews.worst" label="Most complained about" value={<span className="text-[1.25rem] sm:text-[1.5rem]">{worst && worst.negative + worst.mixed > 0 ? themeLabel(worst.theme) : "Nothing"}</span>} hint={worst && worst.negative + worst.mixed > 0 ? `${worst.negative + worst.mixed} critical or mixed mention${worst.negative + worst.mixed === 1 ? "" : "s"}` : "No recurring complaints"} />
-          </div>
+          </HelpZone>
+          {contents.length > 1 && (
+            <Section title="In short" description="What stands out, in the order the page tells it. Tap one to jump to it.">
+              <InShort items={contents} />
+            </Section>
+          )}
 
-          {alerts.map((a) => (
-            <Card key={a.kind} className="-mt-4 mb-8 border-bad/30 bg-bad-bg p-4 text-sm">
-              <span className="font-medium text-bad">{a.title}.</span> <span className="text-ink-2">{a.detail}</span>
-            </Card>
-          ))}
+          <Chapter
+            id="themes"
+            point={themePoint}
+            title="Themes"
+            className="mb-10"
+            numbers={
+              <p className="text-xs text-muted">
+                The last 90 days. A theme is judged by the sentence or clause that mentions it, so one review can praise one thing and fault another. A theme picked out by AI without its words in the review takes the feeling of the whole review.
+              </p>
+            }
+          >
+            <HelpZone id="reviews.themes">
+              <ThemeBars themes={themes} />
+            </HelpZone>
+          </Chapter>
 
           {fix && (
             <Section
               help="reviews.fix"
               title="What to fix this month"
-              description={`${fix.by === "claude" ? "Written by Claude" : "From the most-mentioned complaints"} from ${fix.reviewCount} review${fix.reviewCount === 1 ? "" : "s"} in the last 90 days and what operations looked like on those days.`}
+              description={`${fix.by === "claude" ? "Written by Claude" : "From the most-complained-about themes"} over the last 90 days of reviews and what operations looked like on those days. Worked out ${shortDate(fix.generatedAt.slice(0, 10))}.`}
               actions={<RefreshFix claude={settings.claude} />}
+              className="scroll-mt-24"
             >
+              <span id="fix" className="block scroll-mt-24" />
               {fix.actions.length === 0 ? (
                 <Card className="p-4 text-sm text-muted">No recurring complaints in the last 90 days. Keep doing what you&apos;re doing.</Card>
               ) : (
@@ -114,35 +163,14 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
             </Section>
           )}
 
-          <div className="grid grid-cols-1 gap-x-8 lg:grid-cols-5">
-            <Section fill help="reviews.trend" className="min-w-0 lg:col-span-3" title="Rating trend" description="Rolling average of the last 5 reviews">
-              <Card className="p-4">
-                {trend.length >= 2 ? <LineChart points={trend} valueFormat="number" ariaLabel="Average rating over time" height={200} domain={RATING_AXIS} /> : <div className="py-10 text-center text-sm text-muted">Add a few more reviews to see a trend.</div>}
-              </Card>
-            </Section>
-            <Section fill help="reviews.themes" className="min-w-0 lg:col-span-2" title="Themes" description="Last 90 days · what guests mention most">
-              <Card className="divide-y divide-border">
-                {themes.length === 0 && <div className="p-4 text-sm text-muted">No themes yet.</div>}
-                {themes.slice(0, 8).map((t) => (
-                  <div key={t.theme} className="px-4 py-2.5">
-                    <div className="flex items-baseline justify-between text-sm">
-                      <span className="font-medium">{themeLabel(t.theme)}</span>
-                      <span className="num text-xs text-muted">
-                        {t.total}
-                        {t.negative + t.mixed > 0 && <span className="text-bad"> · {t.negative + t.mixed} critical</span>}
-                      </span>
-                    </div>
-                    <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-surface-2" style={{ width: `${Math.max(12, (t.total / maxTheme) * 100)}%` }} aria-hidden>
-                      <span className="bg-good/70" style={{ width: `${(t.positive / t.total) * 100}%` }} />
-                      <span className="bg-warn/70" style={{ width: `${(t.mixed / t.total) * 100}%` }} />
-                      <span className="bg-bad/70" style={{ width: `${(t.negative / t.total) * 100}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </Card>
-            </Section>
-          </div>
+          <Chapter id="trend" point={ratingPoint} title="Rating trend" className="mb-10">
+            <HelpZone id="reviews.trend">
+              {trend.length >= 2 ? <LineChart points={trend} valueFormat="number" ariaLabel="Average rating of the last 5 reviews, over time" height={200} domain={RATING_AXIS} /> : <div className="py-10 text-center text-sm text-muted">Add a few more reviews to see a trend.</div>}
+              <p className="mt-2 text-xs text-muted">Each point is the average of the last 5 reviews.</p>
+            </HelpZone>
+          </Chapter>
 
+          <span id="list" className="block scroll-mt-24" />
           <Section
             title="Reviews"
             description={settings.claude ? "Themes and reply drafts written by AI, in your voice. Edit before posting." : "Themes from keywords and simple reply drafts. Turn on AI features in Settings → Connections for written-for-you replies."}
@@ -172,7 +200,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
                 {settings.googleConfigured && settings.placeId
                   ? `On${settings.placeName ? ` · ${settings.placeName}` : ""} · checked every morning`
                   : settings.googleConfigured
-                    ? "Almost there — pick your business so new Google reviews come in by themselves."
+                    ? "Almost there: pick your business so new Google reviews come in by themselves."
                     : "Off. A 5-minute guide with pictures turns it on."}
               </div>
             </div>
@@ -191,13 +219,49 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
   );
 }
 
-function Stars({ value }: { value: number | null }) {
-  if (value == null) return <>—</>;
+const FEELINGS = [
+  { key: "positive", label: "Happy", className: "bg-good/70" },
+  { key: "neutral", label: "Just mentioned", className: "bg-border-strong" },
+  { key: "mixed", label: "Mixed", className: "bg-warn/70" },
+  { key: "negative", label: "Critical", className: "bg-bad/70" },
+] as const;
+
+/** Each theme as a bar of its mentions, split by how the review felt about it, with the key above. */
+function ThemeBars({ themes }: { themes: ReturnType<typeof themeCounts> }) {
+  if (!themes.length) return <p className="text-sm text-muted">No themes yet.</p>;
+  const max = Math.max(1, ...themes.map((t) => t.total));
   return (
-    <span className="inline-flex items-baseline gap-1.5">
-      {value.toFixed(1)}
-      <span className="text-base text-warn" aria-hidden>★</span>
-    </span>
+    <>
+      <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted" aria-label="Key">
+        {FEELINGS.map((f) => (
+          <li key={f.key} className="inline-flex items-center gap-1.5">
+            <span aria-hidden className={cx("inline-block size-2.5 rounded-sm", f.className)} />
+            {f.label}
+          </li>
+        ))}
+      </ul>
+      <ul className="divide-y divide-border">
+        {themes.slice(0, 8).map((t) => (
+          <li key={t.theme} className="py-2.5">
+            <div className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="font-medium">{themeLabel(t.theme)}</span>
+              <span className="num text-xs text-muted">
+                {t.total} mention{t.total === 1 ? "" : "s"}
+                {t.negative + t.mixed > 0 && <span className="text-bad"> · {t.negative + t.mixed} critical</span>}
+              </span>
+            </div>
+            <div
+              className="mt-1.5 flex h-2 gap-px overflow-hidden rounded-full bg-surface-2"
+              style={{ width: `${Math.max(12, (t.total / max) * 100)}%` }}
+              role="img"
+              aria-label={`${themeLabel(t.theme)}: ${FEELINGS.map((f) => `${t[f.key]} ${f.label.toLowerCase()}`).join(", ")}`}
+            >
+              {FEELINGS.map((f) => (t[f.key] > 0 ? <span key={f.key} className={f.className} style={{ width: `${(t[f.key] / t.total) * 100}%` }} /> : null))}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -258,7 +322,7 @@ function OpsStrip({ ops, hint }: { ops: OpsDay; hint: string | null }) {
         <Metric
           label={ops.workedHours != null ? "Staff hours worked vs needed" : "Staff hours scheduled vs needed"}
           value={staffed == null ? "No schedule that day" : `${Math.round(staffed)} h${ops.neededHours ? ` vs ${Math.round(ops.neededHours)} h` : ""}`}
-          note={short == null ? undefined : short < -0.1 ? "short" : "covered"}
+          note={short != null && short < -0.1 ? "short" : undefined}
           tone={short != null && short < -0.1 ? "bad" : undefined}
         />
         <Metric

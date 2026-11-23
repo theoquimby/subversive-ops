@@ -110,7 +110,7 @@ export interface ListingBlock {
   totals: SideTotals;
   viewsTrend: TrendPoint[];
   /** Views per point, split by where the listing was shown. */
-  surfaceTrend: { x: ISODate; to: ISODate; maps: number; search: number }[];
+  surfaceTrend: { x: ISODate; to: ISODate; maps: number; search: number; missing?: boolean }[];
   actionTrends: { metric: ListingActionMetric; label: string; total: Delta; points: TrendPoint[] }[];
   keywords: { keyword: string; value: number | null; threshold: number | null }[];
   /** YYYY-MM the keywords are for, and whether that month is still filling in. */
@@ -358,7 +358,7 @@ async function loadListing(w: Windows, today: ISODate): Promise<ListingBlock | n
     actions: cmp(listingActionsTotal(tc), listingActionsTotal(tp)),
     totals: { cur: tc, prev: comparable ? tp : null },
     viewsTrend: points(LISTING_VIEW_METRICS),
-    surfaceTrend: maps.map((m, i) => ({ x: m.x, to: m.to, maps: m.cur, search: search[i]?.cur ?? 0 })),
+    surfaceTrend: maps.map((m, i) => ({ x: m.x, to: m.to, maps: m.cur, search: search[i]?.cur ?? 0, missing: m.missing })),
     actionTrends: LISTING_ACTION_METRICS.map((metric) => ({ metric, label: LISTING_LABEL[metric], total: cmp(tc[metric] ?? 0, tp[metric] ?? 0), points: points([metric]) }))
       // Bookings only once the listing has some.
       .filter((t) => t.metric !== "BUSINESS_BOOKINGS" || t.total.cur > 0 || (tp[t.metric] ?? 0) > 0),
@@ -431,7 +431,9 @@ async function loadSocial(channel: SocialChannel, w: Windows, today: ISODate, pe
   const series = (rows: typeof cur, metric: string) => rows.filter((r) => r.metric === metric).map((r) => ({ day: r.day, value: r.value }));
   const points = (metric: string) => trendPoints(series(cur, metric), comparable ? series(prev, metric) : null, a, since);
   const fromChannel = (rows: { key: string; sessions: number }[]) => rows.filter((r) => r.key === channel).reduce((n, r) => n + r.sessions, 0);
-  const website = webFirst ? compare(fromChannel(webCur), fromChannel(webPrev), webComparable ? "full" : "none") : null;
+  // An old test hit isn't tracking: the website counts only once visits arrive in this period.
+  const webLive = webCur.some((r) => r.sessions > 0);
+  const website = webFirst && webLive ? compare(fromChannel(webCur), fromChannel(webPrev), webComparable ? "full" : "none") : null;
   // The website's count joins this channel's totals only when both have the same history to compare with.
   const withWeb = website && webComparable === comparable ? website : null;
   const span = { from: w.cur.from, to: today, days: w.cur.days + 1 };

@@ -86,7 +86,7 @@ export async function setTaxSetting(field: z.infer<typeof settingFields>, raw: s
     s.freq[field.slice(5) as Form] = v as Freq;
   } else {
     const n = Number(v);
-    if (!Number.isInteger(n) || n < 0 || n > 120) return { error: "Days, 0–120" };
+    if (!Number.isInteger(n) || n < 0 || n > 120) return { error: "Days, 0 to 120" };
     s.dueDays[field.slice(4) as Form] = n;
   }
   const value = JSON.stringify(s);

@@ -145,6 +145,8 @@ export interface TrendPoint {
   cur: number;
   /** The same point in the period before; null when there is none to compare. */
   prev: number | null;
+  /** Runs past the source's last day: not (all) in yet, so never drawn as a number. */
+  missing?: boolean;
 }
 
 export const sumDays = (rows: DayValue[], span: Span): number => rows.reduce((s, r) => (r.day >= span.from && r.day <= span.to ? s + r.value : s), 0);
@@ -157,9 +159,10 @@ export const bucketDays = (days: number): 1 | 7 => (days > 31 ? 7 : 1);
  * period before. Days with nothing recorded are zero; with `since` (the day
  * the source's history starts), points before it are left out rather than
  * drawn as zeros. Weeks are counted back from the last day, so the last
- * point is always a whole week.
+ * point is always a whole week. With `w.through` (the source's last day),
+ * points that run past it are marked `missing`: not in yet, not zero.
  */
-export function trendPoints(cur: DayValue[], prev: DayValue[] | null, w: Windows, since?: ISODate | null): TrendPoint[] {
+export function trendPoints(cur: DayValue[], prev: DayValue[] | null, w: Windows & { through?: ISODate | null }, since?: ISODate | null): TrendPoint[] {
   const size = bucketDays(w.cur.days);
   const byDay = (rows: DayValue[]) => {
     const m = new Map<ISODate, number>();
@@ -182,7 +185,9 @@ export function trendPoints(cur: DayValue[], prev: DayValue[] | null, w: Windows
       cv += c.get(addDays(x, i)) ?? 0;
       if (p) pv += p.get(addDays(w.prev.from, offset + i)) ?? 0;
     }
-    out.push({ x: since && since > x ? since : x, to, cur: cv, prev: p ? pv : null });
+    const pt: TrendPoint = { x: since && since > x ? since : x, to, cur: cv, prev: p ? pv : null };
+    if (w.through && to > w.through) pt.missing = true;
+    out.push(pt);
   }
   return out;
 }
@@ -587,6 +592,41 @@ const pct0 = (x: number) => `${Math.round(Math.abs(x) * 100)}%`;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const sayDay = (d: ISODate) => `${MONTHS[Number(d.slice(5, 7)) - 1]} ${Number(d.slice(8, 10))}`;
 const TONE_ORDER: Record<LookItem["tone"], number> = { bad: 0, warn: 1, neutral: 2, good: 3 };
+
+const andList = (xs: string[]) => (xs.length <= 1 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
+export interface OnlineVerdict {
+  tone: LookItem["tone"];
+  title: string;
+  line: string;
+}
+
+/**
+ * The finding at the top of the Online page. Sources that stopped sending come
+ * first, said once together (their charts are cut short, so nothing else on the
+ * page can be read until they catch up); then the most serious thing worth a
+ * look; then, when nothing is, that nothing online needs you.
+ */
+export function onlineVerdict(a: { stopped: { name: string; through: ISODate }[]; look: LookItem[] }): OnlineVerdict {
+  const rest = a.look.filter((i) => !i.key.startsWith("stale-"));
+  if (a.stopped.length) {
+    const days = new Set(a.stopped.map((s) => s.through));
+    const same = days.size === 1;
+    const names = andList(a.stopped.map((s) => s.name));
+    // "Google Search and the Google listing after Nov 13, Instagram and Facebook after Nov 14."
+    const byDay = [...days].sort().map((d) => `${andList(a.stopped.filter((s) => s.through === d).map((s) => s.name))} after ${sayDay(d)}`).join(", ");
+    const each = same ? "" : `${byDay[0].toUpperCase()}${byDay.slice(1)}. `;
+    const also = rest.filter((i) => i.tone === "bad" || i.tone === "warn").length;
+    return {
+      tone: "warn",
+      title: `${names} stopped sending numbers${same ? ` after ${sayDay(a.stopped[0].through)}` : ""}`,
+      line: `${each}Their charts end on the last day that came in, and nothing can be compared until they catch up. Sync again from each connection, listed below${also ? `, with ${also} more thing${also === 1 ? "" : "s"} worth a look` : ""}.`,
+    };
+  }
+  if (!rest.length) return { tone: "good", title: "Nothing online needs you", line: "No sharp changes against the period before, nothing to set up, and every review answered." };
+  const [first, ...more] = rest;
+  return { tone: first.tone, title: first.title, line: more.length ? `And ${more.length} more thing${more.length === 1 ? "" : "s"} below.` : first.detail };
+}
 
 /**
  * The short list under the charts: only things the numbers actually show.

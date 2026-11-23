@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateRating, fallbackReply, operationalHint, keywordSentiment, keywordThemes, parsePastedReviews, parseRating, parseReviewDate, reviewFingerprint, rollingRating, themeCounts } from "../reviews";
+import { criticalThemes, estimateRating, fallbackReply, mentionSentiment, operationalHint, keywordSentiment, keywordThemes, parsePastedReviews, parseRating, parseReviewDate, reviewFingerprint, rollingRating, themeCounts } from "../reviews";
 
 const TODAY = "2026-11-13";
 
@@ -48,6 +48,50 @@ describe("fallbackReply", () => {
     expect(r).toMatch(/^Hi there,/);
     expect(r).toMatch(/Sorry/);
     expect(r).toMatch(/busiest shifts/);
+  });
+  it("never uses a dash: replies are posted publicly", () => {
+    const all = [
+      fallbackReply({ author: "Dana K.", rating: 5, themes: ["beer", "dogs"], sentiment: "positive" }),
+      fallbackReply({ author: null, rating: 5, themes: [], sentiment: "positive" }),
+      fallbackReply({ author: null, rating: 2, themes: ["service-speed", "food"], sentiment: "negative" }),
+      fallbackReply({ author: "Sam", rating: 3, themes: ["price"], sentiment: "mixed" }),
+    ];
+    for (const r of all) expect(r).not.toMatch(/[—–]/);
+    expect(all[0]).toMatch(/The Subversive crew$/);
+  });
+});
+
+describe("feeling per theme mention", () => {
+  it("judges each theme by the part of the review that mentions it", () => {
+    const text = "The beer was good but the service was painfully slow. One server for the whole room.";
+    expect(mentionSentiment(text, "beer", "negative")).toBe("positive");
+    expect(mentionSentiment(text, "service-speed", "negative")).toBe("negative");
+  });
+  it("splits a sentence that praises one thing and faults another", () => {
+    expect(mentionSentiment("Beer was great and the food was cold.", "beer", "mixed")).toBe("positive");
+    expect(mentionSentiment("Beer was great and the food was cold.", "food", "mixed")).toBe("negative");
+  });
+  it("reads a negated compliment as a complaint", () => {
+    expect(mentionSentiment("The IPA wasn't good.", "beer", "mixed")).toBe("negative");
+  });
+  it("is mixed when one mention praises and another faults", () => {
+    expect(mentionSentiment("Loved the stout. The lager tasted flat though.", "beer", "mixed")).toBe("mixed");
+  });
+  it("counts a plain mention as just mentioned, not as a complaint", () => {
+    const text = "We came for trivia and had burgers. Service was slow.";
+    expect(mentionSentiment(text, "food", "negative")).toBeNull();
+    expect(mentionSentiment(text, "service-speed", "negative")).toBe("negative");
+  });
+  it("leans on the whole review for themes whose words already judge (a wait, the price)", () => {
+    expect(mentionSentiment("We waited 40 minutes for a table.", "service-speed", "negative")).toBe("negative");
+  });
+  it("falls back to the whole review when the words for a theme aren't in the text", () => {
+    expect(mentionSentiment("Really enjoyed it.", "atmosphere", "positive")).toBe("positive");
+    expect(mentionSentiment("Not for us.", "atmosphere", "negative")).toBe("negative");
+  });
+  it("names only the themes a review actually complains about", () => {
+    expect(criticalThemes({ text: "The beer was good but the service was painfully slow.", themes: ["service-speed", "beer"], sentiment: "negative" })).toEqual(["service-speed"]);
+    expect(criticalThemes({ themes: ["beer"], sentiment: "negative" })).toEqual(["beer"]);
   });
 });
 
@@ -155,9 +199,18 @@ describe("summaries", () => {
   });
   it("counts themes by sentiment", () => {
     expect(themeCounts(rs)).toEqual([
-      { theme: "service-speed", total: 2, positive: 0, negative: 1, mixed: 1 },
-      { theme: "beer", total: 2, positive: 1, negative: 0, mixed: 1 },
+      { theme: "service-speed", total: 2, positive: 0, negative: 1, mixed: 1, neutral: 0 },
+      { theme: "beer", total: 2, positive: 1, negative: 0, mixed: 1, neutral: 0 },
     ]);
+  });
+  it("counts each theme by what the review says about it when the text is there", () => {
+    const withText = [
+      { rating: 2, postedAt: "2026-11-04", themes: ["beer", "service-speed"], sentiment: "negative", text: "Beer was good. Service was slow, one server for the whole room." },
+      { rating: 1, postedAt: "2026-11-05", themes: ["beer", "service-speed"], sentiment: "negative", text: "Had a flight. Waited forever for anyone to come by." },
+    ];
+    const c = themeCounts(withText);
+    expect(c.find((t) => t.theme === "beer")).toEqual({ theme: "beer", total: 2, positive: 1, negative: 0, mixed: 0, neutral: 1 });
+    expect(c.find((t) => t.theme === "service-speed")).toMatchObject({ negative: 2 });
   });
 });
 

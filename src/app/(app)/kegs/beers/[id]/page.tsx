@@ -15,6 +15,7 @@ import { dated, daysWord, kegsWord } from "../../accounts/bits";
 import { BeerDot, sizeShort } from "../../bits";
 import { MonthBars, WeeklyPints } from "../../demand/chart";
 import { FillBars, Key, WENT_KEY } from "../../fleet/charts";
+import { KEG_STATE_FILL } from "../../keg-state";
 import { StandingControl } from "../../standing";
 
 export const metadata = { title: "Beer" };
@@ -172,14 +173,14 @@ export default async function BeerPage({ params }: { params: Promise<{ id: strin
                   <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
                     {WENT_ORDER.map((w, i) => (
                       <div key={w} className="flex items-baseline gap-1.5">
-                        <dt className="inline-flex items-center gap-1.5 text-ink-2"><span aria-hidden className="inline-block size-2.5 rounded-sm" style={{ background: WENT_KEY[i].fill, opacity: WENT_KEY[i].opacity }} />{WENT_KEY[i].label}</dt>
+                        <dt className="inline-flex items-center gap-1.5 text-ink-2"><span aria-hidden className={cx("inline-block size-2.5 rounded-sm", WENT_KEY[i].missing && "border border-dashed border-muted")} style={WENT_KEY[i].missing ? undefined : { background: WENT_KEY[i].fill }} />{WENT_KEY[i].label}</dt>
                         <dd className={cx("num font-semibold", w === "none" && fills.went.none > 0 && "text-warn")}>{fills.went[w]}</dd>
                       </div>
                     ))}
                   </dl>
                   {fills.went.none > 0 && <p className="mt-2 text-xs text-muted">No scan: next scanned empty or filled again with no tap or delivery scan in between.</p>}
                 </div>
-                <div className="mt-3"><Key items={[{ label: "This year", fill: "var(--area)", opacity: 0.85 }, { label: "Last year", fill: "var(--border-strong)", opacity: 1 }]} /></div>
+                <div className="mt-3"><Key items={[{ label: "This year", fill: KEG_STATE_FILL.full }, { label: "Last year", fill: "var(--border-strong)" }]} /></div>
               </Card>
             )}
           </Section>

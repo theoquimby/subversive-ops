@@ -1,10 +1,13 @@
 import "server-only";
-import { addDays, ISODate, parseISODate, toISODate, zonedMidnightUTC } from "@/domain/dates";
+import { addDays, daysBetween, ISODate, parseISODate, toISODate, zonedMidnightUTC } from "@/domain/dates";
 import { brewMoves, dumpedOnOf, kegCountCheck, readTaxSettings, returnsDue, worksheet, type FiledPeriod, type Form, type Move, type Period, type TaxSettings } from "@/domain/beerTax";
+import { cycles } from "@/domain/kegFleet";
 import { kegSizeInfo } from "@/domain/kegs";
+import { scanGap, type ScanGap } from "@/domain/kegSignals";
 import { businessDateOf } from "@/lib/format";
 import { env } from "../env";
 import { db, num } from "../db";
+import { fleetData } from "./kegFleet";
 import { businessToday } from "./sales";
 
 /**
@@ -142,6 +145,17 @@ export async function beerTaxNeedsYou(today: ISODate = businessToday()) {
   const [since, s, filings] = await Promise.all([historySince(), taxSettings(), filingsFor()]);
   if (!since && !filings.length) return [];
   return returnsDue(today, s, filings, 10, since).filter((r) => r.state === "overdue" || r.state === "due-soon");
+}
+
+/**
+ * Kegs filled in the period and what became of them, by the scans. Fills with
+ * no tap or delivery scan ("none") left the brewery somehow, but the worksheet
+ * can't see them, so its taxable figure is probably low.
+ */
+export async function removalScanGap(p: Period): Promise<ScanGap> {
+  const { events, kegs, today } = await fleetData();
+  const end = p.end < today ? p.end : today;
+  return scanGap(cycles(events, kegs), end, daysBetween(p.start, end) + 1);
 }
 
 /** The first day there's keg history or a typed-in line: returns for earlier periods aren't chased. */

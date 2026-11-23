@@ -72,7 +72,6 @@ export default async function AllKegsPage({ searchParams }: { searchParams: Prom
       <PageHeader
         help="kegs.all"
         title="All kegs"
-        back={{ href: "/kegs", label: "Kegs" }}
         description="Every keg, its sticker code and where it is. Search by code, old sticker, beer or account; filter by status, beer, size or place; tap a keg to open it."
         actions={
           <div className="flex gap-2">
@@ -82,7 +81,7 @@ export default async function AllKegsPage({ searchParams }: { searchParams: Prom
         }
       />
 
-      <Section title={`${inService} kegs in service`} description={rows.length > inService ? `And ${rows.length - inService} retired, under the Retired tab. Tick kegs to print their labels.` : "Tick kegs to print their labels."}>
+      <Section title={`${rows.length} kegs: ${inService} in service${rows.length > inService ? `, ${rows.length - inService} retired` : ""}`} description="Tick kegs to print their labels.">
         <KegsTable rows={rows} />
       </Section>
 

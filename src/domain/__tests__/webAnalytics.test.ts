@@ -9,6 +9,8 @@ import {
   deviceClass,
   expandOrigins,
   funnel,
+  parsePeriod,
+  PERIODS,
   inquiryAttribution,
   isBot,
   KEY_SEP,
@@ -265,8 +267,8 @@ describe("funnel and rates", () => {
 describe("periods and retention", () => {
   it("compares with the same number of days just before", () => {
     const { cur, prev } = periods("7d", "2026-11-15");
-    expect(cur).toEqual({ from: "2026-11-09", to: "2026-11-15", days: 7 });
-    expect(prev).toEqual({ from: "2026-11-02", to: "2026-11-08", days: 7 });
+    expect(cur).toEqual({ from: "2026-11-08", to: "2026-11-14", days: 7 });
+    expect(prev).toEqual({ from: "2026-11-01", to: "2026-11-07", days: 7 });
   });
   it("keeps raw hits 400 days", () => {
     expect(retentionCutoff("2026-11-15")).toBe("2025-10-11");
@@ -297,5 +299,23 @@ describe("inquiry attribution", () => {
     expect(rows[0]).toEqual({ source: "google", inquiries: 2, quoted: 2, booked: 1, revenue: 2400 });
     expect(rows.find((r) => r.source === "instagram")).toMatchObject({ inquiries: 1, quoted: 0, booked: 0 });
     expect(rows.find((r) => r.source === "(not set)")?.inquiries).toBe(1);
+  });
+});
+
+describe("periods, the same as Online", () => {
+  it("offers 7 days, 28 days, 3 months and 12 months, all whole weeks", () => {
+    expect(PERIODS.map((p) => p.label)).toEqual(["7 days", "28 days", "3 months", "12 months"]);
+    for (const p of PERIODS) expect(p.days % 7, p.id).toBe(0);
+  });
+  it("ends yesterday, like Online, and compares with the same length before", () => {
+    const p = periods("28d", "2026-11-23");
+    expect(p.cur).toEqual({ from: "2026-10-26", to: "2026-11-22", days: 28 });
+    expect(p.prev).toEqual({ from: "2026-09-28", to: "2026-10-25", days: 28 });
+  });
+  it("still reads the old 90-day and 12-month links", () => {
+    expect(parsePeriod("90d")).toBe("3m");
+    expect(parsePeriod("365d")).toBe("12m");
+    expect(parsePeriod("3m")).toBe("3m");
+    expect(parsePeriod("x")).toBe("28d");
   });
 });

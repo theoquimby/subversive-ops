@@ -18,7 +18,7 @@ const NO_BEER = "Beer not recorded";
 export interface OutLongRow { id: string; code: string; display: string; size: string; beer: string | null; account: string; days: number }
 
 /** Kegs out at an account too long, grouped by account, the longest wait first. */
-export function OutTooLongTable({ rows }: { rows: OutLongRow[] }) {
+export function OutTooLongTable({ rows, id = "kegs-fleet-out" }: { rows: OutLongRow[]; id?: string }) {
   const columns = useMemo<Column<OutLongRow>[]>(() => [
     { id: "keg", header: "Keg", width: 100, hideable: false, sort: (k) => k.code, csv: (k) => k.display, cell: (k) => <span className="num font-medium whitespace-nowrap">{k.display}</span> },
     { id: "beer", header: "Beer", width: 180, sort: (k) => k.beer, csv: (k) => k.beer ?? "", cell: (k) => (k.beer ? <span className="text-ink-2">{k.beer}</span> : <span className="text-muted">{NO_BEER}</span>) },
@@ -34,7 +34,7 @@ export function OutTooLongTable({ rows }: { rows: OutLongRow[] }) {
   const groups = useMemo<GroupBy<OutLongRow>[]>(() => [{ id: "account", label: "Account", key: (k) => k.account }, { id: "beer", label: "Beer", key: (k) => k.beer ?? NO_BEER }], []);
   return (
     <DataTable
-      id="kegs-fleet-out"
+      id={id}
       rows={rows}
       rowKey={(k) => k.id}
       columns={columns}
@@ -44,7 +44,7 @@ export function OutTooLongTable({ rows }: { rows: OutLongRow[] }) {
       filters={filters}
       groups={groups}
       defaultView={{ group: "account", sort: [{ id: "days", dir: "desc" }] }}
-      csvName="kegs-out-too-long"
+      csvName={id === "kegs-fleet-out" ? "kegs-out-too-long" : "kegs-probably-lost"}
       urlSearch={false}
       maxHeight="32rem"
       rowHref={(k) => `/kegs/k/${k.code}`}

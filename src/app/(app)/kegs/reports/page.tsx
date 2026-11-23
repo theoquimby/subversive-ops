@@ -39,7 +39,7 @@ export default async function KegReportsPage({ searchParams }: { searchParams: P
   if (!r.first) {
     return (
       <>
-        <PageHeader help="kegs.reports" title="Keg reports" back={{ href: "/kegs", label: "Kegs" }} description="Volume by where the beer went, and the kegs sitting at accounts." />
+        <PageHeader help="kegs.reports" title="Keg reports" description="Volume by where the beer went, and the kegs sitting at accounts." />
         <EmptyState title="No keg history yet" action={<LinkButton href="/kegs/import" variant="primary">Import from your old keg app</LinkButton>}>Reports fill in once kegs have been scanned for a while, or as soon as you bring in the history from your old keg app.</EmptyState>
       </>
     );
@@ -50,7 +50,6 @@ export default async function KegReportsPage({ searchParams }: { searchParams: P
       <PageHeader
         help="kegs.reports"
         title="Keg reports"
-        back={{ href: "/kegs", label: "Kegs" }}
         description="Two reports worked out from keg scans: how much beer left in kegs and where it went, and the kegs sitting at accounts right now."
         actions={<LinkButton href="/kegs/accounts" className="h-10 sm:h-9"><Store className="size-4" /> Accounts</LinkButton>}
       />

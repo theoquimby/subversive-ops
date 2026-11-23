@@ -14,6 +14,15 @@ describe("ratingDrop", () => {
     expect(d.alert).toBe(true);
     expect(d.themes[0]).toBe("service-speed");
   });
+  it("names only the themes the critical reviews actually complain about", () => {
+    const recent = [
+      { ...r("2026-11-01", 2, ["beer", "service-speed"], "negative"), text: "Beer was good but the service was slow." },
+      { ...r("2026-11-05", 2, ["beer", "service-speed"], "negative"), text: "Great stouts. Waited forever to order." },
+      r("2026-11-10", 3),
+    ];
+    const d = ratingDrop([...base, ...recent], today);
+    expect(d.themes).toEqual(["service-speed"]);
+  });
   it("stays quiet with too few reviews", () => {
     expect(ratingDrop([...base, r("2026-11-01", 1)], today).alert).toBe(false);
   });

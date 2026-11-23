@@ -3,12 +3,13 @@ import { ONLINE_RANGES, type Channel, type Delta, type ListingViewMetric, type L
 import { shortDate } from "@/lib/format";
 import { ArrowDownRight, ArrowUpRight, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { CHANNEL } from "./channel";
 import type { ReactNode } from "react";
 
 /**
  * Pieces shared by the Online pages (Overview, Google listing, Instagram, Facebook). Server
- * components; no state. The colours here follow the thing, never its rank:
- * the page's hue for Google, greys for everything people do on their own.
+ * components; no state. Colours follow the place, never its rank: one colour per channel
+ * (see ./channel), greys for everything people do on their own.
  */
 
 export const n0 = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -18,32 +19,33 @@ export interface Fill {
   opacity: number;
 }
 
-/** Website visits by channel: the hue for search and maps, greys for the rest. */
+const solid = (fill: string): Fill => ({ fill, opacity: 1 });
+
+export const SEARCH_FILL = solid(CHANNEL.search);
+export const LISTING_FILL = solid(CHANNEL.listing);
+export const MAPS_FILL = solid(CHANNEL.maps);
+export const WEBSITE_FILL = solid(CHANNEL.website);
+export const INSTAGRAM_FILL = solid(CHANNEL.instagram);
+export const FACEBOOK_FILL = solid(CHANNEL.facebook);
+
+/** Website visits by where they started: Google's two in their channel colours, greys for the rest. */
 export const CHANNEL_FILL: Record<Channel, Fill> = {
-  "google-search": { fill: "var(--area)", opacity: 0.92 },
-  "google-listing": { fill: "var(--area)", opacity: 0.55 },
-  "search-other": { fill: "var(--area)", opacity: 0.28 },
-  direct: { fill: "var(--ink)", opacity: 0.72 },
-  social: { fill: "var(--ink-2)", opacity: 0.58 },
-  email: { fill: "var(--ink-2)", opacity: 0.42 },
-  listings: { fill: "var(--ink-2)", opacity: 0.3 },
-  other: { fill: "color-mix(in oklab, var(--ink) 16%, var(--surface))", opacity: 1 },
+  "google-search": SEARCH_FILL,
+  "google-listing": LISTING_FILL,
+  "search-other": { fill: "var(--ink)", opacity: 0.72 },
+  direct: { fill: "var(--ink-2)", opacity: 0.58 },
+  social: { fill: "var(--ink-2)", opacity: 0.44 },
+  email: { fill: "var(--ink-2)", opacity: 0.32 },
+  listings: { fill: "var(--ink-2)", opacity: 0.22 },
+  other: { fill: "color-mix(in oklab, var(--ink) 12%, var(--surface))", opacity: 1 },
 };
 
-/** The two places a listing is shown, and the two sides of "what they did next". */
-export const MAPS_FILL: Fill = { fill: "var(--area)", opacity: 0.88 };
-export const SEARCH_FILL: Fill = { fill: "var(--ink-2)", opacity: 0.55 };
-export const LISTING_FILL: Fill = MAPS_FILL;
-export const WEBSITE_FILL: Fill = { fill: "var(--ink-2)", opacity: 0.55 };
-/** Instagram and the Facebook Page, where they share a step. Each bar is also named, so the tint isn't the only cue. */
-export const INSTAGRAM_FILL: Fill = { fill: "var(--area)", opacity: 0.45 };
-export const FACEBOOK_FILL: Fill = { fill: "var(--ink-2)", opacity: 0.28 };
-
+/** Where the listing was shown: Maps and Search in their channel colours, lighter for computers. */
 export const VIEW_FILL: Record<ListingViewMetric, Fill> = {
-  BUSINESS_IMPRESSIONS_MOBILE_MAPS: { fill: "var(--area)", opacity: 0.9 },
-  BUSINESS_IMPRESSIONS_DESKTOP_MAPS: { fill: "var(--area)", opacity: 0.45 },
-  BUSINESS_IMPRESSIONS_MOBILE_SEARCH: { fill: "var(--ink-2)", opacity: 0.7 },
-  BUSINESS_IMPRESSIONS_DESKTOP_SEARCH: { fill: "var(--ink-2)", opacity: 0.3 },
+  BUSINESS_IMPRESSIONS_MOBILE_MAPS: MAPS_FILL,
+  BUSINESS_IMPRESSIONS_DESKTOP_MAPS: { fill: CHANNEL.maps, opacity: 0.5 },
+  BUSINESS_IMPRESSIONS_MOBILE_SEARCH: SEARCH_FILL,
+  BUSINESS_IMPRESSIONS_DESKTOP_SEARCH: { fill: CHANNEL.search, opacity: 0.5 },
 };
 
 /** 7 days · 28 days · 3 months · 12 months, as links that keep the page where it is. */
@@ -65,8 +67,8 @@ export function RangeChips({ base, range }: { base: string; range: OnlineRangeId
   );
 }
 
-/** "Oct 18 – Nov 14" */
-export const spanText = (s: Span) => `${shortDate(s.from)} – ${shortDate(s.to)}`;
+/** "Oct 18 to Nov 14" */
+export const spanText = (s: Span) => `${shortDate(s.from)} to ${shortDate(s.to)}`;
 
 /** The change against the period before, in words. Colour only when it is bigger than normal ups and downs. */
 export function Change({ d, period, compact }: { d: Delta; period: string; compact?: boolean }) {

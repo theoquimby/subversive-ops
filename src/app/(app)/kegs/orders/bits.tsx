@@ -18,8 +18,8 @@ export function DueBadge({ dueOn, today }: { dueOn: ISODate | null; today: ISODa
   return <span className="whitespace-nowrap text-ink-2">{shortDate(dueOn)}</span>;
 }
 
-export function OrderStatusBadge({ status }: { status: KegOrderStatus }) {
-  return status === "FULFILLED" ? <Badge tone="good">Fulfilled</Badge> : status === "CANCELLED" ? <Badge>Cancelled</Badge> : <Badge>Open</Badge>;
+export function OrderStatusBadge({ status, short }: { status: KegOrderStatus; short?: boolean }) {
+  return status === "FULFILLED" ? (short ? <Badge tone="warn">Fulfilled short</Badge> : <Badge tone="good">Fulfilled</Badge>) : status === "CANCELLED" ? <Badge>Cancelled</Badge> : <Badge>Open</Badge>;
 }
 
 /**
@@ -57,6 +57,7 @@ export function OrderTable({ rows, today, closed, account = true }: { rows: Orde
               <Td align="right" className="whitespace-nowrap">
                 {o.status === "CANCELLED" ? <Badge>Cancelled</Badge> : o.status === "OPEN" && o.progress.complete ? <Badge tone="good">All {o.progress.sent} sent</Badge> : <span className={o.progress.sent ? "" : "text-muted"}>{progressLabel(o.progress)}</span>}
                 {o.status === "CANCELLED" && o.progress.sent > 0 && <span className="block text-xs text-muted">{progressLabel(o.progress)} went out</span>}
+                {o.status === "FULFILLED" && !o.progress.complete && <span className="block text-xs font-medium text-warn">Closed with {o.progress.remaining} not sent</span>}
                 {o.short > 0 && <span className="block text-xs text-warn">{o.short} to fill</span>}
               </Td>
             </Tr>

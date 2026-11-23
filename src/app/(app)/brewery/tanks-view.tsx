@@ -165,7 +165,7 @@ function FloorPlan({ f, selected, onSelect }: { f: FloorView; selected: string |
                       selected === c.tankId && "ring-2 ring-ink ring-offset-2 ring-offset-surface",
                     )}
                   >
-                    <span className="num text-[0.7rem] font-semibold text-ink-2">{t.tank.name} · {t.tank.capacityBbl}</span>
+                    <span className="num text-[0.7rem] font-semibold text-ink-2">{t.tank.name} · {t.tank.capacityBbl} bbl</span>
                     {b ? (
                       <>
                         <span className="mt-1 flex w-full min-w-0 items-center gap-1.5">
