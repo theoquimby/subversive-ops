@@ -38,10 +38,10 @@ export async function TeamCard() {
             </li>
           )}
           {ms.map((m, i) => (
-            <li key={`m${i}`} className="flex items-center gap-2 py-2.5"><HeartHandshake aria-hidden className="size-4 shrink-0 text-good" /> <span>{m.title}{m.date === today ? " — today" : ""}. <span className="text-muted">Worth a word at pre-shift.</span></span></li>
+            <li key={`m${i}`} className="flex items-center gap-2 py-2.5"><HeartHandshake aria-hidden className="size-4 shrink-0 text-good" /> <span>{m.title}{m.date === today ? ", today" : ""}. <span className="text-muted">Worth a word at pre-shift.</span></span></li>
           ))}
           {shouts.map((s) => (
-            <li key={s.id} className="py-2.5"><span className="font-medium">{s.to.split(" ")[0]}</span> <span className="text-ink-2">— {s.body}</span> <span className="text-xs text-muted">· {s.from}</span></li>
+            <li key={s.id} className="py-2.5"><span className="font-medium">{s.to.split(" ")[0]}:</span> <span className="text-ink-2">{s.body}</span> <span className="text-xs text-muted">· {s.from}</span></li>
           ))}
           {unread > 0 && (
             <li className="py-2.5"><Link href="/team/messages" className="flex items-center gap-2 font-medium text-ink-2"><MessageCircle aria-hidden className="size-4 shrink-0" /> {unread} message{unread === 1 ? "" : "s"} from the team to read</Link></li>

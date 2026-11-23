@@ -34,7 +34,7 @@ import {
 import { HelpTip, HelpZone } from "@/components/help";
 import { Badge, Card, cx, LinkButton } from "@/components/ui";
 import { focusLabels, showSection, type BriefSection, type ElsewhereGroup, type Focus } from "@/domain/focus";
-import { activeSpan, hourLabel, joinList } from "@/domain/morningBrief";
+import { activeSpan, dedupeBySubject, hourLabel, joinList, TONIGHT_MAX } from "@/domain/morningBrief";
 import { morningForFocus } from "@/server/email/morning-digest";
 import { dayDate, money, pct, shortDate, signedPct } from "@/lib/format";
 import { CompactHero } from "@/app/(app)/insights/deck";
@@ -52,7 +52,7 @@ const signedWhole = (n: number) => `${n < 0 ? "−" : ""}${whole(Math.abs(n))}`;
 const WEATHER_ICON: Record<string, LucideIcon> = { sun: Sun, cloud: Cloud, rain: CloudRain, snow: Snowflake, storm: CloudLightning, fog: CloudFog };
 const TONIGHT_ICON: Record<TonightItem["kind"], LucideIcon> = { deadline: ShoppingCart, draft: Send, checkin: PackageCheck, invoices: FileCheck, kegs: Beer, brewery: Cylinder, requests: Users, schedule: CalendarCheck, certs: GraduationCap, reviews: MessageSquareText, other: CircleCheck };
 const CHIP = { bad: "bg-bad-bg text-bad", warn: "bg-warn-bg text-warn", neutral: "bg-surface-2 text-ink-2", good: "bg-good-bg text-good" } as const;
-const TEXT = { bad: "text-bad", warn: "text-warn", neutral: "text-ink-2", good: "text-good" } as const;
+const TEXT = { bad: "text-bad", warn: "text-warn", neutral: "text-ink-2", good: "text-good", unknown: "text-muted" } as const;
 
 const greeting = () => {
   const h = Number(new Intl.DateTimeFormat("en-US", { timeZone: process.env.BUSINESS_TIMEZONE || "America/New_York", hour: "numeric", hourCycle: "h23" }).format(new Date()));
@@ -76,7 +76,14 @@ export async function MorningView({ name, viewer, focus = [] }: { name: string; 
   ]);
   const feedbackLine = newFeedbackLine(feedback);
   const mine = morningForFocus(b, focus);
-  const lead = leadSentence(b, mine.tonight.length, show("yesterday"), show("today"));
+  // One line per subject, the first few only: the brief counts what it lists, and the Overview keeps the rest.
+  const seen = new Set<string>();
+  const distinct = dedupeBySubject(mine.tonight, seen);
+  const tonight = distinct.slice(0, TONIGHT_MAX);
+  const more = distinct.length > tonight.length;
+  // The one insight shouldn't repeat a line already in the list.
+  const insights = dedupeBySubject(feed.items, seen);
+  const lead = leadSentence(b, tonight.length, more, show("yesterday"), show("today"));
 
   return (
     <div>
@@ -102,7 +109,7 @@ export async function MorningView({ name, viewer, focus = [] }: { name: string; 
         {show("yesterday") && <YesterdayCard b={b} />}
         {show("today") && <TodayCard b={b} />}
         {show("team") && <TeamCard />}
-        <TonightCard b={b} items={mine.tonight} focused={focus.length > 0} prep={b.prep && (focus.length === 0 || focus.includes("kitchen"))} />
+        <TonightCard b={b} items={tonight} more={more} focused={focus.length > 0} prep={b.prep && (focus.length === 0 || focus.includes("kitchen"))} />
         {mine.elsewhere.length > 0 && <ElsewhereCard groups={mine.elsewhere} />}
         {feedbackLine && (
           <Link href="/settings/feedback?status=new" className="-mt-2 flex min-h-10 items-center gap-2 px-1 text-sm text-muted transition-colors duration-120 hover:text-ink">
@@ -111,11 +118,11 @@ export async function MorningView({ name, viewer, focus = [] }: { name: string; 
             <ChevronRight aria-hidden className="size-3.5 shrink-0" />
           </Link>
         )}
-        {feed.items.length > 0 && (
+        {insights.length > 0 && (
           <HelpZone id="brief.insight">
             <section id="insight" className="scroll-mt-20">
               <CardTitle icon={Lightbulb} label="One thing to act on" help="brief.insight" action={<Link href="/insights" className="relative text-xs text-muted hover:text-ink after:absolute after:-inset-2 after:content-['']">Insights Lab →</Link>} bare />
-              <CompactHero actions={feed.items.map((a) => toDeck(a))} />
+              <CompactHero actions={insights.map((a) => toDeck(a))} />
             </section>
           </HelpZone>
         )}
@@ -130,7 +137,7 @@ export async function MorningView({ name, viewer, focus = [] }: { name: string; 
   );
 }
 
-function leadSentence(b: MorningBrief, n: number, yesterday: boolean, today: boolean): string {
+function leadSentence(b: MorningBrief, n: number, more: boolean, yesterday: boolean, today: boolean): string {
   const parts: string[] = [];
   if (yesterday && b.y && !b.y.closed) {
     const vs = b.y.vsForecast;
@@ -138,7 +145,7 @@ function leadSentence(b: MorningBrief, n: number, yesterday: boolean, today: boo
   }
   if (b.day.closed) parts.push("We're closed today.");
   else if (today && b.day.forecast && b.day.forecast > 0) parts.push(`Today looks like ${whole(b.day.forecast)}${b.day.busy ? `, busiest ${b.day.busy.label}` : ""}.`);
-  parts.push(n === 0 ? "Nothing needs you before tonight." : `${n} thing${n === 1 ? "" : "s"} to get done before tonight.`);
+  parts.push(n === 0 ? "Nothing needs you before tonight." : more ? `${n} things to get done before tonight, and more waiting on the Overview.` : `${n} thing${n === 1 ? "" : "s"} to get done before tonight.`);
   return parts.join(" ");
 }
 
@@ -189,7 +196,7 @@ function YesterdayCard({ b }: { b: MorningBrief }) {
   );
 }
 
-function Figure({ label, value, sub, tone, help }: { label: string; value: string; sub: string; tone?: "good" | "warn" | "bad"; help?: string }) {
+function Figure({ label, value, sub, tone, help }: { label: string; value: string; sub: string; tone?: "good" | "warn" | "bad" | "unknown"; help?: string }) {
   return (
     <div className="flex min-h-[5.5rem] min-w-0 flex-col justify-center border-border px-5 py-3 even:border-l max-sm:[&:nth-child(n+3)]:border-t sm:border-l sm:first:border-l-0 sm:px-6">
       <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted"><span className="truncate">{label}</span>{help && <HelpTip id={help} />}</div>
@@ -345,7 +352,7 @@ function HourStrip({ b }: { b: MorningBrief }) {
 
 // ---- Before tonight -----------------------------------------------------------------------
 
-function TonightCard({ b, items, focused, prep }: { b: MorningBrief; items: TonightItem[]; focused: boolean; prep: boolean }) {
+function TonightCard({ b, items, more, focused, prep }: { b: MorningBrief; items: TonightItem[]; more: boolean; focused: boolean; prep: boolean }) {
   return (
     <HelpZone id="brief.tonight" tour="brief.tonight">
       <Card className="overflow-hidden">
@@ -357,7 +364,7 @@ function TonightCard({ b, items, focused, prep }: { b: MorningBrief; items: Toni
           </div>
         ) : (
           <div className="divide-y divide-border border-t border-border">
-            {items.slice(0, 8).map((t) => {
+            {items.map((t) => {
               const Icon = TONIGHT_ICON[t.kind];
               return (
                 <Link key={t.key} href={t.href} className="flex min-h-14 items-center gap-3 px-5 py-3 transition-colors duration-120 hover:bg-surface-2/60 sm:px-6">
@@ -370,7 +377,12 @@ function TonightCard({ b, items, focused, prep }: { b: MorningBrief; items: Toni
                 </Link>
               );
             })}
-            {items.length > 8 && <div className="px-5 py-2.5 text-xs text-muted sm:px-6">and {items.length - 8} more on the <Link href="/" className="underline underline-offset-2 hover:text-ink">Overview</Link></div>}
+            {more && (
+              <Link href="/" className="flex min-h-11 items-center justify-between gap-3 px-5 py-2.5 text-sm text-ink-2 transition-colors duration-120 hover:bg-surface-2/60 hover:text-ink sm:px-6">
+                <span>More under Needs you on the Overview</span>
+                <ChevronRight aria-hidden className="size-4 shrink-0 text-muted" />
+              </Link>
+            )}
           </div>
         )}
         {prep && (
@@ -472,15 +484,24 @@ function WrapCard({ w }: { w: NonNullable<MorningBrief["wrap"]> }) {
   return (
     <HelpZone id="brief.wrap" tour="brief.wrap">
       <Card className="overflow-hidden">
-        <CardTitle icon={History} label={<>Last week · {shortDate(w.from)} – {shortDate(w.to)}</>} help="brief.wrap" action={<Link href={`/pnl?period=custom&from=${w.from}&to=${w.to}`} className="relative text-xs text-muted hover:text-ink after:absolute after:-inset-2 after:content-['']">P&amp;L →</Link>} />
+        <CardTitle icon={History} label={<>Last week · {shortDate(w.from)} to {shortDate(w.to)}</>} help="brief.wrap" action={<Link href={`/pnl?period=custom&from=${w.from}&to=${w.to}`} className="relative text-xs text-muted hover:text-ink after:absolute after:-inset-2 after:content-['']">P&amp;L →</Link>} />
         <div className="grid grid-cols-2 border-t border-border sm:grid-cols-4">
-          <Figure label="Sales" help="pnl.sales" value={whole(w.sales)} sub={w.budget ? `budget ${whole(w.budget)}` : "no budget set"} />
-          <Figure label={w.vsBudget != null ? "vs budget" : "vs week before"} value={w.vsBudget != null ? signedPct(w.vsBudget, 0) : w.vsPrev != null ? signedPct(w.vsPrev, 0) : "—"} sub={w.vsBudget != null && w.vsPrev != null ? `${signedPct(w.vsPrev, 0)} on the week before` : " "} tone={(w.vsBudget ?? w.vsPrev) == null ? undefined : (w.vsBudget ?? w.vsPrev)! >= -0.03 ? "good" : "warn"} />
-          <Figure label="Labor" help="brief.figure.labor" value={w.laborPct == null ? "—" : pct(w.laborPct, 0)} sub="of sales" />
-          <Figure label="Profit (est.)" help="brief.figure.profit" value={w.profit == null ? "—" : signedWhole(w.profit)} sub="before fixed costs" tone={w.profit != null && w.profit < 0 ? "bad" : undefined} />
+          <Figure label="Sales" help="pnl.sales" value={whole(w.sales)} sub={w.notIn ? "so far" : w.budget ? `budget ${whole(w.budget)}` : "no budget set"} tone={w.notIn ? "unknown" : undefined} />
+          {w.notIn ? (
+            <Figure label={w.budget ? "vs budget" : "vs week before"} value="—" sub={`${w.notIn === 1 ? "1 day" : `${w.notIn} days`} not in yet`} tone="unknown" />
+          ) : (
+            <Figure label={w.vsBudget != null ? "vs budget" : "vs week before"} value={w.vsBudget != null ? signedPct(w.vsBudget, 0) : w.vsPrev != null ? signedPct(w.vsPrev, 0) : "—"} sub={w.vsBudget != null && w.vsPrev != null ? `${signedPct(w.vsPrev, 0)} on the week before` : w.vsBudget == null && w.vsPrev == null ? "nothing to compare with" : " "} tone={(w.vsBudget ?? w.vsPrev) == null ? undefined : (w.vsBudget ?? w.vsPrev)! >= -0.03 ? "good" : "warn"} />
+          )}
+          <Figure label="Labor" help="brief.figure.labor" value={w.laborPct == null ? "—" : pct(w.laborPct, 0)} sub={w.laborPct == null ? "no timecards" : "of sales"} tone={w.laborPct == null ? "unknown" : undefined} />
+          <Figure label="Profit (est.)" help="brief.figure.profit" value={w.profit == null ? "—" : signedWhole(w.profit)} sub={w.notIn ? "so far, before fixed costs" : "before fixed costs"} tone={w.profit != null && w.profit < 0 ? "bad" : undefined} />
         </div>
+        {w.notIn > 0 && (
+          <p className="border-t border-border px-5 py-3 text-sm text-ink-2 sm:px-6">
+            Only part of last week is in: {w.notIn === 1 ? "one day hasn't" : `${w.notIn} days haven't`} come through from Square yet. The comparison waits until {w.notIn === 1 ? "it does" : "they do"}.
+          </p>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3.5 sm:px-6">
-          <p className="min-w-0 text-sm text-ink-2">{w.best ? `Best day was ${dayDate(w.best.date)} at ${whole(w.best.sales)}.` : w.lines[0]}</p>
+          <p className="min-w-0 text-sm text-ink-2">{w.notIn ? "And the week ahead:" : w.best ? `Best day was ${dayDate(w.best.date)} at ${whole(w.best.sales)}.` : w.lines[0]}</p>
           <LinkButton href="/brief?view=week" variant="secondary" size="sm" className="h-10 sm:h-8">This week</LinkButton>
         </div>
       </Card>

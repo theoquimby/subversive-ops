@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { activeSpan, busyWindow, crewCheck, hourLabel, hourRange, isMondayEdition, morningDue, morningPush, parseMorningHour, weekWrap, yesterdaySummary } from "../morningBrief";
+import { activeSpan, busyWindow, crewCheck, dedupeBySubject, hourLabel, hourRange, isMondayEdition, morningDue, morningPush, parseMorningHour, subjectOf, weekWrap, yesterdaySummary } from "../morningBrief";
+
+describe("the short list before tonight", () => {
+  it("reads what a line is about from its name", () => {
+    expect(subjectOf("Brew Golden Lager as soon as you can")).toBe("golden lager");
+    expect(subjectOf("Golden Lager runs out in ~1 day; 0 full kegs in the walk-in")).toBe("golden lager");
+    expect(subjectOf("Order from Greene County Beef")).toBe("county beef");
+    expect(subjectOf("Missed: Hudson Valley Foodservice cutoff passed with no order")).toBe("valley foodservice");
+    expect(subjectOf("Federal excise for Q3 2026")).toBeNull();
+    expect(subjectOf("NY beer tax for Oct 2026")).toBeNull();
+    expect(subjectOf("Brewer's report for Q3 2026")).toBeNull();
+    expect(subjectOf("1 certificate expired")).toBeNull();
+  });
+  it("keeps the first line per subject and every line that names nothing", () => {
+    const items = [{ title: "Brew Golden Lager as soon as you can" }, { title: "Federal excise for Q3 2026" }, { title: "Golden Lager kegs are out" }, { title: "Brewer's report for Q3 2026" }];
+    expect(dedupeBySubject(items).map((i) => i.title)).toEqual(["Brew Golden Lager as soon as you can", "Federal excise for Q3 2026", "Brewer's report for Q3 2026"]);
+  });
+  it("can skip subjects already shown elsewhere on the page", () => {
+    const seen = new Set(["golden lager"]);
+    expect(dedupeBySubject([{ title: "Golden Lager runs out in ~1 day" }, { title: "Reprice the Smash Burger" }], seen).map((i) => i.title)).toEqual(["Reprice the Smash Burger"]);
+  });
+});
 
 const hours = (pairs: Record<number, number>) => Array.from({ length: 24 }, (_, h) => pairs[h] ?? 0);
 
@@ -121,6 +142,13 @@ describe("weekWrap", () => {
     expect(w.sales).toBe(10000);
     expect(w.to).toBe("2026-11-15");
     expect(w.lines).toEqual(["$10,000 in sales, 5% over budget.", "Labor 25%, about $3,200 profit before fixed costs.", "Best day: Saturday, $5,000."]);
+  });
+  it("holds the comparison back while days aren't in yet", () => {
+    const w = weekWrap({ from: "2026-11-16", days: [{ date: "2026-11-16", sales: 2940, forecast: 3000, profit: 900 }], labor: 0, budget: 12800, prevSales: 20580, notIn: 6 });
+    expect(w.vsBudget).toBeNull();
+    expect(w.vsPrev).toBeNull();
+    expect(w.notIn).toBe(6);
+    expect(w.lines).toEqual(["$2,940 in sales so far, with 6 days not in yet. The comparison with budget waits for the rest."]);
   });
   it("falls back to the week before when there's no budget", () => {
     expect(weekWrap({ from: "2026-11-09", days: [{ date: "2026-11-10", sales: 900, forecast: null, profit: null }], labor: 0, budget: null, prevSales: 1000 }).lines[0]).toBe("$900 in sales, 10% down on the week before.");
