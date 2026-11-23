@@ -1,3 +1,4 @@
+import { positionColor } from "@/domain/positionColors";
 import { PageHeader } from "@/components/ui";
 import { addDays, ISODate, toISODate, weekday } from "@/domain/dates";
 import { DayCoverage, inclusiveDates, shiftLabel, shiftPaidHours, weekStartOf } from "@/domain/schedule";
@@ -110,7 +111,7 @@ export default async function RequestsPage() {
       date: v.date,
       time: shiftLabel(v.startMin, v.endMin),
       position: w.shift.position.name,
-      color: w.shift.position.color,
+      color: positionColor(w.shift.position.color),
       note: w.note,
       giving: tradeLabel(w.offeredShift),
       checks,
@@ -125,7 +126,7 @@ export default async function RequestsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader help="schedule.requests" title="Requests" description="Time off, swaps, drops and pickups from the team — with who else is off, how each day is covered, and whether the person taking a shift passes the schedule rules." back={{ href: "/schedule", label: "Schedule" }} />
+      <PageHeader help="schedule.requests" title="Requests" description="Time off, swaps, drops and pickups from the team, with who else is off, how each day is covered, and whether the person taking a shift passes the schedule rules." back={{ href: "/schedule", label: "Schedule" }} />
       <div className="flex flex-col gap-10">
         <RequestsList
           timeOff={timeOff}

@@ -1,4 +1,5 @@
 import "server-only";
+import { positionColor } from "@/domain/positionColors";
 import { shiftLabel, shiftPaidHours } from "@/domain/schedule";
 import { parseSwapLog, swapStage, type SwapKind, type SwapStage } from "@/domain/swaps";
 import { db } from "../db";
@@ -27,7 +28,7 @@ type DbShift = { id: string; employeeId: string | null; positionId: string; star
 
 const asBoard = (s: DbShift): BoardShift => {
   const v = shiftView(s);
-  return { id: s.id, date: v.date, startMin: v.startMin, endMin: v.endMin, hours: shiftPaidHours(v), position: s.position.name, positionId: s.positionId, color: s.position.color, notes: s.notes };
+  return { id: s.id, date: v.date, startMin: v.startMin, endMin: v.endMin, hours: shiftPaidHours(v), position: s.position.name, positionId: s.positionId, color: positionColor(s.position.color), notes: s.notes };
 };
 
 const label = (s: BoardShift) => `${new Date(`${s.date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })} · ${shiftLabel(s.startMin, s.endMin)}`;

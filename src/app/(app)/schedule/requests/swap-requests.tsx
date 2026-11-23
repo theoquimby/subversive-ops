@@ -166,7 +166,7 @@ export function SwapRequests({ decide, open, recent, rules }: { decide: SwapRow[
 }
 
 const AUTO = [
-  { value: "off", label: "Off — I approve every swap" },
+  { value: "off", label: "Off: I approve every swap" },
   { value: "eligible", label: "When the taker passes every check" },
   { value: "clean", label: "Only with no warnings at all" },
 ];
@@ -187,7 +187,7 @@ function SwapRulesCard({ rules }: { rules: SwapRules }) {
       <h2 className="mb-3 flex items-center gap-1.5 text-[0.95rem] font-semibold">Swap rules <HelpTip id="schedule.requests.rules" /></h2>
       <Card className="divide-y divide-border text-sm" aria-busy={pending}>
         <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div><div className="font-medium">Approve swaps automatically</div><div className="text-xs text-muted">Checks hours, overtime, minors, certificates and time off — the same rules as the schedule.</div></div>
+          <div><div className="font-medium">Approve swaps automatically</div><div className="text-xs text-muted">Checks hours, overtime, minors, certificates and time off: the same rules as the schedule.</div></div>
           <div className="sm:w-72"><Select aria-label="Approve swaps automatically" value={r.autoApprove} onChange={(e) => save({ autoApprove: e.target.value as SwapRules["autoApprove"] })} options={AUTO} className="max-sm:h-11" /></div>
         </div>
         <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">

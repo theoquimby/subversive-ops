@@ -109,11 +109,43 @@ export function tipsForPeriod(pools: FinalizedTipPeriod[], period: PeriodRange):
   return { byEmployee, uncovered, prorated };
 }
 
+// ---- Which period to open ----------------------------------------------------------
+
+export interface RecentPeriod extends PeriodRange {
+  approved: boolean;
+  /** Timecards in the period. */
+  cards: number;
+  /** Published, assigned shifts in the period. */
+  shifts: number;
+}
+
+/**
+ * The pay period the Timecards page opens on when none is asked for: the
+ * oldest ended period still waiting for approval that has hours in it (payroll
+ * is done in order), looking back no further than the last approved one. With
+ * no hours anywhere, the latest ended period that had shifts, so a week whose
+ * clock-ins never came in is seen. Otherwise the period in progress.
+ * `waiting` is every other ended period still to approve, `pending` all of them; both oldest first.
+ * `recent` is newest first, starting with the current period.
+ */
+export function openingPeriod(recent: RecentPeriod[], today: ISODate): { open: ISODate; waiting: RecentPeriod[]; pending: RecentPeriod[] } {
+  const walked: RecentPeriod[] = [];
+  for (const p of recent) {
+    if (p.approved) break;
+    walked.push(p);
+  }
+  const pending = walked.filter((p) => p.end < today && (p.cards > 0 || p.shifts > 0));
+  const open = [...pending].reverse().find((p) => p.cards > 0) ?? pending[0];
+  if (!open) return { open: recent[0]?.start ?? today, waiting: [], pending: [] };
+  return { open: open.start, waiting: pending.filter((p) => p !== open).reverse(), pending: [...pending].reverse() };
+}
+
 // ---- Exceptions -------------------------------------------------------------------
 
 export type ExceptionLevel = "block" | "warn" | "info";
 
 export type ExceptionKind =
+  | "no-timecards"
   | "missing-clock-out"
   | "missing-rate"
   | "below-min-wage"
@@ -196,7 +228,7 @@ export function callInOwed(cards: ExceptionCard[], shifts: ExceptionShift[], rul
 }
 
 const LEVEL_RANK: Record<ExceptionLevel, number> = { block: 0, warn: 1, info: 2 };
-const KIND_RANK: ExceptionKind[] = ["missing-clock-out", "missing-rate", "below-min-wage", "no-show", "call-in", "long-punch", "meal-break", "missing-square-id", "tips-missing", "unscheduled", "overtime", "spread"];
+const KIND_RANK: ExceptionKind[] = ["no-timecards", "missing-clock-out", "missing-rate", "below-min-wage", "no-show", "call-in", "long-punch", "meal-break", "missing-square-id", "tips-missing", "unscheduled", "overtime", "spread"];
 
 /** Everything to look at before approving payroll, most urgent first. */
 export function payrollExceptions(input: ExceptionInput): PayrollException[] {
@@ -228,8 +260,13 @@ export function payrollExceptions(input: ExceptionInput): PayrollException[] {
     if (h) out.push({ kind: "call-in", level: "warn", employeeId: c.employeeId, name: name(c.employeeId), date: c.date, cardId: c.id, message: `Left early: ${h.toFixed(2)}h call-in pay owed at minimum wage (added to the export).` });
   }
 
-  for (const s of shifts) {
-    if (s.end > now) continue;
+  // With no cards at all, every shift would read as a no-show. The real story is
+  // that no clock-ins came in (Square not syncing, or nobody adding them), so say that once.
+  const over = shifts.filter((s) => s.end <= now);
+  if (!cards.length && over.length) {
+    out.push({ kind: "no-timecards", level: "block", employeeId: null, name: "Timecards", date: null, message: `${over.length} scheduled shift${over.length === 1 ? "" : "s"} ended with no clock-ins at all. Sync Square or add the timecards by hand.` });
+  }
+  for (const s of cards.length ? over : []) {
     const worked = cards.some((c) => c.employeeId === s.employeeId && overlaps(c.clockIn, c.clockOut ?? now, s.start, s.end));
     if (!worked) out.push({ kind: "no-show", level: "warn", employeeId: s.employeeId, name: name(s.employeeId), date: s.date, message: `Scheduled ${s.label} but no timecard. A missed punch or a no-show.` });
   }

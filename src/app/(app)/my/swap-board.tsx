@@ -49,7 +49,7 @@ export function SwapBoard({ today, weekHours, allowDrop, mine, open, posted, ask
   const run = (fn: () => Promise<Res>, opts: { hide?: string; after?: () => void } = {}) => {
     if (opts.hide) setGone((g) => new Set(g).add(opts.hide!));
     start(async () => {
-      const r = await fn().catch(() => ({ error: "No signal — that didn't go through. Try again in a moment." }) as Res);
+      const r = await fn().catch(() => ({ error: "No signal, so that didn't go through. Try again in a moment." }) as Res);
       if (r.error) {
         if (opts.hide) setGone((g) => { const n = new Set(g); n.delete(opts.hide!); return n; });
         show(r.error, "bad");
@@ -86,7 +86,7 @@ export function SwapBoard({ today, weekHours, allowDrop, mine, open, posted, ask
           <span className="num text-sm text-muted">{fmtH(weekHours)} in the next 7 days</span>
         </div>
         {mine.length === 0 ? (
-          <Card className="px-4 py-6 text-center text-sm text-muted">Nothing on the schedule for you yet. Once a manager publishes the schedule your shifts show up here{open.length ? " — or pick up an open shift below" : ""}.</Card>
+          <Card className="px-4 py-6 text-center text-sm text-muted">Nothing on the schedule for you yet. Once a manager publishes the schedule your shifts show up here{open.length ? ", or pick up an open shift below" : ""}.</Card>
         ) : (
           <Card className="divide-y divide-border">
             {mine.map((s) => (

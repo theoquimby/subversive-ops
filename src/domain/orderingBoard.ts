@@ -240,3 +240,59 @@ export function capPerKind<T extends { kind: TodayKind }>(items: readonly T[], c
     return n <= (caps[i.kind] ?? Infinity);
   });
 }
+
+
+// ---- The board's verdict ---------------------------------------------------------------
+
+export interface MissedSupplier {
+  supplierName: string;
+  /** The next deadline after the one that passed. */
+  next: NextDeadline | null;
+  phone: string | null;
+  email: string | null;
+}
+
+/** "Wed 2pm", or "2pm today" / "2pm tomorrow" when that's clearer. */
+function byWhen(n: NextDeadline, today: ISODate): string {
+  const b = deadlineBucket(n.cutoffDate, today);
+  return b === "today" ? `${clock(n.cutoffTime)} today` : b === "tomorrow" ? `${clock(n.cutoffTime)} tomorrow` : `${WD[new Date(`${n.cutoffDate}T12:00:00Z`).getUTCDay()]} ${clock(n.cutoffTime)}`;
+}
+
+/** "Call them…" mid-sentence. */
+const lower = (s: string) => s[0].toLowerCase() + s.slice(1);
+
+/** What to do about a missed cutoff: reach the supplier for a late order (by the contact we have), or make the next deadline. */
+export function missedNextStep(m: MissedSupplier, today: ISODate): string {
+  const reach = m.phone ? `Call ${m.phone}` : m.email ? `Email ${m.email}` : "Call them";
+  const next = m.next ? `order by ${byWhen(m.next, today)} for the ${WD[new Date(`${m.next.deliveryDate}T12:00:00Z`).getUTCDay()]} delivery` : "buy locally";
+  return `${reach} for a late order, or ${next}.`;
+}
+
+/**
+ * The ordering board's verdict: what to order today and by when, what comes
+ * next, and any cutoff that slipped by with its next step.
+ */
+export function orderingHeadline({ items, missed, today }: { items: readonly TodayItem[]; missed: readonly MissedSupplier[]; today: ISODate }): { tone: "good" | "warn" | "bad"; title: string; line: string } {
+  const deadlines = items.filter((i) => i.kind === "deadline" && i.deadline).sort((a, b) => (deadlineKey(a.deadline) ?? "").localeCompare(deadlineKey(b.deadline) ?? ""));
+  const dueToday = deadlines.filter((i) => i.deadline!.cutoffDate <= today);
+  const later = deadlines.filter((i) => i.deadline!.cutoffDate > today);
+  const by = (i: TodayItem) => `${i.supplierName} by ${dueToday.includes(i) ? clock(i.deadline!.cutoffTime) : byWhen(i.deadline!, today)}`;
+  const missedText = missed.length === 1
+    ? `${missed[0].supplierName} missed its last cutoff: ${lower(missedNextStep(missed[0], today))}`
+    : missed.map((m) => `${m.supplierName} missed its last cutoff: ${lower(missedNextStep(m, today))}`).join(" ");
+  // Today's deadlines lead: they can still be made. A missed cutoff follows with its next step.
+  if (missed.length && !dueToday.length) {
+    const title = missed.length === 1 ? `${missed[0].supplierName} missed its order cutoff` : `${missed.length} suppliers missed their order cutoff`;
+    return { tone: "bad", title, line: missedText };
+  }
+  const tone = missed.length ? "bad" : "warn";
+  const after = missed.length ? ` ${missedText}` : "";
+  if (dueToday.length === 1) {
+    return { tone, title: `Order from ${dueToday[0].supplierName} by ${clock(dueToday[0].deadline!.cutoffTime)} today`, line: `${later.length ? `Then ${later.map(by).join(", ")}.` : "Nothing else is due in the next two days."}${after}` };
+  }
+  if (dueToday.length > 1) {
+    const [first, ...rest] = dueToday;
+    return { tone, title: `${dueToday.length} orders to place today, the first by ${clock(first.deadline!.cutoffTime)}`, line: `${by(first)}, then ${rest.map(by).join(", ")}.${later.length ? ` Next: ${later.map(by).join(", ")}.` : ""}${after}` };
+  }
+  return { tone: "good", title: "Nothing to order today", line: later.length ? `Next: ${later.map(by).join(", ")}.` : "" };
+}

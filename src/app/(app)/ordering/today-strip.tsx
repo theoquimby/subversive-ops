@@ -52,8 +52,8 @@ function Tile({ i, today, tomorrow }: { i: TodayEntry; today: string; tomorrow: 
         <Icon className="size-4" aria-hidden />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <Link href={href} className="truncate font-medium text-ink hover:underline">{i.supplierName}</Link>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2">
+          <Link href={href} className="min-w-0 font-medium text-ink hover:underline sm:truncate">{i.supplierName}</Link>
           {i.at != null && <Countdown at={i.at} />}
         </div>
         <div className="num truncate text-xs text-muted"><span className="text-ink-2">{title}</span>{sub && <> · {sub}</>}</div>
@@ -74,8 +74,11 @@ function Tile({ i, today, tomorrow }: { i: TodayEntry; today: string; tomorrow: 
   );
 }
 
-/** What needs doing now: deadlines in the next 48 hours, drafts to send, trucks to check in and tomorrow's. */
-export function TodayStrip({ items, today, tomorrow, nextUp, unscheduled = 0, total = 0 }: { items: TodayEntry[]; today: string; tomorrow: string; nextUp?: { name: string; supplierId: string; at: number | null; label: string } | null; unscheduled?: number; total?: number }) {
+/**
+ * What needs doing now: deadlines in the next 48 hours, drafts to send, trucks to check in and tomorrow's.
+ * `bare`: inside the page's verdict, which already says what's due, so no heading and no empty box.
+ */
+export function TodayStrip({ items, today, tomorrow, nextUp, unscheduled = 0, total = 0, bare }: { items: TodayEntry[]; today: string; tomorrow: string; nextUp?: { name: string; supplierId: string; at: number | null; label: string } | null; unscheduled?: number; total?: number; bare?: boolean }) {
   const [all, setAll] = useState(false);
   const c = todayCounts(items);
   const head = [
@@ -86,12 +89,24 @@ export function TodayStrip({ items, today, tomorrow, nextUp, unscheduled = 0, to
   ].filter(Boolean).join(" · ");
   const first = capPerKind(items);
   const shown = all ? items : first;
+  if (bare && items.length === 0) {
+    if (!unscheduled) return null;
+    return (
+      <p className="text-sm text-muted">
+        {total > 0 && unscheduled === total
+          ? <>None of your {total} suppliers has delivery days set, so there are no deadlines to show. Tick the days each one delivers in the table below.</>
+          : <>{unscheduled} supplier{unscheduled === 1 ? " has" : "s have"} no delivery days, so {unscheduled === 1 ? "its deadline isn't" : "their deadlines aren't"} tracked.</>}
+      </p>
+    );
+  }
   return (
-    <section aria-labelledby="ordering-today" className="mb-6">
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3">
-        <h2 id="ordering-today" className="text-[0.95rem] font-semibold text-ink">Today</h2>
-        <span className="text-sm text-muted">{items.length ? head : !nextUp && total > 0 && unscheduled === total ? "Set delivery days to see deadlines" : "Nothing needs you right now."}</span>
-      </div>
+    <section aria-labelledby={bare ? undefined : "ordering-today"} aria-label={bare ? "Due in the next two days" : undefined} className={bare ? "" : "mb-6"}>
+      {!bare && (
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3">
+          <h2 id="ordering-today" className="text-[0.95rem] font-semibold text-ink">Today</h2>
+          <span className="text-sm text-muted">{items.length ? head : !nextUp && total > 0 && unscheduled === total ? "Set delivery days to see deadlines" : "Nothing needs you right now."}</span>
+        </div>
+      )}
       {items.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border-strong px-4 py-3 text-sm text-muted">
           {/* Honest when deadlines can't be known: no delivery days means no order-by time to warn about. */}

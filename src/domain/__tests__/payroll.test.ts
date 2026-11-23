@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { NY_DEFAULT_RULES as R } from "../labor";
 import {
-  buildPayrollRows, callInOwed, ExceptionCard, ExceptionShift, payPeriodFor, payrollCsv, payrollExceptions, payrollTotals, periodWeeks, signedAdjustment, tipsForPeriod,
+  buildPayrollRows, callInOwed, ExceptionCard, ExceptionShift, openingPeriod, payPeriodFor, payrollCsv, payrollExceptions, payrollTotals, periodWeeks, signedAdjustment, tipsForPeriod,
 } from "../payroll";
 
 const at = (day: number, h: number) => new Date(Date.UTC(2026, 10, day, h));
@@ -17,6 +17,27 @@ describe("pay periods", () => {
     expect(payPeriodFor("2026-11-16", rules)).toEqual({ start: "2026-11-16", end: "2026-11-29" });
     expect(payPeriodFor("2026-10-25", rules)).toEqual({ start: "2026-10-19", end: "2026-11-01" });
     expect(periodWeeks({ start: "2026-11-02", end: "2026-11-15" })).toEqual(["2026-11-02", "2026-11-09"]);
+  });
+});
+
+describe("openingPeriod", () => {
+  const p = (start: number, extra: { approved?: boolean; cards?: number; shifts?: number } = {}) => ({ start: d(start), end: d(start + 6), approved: false, cards: 0, shifts: 0, ...extra });
+  it("opens on the oldest unapproved period with hours, back to the last approved one", () => {
+    const recent = [p(23, { shifts: 60 }), p(16, { shifts: 55 }), p(9, { cards: 37 }), p(2, { cards: 39 }), { start: "2026-10-26", end: "2026-11-01", approved: true, cards: 40, shifts: 0 }];
+    const r = openingPeriod(recent, d(23));
+    expect(r.open).toBe(d(2));
+    // Ended periods still waiting after it, oldest first; the week in progress isn't one.
+    expect(r.waiting.map((w) => w.start)).toEqual([d(9), d(16)]);
+    expect(r.pending.map((w) => w.start)).toEqual([d(2), d(9), d(16)]);
+  });
+  it("opens on an ended week with shifts but no clock-ins when nothing has hours", () => {
+    const r = openingPeriod([p(23, { shifts: 60 }), p(16, { shifts: 55 }), p(9, { approved: true, cards: 30 })], d(23));
+    expect(r.open).toBe(d(16));
+    expect(r.waiting).toEqual([]);
+  });
+  it("opens on the current period when everything before it is approved", () => {
+    expect(openingPeriod([p(23, { cards: 3 }), p(16, { approved: true, cards: 30 })], d(24)).open).toBe(d(23));
+    expect(openingPeriod([p(23)], d(24))).toEqual({ open: d(23), waiting: [], pending: [] });
   });
 });
 
@@ -58,6 +79,17 @@ describe("payrollExceptions", () => {
     expect(kinds).toEqual(expect.arrayContaining([
       "missing-clock-out:a", "missing-rate:c", "call-in:b", "long-punch:c", "meal-break:c", "unscheduled:c", "no-show:c", "missing-square-id:b", "overtime:a", "tips-missing:-",
     ]));
+  });
+  it("says once that no timecards came in, instead of a no-show per shift", () => {
+    const none = payrollExceptions({ cards: [], shifts, people, lines: [], rules: R, today: d(12), now: at(12, 12), squareInUse: true });
+    expect(none.map((e) => e.kind)).toEqual(["no-timecards"]);
+    expect(none[0].level).toBe("block");
+    expect(none[0].message).toContain("3 scheduled shifts");
+    // Shifts still to come aren't counted, and with nothing over there is nothing to say.
+    expect(payrollExceptions({ cards: [], shifts, people, lines: [], rules: R, today: d(9), now: at(9, 12), squareInUse: true })).toEqual([]);
+    // With some cards in, missing ones are real no-shows again.
+    expect(kinds).toContain("no-show:c");
+    expect(kinds).not.toContain("no-timecards:-");
   });
   it("ranks blocking problems first", () => {
     expect(ex[0].level).toBe("block");

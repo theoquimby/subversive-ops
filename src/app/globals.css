@@ -58,6 +58,13 @@
   --money-wages: #d9467a;
   --money-kept: var(--ink);
   --money-forecast: var(--ink-2);
+  /* Positions (src/domain/positionColors.ts): five hues off good/warn/bad. Validated in the
+     adjacent order blue, orange, aqua, violet, magenta, light and dark. */
+  --pos-blue: #2a78d6;
+  --pos-orange: #eb6834;
+  --pos-aqua: #1baf7a;
+  --pos-violet: #6250d6;
+  --pos-magenta: #e87ba4;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -92,7 +99,19 @@
     --money-goods: #d95926;
     --money-fees: #9085e9;
     --money-wages: #d55181;
+    --pos-blue: #3987e5;
+    --pos-orange: #d95926;
+    --pos-aqua: #199e70;
+    --pos-violet: #9085e9;
+    --pos-magenta: #d55181;
   }
+}
+
+/* A panel that is dark in both themes (the staff home's next shift): status colours stepped for a dark surface. */
+.on-ink {
+  --good: #5cc28f;
+  --warn: #e3a34a;
+  --bad: #f07a6e;
 }
 
 @theme inline {

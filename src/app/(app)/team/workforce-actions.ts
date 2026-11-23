@@ -45,7 +45,7 @@ export async function addNewHire(input: z.input<typeof hire>): Promise<Res> {
   if (rate != null && (rate < 0 || rate > 500)) return { error: "Pay rate: an hourly amount, like 16.50." };
   if (p.data.hourlyRate && rate == null) return { error: "Pay rate: an hourly amount, like 16.50." };
   const exists = await db.employee.findFirst({ where: { name: { equals: name, mode: "insensitive" }, active: true } });
-  if (exists) return { error: `${exists.name} is already on the team — start their checklist from the list below.` };
+  if (exists) return { error: `${exists.name} is already on the team. Start their checklist from the list below.` };
   const emp = await db.employee.create({
     data: { name, email: email || null, phone: phone?.trim() || null, startDate: parseISODate(startDate), hourlyRate: rate == null ? null : new Prisma.Decimal(rate.toFixed(2)), positions: { create: positionIds.map((positionId) => ({ positionId })) } },
   });
@@ -221,7 +221,7 @@ export async function decideRedemption(id: string, approve: boolean): Promise<Re
   if (r.count === 0) return { error: "Already handled." };
   inBackground(() => notifyRedemptionDecided(id));
   refresh();
-  return { ok: approve ? "Approved — hand it over." : "Not approved; points returned." };
+  return { ok: approve ? "Approved. Hand it over." : "Not approved; points returned." };
 }
 
 // ---- Messages --------------------------------------------------------------------------

@@ -2,7 +2,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { dayDate } from "@/lib/format";
 import { orderToSend } from "@/server/services/orderPlacing";
 import { requireOrderer } from "@/server/services/supplierPrefs";
-import { Check } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PlaceOrder } from "../../../../ordering/place-order";
@@ -28,7 +28,7 @@ export default async function SendOrderPage({ params }: { params: Promise<{ id: 
             <li key={s} aria-current={i + 1 === at ? "step" : undefined} className={i + 1 === at ? "flex items-center gap-1.5 font-medium text-ink" : "flex items-center gap-1.5 text-muted"}>
               <span className={i + 1 <= at ? "flex size-5 items-center justify-center rounded-full border border-ink bg-primary text-[0.7rem] text-primary-ink" : "flex size-5 items-center justify-center rounded-full border border-border-strong text-[0.7rem]"}>{i + 1}</span>
               {s}
-              {i < 2 && <span aria-hidden className="text-muted">—</span>}
+              {i < 2 && <ChevronRight aria-hidden className="size-3.5 text-muted" />}
             </li>
           );
         })}

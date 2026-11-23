@@ -47,7 +47,7 @@ export function UploadDocument() {
             <Select name="audience" defaultValue="STAFF" options={AUDIENCE} />
           </Field>
           <Field label="Staff must acknowledge">
-            <Select name="requiresAck" defaultValue="no" options={[{ value: "yes", label: "Yes — show on My shifts until signed" }, { value: "no", label: "No — just available" }]} />
+            <Select name="requiresAck" defaultValue="no" options={[{ value: "yes", label: "Yes: show on My shifts until signed" }, { value: "no", label: "No: just available" }]} />
           </Field>
         </div>
         <div aria-live="polite" className="text-sm">

@@ -49,7 +49,7 @@ export async function uploadMyCertificate(form: FormData): Promise<{ error?: str
     },
   });
   refresh();
-  return { ok: "Uploaded — a manager will check it" };
+  return { ok: "Uploaded. A manager will check it." };
 }
 
 /** Tick or untick a step on one of your own checklists (until it's signed off). */

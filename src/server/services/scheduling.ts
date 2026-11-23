@@ -1,4 +1,5 @@
 import "server-only";
+import { positionColor } from "@/domain/positionColors";
 import { NEEDS_MANAGER } from "@/domain/swaps";
 import { addDays, ISODate, parseISODate, todayIn, toISODate, weekday } from "@/domain/dates";
 import { requiredForShift, validOn, type CertTypeLike } from "@/domain/certs";
@@ -52,7 +53,7 @@ export async function loadPositions(): Promise<PositionView[]> {
   return rows.map((p) => ({
     id: p.id,
     name: p.name,
-    color: p.color,
+    color: positionColor(p.color),
     area: p.area,
     defaultRate: num(p.defaultRate),
     tipped: p.tipEligible,

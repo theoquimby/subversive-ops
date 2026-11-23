@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cutoffRule } from "../ordering";
-import { capPerKind, clock, compareByDeadline, countdownLabel, countdownTone, deadlineBucket, deadlineSummary, isGuessed, needsOrder, supplierState, todayCounts, todayItems, type BoardOrder, type TodaySupplier } from "../orderingBoard";
+import { capPerKind, clock, compareByDeadline, countdownLabel, countdownTone, deadlineBucket, deadlineSummary, isGuessed, missedNextStep, needsOrder, orderingHeadline, supplierState, todayCounts, todayItems, type BoardOrder, type TodayItem, type TodaySupplier } from "../orderingBoard";
 
 const TODAY = "2026-11-14"; // a Saturday
 const po = (over: Partial<BoardOrder>): BoardOrder => ({ id: "o", supplierId: "s", status: "DRAFT", deliveryDate: TODAY, total: 100, lines: 3, ...over });
@@ -136,5 +136,39 @@ describe("capPerKind", () => {
     const items = ["deadline", "deadline", "deadline", "draft", "checkin", "checkin"].map((kind, i) => ({ kind: kind as "deadline" | "draft" | "checkin", i }));
     expect(capPerKind(items, { deadline: 2, checkin: 1 }).map((x) => x.i)).toEqual([0, 1, 3, 4]);
     expect(capPerKind(items)).toHaveLength(6);
+  });
+});
+
+describe("orderingHeadline", () => {
+  const dl = (name: string, cutoffDate: string, cutoffTime = "14:00"): TodayItem => ({ key: name, kind: "deadline", supplierId: name, supplierName: name, deliveryDate: "2026-11-17", deadline: { deliveryDate: "2026-11-17", cutoffDate, cutoffTime } });
+  it("leads with what to order today and by when, then what comes next", () => {
+    const h = orderingHeadline({ items: [dl("Greene County Beef", TODAY), dl("Catskill Bread Co.", "2026-11-15")], missed: [], today: TODAY });
+    expect(h.tone).toBe("warn");
+    expect(h.title).toBe("Order from Greene County Beef by 2pm today");
+    expect(h.line).toBe("Then Catskill Bread Co. by 2pm tomorrow.");
+  });
+  it("counts several orders due today, earliest first", () => {
+    const h = orderingHeadline({ items: [dl("A", TODAY, "17:00"), dl("B", TODAY, "11:30")], missed: [], today: TODAY });
+    expect(h.title).toBe("2 orders to place today, the first by 11:30am");
+    expect(h.line).toBe("B by 11:30am, then A by 5pm.");
+  });
+  it("gives a missed cutoff a next step", () => {
+    const missed = [{ supplierName: "Hudson Valley", next: { deliveryDate: "2026-11-19", cutoffDate: "2026-11-18", cutoffTime: "14:00" }, phone: "518-555-0100", email: null }];
+    const h = orderingHeadline({ items: [], missed, today: TODAY });
+    expect(h.tone).toBe("bad");
+    expect(h.title).toBe("Hudson Valley missed its order cutoff");
+    expect(h.line).toBe("Hudson Valley missed its last cutoff: call 518-555-0100 for a late order, or order by Wed 2pm for the Thu delivery.");
+    // An order still due today leads; the missed one follows.
+    const both = orderingHeadline({ items: [dl("Greene County Beef", TODAY)], missed, today: TODAY });
+    expect(both.tone).toBe("bad");
+    expect(both.title).toBe("Order from Greene County Beef by 2pm today");
+    expect(both.line).toContain("Hudson Valley missed its last cutoff: call 518-555-0100");
+    expect(missedNextStep(missed[0], TODAY)).toBe("Call 518-555-0100 for a late order, or order by Wed 2pm for the Thu delivery.");
+    expect(missedNextStep({ ...missed[0], phone: null, email: "orders@hv.test" }, TODAY)).toBe("Email orders@hv.test for a late order, or order by Wed 2pm for the Thu delivery.");
+    expect(missedNextStep({ ...missed[0], phone: null, next: null }, TODAY)).toBe("Call them for a late order, or buy locally.");
+  });
+  it("says so when nothing is due today", () => {
+    expect(orderingHeadline({ items: [dl("Catskill Bread Co.", "2026-11-15")], missed: [], today: TODAY })).toEqual({ tone: "good", title: "Nothing to order today", line: "Next: Catskill Bread Co. by 2pm tomorrow." });
+    expect(orderingHeadline({ items: [], missed: [], today: TODAY }).title).toBe("Nothing to order today");
   });
 });

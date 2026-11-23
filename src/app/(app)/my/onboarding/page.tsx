@@ -26,7 +26,7 @@ export default async function MyOnboardingPage() {
 
   return (
     <div className="mx-auto max-w-xl">
-      <PageHeader help="my.onboarding" title="My checklist" back={{ href: "/my", label: "Today" }} description={ob ? `Welcome to the team, ${me.name.split(" ")[0]}. Work through these in your first couple of weeks — most take a minute.` : undefined} />
+      <PageHeader help="my.onboarding" title="My checklist" back={{ href: "/my", label: "Today" }} description={ob ? `Welcome to the team, ${me.name.split(" ")[0]}. Work through these in your first couple of weeks. Most take a minute.` : undefined} />
       {!ob ? (
         <EmptyState title="No checklist for you">When a manager sets up your first-week checklist, it shows up here.</EmptyState>
       ) : (

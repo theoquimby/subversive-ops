@@ -1,10 +1,12 @@
 "use client";
 
+import { Verdict } from "@/components/chapter";
 import { useConfirm } from "@/components/dialog";
 import { HelpZone } from "@/components/help";
 import { Badge, Button, Card, cx, LinkButton } from "@/components/ui";
 import { weekday } from "@/domain/dates";
 import { availabilityLabel, shiftLabel, shiftPaidHours } from "@/domain/schedule";
+import { weekStory, type DayFlag } from "@/domain/scheduleStory";
 import { dayDate, money, pct, shortDate } from "@/lib/format";
 import type { ShiftView, WeekData, WeekIssue } from "@/server/services/scheduling";
 import { AlertTriangle, ChevronLeft, ChevronRight, CopyPlus, Eraser, Inbox, Plus, Send, Sparkles } from "lucide-react";
@@ -74,6 +76,16 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
   const upcomingOpen = shifts.filter((s) => !s.employeeId && s.date >= today).length;
   const blocks = issues.filter((i) => i.level === "block");
   const pastWeek = dates[6] < today;
+  // One line that squares labor %, hours against need and the open shifts.
+  const story = useMemo(
+    () => weekStory({
+      days: summary.days.map((d) => ({ ...d, open: !!opening[weekday(d.date)], openShifts: shifts.filter((s) => !s.employeeId && s.date === d.date && s.date >= today).length })),
+      laborTarget: data.laborTarget,
+      today,
+    }),
+    [summary.days, opening, shifts, data.laborTarget, today],
+  );
+  const flagsOn = (date: string): DayFlag[] => story.flags[date] ?? [];
 
   // ---- actions ----
   // Opens the editor in "new" mode; nothing is written until Save.
@@ -282,6 +294,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
     const d = summary.days[i];
     const closed = !opening[weekday(date)];
     const shortfall = d.requiredHours > 0 && d.hours < d.requiredHours * 0.9;
+    const flags = flagsOn(date);
     return (
       <div key={date} className={cx("border-b border-l border-border px-2 py-2", date === today && "bg-surface-2/40")}>
         <div className="flex items-baseline justify-between gap-1">
@@ -289,9 +302,10 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
           {closed ? <span className="text-[11px] text-muted">Closed</span> : <span className={cx("num text-[11px]", laborTone(d.laborPct))}>{pct(d.laborPct, 0)}</span>}
         </div>
         <div className="num mt-0.5 flex items-baseline justify-between text-[11px] text-muted">
-          <span>{d.sales ? money(d.sales, { whole: true }) : "—"}</span>
+          <span className={cx(closed && d.sales > 0 && "line-through decoration-muted/60")}>{d.sales ? money(d.sales, { whole: true }) : "—"}</span>
           <span>{money(d.cost, { whole: true })}</span>
         </div>
+        <DayFlags flags={flags} />
         {coverBy.has(date) && (
           <div className="num mt-0.5 text-[11px] font-medium text-warn" title="The forecast won't cover this crew: see the list under the schedule">
             needs {money(coverBy.get(date)!.needs, { whole: true })}
@@ -313,7 +327,7 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
       <HelpZone id="schedule.toolbar" className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
           <LinkButton href={`/schedule?week=${prevWeek}`} variant="ghost" size="sm" aria-label="Previous week" className="max-sm:size-10"><ChevronLeft className="size-4" /></LinkButton>
-          <div className="num min-w-[9.5rem] text-center text-[0.95rem] font-semibold">{shortDate(dates[0])} – {shortDate(dates[6])}</div>
+          <div className="num min-w-[9.5rem] text-center text-[0.95rem] font-semibold">{shortDate(dates[0])} to {shortDate(dates[6])}</div>
           <LinkButton href={`/schedule?week=${nextWeek}`} variant="ghost" size="sm" aria-label="Next week" className="max-sm:size-10"><ChevronRight className="size-4" /></LinkButton>
           {data.monday !== thisWeek && <LinkButton href="/schedule" variant="ghost" size="sm">This week</LinkButton>}
           <span className="ml-1 hidden text-sm text-muted sm:inline">
@@ -348,17 +362,21 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
         </div>
       </HelpZone>
 
-      {/* KPI strip */}
-      <HelpZone id="schedule.kpis" className="mb-6 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        <Kpi label="Forecast sales" value={money(summary.sales, { whole: true })} hint="this week" />
-        <Kpi label="Scheduled labor" value={money(summary.cost, { whole: true })} hint={summary.overtimeHours > 0 ? `incl. ${fmtH(summary.overtimeHours)} overtime` : summary.callInHours > 0 ? `incl. ${fmtH(summary.callInHours)} call-in pay` : "wages + employer taxes"} />
-        <Kpi
-          label="Labor %"
-          value={pct(summary.laborPct)}
-          tone={data.laborTarget != null && summary.laborPct != null ? (summary.laborPct > data.laborTarget + 0.0005 ? "text-bad" : "text-good") : laborTone(summary.laborPct)}
-          hint={data.laborTarget != null ? `budget ${pct(data.laborTarget)}` : "of forecast sales"}
-        />
-        <Kpi label="Hours" value={<>{fmtH(summary.hours)}<span className="text-base font-normal text-muted"> / {fmtH(summary.requiredHours)}</span></>} hint={upcomingOpen ? `${upcomingOpen} open shift${upcomingOpen === 1 ? "" : "s"} to fill` : "scheduled / needed"} />
+      {/* The week in one line, then the figures behind it */}
+      <HelpZone id="schedule.kpis">
+        <Verdict badge={{ tone: story.tone }} title={story.title} line={story.line} className="mb-6">
+          <dl className="-mt-2 flex flex-wrap gap-x-6 gap-y-2 text-sm sm:gap-x-8">
+            <Fig label="Forecast" value={story.sales ? money(story.sales, { whole: true }) : "—"} hint={story.sales ? undefined : "no forecast yet"} />
+            <Fig label="Labor" value={money(summary.cost, { whole: true })} hint={summary.overtimeHours > 0 ? `incl. ${fmtH(summary.overtimeHours)} overtime` : summary.callInHours > 0 ? `incl. ${fmtH(summary.callInHours)} call-in pay` : undefined} />
+            <Fig
+              label="Labor %"
+              value={pct(story.laborPct)}
+              tone={story.laborPct == null ? "text-muted" : data.laborTarget != null && story.laborPct > data.laborTarget + 0.0005 ? "text-warn" : undefined}
+              hint={data.laborTarget != null ? `budget ${pct(data.laborTarget)}` : undefined}
+            />
+            <Fig label="Hours" value={<>{fmtH(summary.hours)}<span className="font-normal text-muted"> / {fmtH(summary.requiredHours)} needed</span></>} hint={upcomingOpen ? `${upcomingOpen} open to fill` : undefined} />
+          </dl>
+        </Verdict>
       </HelpZone>
 
       {positions.length === 0 ? (
@@ -450,9 +468,10 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
                       {!opening[weekday(day)] ? <span className="text-xs text-muted">Closed</span> : <span className={cx("num text-sm", laborTone(d.laborPct))}>{pct(d.laborPct)} labor</span>}
                     </div>
                     <div className="num mt-1 flex justify-between text-xs text-muted">
-                      <span>{money(d.sales, { whole: true })} forecast</span>
+                      <span>{d.sales ? `${money(d.sales, { whole: true })} forecast` : "No forecast"}</span>
                       <span>{money(d.cost, { whole: true })} labor</span>
                     </div>
+                    <DayFlags flags={flagsOn(day)} wide />
                     {coverBy.has(day) && (
                       <p className="mt-1.5 text-xs font-medium text-warn">
                         The forecast won&apos;t cover this crew: it needs {money(coverBy.get(day)!.needs, { whole: true })} in sales.
@@ -675,13 +694,29 @@ export function ScheduleBoard({ data, today, prevWeek, nextWeek, thisWeek, nudge
 
 const laborTone = (p: number | null) => (p == null ? "text-muted" : p > 0.35 ? "text-bad" : p > 0.3 ? "text-warn" : "text-ink-2");
 
-function Kpi({ label, value, hint, tone }: { label: string; value: React.ReactNode; hint?: string; tone?: string }) {
+/** One figure in the line under the week's verdict: label and value inline, so the four fit one phone line or two. */
+function Fig({ label, value, hint, tone }: { label: string; value: React.ReactNode; hint?: string; tone?: string }) {
   return (
-    <Card className="px-4 py-3">
-      <div className="text-[0.75rem] font-medium text-muted">{label}</div>
-      <div className={cx("num mt-1 text-xl font-semibold tracking-tight", tone)}>{value}</div>
-      {hint && <div className="mt-0.5 truncate text-[0.72rem] text-muted">{hint}</div>}
-    </Card>
+    <div className="flex items-baseline gap-1.5">
+      <dt className="text-muted">{label}</dt>
+      <dd className={cx("num font-semibold text-ink", tone)}>{value}</dd>
+      {hint && <dd className="text-xs text-muted">{hint}</dd>}
+    </div>
+  );
+}
+
+/** What's unusual about a day, under its header: a holiday, a closed day with a forecast, no forecast. */
+function DayFlags({ flags, wide }: { flags: DayFlag[]; wide?: boolean }) {
+  if (!flags.length) return null;
+  return (
+    <ul className={cx("mt-1 flex flex-col gap-0.5", wide && "mt-1.5")}>
+      {flags.map((f) => (
+        <li key={f.kind} title={f.detail} className={cx("text-[11px] leading-tight", f.kind === "holiday" ? "font-medium text-ink-2" : "text-warn")}>
+          {f.label}
+          {wide && f.kind !== "holiday" && <span className="text-muted">: {f.detail}</span>}
+        </li>
+      ))}
+    </ul>
   );
 }
 

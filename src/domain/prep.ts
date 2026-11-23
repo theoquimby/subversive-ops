@@ -341,8 +341,8 @@ export function windowLabel(dates: readonly ISODate[], today: ISODate): string {
   if (!dates.length) return "";
   const name = (d: ISODate) => (d === today ? "Today" : d === addDays(today, 1) ? "Tomorrow" : WEEKDAYS[weekday(d)]);
   if (dates.length === 1) return name(dates[0]);
-  if (dates.length === 2) return `${name(dates[0])} + ${dates[1] === addDays(today, 1) ? "tomorrow" : WEEKDAYS[weekday(dates[1])]}`;
-  return `${name(dates[0])}–${WEEKDAYS[weekday(dates[dates.length - 1])]}`;
+  if (dates.length === 2) return `${name(dates[0])} and ${dates[1] === addDays(today, 1) ? "tomorrow" : WEEKDAYS[weekday(dates[1])]}`;
+  return `${name(dates[0])} to ${WEEKDAYS[weekday(dates[dates.length - 1])]}`;
 }
 
 /** Turn what's on hand and daily use into "runs out in x days" (fractional, from the start of day 0). */
@@ -494,24 +494,27 @@ export function amountText(makeBase: number, batchBase: number, unit: PrepUnit):
   return Math.abs(b * 2 - Math.round(b * 2)) < 0.02 ? `${formatBatches(b)} · ${q}` : q;
 }
 
-const servingsText = (n: number) => (n >= 3 ? `~${Math.round(n)}` : `~${round(n, 1)}`);
+const servingsText = (n: number) => (n >= 3 ? `about ${Math.round(n)}` : `about ${round(n, 1)}`);
 
-/** "Today + tomorrow ~98 Classic Burger, ~40 Wings (10) → 4.2 qt · on hand 1 qt". */
+/**
+ * Why this amount, in plain sentences: "For today and tomorrow: about 98 Classic Burger,
+ * about 40 Wings and 2 more, using 4.2 qt. On hand 1 qt."
+ */
 export function whyText(l: PrepLine, window: string, shelfLifeDays: number | null): string {
   const parts: string[] = [];
   if (l.usageBase > 0) {
     const walkIn = l.drivers.filter((d) => !d.event);
     const events = l.drivers.filter((d) => d.event);
-    const top = walkIn.slice(0, 2).map((d) => (d.servings != null ? `${servingsText(d.servings)} ${d.label}` : `for ${d.label}`));
-    const more = walkIn.length > 2 ? ` +${walkIn.length - 2} more` : "";
-    const head = top.length ? `${window} ${top.join(", ")}${more}` : window;
-    const evText = events.map((d) => ` + ${d.label}`).join("");
-    parts.push(`${head}${evText} → ${formatPrepQty(l.usageBase, l.unit)}`);
+    const top = walkIn.slice(0, 2).map((d) => (d.servings != null ? `${servingsText(d.servings)} ${d.label}` : d.label));
+    const more = walkIn.length > 2 ? ` and ${walkIn.length - 2} more` : "";
+    const what = [top.length ? `${top.join(", ")}${more}` : "", ...events.map((d, i) => (top.length || i > 0 ? `plus ${d.label}` : d.label))].filter(Boolean).join(", ");
+    const when = window ? `For ${window[0].toLowerCase()}${window.slice(1)}: ` : "";
+    parts.push(`${when}${what}, using ${formatPrepQty(l.usageBase, l.unit)}.`);
   }
-  if (l.shelfCapBase != null && l.shelfCapBase < l.usageBase - 1e-6) parts.push(`keeps ${shelfLifeDays} day${shelfLifeDays === 1 ? "" : "s"}: ${formatPrepQty(l.shelfCapBase, l.unit)}`);
-  if (l.parBase != null && l.parBase > 0 && l.parBase >= Math.min(l.usageBase, l.shelfCapBase ?? Infinity) - 1e-6) parts.push(`par ${formatPrepQty(l.parBase, l.unit)}`);
-  parts.push(l.onHandKnown ? `on hand ${formatPrepQty(l.onHandBase, l.unit)}` : "not counted yet");
-  return parts.join(" · ");
+  if (l.shelfCapBase != null && l.shelfCapBase < l.usageBase - 1e-6) parts.push(`It keeps ${shelfLifeDays} day${shelfLifeDays === 1 ? "" : "s"}, so ${formatPrepQty(l.shelfCapBase, l.unit)} at most.`);
+  if (l.parBase != null && l.parBase > 0 && l.parBase >= Math.min(l.usageBase, l.shelfCapBase ?? Infinity) - 1e-6) parts.push(`Keep at least ${formatPrepQty(l.parBase, l.unit)}.`);
+  parts.push(l.onHandKnown ? `On hand ${formatPrepQty(l.onHandBase, l.unit)}.` : "Not counted yet.");
+  return parts.join(" ");
 }
 
 /** Make first (runs out soonest first), then enough, then no data; names break ties. */

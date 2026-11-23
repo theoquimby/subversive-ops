@@ -25,7 +25,7 @@ interface Off {
   coverage: DayCoverage[];
 }
 
-const range = (s: string, e: string) => (s === e ? dayDate(s) : `${shortDate(s)} – ${shortDate(e)}`);
+const range = (s: string, e: string) => (s === e ? dayDate(s) : `${shortDate(s)} to ${shortDate(e)}`);
 const statusBadge = (s: Status) => <Badge tone={s === "APPROVED" ? "good" : s === "DENIED" ? "bad" : s === "CANCELLED" ? "neutral" : "warn"}>{s === "APPROVED" ? "Approved" : s === "DENIED" ? "Denied" : s === "CANCELLED" ? "Withdrawn" : "Pending"}</Badge>;
 const TYPE_LABEL: Record<LeaveType, string> = { PTO: "PTO", SICK: "Sick", UNPAID: "Unpaid" };
 const fmtH = (h: number) => `${Number(h.toFixed(1))}h`;

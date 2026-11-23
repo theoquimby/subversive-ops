@@ -76,7 +76,7 @@ export async function setTimecardField(id: string, field: z.infer<typeof fields>
     }
   } else if (field === "breakMinutes") {
     const n = value ? Number(value.replace(/m(in)?s?$/i, "")) : 0;
-    if (!Number.isFinite(n) || n < 0 || n > 240) return { error: "Minutes, 0–240" };
+    if (!Number.isFinite(n) || n < 0 || n > 240) return { error: "Minutes, 0 to 240" };
     data.breakMinutes = Math.round(n);
   } else {
     const s = value.replace(/[$,\s]/g, "");
@@ -261,7 +261,7 @@ export async function saveLaborRule(field: NumericRule, raw: string): R {
     return;
   }
   const n = Number(raw.replace(/[$%,\s]/g, ""));
-  if (!raw.trim() || !Number.isFinite(n) || n < limits[0] || n > limits[1]) return { error: `Enter ${limits[0]}–${limits[1]}` };
+  if (!raw.trim() || !Number.isFinite(n) || n < limits[0] || n > limits[1]) return { error: `Enter ${limits[0]} to ${limits[1]}` };
   await saveLaborRules({ [field]: limits[2] === "pct" ? n / 100 : n });
   done();
 }

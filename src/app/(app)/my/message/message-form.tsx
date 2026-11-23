@@ -47,7 +47,7 @@ export function MessageForm() {
           disabled={pending || body.trim().length < 3}
           onClick={() =>
             start(async () => {
-              const r = await sendStaffMessage({ kind, body, anonymous: canAnon && anon }).catch(() => ({ error: "No signal — that didn't go through. Try again in a moment." }) as { error?: string; ok?: string });
+              const r = await sendStaffMessage({ kind, body, anonymous: canAnon && anon }).catch(() => ({ error: "No signal, so that didn't go through. Try again in a moment." }) as { error?: string; ok?: string });
               if (r.error) show(r.error, "bad");
               else {
                 show(r.ok ?? "Sent");

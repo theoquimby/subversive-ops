@@ -39,7 +39,7 @@ export async function decideTimeOff(id: string, approve: boolean, opts: { openSh
     after(() => notifyTimeOffDecided(id, reason).then(() => undefined));
     return { ok: reason ? "Time off denied. They'll get your reason with the message." : "Time off denied." };
   }
-  if (opts.hours != null && (!Number.isFinite(opts.hours) || opts.hours < 0 || opts.hours > 400)) return { error: "Hours should be 0–400." };
+  if (opts.hours != null && (!Number.isFinite(opts.hours) || opts.hours < 0 || opts.hours > 400)) return { error: "Hours should be 0 to 400." };
   const hours = r.type === "UNPAID" ? null : opts.hours ?? (await requestHours(r));
   const range = { gte: instantAt(toISODate(r.startDate), 0), lt: instantAt(addDays(toISODate(r.endDate), 1), 0) };
   const opened = await db.$transaction(async (tx) => {

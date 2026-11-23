@@ -80,7 +80,7 @@ export function HomeSetup({ pushReady, vapidKey }: { pushReady: boolean; vapidKe
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[linear-gradient(140deg,#f59e42_0%,#e2553f_55%,#c2367a_100%)] text-sm font-bold text-white" aria-hidden>S</span>
             <div className="min-w-0">
               <h2 className="text-[0.95rem] font-semibold">Put Subversive on your Home Screen</h2>
-              <p className="text-sm text-muted">Opens in one tap, full screen — and lets your phone get shift alerts.</p>
+              <p className="text-sm text-muted">Opens in one tap, full screen, and lets your phone get shift alerts.</p>
             </div>
           </div>
           <ol className="mt-3 grid gap-2 text-sm text-ink-2">
@@ -109,7 +109,7 @@ export function HomeSetup({ pushReady, vapidKey }: { pushReady: boolean; vapidKe
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-area/12 text-area" aria-hidden><BellRing className="size-5" /></span>
           <div className="min-w-0 flex-1">
             <h2 className="text-[0.95rem] font-semibold">Get shift alerts on this phone</h2>
-            <p className="text-sm text-muted">New schedules, swaps and changes — even with the app closed.</p>
+            <p className="text-sm text-muted">New schedules, swaps and changes, even with the app closed.</p>
           </div>
           <Button variant="primary" size="lg" className="w-full sm:w-auto" disabled={state === "working"} onClick={async () => { await turnOn(); setJustOn(true); }}>
             {state === "working" ? "One moment…" : "Turn on notifications"}

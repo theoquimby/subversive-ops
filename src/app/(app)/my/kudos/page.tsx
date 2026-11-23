@@ -43,7 +43,7 @@ export default async function KudosPage() {
             {cfg.pointsEnabled && <span className="num text-sm font-medium text-ink-2">{balance} points</span>}
           </h2>
           {mine.length === 0 ? (
-            <Card className="px-4 py-5 text-sm text-muted">Nothing yet — they&apos;ll land here.</Card>
+            <Card className="px-4 py-5 text-sm text-muted">Nothing yet. They&apos;ll land here.</Card>
           ) : (
             <Card className="divide-y divide-border">
               {mine.map((s) => (
@@ -66,12 +66,12 @@ export default async function KudosPage() {
       <section aria-labelledby="feed-h">
         <h2 id="feed-h" className="mb-2.5 flex items-center gap-1.5 px-1 text-[0.95rem] font-semibold"><Sparkles className="size-4 text-muted" aria-hidden /> Around the team</h2>
         {feed.length === 0 ? (
-          <EmptyState title="No shout-outs this month">{canGive ? "Be the first — who made your last shift easier?" : "When managers thank someone, it shows up here."}</EmptyState>
+          <EmptyState title="No shout-outs this month">{canGive ? "Be the first: who made your last shift easier?" : "When managers thank someone, it shows up here."}</EmptyState>
         ) : (
           <Card className="divide-y divide-border">
             {feed.map((s) => (
               <article key={s.id} className="px-4 py-3.5">
-                <p className="text-[0.95rem] leading-snug text-ink"><span className="font-medium">{s.to}</span> — {s.body}</p>
+                <p className="text-[0.95rem] leading-snug text-ink"><span className="font-medium">{s.to}</span>: {s.body}</p>
                 <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">{s.value && <Badge>{s.value}</Badge>}from {s.from} · {when(s.createdAt)}</p>
               </article>
             ))}

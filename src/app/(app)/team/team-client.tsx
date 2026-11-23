@@ -25,6 +25,9 @@ import type { CertStatus } from "@/domain/certs";
 import { CertChip } from "./training/cert-chip";
 import { parseFocus } from "@/domain/focus";
 import { FocusPicker } from "../_overview/focus-picker";
+import { FEEDBACK_LABEL, PersonSheet, type PersonRow } from "./people-client";
+import { shortDate } from "@/lib/format";
+import { MessageSquareText } from "lucide-react";
 
 type Result = void | { error?: string } | undefined;
 
@@ -83,8 +86,8 @@ export function AddRow({ placeholder, onAdd, label, onPasteLines }: { placeholde
   );
 }
 
-export const AddPositionRow = () => <AddRow placeholder="Add a position — type a name, press Enter" label="New position name" onAdd={addPosition} />;
-export const AddEmployeeRow = () => <AddRow placeholder="Add a person — type a name, press Enter" label="New employee name" onAdd={addEmployee} />;
+export const AddPositionRow = () => <AddRow placeholder="Add a position: type a name, press Enter" label="New position name" onAdd={addPosition} />;
+export const AddEmployeeRow = () => <AddRow placeholder="Add a person: type a name, press Enter" label="New employee name" onAdd={addEmployee} />;
 
 export function DeletePositionButton({ id, name }: { id: string; name: string }) {
   const confirm = useConfirm();
@@ -157,11 +160,15 @@ export interface PositionOption {
 }
 
 const YES_NO = [{ value: "no", label: "No" }, { value: "yes", label: "Yes" }];
+const CERT_RANK: Record<CertStatus, number> = { expired: 0, missing: 1, expiring: 2, valid: 3, "not-required": 4 };
 const DISPLAY_DAYS = [1, 2, 3, 4, 5, 6, 0];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 
-export function EmployeeGrid({ employees, positions, users, openingHours }: { employees: EmployeeRow[]; positions: PositionOption[]; users: { id: string; name: string; role?: string; focus?: string[] }[]; openingHours: Record<number, [number, number]> }) {
+export function EmployeeGrid({ employees, positions, users, openingHours, notes = {} }: { employees: EmployeeRow[]; positions: PositionOption[]; users: { id: string; name: string; role?: string; focus?: string[] }[]; openingHours: Record<number, [number, number]>; notes?: Record<string, PersonRow> }) {
+  // Notes, kudos and document sign-off open in the person's sheet, from their row.
+  const [sheetId, setSheetId] = useState<string | null>(null);
+  const sheet = sheetId ? notes[sheetId] : undefined;
   const userOptions = useMemo(() => [{ value: "", label: "None" }, ...users.map((u) => ({ value: u.id, label: u.name }))], [users]);
   const posName = useMemo(() => new Map(positions.map((p) => [p.id, p.name])), [positions]);
   const columns = useMemo<Column<EmployeeRow>[]>(() => [
@@ -175,14 +182,56 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
       cell: (e) => (
         <>
           <GridCell grid="emp" col="name" value={e.name} onSave={setEmployeeField.bind(null, e.id, "name")} ariaLabel={`Name of ${e.name}`} className="min-w-28 font-medium" />
-          {((e.certs && e.certs.status !== "not-required") || e.isMinor) && (
+          {e.isMinor && (
             <div className="flex flex-wrap gap-1 px-2 pb-1">
-              {e.certs && e.certs.status !== "not-required" && <CertChip employeeId={e.id} chip={e.certs} />}
-              {e.isMinor && <Badge tone="warn">Minor</Badge>}
+              <Badge tone="warn">Minor</Badge>
             </div>
           )}
         </>
       ),
+    },
+    {
+      id: "certs",
+      header: "Certificates",
+      width: 120,
+      sort: (e) => (e.certs ? CERT_RANK[e.certs.status] : null),
+      csv: (e) => e.certs?.label ?? "",
+      cell: (e) => (e.certs && e.certs.status !== "not-required" ? <span className="px-2"><CertChip employeeId={e.id} chip={e.certs} /></span> : <span className="px-2 text-xs text-muted">None needed</span>),
+    },
+    {
+      id: "docs",
+      header: "Documents",
+      width: 110,
+      sort: (e) => { const n = notes[e.id]; return n?.acks.length ? n.acks.filter((a) => a.ackedAt).length / n.acks.length : null; },
+      csv: (e) => { const n = notes[e.id]; return n?.acks.length ? `${n.acks.filter((a) => a.ackedAt).length}/${n.acks.length}` : ""; },
+      cell: (e) => {
+        const n = notes[e.id];
+        if (!n?.acks.length) return <span className="px-2 text-xs text-muted">None to sign</span>;
+        const signed = n.acks.filter((a) => a.ackedAt).length;
+        return (
+          <button type="button" onClick={() => setSheetId(e.id)} className="mx-1 inline-flex min-h-8 items-center rounded-md px-1 hover:bg-surface-2" aria-label={`${e.name}: ${signed} of ${n.acks.length} documents signed`}>
+            <Badge tone={signed === n.acks.length ? "good" : "warn"}>{signed}/{n.acks.length} signed</Badge>
+          </button>
+        );
+      },
+    },
+    {
+      id: "notes",
+      header: "Notes",
+      width: 220,
+      sort: (e) => notes[e.id]?.feedback.length ?? 0,
+      csv: (e) => notes[e.id]?.feedback.length ?? 0,
+      cell: (e) => {
+        const n = notes[e.id];
+        if (!n) return <span className="px-2 text-xs text-muted">—</span>;
+        const last = n.feedback[0];
+        return (
+          <button type="button" onClick={() => setSheetId(e.id)} className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-surface-2" aria-label={`Notes for ${e.name}`}>
+            <MessageSquareText className="size-3.5 shrink-0 text-muted" aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-xs text-ink-2">{last ? `${FEEDBACK_LABEL[last.kind]}, ${shortDate(last.createdAt.slice(0, 10))}: ${last.body}` : <span className="text-muted">Add a note</span>}</span>
+          </button>
+        );
+      },
     },
     { id: "positions", header: "Positions", edit: true, width: 300, sort: (e) => e.positionIds.map((id) => posName.get(id)).join(", "), csv: (e) => e.positionIds.map((id) => posName.get(id)).join("; "), cell: (e) => <div className="px-1.5"><PositionChips employeeId={e.id} assigned={e.positionIds} positions={positions} /></div> },
     {
@@ -216,17 +265,18 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
     },
     { id: "avail", header: "Availability", sort: (e) => (e.availability ? 1 : 0), csv: (e) => (e.availability ? "set" : "always"), cell: (e) => (e.availability ? <WeekDots availability={e.availability} /> : <span className="text-xs text-muted">Always available</span>) },
     { id: "square", header: "Square", defaultHidden: true, sort: (e) => e.squareTeamMemberId, csv: (e) => e.squareTeamMemberId, cell: (e) => (e.squareTeamMemberId ? <span className="block max-w-28 truncate font-mono text-xs text-muted" title={e.squareTeamMemberId}>{e.squareTeamMemberId}</span> : <span className="text-muted">—</span>) },
-  ], [positions, posName, userOptions, users]);
+  ], [positions, posName, userOptions, users, notes]);
 
   const filters = useMemo<Filter<EmployeeRow>[]>(() => [
     { id: "position", label: "Position", kind: "facet", values: (e) => (e.positionIds.length ? e.positionIds : ["none"]), options: [...positions.map((p) => ({ value: p.id, label: p.name })), { value: "none", label: "No position" }], param: "position" },
     { id: "status", label: "Status", kind: "facet", values: (e) => (e.active ? "active" : "inactive"), options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }], single: true, param: "status" },
-    { id: "nologin", label: "No login", kind: "toggle", test: (e) => !e.userId },
+    { id: "nologin", label: "No login", kind: "toggle", test: (e) => !e.userId, param: "nologin" },
+    { id: "unsigned", label: "Documents to sign", kind: "toggle", test: (e) => { const n = notes[e.id]; return !!n && n.acks.some((a) => !a.ackedAt); }, tone: "warn", param: "unsigned" },
     { id: "minor", label: "Minors", kind: "toggle", test: (e) => e.isMinor, tone: "warn" },
-    { id: "rate", label: "Rate below minimum", kind: "toggle", test: (e) => !!e.rateWarning, tone: "bad" },
+    { id: "rate", label: "Rate below minimum", kind: "toggle", test: (e) => !!e.rateWarning, tone: "bad", param: "rate" },
     { id: "norate", label: "No rate", kind: "toggle", test: (e) => e.hourlyRate == null },
-    { id: "certs", label: "Certificate due", kind: "toggle", test: (e) => !!e.certs && e.certs.status !== "valid" && e.certs.status !== "not-required", tone: "warn" },
-  ], [positions]);
+    { id: "certs", label: "Certificate due", kind: "toggle", test: (e) => !!e.certs && e.certs.status !== "valid" && e.certs.status !== "not-required", tone: "warn", param: "certs" },
+  ], [positions, notes]);
 
   const groups = useMemo<GroupBy<EmployeeRow>[]>(() => [
     { id: "position", label: "First position", key: (e) => posName.get(e.positionIds[0]) ?? null, title: (k) => k || "No position" },
@@ -234,6 +284,7 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
   ], [posName]);
 
   return (
+    <>
     <DataTable
       id="team-people"
       rows={employees}
@@ -251,7 +302,7 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
         { value: vis.length, label: vis.length === 1 ? "person" : "people" },
         { value: vis.filter((e) => !e.userId).length, label: "without a login", filter: { id: "nologin" } },
         { value: vis.filter((e) => !!e.rateWarning).length, label: "under minimum wage", tone: "bad", filter: { id: "rate" } },
-        { value: vis.filter((e) => e.isMinor).length, label: "minors", tone: "warn", filter: { id: "minor" } },
+        { value: vis.filter((e) => e.isMinor).length, label: vis.filter((e) => e.isMinor).length === 1 ? "minor" : "minors", tone: "warn", filter: { id: "minor" } },
       ]}
       card={(e) => ({
         title: <>{e.name}{!e.active && <span className="font-normal text-muted"> · inactive</span>}</>,
@@ -277,6 +328,8 @@ export function EmployeeGrid({ employees, positions, users, openingHours }: { em
         </>
       )}
     />
+    {sheet && <PersonSheet person={sheet} onClose={() => setSheetId(null)} />}
+    </>
   );
 }
 
@@ -348,7 +401,7 @@ function AvailabilityEditor({ employee: e, openingHours, users }: { employee: Em
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm">
           <span className="font-medium">{e.name}&rsquo;s availability</span>
-          <span className="ml-2 text-muted">{notSet ? "Not set — scheduling treats them as always available." : "Type ranges like 4p-10p, 11-2 or all day. Blank = unavailable."}</span>
+          <span className="ml-2 text-muted">{notSet ? "Not set, so scheduling treats them as always available." : "Type ranges like 4p-10p, 11-2 or all day. Blank = unavailable."}</span>
         </div>
         <div className="flex gap-1">
           {notSet ? (

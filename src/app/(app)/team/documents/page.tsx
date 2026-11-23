@@ -24,7 +24,7 @@ export default async function DocumentsPage() {
         </Section>
       </HelpZone>
       <Section help="team.documents.library" title="Library" description="Edit any cell to change it. ••• shows the text the assistant reads.">
-        {docs.length === 0 ? <EmptyState title="No documents yet">Upload the staff handbook first — it answers most questions.</EmptyState> : <DocumentGrid docs={docs} staff={staff} />}
+        {docs.length === 0 ? <EmptyState title="No documents yet">Upload the staff handbook first: it answers most questions.</EmptyState> : <DocumentGrid docs={docs} staff={staff} />}
       </Section>
       <HelpZone id="team.documents.signoff">
         <Section title="Sign-off" description="Who has acknowledged each required document.">

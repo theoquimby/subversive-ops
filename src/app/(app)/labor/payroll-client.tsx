@@ -28,10 +28,12 @@ export function PeriodPicker({ start, prev, next, label }: { start: string; prev
 }
 
 /** Approve (lock + snapshot) or unlock the period on screen. */
-export function ApprovalBar({ start, label, approved, approvedBy, approvedAt, blocks, warns }: { start: string; label: string; approved: boolean; approvedBy: string | null; approvedAt: string | null; blocks: number; warns: number }) {
+export function ApprovalBar({ start, label, approved, approvedBy, approvedAt, blocks, hours }: { start: string; label: string; approved: boolean; approvedBy: string | null; approvedAt: string | null; blocks: number; hours: number }) {
   const confirm = useConfirm();
   const [pending, run] = useTransition();
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  // Nothing worked means nothing to pay: approving would freeze an empty payroll file.
+  const empty = hours <= 0;
   const act = (fn: () => Promise<{ error?: string; ok?: string }>) =>
     run(async () => {
       const r = await fn();
@@ -51,8 +53,7 @@ export function ApprovalBar({ start, label, approved, approvedBy, approvedAt, bl
             <>
               <div className="font-medium">Not approved yet</div>
               <div className="text-muted">
-                {blocks ? <span className="text-bad">{blocks} must fix</span> : "Nothing must be fixed"}
-                {warns ? <> · <span className="text-warn">{warns} to check</span></> : null} · approving locks {label}&rsquo;s timecards and freezes the export.
+                {empty ? "Nothing to approve: no hours were worked in this period yet." : <>Approving locks {label}&rsquo;s timecards and freezes the payroll file.</>}
               </div>
             </>
           )}
@@ -71,9 +72,10 @@ export function ApprovalBar({ start, label, approved, approvedBy, approvedAt, bl
         </Button>
       ) : (
         <Button
-          variant="primary"
+          variant={blocks || empty ? "secondary" : "primary"}
           className="max-sm:h-11"
-          disabled={pending}
+          disabled={pending || empty}
+          title={empty ? "No hours in this period to approve" : undefined}
           onClick={async () => {
             if (blocks && !(await confirm({ title: `Approve with ${blocks} must-fix problem${blocks === 1 ? "" : "s"}?`, body: "Things like a missing clock-out or pay rate will be wrong in the payroll file. Fix them first unless you've checked.", confirmLabel: "Approve anyway", danger: true }))) return;
             act(() => approvePeriod(start));

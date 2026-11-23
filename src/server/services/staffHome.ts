@@ -1,4 +1,5 @@
 import "server-only";
+import { positionColor } from "@/domain/positionColors";
 import type { ISODate } from "@/domain/dates";
 import { localParts, shiftPaidHours } from "@/domain/schedule";
 import { firstName, quickActionOrder, sortTodos, type QuickAction, type Todo } from "@/domain/staffHome";
@@ -90,7 +91,7 @@ export async function staffHome(employee: { id: string; name: string; positions:
 
   const view = (s: (typeof mine)[number]): HomeShift => {
     const v = shiftView(s);
-    return { id: s.id, date: v.date, startMin: v.startMin, endMin: v.endMin, startAt: s.start.getTime(), endAt: s.end.getTime(), hours: shiftPaidHours(v), position: s.position.name, color: s.position.color, notes: s.notes, swapPending: s.swaps.length > 0 };
+    return { id: s.id, date: v.date, startMin: v.startMin, endMin: v.endMin, startAt: s.start.getTime(), endAt: s.end.getTime(), hours: shiftPaidHours(v), position: s.position.name, color: positionColor(s.position.color), notes: s.notes, swapPending: s.swaps.length > 0 };
   };
   const shifts = mine.map(view);
   const next = shifts[0] ?? null;
@@ -106,7 +107,7 @@ export async function staffHome(employee: { id: string; name: string; positions:
     : [];
   const crew = crewRows.map((s) => {
     const v = shiftView(s);
-    return { name: s.employee!.name, position: s.position.name, color: s.position.color, startMin: v.startMin, endMin: v.endMin };
+    return { name: s.employee!.name, position: s.position.name, color: positionColor(s.position.color), startMin: v.startMin, endMin: v.endMin };
   });
 
   const thisWeek = mine.filter((s) => s.start < weekEnd);

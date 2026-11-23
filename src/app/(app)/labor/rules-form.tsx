@@ -23,7 +23,7 @@ const GROUPS: { title: string; rows: { key: NumericKey; label: string; hint: str
     rows: [
       { key: "minimumWage", label: "Minimum wage", hint: "Per hour. Also the spread-of-hours and call-in rate. Upstate NY: $16.00 in 2026.", prefix: "$" },
       { key: "tippedMinimumWage", label: "Tipped minimum wage", hint: "Cash wage for tip-eligible positions (food service tip credit).", prefix: "$" },
-      { key: "weeklyOvertimeHours", label: "Overtime after", hint: "Hours in a Monday–Sunday week.", suffix: "h" },
+      { key: "weeklyOvertimeHours", label: "Overtime after", hint: "Hours in a Monday to Sunday week.", suffix: "h" },
       { key: "overtimeMultiplier", label: "Overtime rate", hint: "Multiple of the regular rate.", suffix: "×" },
       { key: "spreadOfHours", label: "Spread of hours", hint: "A day spanning longer than this earns one extra hour at minimum wage.", suffix: "h" },
       { key: "callInMinHours", label: "Call-in minimum", hint: "Short shifts are costed up to this when planning; leaving early is paid up to it.", suffix: "h" },
@@ -45,7 +45,7 @@ const GROUPS: { title: string; rows: { key: NumericKey; label: string; hint: str
     title: "Paid sick leave",
     rows: [
       { key: "sickHoursWorkedPerHour", label: "Accrual", hint: "Hours worked to earn 1 hour of paid sick leave. NY: 30.", suffix: "h" },
-      { key: "sickAnnualCapHours", label: "Yearly cap", hint: "NY: 40h for 5–99 employees, 56h for 100 or more.", suffix: "h" },
+      { key: "sickAnnualCapHours", label: "Yearly cap", hint: "NY: 40h for 5 to 99 employees, 56h for 100 or more.", suffix: "h" },
     ],
   },
 ];

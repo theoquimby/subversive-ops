@@ -1,16 +1,17 @@
 import "server-only";
-import { addDays, ISODate, parseISODate, toISODate } from "@/domain/dates";
+import { addDays, businessDate, ISODate, parseISODate, toISODate } from "@/domain/dates";
 import type { LaborRules } from "@/domain/labor";
 import {
   AdjustmentKind, buildPayrollRows, callInOwed, ExceptionCard, ExceptionShift, FinalizedTipPeriod, payPeriodFor, payrollExceptions, PayrollRow, PayrollSnapshot, payrollTotals,
-  PeriodRange, periodWeeks, tipsForPeriod,
+  PeriodRange, periodWeeks, RecentPeriod, tipsForPeriod,
 } from "@/domain/payroll";
 import { shiftLabel } from "@/domain/schedule";
 import { leaveHours, leaveHoursIn, sickBalance, SickBalance } from "@/domain/sickLeave";
 import { Prisma } from "@prisma/client";
 import { db, num } from "../db";
 import { getLaborRules } from "./labor-rules";
-import { loadTimecards, weeklyPay, WeekPayLine } from "./labor";
+import { dayBounds, loadTimecards, weeklyPay, WeekPayLine } from "./labor";
+import { env } from "../env";
 import { businessToday } from "./sales";
 import { instantAt, shiftView } from "./scheduling";
 import { isSquareConnected } from "./square";
@@ -269,6 +270,29 @@ export async function unlockPayPeriod(period: PeriodRange) {
 export async function dateIsLocked(date: ISODate) {
   const d = parseISODate(date);
   return (await db.payPeriod.count({ where: { status: "APPROVED", startDate: { lte: d }, endDate: { gte: d } } })) > 0;
+}
+
+/**
+ * The current pay period and the few before it, newest first, with whether
+ * each is approved and how many timecards and published shifts it holds: what
+ * `openingPeriod` needs to pick the period the Timecards page opens on.
+ */
+export async function recentPeriodsForOpening(today: ISODate, rules: LaborRules, count = 5): Promise<RecentPeriod[]> {
+  const periods: PeriodRange[] = [payPeriodFor(today, rules)];
+  while (periods.length < count) periods.push(payPeriodFor(addDays(periods[periods.length - 1].start, -1), rules));
+  const from = periods[periods.length - 1].start;
+  const toExclusive = addDays(periods[0].end, 1);
+  const [cards, shifts, saved] = await Promise.all([
+    db.timecard.findMany({ where: { clockIn: dayBounds(from, toExclusive) }, select: { clockIn: true } }),
+    db.shift.findMany({ where: { published: true, employeeId: { not: null }, start: { gte: instantAt(from, 0), lt: instantAt(toExclusive, 0) } }, select: { start: true } }),
+    db.payPeriod.findMany({ where: { status: "APPROVED", startDate: { gte: parseISODate(from) } }, select: { startDate: true } }),
+  ]);
+  const approved = new Set(saved.map((p) => toISODate(p.startDate)));
+  const tz = env.BUSINESS_TIMEZONE;
+  const cardDays = cards.map((c) => businessDate(c.clockIn, tz));
+  const shiftDays = shifts.map((s) => businessDate(s.start, tz));
+  const within = (p: PeriodRange) => (d: ISODate) => d >= p.start && d <= p.end;
+  return periods.map((p) => ({ ...p, approved: approved.has(p.start), cards: cardDays.filter(within(p)).length, shifts: shiftDays.filter(within(p)).length }));
 }
 
 export async function recentPayPeriods(limit = 8) {

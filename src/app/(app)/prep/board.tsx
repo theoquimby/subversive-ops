@@ -107,16 +107,19 @@ export function PrepBoard({ lines, day, me, manager }: { lines: BoardLine[]; day
           </div>
         </HelpZone>
       ) : (
-        <Card className="mb-8 border-good/30 bg-good-bg p-4 text-sm font-medium text-good">Nothing to prep — everything on the list is covered.</Card>
+        <Card className="mb-8 border-good/30 bg-good-bg p-4 text-sm font-medium text-good">Nothing to prep: everything on the list is covered.</Card>
       )}
 
       <div data-tour="prep.list">
         {stations.map(([station, ls]) => (
           <section key={station} className="mb-8">
-            <h2 className="mb-2 flex items-baseline justify-between px-1 text-[0.95rem] font-semibold text-ink">
-              {station}
-              <span className="num text-xs font-normal text-muted">{ls.filter((l) => doneOf(l)).length}/{ls.length}</span>
-            </h2>
+            {/* One station needs no heading: the page title and the progress above already say it. */}
+            {stations.length > 1 && (
+              <h2 className="mb-2 flex items-baseline justify-between px-1 text-[0.95rem] font-semibold text-ink">
+                {station}
+                <span className="num text-xs font-normal text-muted">{ls.filter((l) => doneOf(l)).length} of {ls.length} done</span>
+              </h2>
+            )}
             <Card className="divide-y divide-border overflow-hidden">
               {ls.map((l, i) => (
                 <PrepRow
@@ -177,7 +180,7 @@ function PrepRow({ line: l, first, done, amount, setAmount, open, toggle, onTick
             <div className="mt-0.5 text-xs text-good">Done · {doneLabel(done)}</div>
           ) : (
             <>
-              {!open && <div className="mt-0.5 line-clamp-2 text-xs text-muted">{l.why}</div>}
+              {!open && <div className="mt-1 line-clamp-3 text-sm leading-snug text-ink-2">{l.why}</div>}
               {l.overShelf && <div className="mt-0.5 text-xs text-warn">{overShelfText(l)}</div>}
             </>
           )}
@@ -188,7 +191,7 @@ function PrepRow({ line: l, first, done, amount, setAmount, open, toggle, onTick
       </div>
       {open && (
         <div className="animate-fade-in space-y-4 border-t border-border bg-surface-2/30 px-4 py-4 motion-reduce:animate-none">
-          <p className="text-xs text-ink-2">{l.why}</p>
+          <p className="text-sm leading-snug text-ink-2">{l.why}</p>
           {!done && (
             <div>
               <div className="mb-1.5 flex items-center gap-1 text-xs font-medium text-ink-2">Make <HelpTip id="prep.adjust" /></div>
@@ -243,7 +246,7 @@ function OnHandEntry({ line: l }: { line: BoardLine }) {
         <Button type="submit" size="lg" disabled={state === "saving" || !v.trim()}>Save</Button>
       </form>
       <p className="mt-1 text-xs text-muted" aria-live="polite">
-        {error ? <span className="text-bad">{error}</span> : state === "saved" ? <span className="text-good">Saved — the list is updated.</span> : state === "queued" ? "Saved on this phone; it sends when there's signal." : l.countedAt ? <>Counted <RelativeTime at={l.countedAt} />{`${l.countedBy ? ` by ${l.countedBy}` : ""}${l.onHandKnown ? ` · about ${formatPrepQty(l.onHandBase, l.unit)} now` : ""}`}</> : l.onHandKnown ? `About ${formatPrepQty(l.onHandBase, l.unit)} from batches made` : "Not counted yet"}
+        {error ? <span className="text-bad">{error}</span> : state === "saved" ? <span className="text-good">Saved. The list is updated.</span> : state === "queued" ? "Saved on this phone; it sends when there's signal." : l.countedAt ? <>Counted <RelativeTime at={l.countedAt} />{`${l.countedBy ? ` by ${l.countedBy}` : ""}${l.onHandKnown ? ` · about ${formatPrepQty(l.onHandBase, l.unit)} now` : ""}`}</> : l.onHandKnown ? `About ${formatPrepQty(l.onHandBase, l.unit)} from batches made` : "Not counted yet"}
       </p>
     </div>
   );
@@ -255,7 +258,7 @@ function StockRow({ line: l, open, toggle }: { line: BoardLine; open: boolean; t
       <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-2/50">
         <div className="min-w-0 flex-1">
           <div className="font-medium text-ink">{l.name}</div>
-          <div className="mt-0.5 line-clamp-2 text-xs text-muted">{l.status === "enough" ? [lastsText(l), l.why].filter(Boolean).join(" · ") : l.onHandKnown ? `On hand ${formatPrepQty(l.onHandBase, l.unit)}` : "Not counted yet"}</div>
+          <div className="mt-0.5 line-clamp-3 text-sm leading-snug text-ink-2">{l.status === "enough" ? [lastsText(l) && `${lastsText(l)}.`, l.why].filter(Boolean).join(" ") : l.onHandKnown ? `On hand ${formatPrepQty(l.onHandBase, l.unit)}` : "Not counted yet"}</div>
         </div>
         <ChevronDown className={cx("size-4 shrink-0 text-muted transition-transform duration-180 motion-reduce:transition-none", open && "rotate-180")} />
       </button>

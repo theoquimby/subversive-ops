@@ -130,8 +130,8 @@ describe("cover window and on hand", () => {
 
   it("labels the window", () => {
     expect(windowLabel(["2026-11-15"], "2026-11-15")).toBe("Today");
-    expect(windowLabel(["2026-11-15", "2026-11-16"], "2026-11-15")).toBe("Today + tomorrow");
-    expect(windowLabel(["2026-11-16", "2026-11-17", "2026-11-18"], "2026-11-15")).toBe("Tomorrow–Wed");
+    expect(windowLabel(["2026-11-15", "2026-11-16"], "2026-11-15")).toBe("Today and tomorrow");
+    expect(windowLabel(["2026-11-16", "2026-11-17", "2026-11-18"], "2026-11-15")).toBe("Tomorrow to Wed");
   });
 
   it("estimates on hand from the last count", () => {
@@ -169,7 +169,7 @@ describe("planPrep", () => {
     expect(a.needBase).toBeCloseTo(140 * FLOZ - QT);
     expect(a.batches).toBe(1);
     expect(a.amountText).toBe("1 batch · 3½ qt");
-    expect(a.why).toBe("Today ~140 Classic Burger → 4.4 qt · on hand 1 qt");
+    expect(a.why).toBe("For today: about 140 Classic Burger, using 4.4 qt. On hand 1 qt.");
     // Buffalo: nothing on hand, so it runs out first and leads the list.
     expect(lines[0].recipeId).toBe("buffalo");
     expect(lines[0].runsOutIn).toBe(0);
@@ -180,7 +180,7 @@ describe("planPrep", () => {
     const lines = planPrep({ ...base, days: withEvent, coverDays: 1, items: [item(aioli, QT), item(buffalo, 0)] });
     const a = lines.find((l) => l.recipeId === "aioli")!;
     expect(a.usageBase).toBeCloseTo(180 * FLOZ);
-    expect(a.why).toBe("Today ~140 Classic Burger + Rotary party 40 guests → 5.6 qt · on hand 1 qt");
+    expect(a.why).toBe("For today: about 140 Classic Burger, plus Rotary party 40 guests, using 5.6 qt. On hand 1 qt.");
     // Buffalo isn't on the event menu: unchanged.
     expect(lines.find((l) => l.recipeId === "buffalo")!.usageBase).toBeCloseTo(20 * 4 * FLOZ);
   });
@@ -189,7 +189,7 @@ describe("planPrep", () => {
     const closed: PrepDay[] = [{ date: "2026-11-16", servings: new Map(), events: [{ label: "Wedding 80 guests", portions: new Map([["burger", 80]]) }] }, day("2026-11-17", 60)];
     expect(coverWindow(closed, 1)).toEqual(["2026-11-16"]);
     const a = planPrep({ ...base, days: closed, coverDays: 1, items: [item(aioli, 0)] }).find((l) => l.recipeId === "aioli")!;
-    expect(a.why.startsWith("Today + Wedding 80 guests → ")).toBe(true);
+    expect(a.why.startsWith("For today: Wedding 80 guests, using ")).toBe(true);
   });
 
   it("labels events plainly", () => {
@@ -201,7 +201,7 @@ describe("planPrep", () => {
     const [a] = planPrep({ ...base, days, coverDays: 2, items: [item(aioli, QT)] });
     // 200 burgers = 200 fl oz = 6.25 qt − 1 → 5.25 → 2 batches.
     expect(a.batches).toBe(2);
-    expect(a.why.startsWith("Today + tomorrow ~200 Classic Burger")).toBe(true);
+    expect(a.why.startsWith("For today and tomorrow: about 200 Classic Burger")).toBe(true);
   });
 
   it("caps at what keeps within shelf life", () => {
@@ -209,7 +209,7 @@ describe("planPrep", () => {
     expect(a.targetBase).toBeCloseTo(140 * FLOZ);
     expect(a.makeBase).toBeCloseTo(4.5 * QT); // 4.375 → quarter quart
     expect(a.amountText).toBe("4½ qt");
-    expect(a.why).toContain("keeps 1 day: 4.4 qt");
+    expect(a.why).toContain("It keeps 1 day, so 4.4 qt at most.");
   });
 
   it("warns when a whole batch is more than lasts", () => {
@@ -226,7 +226,7 @@ describe("planPrep", () => {
     const [a] = planPrep({ ...base, days: [day("2026-11-16", 0)], coverDays: 1, items: [item(aioli, 0.5 * QT, { parBase: 2 * QT, rounding: "half" })] });
     expect(a.status).toBe("make");
     expect(a.batches).toBe(0.5);
-    expect(a.why).toBe("par 2 qt · on hand ½ qt");
+    expect(a.why).toBe("Keep at least 2 qt. On hand ½ qt.");
     const [e] = planPrep({ ...base, days: [day("2026-11-16", 0)], coverDays: 1, items: [item(aioli, 3 * QT, { parBase: 2 * QT })] });
     expect(e.status).toBe("enough");
     const [n] = planPrep({ ...base, days: [day("2026-11-16", 0)], coverDays: 1, items: [item(aioli, 0)] });
@@ -239,13 +239,13 @@ describe("planPrep", () => {
     const g = lines.find((l) => l.recipeId === "rg")!;
     expect(a.batches).toBe(2); // 4.375 qt → 2 batches
     expect(g.usageBase).toBeCloseTo(2 * toBase(8, "oz", "g"));
-    expect(g.why).toContain("for 2 batches Garlic Aioli");
+    expect(g.why).toContain("2 batches Garlic Aioli");
     expect(g.amountText).toBe("1 lb");
   });
 
   it("says when nothing has been counted", () => {
     const [a] = planPrep({ ...base, days, coverDays: 1, items: [item(aioli, 0, {}, false)] });
-    expect(a.why.endsWith("not counted yet")).toBe(true);
+    expect(a.why.endsWith("Not counted yet.")).toBe(true);
   });
 
   it("groups by station in priority order", () => {

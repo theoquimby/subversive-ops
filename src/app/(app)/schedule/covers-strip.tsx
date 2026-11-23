@@ -72,7 +72,7 @@ export async function CoversStrip({ dates, today, days, opening }: { dates: ISOD
             </tbody>
           </table>
         </Card>
-        <p className="mt-2 text-xs text-muted">Past days: what Square rang. Ahead: the forecast. Covers are Square checks × guests per check — Square doesn&apos;t record party size. Per labor hour uses scheduled hours.</p>
+        <p className="mt-2 text-xs text-muted">Past days: what Square rang. Ahead: the forecast. Covers are Square checks × guests per check, since Square doesn&apos;t record party size. Per labor hour uses scheduled hours.</p>
       </section>
     </HelpZone>
   );

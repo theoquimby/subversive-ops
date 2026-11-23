@@ -30,9 +30,10 @@ describe("orderWarnings", () => {
 });
 
 describe("whyLine", () => {
-  it("says what's on hand and what's needed by when, in the order's unit", () => {
-    expect(whyLine({ onHandBase: 3 * 1000, needBase: 9 * 1000, packQtyBase: 1000, unit: "case", byDate: "2026-11-20", known: true })).toBe("On hand 3 case, need 9 by Fri");
-    expect(whyLine({ onHandBase: 1500, needBase: 0, packQtyBase: 1000, unit: "case", byDate: "2026-11-20", known: true })).toBe("On hand 1.5 case, enough to Fri");
+  it("says what's on hand and how much more is needed through when, in the order's unit", () => {
+    // `needBase` is the shortfall the order is rounded up from, so the line and the quantity agree.
+    expect(whyLine({ onHandBase: 3 * 1000, needBase: 2600, packQtyBase: 1000, unit: "case", byDate: "2026-11-20", known: true })).toBe("On hand 3 case, 2.6 more needed through Fri");
+    expect(whyLine({ onHandBase: 1500, needBase: 0, packQtyBase: 1000, unit: "case", byDate: "2026-11-20", known: true })).toBe("On hand 1.5 case, enough through Fri");
   });
   it("is honest when it doesn't know", () => {
     expect(whyLine({ onHandBase: 0, needBase: 9000, packQtyBase: 1000, unit: "case", byDate: "2026-11-20", known: false })).toBe("Not counted yet, so on hand is unknown");

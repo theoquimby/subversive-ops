@@ -228,7 +228,7 @@ export async function saveCutoff(supplierId: string, field: string, value: strin
     await saveCutoffRule(supplierId, { time: t });
   } else if (v.data.field === "daysBefore") {
     const n = Number(v.data.value);
-    if (!Number.isInteger(n) || n < 0 || n > 14) return { error: "Enter whole days, 0–14." };
+    if (!Number.isInteger(n) || n < 0 || n > 14) return { error: "Enter whole days, 0 to 14." };
     await saveCutoffRule(supplierId, { daysBefore: n });
   } else {
     await saveCutoffRule(supplierId, { autoDraft: v.data.value === "on" });

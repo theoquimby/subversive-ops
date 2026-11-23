@@ -5,7 +5,7 @@ import { useConfirm } from "@/components/dialog";
 import { GridCell } from "@/components/grid";
 import { Badge, Button, cx, LinkButton, type Tone } from "@/components/ui";
 import { WEEKDAYS } from "@/domain/dates";
-import { clock, compareByDeadline, DEADLINE_BUCKETS, deadlineBucket, deadlineKey, deadlineSummary, mondayFirst, needsOrder, type DeadlineBucket, type SupplierStateKind } from "@/domain/orderingBoard";
+import { clock, compareByDeadline, DEADLINE_BUCKETS, deadlineBucket, deadlineKey, deadlineSummary, missedNextStep, mondayFirst, needsOrder, type DeadlineBucket, type SupplierStateKind } from "@/domain/orderingBoard";
 import { shouldNag } from "@/domain/orderNeed";
 import { HelpTip } from "@/components/help";
 import { CadenceToggle, SupplierOrderSettings } from "./supplier-order-settings";
@@ -57,13 +57,24 @@ const nagOf = (r: Row, sugg: Suggestions) => shouldNag(r.mode, needOf(r, sugg));
 /** As-needed suppliers with nothing short, nothing on order and nothing missed sit in the quiet "Nothing needed" group. */
 const quiet = (r: Row, sugg: Suggestions) => r.cadence === "as_needed" && !r.missed && r.state.kind === "none" && !needOf(r, sugg)?.needs;
 
-function StatusCell({ r, nag }: { r: Row; nag: boolean }) {
+function StatusCell({ r, nag, today }: { r: Row; nag: boolean; today: string }) {
   const s = STATE[r.state.kind];
   const o = r.state.order;
   return (
     <div className="min-w-0">
       <Badge tone={nag && r.state.kind === "none" && r.next && r.hoursToCutoff != null && r.hoursToCutoff <= 48 ? "bad" : s.tone}>{s.label}</Badge>
-      {r.missed && <div className="mt-0.5 text-xs text-bad" title={r.missed.detail}>Missed the last cutoff</div>}
+      {r.missed && (
+        <div className="mt-0.5 text-xs leading-snug" title={missedNextStep({ supplierName: r.name, next: r.missed.nextChance, phone: r.prefs.phone, email: r.email }, today)}>
+          <span className="block font-medium text-bad">Missed the last cutoff</span>
+          {r.prefs.phone ? (
+            <a href={`tel:${r.prefs.phone}`} className="text-ink-2 underline underline-offset-2 hover:text-ink">Call for a late order</a>
+          ) : r.email ? (
+            <a href={`mailto:${r.email}`} className="text-ink-2 underline underline-offset-2 hover:text-ink">Email for a late order</a>
+          ) : (
+            <span className="text-ink-2">Call for a late order</span>
+          )}
+        </div>
+      )}
       {o && (
         <Link href={`/ordering/po/${o.id}`} className="num mt-0.5 block text-xs whitespace-nowrap text-ink-2 hover:underline" title={`For ${dayDate(o.deliveryDate)}`}>
           {o.total != null ? money(o.total, { whole: true }) : "—"} · {lines(o.lines)}{!r.state.forNext && <span className="text-muted"> · {shortDay(o.deliveryDate)}</span>}
@@ -135,7 +146,7 @@ function SupplierPanel({ r, today, s, loading, reload, people }: { r: Row; today
             <div className="flex flex-wrap items-center gap-2 text-base">
               <span className="font-medium">Order by {deadlineText(r, today)?.replace(/^(Today|Tomorrow)/, (w) => w.toLowerCase())}</span>
               <Countdown at={r.cutoffAt} />
-              {r.guessed && <Badge tone="warn">guessed</Badge>}
+              {r.guessed && <span className="text-xs text-muted" title="No deadline set for this delivery day yet: estimated from the lead time">estimated</span>}
             </div>
             <div className="text-sm text-muted">For the {dayDate(r.next.deliveryDate)} delivery</div>
             <div className="mt-0.5 text-xs text-muted">All deadlines: {deadlineSummary(r.deliveryDays, r.rule)}</div>
@@ -143,7 +154,7 @@ function SupplierPanel({ r, today, s, loading, reload, people }: { r: Row; today
         ) : (
           <p className="mt-1 text-sm text-muted">{r.deliveryDays.length ? "No deadline coming up." : "Set delivery days to get deadlines and auto-drafts."}</p>
         )}
-        {r.missed && <p className="mt-1 text-sm text-bad">{r.missed.title}. {r.missed.detail}.</p>}
+        {r.missed && <p className="mt-1 text-sm"><span className="font-medium text-bad">Missed the last cutoff.</span> {missedNextStep({ supplierName: r.name, next: r.missed.nextChance, phone: r.prefs.phone, email: r.email }, today)}</p>}
         <NeedLine r={r} s={s} loading={loading} />
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <LinkButton href={`/ordering/${r.id}`} variant="primary" className="h-10 sm:h-9">Build order</LinkButton>
@@ -181,7 +192,7 @@ function SupplierPanel({ r, today, s, loading, reload, people }: { r: Row; today
                 </li>
               ))}
             </ul>
-            {s.top.length > 12 && <p className="mt-1 text-xs text-muted">and {s.lines - 12} more — Build order shows every line.</p>}
+            {s.top.length > 12 && <p className="mt-1 text-xs text-muted">and {s.lines - 12} more. Build order shows every line.</p>}
             {(s.needsCount > 0 || s.needsSetup > 0) && <p className="mt-1 text-xs text-warn">{[s.needsCount && `${s.needsCount} need a count`, s.needsSetup && `${s.needsSetup} need a pack size`].filter(Boolean).join(" · ")} before they can be suggested.</p>}
           </>
         )}
@@ -296,7 +307,7 @@ export function SuppliersBoard({ rows: allRows, today, emailReady, people }: { r
           <Link href={`/ordering/${r.id}`} className="font-medium text-ink hover:underline" data-tour="ordering.supplier-card">{r.name}</Link>
           <div className="flex items-center gap-1 text-xs text-muted">
             {r.kind === "DISTRIBUTOR" ? "Distributor" : "Local"}
-            {r.learned && <span title="A suggestion from your invoices is waiting — open the row" className="inline-flex items-center gap-0.5 text-ink-2"><Sparkles className="size-3" aria-hidden /> tip</span>}
+            {r.learned && <span title="A suggestion from your invoices is waiting: open the row" className="inline-flex items-center gap-0.5 text-ink-2"><Sparkles className="size-3" aria-hidden /> tip</span>}
           </div>
         </div>
       ),
@@ -318,7 +329,7 @@ export function SuppliersBoard({ rows: allRows, today, emailReady, people }: { r
                 <div className="num whitespace-nowrap">{deadlineText(r, today)}</div>
                 <div className="flex flex-wrap items-center gap-1">
                   {r.state.kind !== "none" ? <span className="text-xs text-muted">ordered{r.guessed && " ·"}</span> : nagOf(r, sugg) ? <Countdown at={r.cutoffAt} /> : <span className="text-xs text-muted">{r.mode === "off" ? "reminders off" : "only if stock runs low"}</span>}
-                  {r.guessed && <span className="text-xs text-warn" title="No deadline set for this delivery day yet: guessed from the lead time">guessed</span>}
+                  {r.guessed && <span className="text-xs text-muted" title="No deadline set for this delivery day yet: estimated from the lead time">estimated</span>}
                 </div>
               </>
             ) : (
@@ -329,22 +340,23 @@ export function SuppliersBoard({ rows: allRows, today, emailReady, people }: { r
         </div>
       ),
     },
-    { id: "status", header: "Status", width: 130, sort: (r) => STATE_RANK[r.state.kind], csv: (r) => STATE[r.state.kind].label, cell: (r) => <StatusCell r={r} nag={nagOf(r, sugg)} /> },
-    { id: "cadence", header: "Orders", help: "ordering.cadence", edit: true, width: 200, sort: (r) => r.cadence, csv: (r) => (r.cadence === "regular" ? "Every delivery" : "When stock runs low"), cell: (r) => <CadenceToggle key={r.cadence} id={r.id} name={r.name} value={r.cadence} compact /> },
+    { id: "status", header: "Status", width: 130, sort: (r) => STATE_RANK[r.state.kind], csv: (r) => STATE[r.state.kind].label, cell: (r) => <StatusCell r={r} nag={nagOf(r, sugg)} today={today} /> },
     { id: "suggested", header: "Suggested", help: "ordering.board.suggested", align: "right", width: 130, firstDir: "desc", sort: (r) => sugg[r.id]?.total ?? null, csv: (r) => sugg[r.id]?.total ?? "", cell: (r) => <SuggestedCell s={sugg[r.id]} loading={loading} items={r.items} /> },
-    { id: "items", header: "Items", align: "right", width: 70, firstDir: "desc", sort: (r) => r.items, csv: (r) => r.items, cell: (r) => <span className={r.items ? "text-ink-2" : "text-muted"}>{r.items}</span> },
+    { id: "cadence", header: "Orders", help: "ordering.cadence", edit: true, width: 200, sort: (r) => r.cadence, csv: (r) => (r.cadence === "regular" ? "Every delivery" : "When stock runs low"), cell: (r) => <CadenceToggle key={r.cadence} id={r.id} name={r.name} value={r.cadence} compact /> },
+    { id: "items", header: "Items", align: "right", width: 70, defaultHidden: true, firstDir: "desc", sort: (r) => r.items, csv: (r) => r.items, cell: (r) => <span className={r.items ? "text-ink-2" : "text-muted"}>{r.items}</span> },
     {
       id: "last",
       header: "Last order",
       width: 120,
+      defaultHidden: true,
       firstDir: "desc",
       sort: (r) => r.lastOrder?.createdOn ?? null,
       csv: (r) => r.lastOrder?.createdOn ?? "",
       cell: (r) => (r.lastOrder ? <Link href={`/ordering/po/${r.lastOrder.id}`} className="num text-sm whitespace-nowrap text-ink-2 hover:underline">{shortDate(r.lastOrder.createdOn)} <span className="text-xs text-muted">{PO_STATUS[r.lastOrder.status].label.toLowerCase()}</span></Link> : <span className="text-muted">—</span>),
     },
-    { id: "min", header: "Minimum", align: "right", edit: true, width: 100, firstDir: "desc", sort: (r) => r.minOrder, csv: (r) => r.minOrder, cell: (r) => <GridCell grid="ord" col="min" type="number" prefix="$" value={r.minOrder} placeholder="—" ariaLabel={`${r.name} minimum order`} onSave={(v) => saveSupplierField(r.id, "minOrder", v)} /> },
-    { id: "email", header: "Order email", edit: true, width: 200, sort: (r) => r.email, csv: (r) => r.email, cell: (r) => <GridCell grid="ord" col="email" value={r.email} placeholder="—" ariaLabel={`${r.name} order email`} onSave={(v) => saveSupplierField(r.id, "email", v)} /> },
-    { id: "auto", header: "Auto-draft", help: "ordering.cutoffs", width: 130, sort: (r) => r.rule.autoDraft, csv: (r) => (r.rule.autoDraft ? "on" : "off"), cell: (r) => <AutoSwitch on={r.rule.autoDraft} label={`Auto-draft orders for ${r.name}`} onSave={(on) => saveSupplierCutoff(r.id, "autoDraft", on ? "on" : "off")} /> },
+    { id: "min", header: "Minimum", align: "right", edit: true, width: 100, defaultHidden: true, firstDir: "desc", sort: (r) => r.minOrder, csv: (r) => r.minOrder, cell: (r) => <GridCell grid="ord" col="min" type="number" prefix="$" value={r.minOrder} placeholder="—" ariaLabel={`${r.name} minimum order`} onSave={(v) => saveSupplierField(r.id, "minOrder", v)} /> },
+    { id: "email", header: "Order email", edit: true, width: 200, defaultHidden: true, sort: (r) => r.email, csv: (r) => r.email, cell: (r) => <GridCell grid="ord" col="email" value={r.email} placeholder="—" ariaLabel={`${r.name} order email`} onSave={(v) => saveSupplierField(r.id, "email", v)} /> },
+    { id: "auto", header: "Auto-draft", help: "ordering.cutoffs", width: 130, defaultHidden: true, sort: (r) => r.rule.autoDraft, csv: (r) => (r.rule.autoDraft ? "on" : "off"), cell: (r) => <AutoSwitch on={r.rule.autoDraft} label={`Auto-draft orders for ${r.name}`} onSave={(on) => saveSupplierCutoff(r.id, "autoDraft", on ? "on" : "off")} /> },
     { id: "deadlines", header: "All deadlines", width: 220, defaultHidden: true, sort: (r) => deadlineSummary(r.deliveryDays, r.rule), csv: (r) => deadlineSummary(r.deliveryDays, r.rule), cell: (r) => <span className="text-sm">{deadlineSummary(r.deliveryDays, r.rule) || <span className="text-muted">—</span>}</span> },
     { id: "lead", header: "Lead", align: "right", width: 70, defaultHidden: true, sort: (r) => r.leadTimeDays, csv: (r) => r.leadTimeDays, cell: (r) => <span className="text-ink-2">{r.leadTimeDays}d</span> },
   ], [today, sugg, loading]);
@@ -377,7 +389,8 @@ export function SuppliersBoard({ rows: allRows, today, emailReady, people }: { r
         <p className="mb-2 text-xs text-muted">Suggested orders couldn&apos;t be worked out just now. <button type="button" className="text-ink-2 underline" onClick={() => void load()}>Try again</button></p>
       )}
       <DataTable
-        id="ordering-suppliers"
+        // v2: Last order, Minimum, Order email and Auto-draft start hidden so the board fits a laptop.
+        id="ordering-suppliers-v2"
         rows={sortedRows}
         rowKey={(r) => r.id}
         columns={columns}
