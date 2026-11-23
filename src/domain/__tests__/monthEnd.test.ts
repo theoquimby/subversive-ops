@@ -4,6 +4,8 @@ import {
   addMonths,
   checklistProgress,
   closeChecklist,
+  closeOrder,
+  closeVerdict,
   closePeriod,
   customPeriod,
   inventoryValue,
@@ -185,7 +187,8 @@ describe("closing checklist", () => {
       ["payroll", "done"],
       ["sales", "done"],
     ]);
-    expect(checklistProgress(items)).toEqual({ done: 6, total: 6, open: 0 });
+    expect(checklistProgress(items)).toEqual({ done: 6, total: 6, open: 0, look: 0 });
+    expect(closeVerdict(items, "October 2026", true)).toMatchObject({ tone: "good", title: "October 2026 is ready to close", first: null });
   });
   it("says what's left, with links", () => {
     const items = closeChecklist({
@@ -208,6 +211,24 @@ describe("closing checklist", () => {
     expect(by.sales).toMatchObject({ status: "todo", detail: "Card fees missing on 2 days. Import those days again from Square." });
     expect(by.journal).toMatchObject({ status: "todo", detail: "3 entries to send, 1 changed since sent." });
     expect(checklistProgress(items).open).toBe(6);
+  });
+  it("counts that add up, the blocker first, and a verdict that names it", () => {
+    const items = closeChecklist({
+      ...base,
+      invoices: { inPeriod: 0, unapproved: 0 },
+      tips: { daysWithTips: 30, unpooled: 4 },
+      payroll: { uncoveredDays: 10 },
+      sales: { daysWithoutSales: 0, feesMissing: 0, taxMissing: 31 },
+      quickbooks: null,
+    });
+    const p = checklistProgress(items);
+    expect(p.done + p.open + p.look).toBe(p.total);
+    expect(closeOrder(items).map((i) => i.id)).toEqual(["sales", "tips", "payroll", "invoices", "count", "quickbooks"]);
+    const v = closeVerdict(items, "October 2026", true);
+    expect(v.title).toBe("October 2026 can't close yet: 3 things left");
+    expect(v.first?.id).toBe("sales");
+    expect(v.line).toBe("Of the 6 jobs, 2 done, 3 to do, 1 worth a look.");
+    expect(v.tone).toBe("bad");
   });
   it("doesn't nag about a count before the month is near its end", () => {
     const items = closeChecklist({ ...base, period: { from: "2026-11-01", to: "2026-11-30" }, countDates: [] });

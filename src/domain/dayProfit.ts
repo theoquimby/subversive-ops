@@ -13,7 +13,7 @@
 import { daysBetween, ISODate, parseISODate, weekday } from "./dates";
 
 /** Bump when the method changes, so a kept copy is worked out again. */
-export const DAY_PROFIT_RULES = 4;
+export const DAY_PROFIT_RULES = 5;
 
 /** A weekday needs this many open days in the year to be shown, and this many to be compared and advised on. */
 const SHOWN_DAYS = 8;
@@ -201,7 +201,8 @@ export function dayProfit(i: { days: readonly ProfitDayInput[]; open: ReadonlySe
       fees,
       left,
       lostDays,
-      laborPct: sales > 0 ? labor / sales : null,
+      // No timecards for the weekday is a gap, not wages of 0%.
+      laborPct: sales > 0 && labor >= 1 ? labor / sales : null,
       yearLeft: sum(every.map((d) => d.left)),
       breakEven: keepRate > 0 ? labor / keepRate : null,
       moveShare: sales <= 0 ? null : left <= 0 ? 0 : left / (left + labor),
@@ -440,6 +441,28 @@ export function outlookPoint(ahead: readonly CrewOutlook[]): ProfitPoint | null 
     detail: `${short.length === 1 ? `It` : `The widest gap is ${day}: it`} is forecast at ${about(o.sales)}, which leaves about ${about(o.kept)} after food, drink and card fees. ${o.usual ? `A usual ${day} crew costs` : "The crew scheduled costs"} ${about(o.cost)}.`,
     action: `${o.overHours != null ? `Trim about ${o.overHours} hours` : "Start one person later, or send one home early,"} on ${day}; as it stands the day needs ${about(o.needs)} in sales. The forecast is a best guess, so look again the day before.`,
   };
+}
+
+/**
+ * What "lately" shows, in words, when nothing in it is a finding: each regular
+ * weekday's last few open days against its year. Never "in line" when the
+ * numbers aren't: a move of more than 15% (and $50) either way is named.
+ */
+export function recentSummary(weekdays: readonly WeekdayProfit[]): { title: string; detail: string } {
+  const rs = weekdays.filter((w) => w.regular && w.recent.days > 0);
+  const plural = (w: WeekdayProfit) => `${DAY_NAMES[w.wd]}s`;
+  const moved = rs.map((w) => ({ w, d: w.recent.left - w.left }));
+  const big = (d: number, w: WeekdayProfit) => Math.abs(d) > Math.max(50, Math.abs(w.left) * 0.15);
+  const up = moved.filter((m) => m.d > 0 && big(m.d, m.w)).sort((a, b) => b.d - a.d);
+  const down = moved.filter((m) => m.d < 0 && big(m.d, m.w)).sort((a, b) => a.d - b.d);
+  const eg = (m: { w: WeekdayProfit }) => `A ${DAY_NAMES[m.w.wd]} has left about ${about(m.w.recent.left)} lately, against ${about(m.w.left)} over the year.`;
+  if (!rs.length) return { title: "Too few recent days to compare yet", detail: "Each weekday needs a few open days in the last two months." };
+  if (!up.length && !down.length) return { title: "Lately is in line with the year", detail: "Every weekday's last few open days left about what it does over the year." };
+  const inWeek = (xs: typeof up) => [...xs].sort((a, b) => ((a.w.wd + 6) % 7) - ((b.w.wd + 6) % 7)).map((m) => plural(m.w));
+  const who = (xs: typeof up) => (xs.length === rs.length ? "every weekday leaves" : xs.length >= 4 && xs.length >= rs.length - 1 ? "most weekdays leave" : `${listOf(inWeek(xs))} leave`);
+  if (!down.length) return { title: `Lately ${who(up)} more than over the year`, detail: eg(up[0]) };
+  if (!up.length) return { title: `Lately ${who(down)} less than over the year`, detail: eg(down[0]) };
+  return { title: `Lately ${listOf(inWeek(up))} leave more, and ${listOf(inWeek(down))} less, than over the year`, detail: `${eg(up[0])} ${eg(down[0])}` };
 }
 
 /** Enough open days to say anything. */

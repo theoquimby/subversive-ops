@@ -18,6 +18,8 @@ export interface RecapRow {
   /** actual − target (dollars for sales, points for %). */
   diff: number | null;
   rag: Rag;
+  /** Why there's no figure ("No timecards", "6 days not in yet"): shown as "—", never as good or bad. */
+  missing: string | null;
 }
 
 export interface RecapInput {
@@ -32,6 +34,10 @@ export interface RecapInput {
   targets: { food: number; beverage: number };
   /** Share of the week's days counted (e.g. 6/7 when Sunday is still running). */
   elapsed?: number;
+  /** False when the week has sales but no timecards: labor and prime can't be told, not 0%. */
+  laborIn?: boolean;
+  /** Finished days whose sales haven't come in yet (domain/dayState): sales can't be judged against budget. */
+  salesNotIn?: number;
 }
 
 const diff = (a: number | null, t: number | null) => (a == null || t == null ? null : a - t);
@@ -45,12 +51,18 @@ export function weekRecap(i: RecapInput): RecapRow[] {
   // Prime has no budget of its own; food + labor budget is the honest comparison when both exist.
   const primeTarget = i.budget?.foodCostPct != null && laborTarget != null ? i.budget.foodCostPct + laborTarget : null;
   const sales = i.sales > 0 ? i.sales : null;
+  const laborIn = i.laborIn ?? true;
+  const notIn = i.salesNotIn ?? 0;
+  const salesMissing = notIn > 0 ? `${notIn} day${notIn === 1 ? "" : "s"} not in yet` : null;
+  const laborPct = laborIn ? i.laborPct : null;
+  const primePct = laborIn ? i.primePct : null;
+  const none = (row: Omit<RecapRow, "missing">, missing: string | null): RecapRow => (missing ? { ...row, diff: null, rag: "none", missing } : { ...row, missing: null });
   return [
-    { key: "sales", label: "Sales", actual: sales, target: salesTarget, targetSource: salesTarget != null ? "budget" : null, diff: diff(sales, salesTarget == null ? null : salesTarget * Math.min(1, elapsed)), rag: rag("sales", salesTarget, sales, elapsed) },
-    { key: "food", label: "Food cost", actual: i.foodPct, target: foodTarget, targetSource: foodSource, diff: diff(i.foodPct, foodTarget), rag: rag("foodCostPct", foodTarget, i.foodPct) },
-    { key: "beverage", label: "Beverage cost", actual: i.beveragePct, target: i.targets.beverage, targetSource: "beverage target", diff: diff(i.beveragePct, i.targets.beverage), rag: rag("foodCostPct", i.targets.beverage, i.beveragePct) },
-    { key: "labor", label: "Labor", actual: i.laborPct, target: laborTarget, targetSource: laborTarget != null ? "budget" : null, diff: diff(i.laborPct, laborTarget), rag: rag("laborPct", laborTarget, i.laborPct) },
-    { key: "prime", label: "Prime cost", actual: i.primePct, target: primeTarget, targetSource: primeTarget != null ? "food + labor budget" : null, diff: diff(i.primePct, primeTarget), rag: rag("laborPct", primeTarget, i.primePct) },
+    none({ key: "sales", label: "Sales", actual: sales, target: salesTarget, targetSource: salesTarget != null ? "budget" : null, diff: diff(sales, salesTarget == null ? null : salesTarget * Math.min(1, elapsed)), rag: rag("sales", salesTarget, sales, elapsed) }, salesMissing),
+    none({ key: "food", label: "Food cost", actual: i.foodPct, target: foodTarget, targetSource: foodSource, diff: diff(i.foodPct, foodTarget), rag: rag("foodCostPct", foodTarget, i.foodPct) }, null),
+    none({ key: "beverage", label: "Beverage cost", actual: i.beveragePct, target: i.targets.beverage, targetSource: "beverage target", diff: diff(i.beveragePct, i.targets.beverage), rag: rag("foodCostPct", i.targets.beverage, i.beveragePct) }, null),
+    none({ key: "labor", label: "Labor", actual: laborPct, target: laborTarget, targetSource: laborTarget != null ? "budget" : null, diff: diff(laborPct, laborTarget), rag: rag("laborPct", laborTarget, laborPct) }, laborIn ? null : "No timecards"),
+    none({ key: "prime", label: "Prime cost", actual: primePct, target: primeTarget, targetSource: primeTarget != null ? "food + labor budget" : null, diff: diff(primePct, primeTarget), rag: rag("laborPct", primeTarget, primePct) }, laborIn ? null : "No timecards"),
   ];
 }
 
@@ -85,8 +97,8 @@ export function decisions(c: DecisionCounts): Decision[] {
   if (c.timeOff) out.push({ key: "timeOff", title: `${plural(c.timeOff, "time-off request")} to approve`, href: "/schedule/requests", count: c.timeOff });
   if (c.swaps) out.push({ key: "swaps", title: `${plural(c.swaps, "shift swap")} to approve`, href: "/schedule/requests", count: c.swaps });
   if (c.autoOrders) out.push({ key: "autoOrders", title: `${plural(c.autoOrders, "auto-drafted order")} to check and send`, href: "/ordering", count: c.autoOrders });
-  if (c.draftShifts) out.push({ key: "schedule", title: c.scheduleAutoDrafted ? `Next week's schedule was drafted (${plural(c.draftShifts, "shift")}) — review and publish` : `${plural(c.draftShifts, "draft shift")} not published yet`, href: "/schedule", count: c.draftShifts });
+  if (c.draftShifts) out.push({ key: "schedule", title: c.scheduleAutoDrafted ? `Next week's schedule was drafted (${plural(c.draftShifts, "shift")}): review and publish it` : `${plural(c.draftShifts, "draft shift")} not published yet`, href: "/schedule", count: c.draftShifts });
   if (c.invoiceIssues) out.push({ key: "invoiceIssues", title: `${plural(c.invoiceIssues, "invoice")} with price or quantity issues`, href: "/invoices?status=OPEN", count: c.invoiceIssues });
-  if (c.badReviews) out.push({ key: "badReviews", title: `${plural(c.badReviews, "low review")} (1–2★) without a reply`, href: "/reviews", count: c.badReviews });
+  if (c.badReviews) out.push({ key: "badReviews", title: `${plural(c.badReviews, "critical review")} waiting for a reply`, href: "/reviews", count: c.badReviews });
   return out;
 }

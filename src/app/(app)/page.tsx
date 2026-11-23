@@ -21,7 +21,9 @@ export const metadata = { title: "Overview" };
  * The Overview. With no focus it's the same for every manager. With one
  * ("What I look after"), it leads with the person's areas in their order and
  * folds the rest into Elsewhere. Each block loads its own data, so blocks that
- * aren't shown cost nothing (see _overview/sections.tsx).
+ * aren't shown cost nothing (see _overview/sections.tsx). Today and Needs you
+ * come first, on the first phone screen; setup and the focus picker wait under
+ * them.
  */
 export default async function OverviewPage() {
   const session = await requireUser("MANAGER");
@@ -34,7 +36,13 @@ export default async function OverviewPage() {
       case "today":
         return <TodayBlock key={b} today={today} />;
       case "needs":
-        return <Needs key={b} focus={focus} />;
+        return (
+          <div key={b}>
+            <Needs focus={focus} />
+            <Setup />
+            {focus.length === 0 && !promptDismissed && <FocusPrompt />}
+          </div>
+        );
       case "notes":
         return <LastNightNotes key={b} />;
       case "insights":
@@ -55,25 +63,27 @@ export default async function OverviewPage() {
   return (
     <>
       <OverviewHeader />
-      {focus.length === 0 && !promptDismissed && <FocusPrompt />}
       {blocks.map(render)}
     </>
   );
 }
 
-/** Title, Square sync line and the setup card (refreshes Square sales when stale). */
+/** Title and the Square sync line (refreshes Square sales when stale). */
 async function OverviewHeader() {
-  const [square, ob, checklist] = await Promise.all([squareSummary(), onboardingState(), setupChecklist(), refreshIfStale()]);
+  const [square] = await Promise.all([squareSummary(), refreshIfStale()]);
   return (
-    <>
-      <PageHeader
-        help="overview.page"
-        title="Overview"
-        description={<>{dayDate(businessToday())} · <Link href="/settings/square" className="underline-offset-2 hover:text-ink hover:underline">{square.connected && square.lastSync ? `Square synced ${relativeTime(square.lastSync)}` : square.text}</Link></>}
-      />
-      {!checklist.essentialsDone && !ob.dismissed && <SetupCard checklist={checklist} />}
-    </>
+    <PageHeader
+      help="overview.page"
+      title="Overview"
+      description={<>{dayDate(businessToday())} · <Link href="/settings/square" className="underline-offset-2 hover:text-ink hover:underline">{square.connected && square.lastSync ? `Square synced ${relativeTime(square.lastSync)}` : square.text}</Link></>}
+    />
   );
+}
+
+/** "Finish setting up" as one line, under Needs you, until the essentials are done or it's dismissed. */
+async function Setup() {
+  const [ob, checklist] = await Promise.all([onboardingState(), setupChecklist()]);
+  return !checklist.essentialsDone && !ob.dismissed ? <SetupCard checklist={checklist} /> : null;
 }
 
 async function Needs({ focus }: { focus: Focus[] }) {

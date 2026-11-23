@@ -47,7 +47,7 @@ export async function addEvents(input: z.input<typeof addSchema>): R {
   if (impact == null) return { error: "Impact is a percent, like +30 or -20." };
   let dates: ISODate[] = [...new Set(v.dates)];
   if (v.repeatUntil) dates = [...new Set(dates.flatMap((d) => repeatDates(d, v.repeatUntil!)))];
-  if (dates.length > 60) return { error: "That's more than 60 dates — add them in smaller batches." };
+  if (dates.length > 60) return { error: "That's more than 60 dates. Add them in smaller batches." };
   const n = await createEvents(dates.sort().map((date) => ({ date, title, kind: v.kind as never, impact, startTime: start, endTime: end, notes: v.notes })));
   refresh();
   return { message: n === dates.length ? `Added ${n} event${n === 1 ? "" : "s"}.` : `Added ${n}; ${dates.length - n} were already on the list.` };

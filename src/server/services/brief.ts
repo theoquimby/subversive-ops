@@ -15,6 +15,8 @@ import { brewOrderingNeedsYou } from "./brewOrdering";
 import { breweryNeedsYou } from "./brewery";
 import { costTargets, menuCosts, recentPriceMoves } from "./insights";
 import { kegSignals, type KegSignals } from "./kegSignals";
+import { dayStates } from "./dayState";
+import { LINK_WINDOW_DAYS, linkCoverage } from "./linking";
 import { periodKpis } from "./kpis";
 import { buildOrderPlan } from "./planning";
 import { ReviewAlert, reviewAlerts, unrepliedNegative } from "./reviews";
@@ -78,10 +80,17 @@ async function orderDrafts(today: ISODate, weekEnd: ISODate): Promise<OrderDraft
   return out.sort((a, b) => a.deliveryDate.localeCompare(b.deliveryDate) || b.total - a.total);
 }
 
-/** Square items that sold in [from, to) but aren't linked to a recipe (and aren't ignored), best sellers first. */
-async function unmappedSelling(from: ISODate, toExclusive: ISODate) {
-  const unmapped = await db.squareMapping.findMany({ where: { recipeId: null, ignored: false }, select: { squareId: true, squareName: true } });
-  if (unmapped.length === 0) return { count: 0, sales: 0, top: [] as { name: string; sales: number; qty: number }[] };
+/**
+ * Square items selling with no cost behind them (no recipe, no bought-in cost, not left out of sales), best
+ * sellers first. The count and share are the linking service's own (`linkCoverage`, the same window the Sales
+ * page and the Overview read), so every page says the same thing about linking.
+ */
+async function unmappedSelling() {
+  const from = addDays(businessToday(), -LINK_WINDOW_DAYS);
+  const toExclusive = addDays(businessToday(), 1);
+  const [unmapped, cov] = await Promise.all([db.squareMapping.findMany({ where: { recipeId: null, unitCost: null, ignored: false }, select: { squareId: true, squareName: true } }), linkCoverage()]);
+  const base = { count: cov.unlinkedItems, share: cov.share, days: LINK_WINDOW_DAYS };
+  if (unmapped.length === 0) return { ...base, sales: 0, top: [] as { name: string; sales: number; qty: number }[] };
   const sold = await db.dailySale.groupBy({
     by: ["squareId"],
     where: { squareId: { in: unmapped.map((m) => m.squareId) }, date: { gte: parseISODate(from), lt: parseISODate(toExclusive) } },
@@ -92,7 +101,7 @@ async function unmappedSelling(from: ISODate, toExclusive: ISODate) {
     .map((r) => ({ name: names.get(r.squareId) ?? "Item", sales: r._sum.netSales?.toNumber() ?? 0, qty: r._sum.qty?.toNumber() ?? 0 }))
     .filter((r) => r.qty > 0)
     .sort((a, b) => b.sales - a.sales);
-  return { count: rows.length, sales: rows.reduce((s, r) => s + r.sales, 0), top: rows.slice(0, 5) };
+  return { ...base, sales: rows.reduce((s, r) => s + r.sales, 0), top: rows.slice(0, 5) };
 }
 
 /**
@@ -106,8 +115,12 @@ async function lastWeekRecap(today: ISODate, snap: Awaited<ReturnType<typeof loa
   const [k, budgets, targets] = await Promise.all([periodKpis(from, week, { snap }), loadTargets(from, week), costTargets()]);
   const budget = budgets.get(from) ?? null;
   const elapsed = k.counted.length / 7;
-  const rows = weekRecap({ sales: k.total.sales, foodPct: k.foodPct, beveragePct: k.beveragePct, laborPct: k.laborPct, primePct: k.primePct, budget, targets, elapsed });
-  return { from, to: addDays(week, -1), days: k.counted.length, todayExcluded: k.todayExcluded, hasBudget: budget != null, rows, overall: worstRag(rows) };
+  const states = await dayStates(k.days.filter((d) => k.counted.includes(d.date)));
+  const notIn = [...states.values()].filter((s) => s === "notIn").length;
+  // A week with sales and no timecards can't say anything about labor: that's "—", never 0% in the green.
+  const laborIn = k.total.labor > 0 || k.total.sales <= 0;
+  const rows = weekRecap({ sales: k.total.sales, foodPct: k.foodPct, beveragePct: k.beveragePct, laborPct: k.laborPct, primePct: k.primePct, budget, targets, elapsed, laborIn, salesNotIn: notIn });
+  return { from, to: addDays(week, -1), days: k.counted.length, notIn, todayExcluded: k.todayExcluded, hasBudget: budget != null, rows, overall: worstRag(rows) };
 }
 
 export async function weeklyBrief() {
@@ -117,7 +130,7 @@ export async function weeklyBrief() {
   const dates = dateRange(week, weekEnd);
   const snap = await loadCostingSnapshot();
 
-  const [forecast, targets, orders, shifts, scheduled, moves, costs, counts, timeOff, swaps, reviews, alerts, lastWaste, lastWeek, badReviews, invoiceIssues, unmapped, autoDraft, training, kegs] = await Promise.all([
+  const [forecast, targets, orders, shifts, scheduled, moves, costs, counts, timeOff, swaps, reviews, alerts, lastWaste, lastWeek, invoiceIssues, unmapped, autoDraft, training, kegs] = await Promise.all([
     dailySalesForecast(dates),
     loadTargets(week, weekEnd),
     orderDrafts(today, weekEnd),
@@ -138,9 +151,8 @@ export async function weeklyBrief() {
       console.error("brief: last week recap failed", e);
       return null;
     }),
-    db.review.count({ where: { replied: false, rating: { lte: 2 }, postedAt: { gte: parseISODate(addDays(today, -60)) } } }),
     db.invoice.count({ where: { status: { in: [...INVOICE_ISSUE_STATUSES] } } }),
-    unmappedSelling(addDays(today, -7), addDays(today, 1)),
+    unmappedSelling(),
     getAutoDraft(),
     trainingBrief(today).catch((e): TrainingBrief | null => {
       console.error("brief: training failed", e);
@@ -202,7 +214,7 @@ export async function weeklyBrief() {
 
   // The three findings worth most from Insights (same ranking as the Overview and the Sunday digest).
   const insights = await insightFeed({ limit: 3 })
-    .then((r) => r.items.map((i) => ({ key: i.key, title: i.title, action: i.action, monthly: i.monthly, oneOff: i.oneOff ?? null, confidence: i.confidence, href: i.href })))
+    .then((r) => r.items.map((i) => ({ key: i.key, title: i.title, action: i.action, monthly: i.monthly, oneOff: i.oneOff ?? null, confidence: i.confidence, rating: i.rating, href: i.href })))
     .catch((e) => {
       console.error("brief: insights failed", e);
       return [];
@@ -211,7 +223,8 @@ export async function weeklyBrief() {
   const decide = decisions({
     timeOff,
     swaps,
-    badReviews,
+    // The reviews service's own count, so this and the Reviews card below can't disagree.
+    badReviews: reviews,
     autoOrders: orders.filter((o) => o.existingDraftId && o.autoDrafted).length,
     draftShifts: schedule.drafts,
     scheduleAutoDrafted: autoDraft,

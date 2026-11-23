@@ -253,24 +253,30 @@ export interface WeekWrap {
   vsBudget: number | null;
   vsPrev: number | null;
   best: { date: ISODate; sales: number } | null;
+  /** Finished days whose sales haven't come in yet (domain/dayState); the comparisons wait for them. */
+  notIn: number;
   lines: string[];
 }
 
 const DAY = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 /** Monday's short wrap of the week before (Mon–Sun). */
-export function weekWrap(i: { from: ISODate; days: WrapDay[]; labor: number; budget: number | null; prevSales: number | null }): WeekWrap {
+export function weekWrap(i: { from: ISODate; days: WrapDay[]; labor: number; budget: number | null; prevSales: number | null; notIn?: number }): WeekWrap {
+  const notIn = i.notIn ?? 0;
   const open = i.days.filter((d) => d.sales > 0);
   const sales = open.reduce((s, d) => s + d.sales, 0);
   const profits = open.filter((d) => d.profit != null);
   const profit = profits.length ? profits.reduce((s, d) => s + d.profit!, 0) : null;
   const laborPct = sales > 0 && i.labor > 0 ? i.labor / sales : null;
-  const vsBudget = i.budget && i.budget > 0 && sales > 0 ? sales / i.budget - 1 : null;
-  const vsPrev = i.prevSales && i.prevSales > 0 && sales > 0 ? sales / i.prevSales - 1 : null;
+  // A part-week against a whole-week budget isn't a finding: hold the comparisons until every day is in.
+  const vsBudget = !notIn && i.budget && i.budget > 0 && sales > 0 ? sales / i.budget - 1 : null;
+  const vsPrev = !notIn && i.prevSales && i.prevSales > 0 && sales > 0 ? sales / i.prevSales - 1 : null;
   const best = open.length ? open.reduce((a, b) => (b.sales > a.sales ? b : a)) : null;
   const lines: string[] = [];
-  if (sales <= 0) lines.push("No sales came through for last week.");
-  else {
+  if (sales <= 0) lines.push(notIn ? "Last week's sales aren't in yet." : "No sales came through for last week.");
+  else if (notIn) {
+    lines.push(`${whole(sales)} in sales so far, with ${notIn === 1 ? "one day" : `${notIn} days`} not in yet. The comparison with budget waits for the rest.`);
+  } else {
     const vs = vsBudget != null ? `, ${pts(Math.abs(vsBudget))} ${vsBudget >= 0 ? "over" : "under"} budget` : vsPrev != null ? `, ${pts(Math.abs(vsPrev))} ${vsPrev >= 0 ? "up on" : "down on"} the week before` : "";
     lines.push(`${whole(sales)} in sales${vs}.`);
     const second: string[] = [];
@@ -279,7 +285,7 @@ export function weekWrap(i: { from: ISODate; days: WrapDay[]; labor: number; bud
     if (second.length) lines.push(`${second[0][0].toUpperCase()}${second.join(", ").slice(1)}.`);
     if (best && open.length >= 3) lines.push(`Best day: ${DAY[weekday(best.date)]}, ${whole(best.sales)}.`);
   }
-  return { from: i.from, to: addDays(i.from, 6), sales, profit, laborPct, budget: i.budget, vsBudget, vsPrev, best: best ? { date: best.date, sales: best.sales } : null, lines };
+  return { from: i.from, to: addDays(i.from, 6), sales, profit, laborPct, budget: i.budget, vsBudget, vsPrev, best: best ? { date: best.date, sales: best.sales } : null, notIn, lines };
 }
 
 /** The Monday edition carries the weekly wrap. */
@@ -293,4 +299,50 @@ export function morningPush(b: { weekdayName: string; forecast: number | null; b
   const bits = [b.yesterday ? `Yesterday ${b.yesterday}` : "", b.tonight ? `${plural(b.tonight, "thing")} before tonight` : "Nothing urgent before tonight"].filter(Boolean);
   const body = bits.join(" · ");
   return { title, body: body.length > 180 ? `${body.slice(0, 177)}…` : body };
+}
+
+// ---- The short list ---------------------------------------------------------------------
+
+/** How many "before tonight" lines the brief lists; the rest wait on the Overview. */
+export const TONIGHT_MAX = 5;
+
+const SMALL = new Set(["&", "of", "and", "the", "de"]);
+const MONTHS = new Set(
+  ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "january", "february", "march", "april", "june", "july", "august", "september", "october", "november", "december"],
+);
+
+/**
+ * What a line is about, as a name: the last two words of its longest run of
+ * capitalised words ("Brew Golden Lager as soon as you can" and "Golden Lager
+ * runs out" are both "golden lager"). Null when the line names nothing.
+ */
+export function subjectOf(title: string): string | null {
+  const words = title.replace(/[:;,.!?()]/g, " ").split(/\s+/).filter(Boolean);
+  let best: string[] = [];
+  let run: string[] = [];
+  const flush = () => {
+    while (run.length && SMALL.has(run.at(-1)!.toLowerCase())) run.pop();
+    if (run.length > best.length) best = run;
+    run = [];
+  };
+  for (const w of words) {
+    const named = /^[A-Z][a-z'’]/.test(w) && !/\d/.test(w) && !MONTHS.has(w.toLowerCase());
+    if (named || (run.length > 0 && SMALL.has(w.toLowerCase()))) run.push(w);
+    else flush();
+  }
+  flush();
+  if (best.length < 2) return null;
+  return best.slice(-2).join(" ").toLowerCase().replace(/['’]s$/, "");
+}
+
+/** The first line per subject, in order; lines that name nothing are all kept. `seen` holds subjects already on the page. */
+export function dedupeBySubject<T extends { title: string }>(items: readonly T[], seen: Set<string> = new Set()): T[] {
+  const out: T[] = [];
+  for (const it of items) {
+    const s = subjectOf(it.title);
+    if (s && seen.has(s)) continue;
+    if (s) seen.add(s);
+    out.push(it);
+  }
+  return out;
 }

@@ -23,6 +23,22 @@ describe("last week recap", () => {
     expect(by.labor.target).toBeNull();
     expect(by.prime.target).toBeNull();
   });
+  it("never reads a week with no timecards as 0% labor in the green", () => {
+    const by = Object.fromEntries(weekRecap({ ...base, laborPct: 0, primePct: 0.29, laborIn: false, budget: { sales: 25000, foodCostPct: 0.28, laborPct: 0.29 } }).map((r) => [r.key, r]));
+    expect(by.labor.actual).toBeNull();
+    expect(by.labor.rag).toBe("none");
+    expect(by.labor.missing).toBe("No timecards");
+    expect(by.prime.actual).toBeNull();
+    expect(by.prime.rag).toBe("none");
+    expect(by.food.missing).toBeNull();
+  });
+  it("holds sales back while days aren't in yet", () => {
+    const by = Object.fromEntries(weekRecap({ ...base, sales: 2940, salesNotIn: 6, budget: { sales: 25000, foodCostPct: null, laborPct: null } }).map((r) => [r.key, r]));
+    expect(by.sales.actual).toBe(2940);
+    expect(by.sales.rag).toBe("none");
+    expect(by.sales.diff).toBeNull();
+    expect(by.sales.missing).toBe("6 days not in yet");
+  });
   it("pro-rates sales when part of the week is still running", () => {
     const by = Object.fromEntries(weekRecap({ ...base, sales: 22000, budget: { sales: 28000, foodCostPct: null, laborPct: null }, elapsed: 6 / 7 }).map((r) => [r.key, r]));
     expect(by.sales.rag).toBe("warn"); // 22k of 24k due

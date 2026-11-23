@@ -52,7 +52,7 @@ export async function WeeklyView({ name, focus = [] }: { name: string; focus?: F
     <div>
       <HelpZone id="brief.page" className="mb-10"><header>
         <div className="text-[0.8rem] font-medium tracking-wide text-muted uppercase">
-          Weekly brief · {shortDate(b.week)} – {shortDate(addDays(b.week, 6))}
+          Weekly brief · {shortDate(b.week)} to {shortDate(addDays(b.week, 6))}
         </div>
         <h1 className="mt-2 text-[1.9rem] leading-tight font-semibold tracking-tight text-ink sm:text-[2.2rem]">
           {greeting()}, {name}.
@@ -138,6 +138,8 @@ const fullDay = (d: string) => ["Sunday", "Monday", "Tuesday", "Wednesday", "Thu
 
 const RAG_TEXT = { good: "text-good", warn: "text-warn", bad: "text-bad", none: "text-ink" } as const;
 const RAG_DOT = { good: "bg-good", warn: "bg-warn", bad: "bg-bad", none: "bg-border-strong" } as const;
+/** A figure that can't be told yet: a dashed ring and muted text, never green or red. */
+const UNKNOWN_DOT = "border border-dashed border-muted bg-transparent";
 
 function LastWeekCard({ r }: { r: NonNullable<WeeklyBrief["lastWeek"]> }) {
   const fmt = (key: string, n: number | null) => (n == null ? "—" : key === "sales" ? money(n, { whole: true }) : pct(n));
@@ -151,8 +153,9 @@ function LastWeekCard({ r }: { r: NonNullable<WeeklyBrief["lastWeek"]> }) {
             Last week vs budget
           </div>
           <div className="mt-1 text-sm text-muted">
-            {shortDate(r.from)} – {shortDate(r.to)}
+            {shortDate(r.from)} to {shortDate(r.to)}
             {r.todayExcluded && <> · {r.days} of 7 days, today still running</>}
+            {r.notIn > 0 && <> · {r.notIn === 1 ? "one day" : `${r.notIn} days`} not in yet, so sales aren&apos;t judged against budget</>}
             {!r.hasBudget && <> · no budget set · <Link href="/budgets" className="underline decoration-border-strong underline-offset-2 hover:text-ink">set one</Link></>}
           </div>
         </div>
@@ -162,12 +165,18 @@ function LastWeekCard({ r }: { r: NonNullable<WeeklyBrief["lastWeek"]> }) {
         {r.rows.map((row) => (
           <div key={row.key} className="min-w-0">
             <div className="flex items-center gap-1.5 text-xs text-muted">
-              <span className={cx("size-1.5 shrink-0 rounded-full", RAG_DOT[row.rag])} aria-hidden />
+              <span className={cx("size-1.5 shrink-0 rounded-full", row.missing ? UNKNOWN_DOT : RAG_DOT[row.rag])} aria-hidden />
               {row.label}
             </div>
-            <div className={cx("num mt-1 text-lg font-semibold tracking-tight", RAG_TEXT[row.rag])}>{fmt(row.key, row.actual)}</div>
+            <div className={cx("num mt-1 text-lg font-semibold tracking-tight", row.missing ? "text-muted" : RAG_TEXT[row.rag])}>{fmt(row.key, row.actual)}</div>
             <div className="num text-xs text-muted">
-              {row.target == null ? "No target" : <>{row.key === "sales" ? "Budget" : "Target"} {fmt(row.key, row.target)}{vs(row.key, row.diff) && <> · {vs(row.key, row.diff)}</>}</>}
+              {row.missing ? (
+                <>{row.actual != null ? "So far · " : ""}{row.missing}</>
+              ) : row.target == null ? (
+                "No target"
+              ) : (
+                <>{row.key === "sales" ? "Budget" : "Target"} {fmt(row.key, row.target)}{vs(row.key, row.diff) && <> · {vs(row.key, row.diff)}</>}</>
+              )}
             </div>
           </div>
         ))}
@@ -194,7 +203,7 @@ function KegsCard({ k }: { k: NonNullable<WeeklyBrief["kegs"]> }) {
             <Beer className="size-4" strokeWidth={1.75} />
             Kegs
           </div>
-          <div className="mt-1 text-sm text-muted">{shortDate(w.from)} – {shortDate(w.to)}, from the keg scans</div>
+          <div className="mt-1 text-sm text-muted">{shortDate(w.from)} to {shortDate(w.to)}, from the keg scans</div>
         </div>
         <LinkButton href="/kegs/fleet" variant="secondary" size="sm" className="h-10 sm:h-8">Fleet &amp; trends</LinkButton>
       </div>
@@ -247,7 +256,6 @@ function DecisionsCard({ items }: { items: WeeklyBrief["decisions"] }) {
 
 function InsightsCard({ items }: { items: WeeklyBrief["insights"] }) {
   if (!items.length) return null;
-  const conf = (c: number) => (c >= 0.65 ? "solid" : c >= 0.4 ? "fair" : "rough");
   return (
     <HelpZone id="insights.brief" className="mb-6"><Card className="overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2">
@@ -267,8 +275,8 @@ function InsightsCard({ items }: { items: WeeklyBrief["insights"] }) {
                 <span className="mt-0.5 block text-xs text-muted">{it.action}</span>
               </span>
               <span className="shrink-0 text-right">
-                <span className="num block text-sm font-medium text-ink">{it.oneOff ? money(it.oneOff, { whole: true }) : `${money(it.monthly, { whole: true })}/mo`}</span>
-                <span className="block text-[11px] text-muted">{conf(it.confidence)}</span>
+                {it.oneOff ? <span className="num block text-sm font-medium text-ink">{money(it.oneOff, { whole: true })} <span className="text-[11px] font-normal text-muted">once</span></span> : it.monthly >= 1 ? <span className="num block text-sm font-medium text-ink">{money(it.monthly, { whole: true })}<span className="text-[11px] font-normal text-muted">/mo</span></span> : null}
+                <span className="block text-[11px] text-muted">{it.rating}</span>
               </span>
             </Link>
           </li>
@@ -415,7 +423,7 @@ function buildItems(b: WeeklyBrief): Item[] {
       id: "orders",
       icon: ShoppingCart,
       title: "Orders",
-      status: drafted.length ? `${list(drafted.map((o) => o.supplier))} drafted — send when ready` : b.orders.length ? "Stock covers this week's deliveries" : "No deliveries this week",
+      status: drafted.length ? `${list(drafted.map((o) => o.supplier))} drafted. Send when ready.` : b.orders.length ? "Stock covers this week's deliveries" : "No deliveries this week",
       needsYou: false,
       action: drafted.length ? go(`/ordering/po/${drafted[0].existingDraftId}`, "Open draft", false) : go("/ordering", "Ordering", false),
     });
@@ -428,7 +436,7 @@ function buildItems(b: WeeklyBrief): Item[] {
   const totalShifts = s.published + s.drafts;
   const laborNote = s.laborPct != null ? ` · labor ${pct(s.laborPct, 0)} of forecast` : "";
   if (totalShifts === 0) {
-    items.push({ id: "schedule", icon: CalendarDays, title: "Build next week's schedule", status: "No shifts yet — draft one from the forecast in a tap", needsYou: true, action: go("/schedule", "Build schedule") });
+    items.push({ id: "schedule", icon: CalendarDays, title: "Build next week's schedule", status: "No shifts yet. Draft one from the forecast in a tap.", needsYou: true, action: go("/schedule", "Build schedule") });
   } else if (s.drafts > 0) {
     items.push({
       id: "schedule",
@@ -446,7 +454,7 @@ function buildItems(b: WeeklyBrief): Item[] {
 
   // Reviews
   const rv = b.reviews.unreplied;
-  items.push({ id: "reviews", icon: MessageSquareText, title: rv ? "Reply to reviews" : "Reviews", status: rv ? `${rv} critical review${rv === 1 ? "" : "s"} without a reply — drafts are ready` : "Every critical review has a reply", needsYou: rv > 0, action: go("/reviews", rv ? "Reply" : "Reviews", rv > 0) });
+  items.push({ id: "reviews", icon: MessageSquareText, title: rv ? "Reply to reviews" : "Reviews", status: rv ? `${rv} critical review${rv === 1 ? "" : "s"} waiting for a reply. Drafts are ready.` : "Every critical review has a reply", needsYou: rv > 0, action: go("/reviews", rv ? "Reply" : "Reviews", rv > 0) });
 
   // Rating drop
   for (const a of b.reviews.alerts) {
@@ -514,7 +522,7 @@ function buildItems(b: WeeklyBrief): Item[] {
     id: "counts",
     icon: ClipboardList,
     title: c.overdue ? "Count is overdue" : "Counts",
-    status: c.last == null ? "No completed counts yet — ordering and the margin gap need one" : c.overdue ? `Last full count was ${c.daysSince} days ago (${shortDate(c.last)})` : `Last count ${shortDate(c.last)}`,
+    status: c.last == null ? "No completed counts yet. Ordering and the margin gap need one." : c.overdue ? `Last full count was ${c.daysSince} days ago (${shortDate(c.last)})` : `Last count ${shortDate(c.last)}`,
     needsYou: c.overdue,
     action: go("/count", c.overdue ? "Start a count" : "Counts", c.overdue),
   });
@@ -525,7 +533,9 @@ function buildItems(b: WeeklyBrief): Item[] {
     id: "unmapped",
     icon: Unlink,
     title: u.count ? "Square items without a recipe" : "Square menu",
-    status: u.count ? `${u.count} item${u.count === 1 ? "" : "s"} sold ${money(u.sales, { whole: true })} in the last 7 days with no recipe, so food cost reads low` : "Everything that sold is linked to a recipe",
+    status: u.count
+      ? `${u.count} item${u.count === 1 ? "" : "s"} sold in the last ${u.days} days with no cost behind ${u.count === 1 ? "it" : "them"}${u.share != null ? `: ${pct(u.share, 0)} of sales is linked` : ""}, so food cost reads low`
+      : "Everything that sold is linked to a recipe",
     needsYou: u.count > 0,
     body: u.count ? (
       <Rows>
@@ -586,7 +596,7 @@ function buildItems(b: WeeklyBrief): Item[] {
     id: "waste",
     icon: Trash2,
     title: w.quiet ? "Nothing in the waste log lately" : "Waste log",
-    status: w.last == null ? "No waste logged yet — the margin gap can't tell waste from loss without it" : w.quiet ? `Last entry ${w.daysSince} days ago (${shortDate(w.last)}). Remind the team to log spills, comps and spoilage.` : `Last entry ${shortDate(w.last)}`,
+    status: w.last == null ? "No waste logged yet. The margin gap can't tell waste from loss without it." : w.quiet ? `Last entry ${w.daysSince} days ago (${shortDate(w.last)}). Remind the team to log spills, comps and spoilage.` : `Last entry ${shortDate(w.last)}`,
     needsYou: w.quiet,
     action: go("/waste", w.quiet ? "Log waste" : "Waste", w.quiet),
   });

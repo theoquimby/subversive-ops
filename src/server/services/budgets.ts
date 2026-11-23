@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { db, num } from "../db";
 import { env } from "../env";
 import { dailySalesForecast } from "./forecasting";
+import { dayStates } from "./dayState";
 import { dailyKpis, periodFrom } from "./kpis";
 import { getLaborRules } from "./labor-rules";
 import { businessToday } from "./sales";
@@ -101,6 +102,10 @@ export interface BudgetRow extends WeekTarget {
   /** future/current weeks: labor % of forecast from scheduled shifts */
   laborPct_scheduled: number | null;
   status: ReturnType<typeof weekStatus>;
+  /** Finished days whose sales haven't come in from Square yet (domain/dayState). */
+  notIn: number;
+  /** Finished days in the week so far. */
+  daysIn: number;
 }
 
 export async function budgetGrid(weeksBack = 6, weeksAhead = 8): Promise<{ rows: BudgetRow[]; thisWeek: ISODate }> {
@@ -120,6 +125,7 @@ export async function budgetGrid(weeksBack = 6, weeksAhead = 8): Promise<{ rows:
   ]);
   const fc = new Map(forecast.map((f) => [f.date, f.qty]));
   const salesOn = new Map(daily.days.map((d) => [d.date, d.sales]));
+  const states = await dayStates(daily.days.filter((d) => d.date < today));
 
   const rows = weeks.map((w): BudgetRow => {
     const days = dateRange(w, addDays(w, 7));
@@ -152,6 +158,8 @@ export async function budgetGrid(weeksBack = 6, weeksAhead = 8): Promise<{ rows:
       laborPct_actual: status.actualLaborPct,
       laborPct_scheduled: when !== "past" && hasShifts && salesForecast ? schedCost / salesForecast : null,
       status,
+      notIn: pastDays.filter((d) => states.get(d) === "notIn").length,
+      daysIn: pastDays.length,
     };
   });
   return { rows, thisWeek };

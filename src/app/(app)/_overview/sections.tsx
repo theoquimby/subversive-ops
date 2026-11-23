@@ -21,7 +21,8 @@ import { periodKpis } from "@/server/services/kpis";
 import { deliveryWindow } from "@/server/services/planning";
 import { pnlReport, todaySoFar } from "@/server/services/pnl";
 import { Delta, fmt } from "../pnl/story";
-import { TodayChart, WeekStrip } from "./charts";
+import { dayStates } from "@/server/services/dayState";
+import { TodayChart, WeekStrip, type StripDay } from "./charts";
 
 /**
  * The Overview's blocks. Each loads its own data, so a block that isn't shown
@@ -101,8 +102,8 @@ export async function TodayBlock({ today }: { today: ISODate }) {
               <div className="mt-5">
                 {/* sold so far → likely close, with the day's forecast marked */}
                 <div className="relative h-2.5 rounded-full bg-surface-2" aria-hidden>
-                  {live.projected != null && <div className="absolute inset-y-0 left-0 rounded-full bg-series-1/25" style={{ width: `${(live.projected / scale) * 100}%` }} />}
-                  <div className="absolute inset-y-0 left-0 rounded-full bg-series-1" style={{ width: `${Math.max(live.soFar > 0 ? 1.5 : 0, (live.soFar / scale) * 100)}%` }} />
+                  {live.projected != null && <div className="absolute inset-y-0 left-0 rounded-full bg-[color-mix(in_oklab,var(--money-sales)_25%,transparent)]" style={{ width: `${(live.projected / scale) * 100}%` }} />}
+                  <div className="absolute inset-y-0 left-0 rounded-full bg-[var(--money-sales)]" style={{ width: `${Math.max(live.soFar > 0 ? 1.5 : 0, (live.soFar / scale) * 100)}%` }} />
                   <div className="absolute -inset-y-1.5 w-0.5 rounded-full bg-ink" style={{ left: `calc(${(live.forecastDay / scale) * 100}% - 1px)` }} />
                 </div>
                 <div className="mt-2 flex items-start justify-between gap-3 text-xs text-muted">
@@ -125,7 +126,7 @@ export async function TodayBlock({ today }: { today: ISODate }) {
               </div>
             </div>
           </div>
-          <div className="border-t border-border p-5 sm:p-6 lg:border-t-0 lg:border-l">
+          <div className="hidden border-t border-border p-5 sm:block sm:p-6 lg:border-t-0 lg:border-l">
             <div className="mb-3 text-[0.8rem] font-medium text-muted">Hour by hour</div>
             <TodayChart hours={live.hours} hour={live.hour} minute={live.minute} />
           </div>
@@ -285,33 +286,44 @@ export async function WeekBlock({ today }: { today: ISODate }) {
   const prevFoodOk = foodCovered(prevWeek.split.food);
   const laborOk = t.labor > 0 || t.sales <= 0;
   const prevLaborOk = prevWeek.total.labor > 0;
-  /** Why last week can't be compared, in a few words (null when it can). */
-  const prevGap = !hasPrev ? null : !prevLaborOk ? "no timecards" : !prevFoodOk ? "no food costs" : null;
-  const nowGap = !laborOk ? "no timecards" : !foodOk && split.food.sales > 0 ? "food costs incomplete" : null;
+  // A day with no sales isn't a closed day: one Square hasn't synced yet holds every comparison back.
+  const [states, prevStates] = await Promise.all([dayStates(weekDays), dayStates(prevWeek.days.filter((d) => d.date < addDays(today, -7)))]);
+  const stateOf = (date: ISODate) => (states.get(date) === "closed" ? "closed" : states.get(date) === "notIn" ? "notIn" : "in") as StripDay["state"];
+  const notIn = weekDays.filter((d) => stateOf(d.date) === "notIn").length;
+  const prevNotIn = [...prevStates.values()].filter((s) => s === "notIn").length;
+  /** Why the weeks can't be compared, in a few words (null when they can). */
+  const prevGap = !hasPrev ? null : prevNotIn ? "days not in yet" : !prevLaborOk ? "no timecards" : !prevFoodOk ? "no food costs" : null;
+  const nowGap = notIn ? `${notIn === 1 ? "a day" : `${notIn} days`} not in yet` : !laborOk ? "no timecards" : !foodOk && split.food.sales > 0 ? "incomplete food costs" : null;
   const pricedFrom = firstPrice && firstPrice > addDays(today, -14) ? firstPrice : null;
-  const strip = weekDays.map((d) => ({ date: d.date, sales: d.sales, forecast: d.forecast, profit: bridge(d).profit, closed: d.sales <= 0 }));
+  const strip: StripDay[] = weekDays.map((d) => ({ date: d.date, sales: d.sales, forecast: d.forecast, profit: bridge(d).profit, state: stateOf(d.date) }));
+  const compareSales = hasPrev && !notIn && !prevNotIn;
 
   return (
     <HelpZone id="overview.week" tour="overview.stats" className="mb-10">
       <div className="mb-3 flex items-end justify-between gap-4">
         <div>
           <h2 className="text-[0.95rem] font-semibold text-ink">Last 7 days</h2>
-          <p className="mt-0.5 text-sm text-muted">{shortDate(addDays(today, -7))} – {shortDate(addDays(today, -1))}, against the 7 days before</p>
+          <p className="mt-0.5 text-sm text-muted">{shortDate(addDays(today, -7))} to {shortDate(addDays(today, -1))}, against the 7 days before</p>
         </div>
         <LinkButton href={pnlWeek} variant="ghost" size="sm">P&amp;L →</LinkButton>
       </div>
       <Card className="mb-3 p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div className="flex items-baseline gap-3">
-            <span className="text-2xl font-semibold tracking-tight">{whole(t.sales)}</span>
-            <span className="text-sm text-muted">sales <HelpTip id="overview.sales" /></span>
+            <span className={cx("text-2xl font-semibold tracking-tight", notIn ? "text-muted" : "text-ink")}>{whole(t.sales)}</span>
+            <span className="text-sm text-muted">sales{notIn ? " so far" : ""} <HelpTip id="overview.sales" /></span>
           </div>
-          {hasPrev && <Delta value={t.sales / prevWeek.total.sales - 1} format={fmt.pct} label={`vs ${whole(prevWeek.total.sales)}`} flatBelow={0.005} />}
+          {compareSales ? (
+            <Delta value={t.sales / prevWeek.total.sales - 1} format={fmt.pct} label={`vs ${whole(prevWeek.total.sales)}`} flatBelow={0.005} />
+          ) : notIn ? (
+            <span className="text-sm text-muted">{notIn === 1 ? "1 day" : `${notIn} days`} not in from Square yet, so not compared</span>
+          ) : null}
         </div>
         <WeekStrip days={strip} />
-        <div className="mt-3 flex items-center gap-4 text-xs text-muted">
-          <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-[3px] bg-series-1" /> Sales</span>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+          <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-[3px] bg-[var(--money-sales)]" /> Sales</span>
           <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-0.5 w-3 rounded-full bg-ink" /> Forecast</span>
+          {notIn > 0 && <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-[3px] border border-dashed border-border-strong" /> Not in yet</span>}
         </div>
       </Card>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -319,24 +331,24 @@ export async function WeekBlock({ today }: { today: ISODate }) {
           help="overview.profit"
           label={<span className="inline-flex items-center gap-1.5">Profit <HelpTip id="overview.profit" /></span>}
           value={signedWhole(weekB.profit)}
-          tone={weekB.profit < 0 ? "bad" : undefined}
-          hint={<span className="flex flex-col gap-1">{hasPrev && !prevGap && !nowGap && <Delta value={weekB.profit - prevB.profit} format={fmt.money} label="vs week before" compact />}{(prevGap || nowGap) && <Missing>{nowGap ? `This week: ${nowGap}` : `Week before had ${prevGap}`} — not compared</Missing>}<span className="truncate">{pct(weekB.margin, 0)} of sales{weekB.estimated || nowGap ? " · est." : ""}</span></span>}
+          tone={notIn ? "unknown" : weekB.profit < 0 ? "bad" : undefined}
+          hint={<span className="flex flex-col gap-1">{hasPrev && !prevGap && !nowGap && <Delta value={weekB.profit - prevB.profit} format={fmt.money} label="vs week before" compact />}{(prevGap || nowGap) && <Missing unknown>Not compared: {nowGap ? `this week has ${nowGap}` : `the week before has ${prevGap}`}</Missing>}<span>{notIn ? "So far, " : ""}{pct(weekB.margin, 0)} of sales{weekB.estimated || nowGap ? ", estimated" : ""}</span></span>}
         />
         <Stat
           help="overview.labor"
           label={<span className="inline-flex items-center gap-1.5">Labor <HelpTip id="overview.labor" /></span>}
-          tone={budget?.laborPct != null && costTone(t.laborPct, budget.laborPct) !== "good" ? costTone(t.laborPct, budget.laborPct) : undefined}
+          tone={!laborOk ? "unknown" : budget?.laborPct != null && costTone(t.laborPct, budget.laborPct) !== "good" ? costTone(t.laborPct, budget.laborPct) : undefined}
           value={laborOk ? pct(t.laborPct) : "—"}
-          hint={laborOk ? <span className="flex flex-col gap-1">{hasPrev && prevLaborOk ? <Delta value={pointsChange(t.laborPct, prevWeek.total.laborPct)} format={fmt.pts} label="vs week before" goodWhenUp={false} flatBelow={0.0025} compact /> : hasPrev ? <Missing>Week before had no timecards</Missing> : null}{week.missingRates > 0 && <Missing href="/team">{week.missingRates} shift{week.missingRates === 1 ? "" : "s"} with no pay rate</Missing>}<span className="truncate">{whole(t.labor)} · {money(t.salesPerLaborHour, { whole: true })} sales per labor hour{budget?.laborPct != null ? ` · target ${pct(budget.laborPct, 0)}` : ""}</span></span> : <Missing href="/team">No timecards this week — connect Square Team or add shifts</Missing>}
+          hint={laborOk ? <span className="flex flex-col gap-1">{hasPrev && prevLaborOk ? <Delta value={pointsChange(t.laborPct, prevWeek.total.laborPct)} format={fmt.pts} label="vs week before" goodWhenUp={false} flatBelow={0.0025} compact /> : hasPrev ? <Missing>Week before had no timecards</Missing> : null}{week.missingRates > 0 && <Missing href="/team">{week.missingRates} shift{week.missingRates === 1 ? "" : "s"} with no pay rate</Missing>}<span className="truncate">{whole(t.labor)} · {money(t.salesPerLaborHour, { whole: true })} sales per labor hour{budget?.laborPct != null ? ` · target ${pct(budget.laborPct, 0)}` : ""}</span></span> : <Missing href="/team">No timecards this week. Connect Square Team or add shifts.</Missing>}
         />
         <Stat
           help="overview.foodCost"
           label={<span className="inline-flex items-center gap-1.5">Food cost <HelpTip id="overview.foodCost" /></span>}
           value={foodOk ? pct(split.food.pct) : "—"}
-          tone={!foodOk || split.food.pct == null || costTone(split.food.pct, targets.food) === "good" ? undefined : costTone(split.food.pct, targets.food)}
+          tone={!foodOk ? "unknown" : split.food.pct == null || costTone(split.food.pct, targets.food) === "good" ? undefined : costTone(split.food.pct, targets.food)}
           hint={<span className="flex flex-col gap-1">
             {split.food.sales <= 0 ? <Missing href="/sales#sales-items">No food sales linked to recipes</Missing>
-              : !foodOk ? <Missing href="/prices">Only {pct(split.food.costedShare ?? 0, 0)} of food sales have prices behind them — add ingredient prices</Missing>
+              : !foodOk ? <Missing href="/prices">Only {pct(split.food.costedShare ?? 0, 0)} of food sales have prices behind them. Add ingredient prices.</Missing>
               : hasPrev && prevFoodOk && prevWeek.split.food.pct != null && split.food.pct != null ? <Delta value={pointsChange(split.food.pct, prevWeek.split.food.pct)} format={fmt.pts} label="vs week before" goodWhenUp={false} flatBelow={0.0025} compact />
               : hasPrev ? <Missing>Week before had no food costs</Missing> : null}
             {foodOk && pricedFrom && pricedFrom > weekFrom.slice(0, 10) ? <span className="truncate">Days before {shortDate(pricedFrom)} at {shortDate(pricedFrom)} prices</span> : null}
@@ -348,7 +360,7 @@ export async function WeekBlock({ today }: { today: ISODate }) {
             help="overview.rating"
             label={<span className="inline-flex items-center gap-1.5">Rating, 30 days <HelpTip id="overview.rating" /></span>}
             value={rating.avg != null ? `${rating.avg.toFixed(1)}★` : "—"}
-            hint={rating.avg == null ? (reviewsEver ? "No reviews in 30 days" : <Missing>Reviews aren&apos;t coming in yet — connect Google</Missing>) : `${rating.count} review${rating.count === 1 ? "" : "s"}${rating.delta != null && Math.abs(rating.delta) >= 0.05 ? ` · ${rating.delta > 0 ? "▲" : "▼"} ${Math.abs(rating.delta).toFixed(1)} vs prior` : rating.delta != null ? " · steady" : ""}`}
+            hint={rating.avg == null ? (reviewsEver ? "No reviews in 30 days" : <Missing>Reviews aren&apos;t coming in yet. Connect Google.</Missing>) : `${rating.count} review${rating.count === 1 ? "" : "s"}${rating.delta != null && Math.abs(rating.delta) >= 0.05 ? ` · ${rating.delta > 0 ? "▲" : "▼"} ${Math.abs(rating.delta).toFixed(1)} vs prior` : rating.delta != null ? " · steady" : ""}`}
             tone={rating.delta != null && rating.delta <= -0.3 ? "warn" : undefined}
           />
         </Link>
@@ -474,8 +486,8 @@ export async function DeliveriesBlock({ today }: { today: ISODate }) {
 }
 
 /** A quiet "this figure is missing something" line, optionally linking to the fix. */
-function Missing({ children, href }: { children: React.ReactNode; href?: string }) {
-  const body = <><span aria-hidden className="mt-[0.3rem] size-1.5 shrink-0 rounded-full bg-warn" /><span className="line-clamp-2">{children}</span></>;
+function Missing({ children, href, unknown }: { children: React.ReactNode; href?: string; unknown?: boolean }) {
+  const body = <><span aria-hidden className={cx("mt-[0.3rem] size-1.5 shrink-0 rounded-full", unknown ? "border border-dashed border-muted" : "bg-warn")} /><span>{children}</span></>;
   return href ? (
     <Link href={href} className="flex items-start gap-1.5 text-xs text-ink-2 underline-offset-2 hover:text-ink hover:underline">{body}</Link>
   ) : (

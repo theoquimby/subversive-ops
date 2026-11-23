@@ -326,7 +326,7 @@ export async function shareLink(id: string, opts?: { fresh?: boolean; markSent?:
   const token = await ensureQuoteToken(id, opts?.fresh);
   if (opts?.markSent !== false) await markQuoteSent(id);
   refresh(id);
-  return { url: link(await publicOrigin(), quotePath(token)), message: opts?.fresh ? "New link made — the old one no longer works." : undefined };
+  return { url: link(await publicOrigin(), quotePath(token)), message: opts?.fresh ? "New link made. The old one no longer works." : undefined };
 }
 
 export async function emailQuote(id: string): R {
@@ -335,7 +335,7 @@ export async function emailQuote(id: string): R {
   if (!ev) return { error: "That booking is gone." };
   const to = ev.row.clientEmail;
   if (!isEmail(to)) return { error: "Add the client's email first." };
-  if (!(await emailReady())) return { error: "Email isn't set up yet — copy the link instead." };
+  if (!(await emailReady())) return { error: "Email isn't set up yet. Copy the link instead." };
   const token = await ensureQuoteToken(id);
   const url = link(await publicOrigin(), quotePath(token));
   const biz = await getBusinessContact();
@@ -398,7 +398,7 @@ export async function squarePaymentLink(id: string, which: "deposit" | "balance"
   try {
     const client = await requireSquareClient();
     const when = ev.row.date ? ` ${ev.row.date}` : "";
-    const l = await createQuickPayLink(client, { name: `${which === "deposit" ? "Deposit" : "Balance"} — ${ev.row.title}${when}`, amountCents: Math.round(amount * 100), note: `Private event ${ev.row.id}` });
+    const l = await createQuickPayLink(client, { name: `${which === "deposit" ? "Deposit" : "Balance"}: ${ev.row.title}${when}`, amountCents: Math.round(amount * 100), note: `Private event ${ev.row.id}` });
     await db.privateEvent.update({ where: { id }, data: { paymentLinkUrl: l.url, paymentLinkId: l.id, paymentLinkAmount: D(amount) } });
     refresh(id);
     return { url: l.url };
@@ -421,7 +421,7 @@ export async function sendReminder(id: string, which: "deposit" | "balance"): Pr
   const eventLabel = ev.row.date ? `your event on ${new Date(`${ev.row.date}T12:00:00Z`).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" })}` : "your event";
   const text = reminderText({ clientName: ev.row.clientName, eventLabel, amount, dueOn: which === "deposit" ? ev.row.depositDueOn : ev.row.balanceDueOn, kind: which, link: url, business: biz.name });
   const to = ev.row.clientEmail;
-  if (!isEmail(to) || !(await emailReady())) return { text, message: isEmail(to) ? "Email isn't set up — copy this and text or email it." : "No email on file — copy this and text it." };
+  if (!isEmail(to) || !(await emailReady())) return { text, message: isEmail(to) ? "Email isn't set up. Copy this and text or email it." : "No email on file. Copy this and text it." };
   const r = await sendEmail({
     to,
     subject: `Reminder: ${which} for ${eventLabel}`,

@@ -1,12 +1,14 @@
 import { HelpTip, HelpZone } from "@/components/help";
-import { Badge, Card, cx, PageHeader, Section, Stat, Table, Td, Th, Tr } from "@/components/ui";
-import { checklistProgress, closePeriod, monthLabel, previousPeriod, recentMonths, recentQuarters, usualDueDate, type CheckStatus } from "@/domain/monthEnd";
+import { Badge, Card, cx, PageHeader, Section, Table, Td, Th, Tr } from "@/components/ui";
+import { Verdict } from "@/components/chapter";
+import { rangeWords } from "@/domain/pnlVerdict";
+import { checklistProgress, closeOrder, closePeriod, closeVerdict, monthLabel, previousPeriod, recentMonths, recentQuarters, usualDueDate, type CheckStatus } from "@/domain/monthEnd";
 import { money, pct, shortDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { closeReport, salesTaxSettings } from "@/server/services/monthEnd";
 import { journalOverview } from "@/server/services/monthEndJournal";
 import { businessToday } from "@/server/services/sales";
-import { AlertTriangle, CheckCircle2, ChevronRight, Circle, Download, MinusCircle } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, Circle, Download, MinusCircle } from "lucide-react";
 import Link from "next/link";
 import { JournalPanel } from "./journal-panel";
 import { PeriodPicker } from "./period-picker";
@@ -35,6 +37,9 @@ export default async function MonthEndPage({ searchParams }: { searchParams: Pro
 
   const query = new URLSearchParams(p.kind === "month" ? { period: "month", month: p.from.slice(0, 7) } : p.kind === "quarter" ? { period: "quarter", quarter: p.from } : { period: "custom", from: p.from, to: p.to });
   const progress = checklistProgress(r.checklist);
+  const checklist = closeOrder(r.checklist);
+  const verdict = closeVerdict(r.checklist, p.label, p.to < today);
+  const taxMissing = r.tax.missingTax.length;
   const t = r.tax.totals;
   const inv = r.inventory;
   const partial = p.to >= today;
@@ -65,36 +70,59 @@ export default async function MonthEndPage({ searchParams }: { searchParams: Pro
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <PeriodPicker kind={p.kind} from={p.from} to={p.to} months={months} quarters={quarters} />
         <p className="text-sm text-muted">
-          {shortDate(p.from)} – {shortDate(p.to)}
+          {rangeWords(p.from, p.to)}
           {partial && " · not over yet"}
         </p>
       </div>
 
-      <HelpZone id="accounting.stats" tour="accounting.stats" className="mb-8 grid grid-cols-2 items-stretch gap-3 lg:grid-cols-4">
-        <Stat label="Net sales" value={whole(k.total.sales)} hint={`${k.counted.length} day${k.counted.length === 1 ? "" : "s"}${r.money?.discounts != null ? ` · ${whole(r.money.discounts)} comps` : ""}`} />
-        <Stat label="Sales tax collected" value={whole(t.tax)} hint={t.effectiveRate != null ? `${pct(t.effectiveRate, 2)} of all sales` : "No tax stored yet"} />
-        <Stat label="Actual cost of goods" value={whole(r.cogs)} hint={r.cogs != null && k.total.sales > 0 ? `${pct(r.cogs / k.total.sales)} of sales · theoretical ${pct(k.total.cogs / k.total.sales)}` : "Needs a count at both ends"} />
-        <Stat label="Card tips owed" value={whole(r.tips.owed)} hint={`${whole(r.tips.collected)} collected · ${whole(r.tips.paid)} paid`} tone={r.tips.owed > 0.5 && !partial ? "warn" : undefined} />
-      </HelpZone>
-
-      <div className="mb-10 grid gap-x-6 gap-y-10 lg:grid-cols-2">
-        <Section title={<span className="inline-flex items-center gap-1">Closing checklist <HelpTip id="accounting.checklist" /></span>} description={`${progress.done} of ${progress.total} done${progress.open ? ` · ${progress.open} to do` : ""}`} fill className="mb-0">
-          <Card className="divide-y divide-border" data-tour="accounting.checklist">
-            {r.checklist.map((c) => {
+      {/* The verdict: can it close, the first thing to do, the checklist in the order to work it. */}
+      <HelpZone id="accounting.stats" tour="accounting.stats">
+        <Verdict
+          badge={{ tone: verdict.tone, label: progress.open ? `${progress.open} to do` : undefined }}
+          title={verdict.title}
+          line={`${verdict.line} Net sales were ${whole(k.total.sales)} over ${k.counted.length} day${k.counted.length === 1 ? "" : "s"}${r.money?.discounts ? `, after ${whole(r.money.discounts)} of comps and discounts` : ""}.`}
+          stats={[
+            taxMissing
+              ? { label: "Sales tax collected", value: "—", tone: "unknown", hint: `Tax isn't in for ${taxMissing} day${taxMissing === 1 ? "" : "s"} yet` }
+              : { label: "Sales tax collected", value: whole(t.tax), hint: t.effectiveRate != null ? `${pct(t.effectiveRate, 2)} of all sales` : "No tax stored yet" },
+            { label: "Actual cost of goods", value: whole(r.cogs), tone: r.cogs == null ? "unknown" : "neutral", hint: r.cogs != null && k.total.sales > 0 ? `${pct(r.cogs / k.total.sales)} of sales · theoretical ${pct(k.total.cogs / k.total.sales)}` : "Needs a count at both ends" },
+            { label: "Card tips owed", value: whole(r.tips.owed), tone: r.tips.owed > 0.5 && !partial ? "warn" : "neutral", hint: `${whole(r.tips.collected)} collected · ${whole(r.tips.paid)} paid` },
+          ]}
+        >
+          {verdict.first && (
+            <Link href={verdict.first.href} className="mb-5 flex min-h-11 items-center gap-2.5 rounded-lg bg-surface-2 px-3.5 py-3 text-sm font-medium text-ink transition-colors duration-120 hover:bg-border/60">
+              <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
+              <span className="min-w-0 flex-1">Start with {verdict.first.title.toLowerCase()}: <span className="font-normal text-ink-2">{verdict.first.detail}</span></span>
+              <ChevronRight aria-hidden className="size-4 shrink-0 text-muted" />
+            </Link>
+          )}
+          <div className="mb-2 flex items-center gap-1 text-[0.8rem] font-medium text-muted">
+            The checklist, in the order to work it <HelpTip id="accounting.checklist" />
+          </div>
+          <ol className="divide-y divide-border rounded-lg border border-border" data-tour="accounting.checklist">
+            {checklist.map((c) => {
               const I = ICON[c.status];
               return (
-                <Link key={c.id} href={c.href} className="flex min-h-14 items-start gap-3 px-4 py-3 transition-colors duration-120 hover:bg-surface-2/60">
-                  <I.icon className={cx("mt-0.5 size-[18px] shrink-0", I.className)} strokeWidth={2} aria-label={I.label} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-ink">{c.title}</span>
-                    <span className="block text-sm text-muted">{c.detail}</span>
-                  </span>
-                  <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted" strokeWidth={1.75} />
-                </Link>
+                <li key={c.id}>
+                  <Link href={c.href} className="flex min-h-14 items-start gap-3 px-4 py-3 transition-colors duration-120 hover:bg-surface-2/60">
+                    <I.icon className={cx("mt-0.5 size-[18px] shrink-0", I.className)} strokeWidth={2} aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium text-ink">
+                        {c.title}
+                        <span className={cx("text-xs font-normal", I.className)}>{I.label}</span>
+                      </span>
+                      <span className="block text-sm text-muted">{c.detail}</span>
+                    </span>
+                    <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted" strokeWidth={1.75} />
+                  </Link>
+                </li>
               );
             })}
-          </Card>
-        </Section>
+          </ol>
+        </Verdict>
+      </HelpZone>
+
+      <div className="mb-10 mt-10">
 
         <Section title={<span className="inline-flex items-center gap-1">Inventory and cost of goods <HelpTip id="accounting.inventory" /></span>} description={hasEnd ? `From each item's latest count on or before ${shortDate(inv.end.asOf)}, at that day's prices.` : "No counts yet."} fill className="mb-0">
           <Card className="flex flex-col" data-tour="accounting.inventory">

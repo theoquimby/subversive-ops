@@ -61,7 +61,7 @@ export function LabTile({ spec, r }: { spec: TileSpec; r: Insight | undefined })
           <p className="mt-4 text-sm text-muted">This one arrives with the next update of the analytics service.</p>
         ) : locked ? (
           <>
-            <p className="mt-4 text-[0.98rem] leading-snug font-medium text-ink-2">{r.status === "error" ? "Couldn't be worked out this time — it tries again tonight." : r.headline}</p>
+            <p className="mt-4 text-[0.98rem] leading-snug font-medium text-ink-2">{r.status === "error" ? "Couldn't be worked out this time. It tries again tonight." : r.headline}</p>
             {steps.length > 0 && (
               <div className="mt-4 rounded-xl border border-border bg-surface p-3.5">
                 <div className="mb-3 flex items-center gap-3 text-xs">

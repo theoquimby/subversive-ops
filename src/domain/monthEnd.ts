@@ -453,8 +453,39 @@ export function closeChecklist(i: ChecklistInput): CheckItem[] {
   return out;
 }
 
-/** "3 of 6 done" for the checklist's header (not-needed items count as done). */
+/**
+ * The checklist's counts, adding up to the total: done (not-needed counts as done), to do, and worth a look.
+ */
 export function checklistProgress(items: readonly CheckItem[]) {
   const done = items.filter((x) => x.status === "done" || x.status === "na").length;
-  return { done, total: items.length, open: items.filter((x) => x.status === "todo").length };
+  return { done, total: items.length, open: items.filter((x) => x.status === "todo").length, look: items.filter((x) => x.status === "warn").length };
+}
+
+/**
+ * The order to work the list in: what blocks the rest first (sales and tax come from Square, and the
+ * QuickBooks entries wait on them), then the rest of the to-dos, then what's worth a look, then what's done.
+ */
+const CLOSE_ORDER = ["sales", "invoices", "quickbooks", "count", "tips", "payroll", "journal"];
+export function closeOrder(items: readonly CheckItem[]): CheckItem[] {
+  const rank = { todo: 0, warn: 1, done: 2, na: 3 } as const;
+  const at = (id: string) => (CLOSE_ORDER.indexOf(id) + 1 || 99);
+  return [...items].sort((a, b) => rank[a.status] - rank[b.status] || at(a.id) - at(b.id));
+}
+
+/** The top of Month-end: can this period close, and the first thing to do if not. */
+export function closeVerdict(items: readonly CheckItem[], label: string, ended: boolean): { tone: "good" | "warn" | "bad" | "neutral"; title: string; line: string; first: CheckItem | null } {
+  const ordered = closeOrder(items);
+  const p = checklistProgress(items);
+  const first = ordered[0]?.status === "todo" || ordered[0]?.status === "warn" ? ordered[0] : null;
+  const counts = [`${p.done} done`, p.open ? `${p.open} to do` : "", p.look ? `${p.look} worth a look` : ""].filter(Boolean).join(", ");
+  if (p.open) {
+    return {
+      tone: ended ? "bad" : "warn",
+      title: ended ? `${label} can't close yet: ${plural(p.open, "thing")} left` : `${label} isn't over yet: ${plural(p.open, "thing")} to do before it closes`,
+      line: `Of the ${p.total} jobs, ${counts}.`,
+      first,
+    };
+  }
+  if (p.look) return { tone: "warn", title: `${label} is nearly ready to close`, line: `Of the ${p.total} jobs, ${counts}. ${first!.title}: ${first!.detail}`, first };
+  return { tone: ended ? "good" : "neutral", title: ended ? `${label} is ready to close` : `${label} is on track so far`, line: `All ${p.total} done. The accountant pack has everything in one file.`, first: null };
 }

@@ -10,6 +10,7 @@ import { bridge } from "@/domain/pnlStory";
 import { nightTotals } from "@/domain/shiftNotes";
 import { MANAGER_NAV } from "@/lib/areas";
 import { db } from "../db";
+import { dayStates } from "./dayState";
 import { settingValue } from "./setting-read";
 import { attentionList } from "./attention";
 import { forecastRangeFor } from "./analytics";
@@ -265,6 +266,9 @@ async function lastWeekWrap(today: ISODate, now: Date) {
   const from = addDays(mondayOf(today), -7);
   const to = addDays(from, 7);
   const [r, prev] = await Promise.all([pnlReport(from, to, now), periodKpis(addDays(from, -7), from).catch(() => null)]);
-  const days = r.days.filter((d) => d.date < today).map((d) => ({ date: d.date, sales: d.sales, forecast: d.forecast, profit: d.sales > 0 ? bridge(d).profit : null }));
-  return weekWrap({ from, days, labor: r.total.labor, budget: r.budget?.sales ?? null, prevSales: prev?.total.sales ?? null });
+  const finished = r.days.filter((d) => d.date < today);
+  const days = finished.map((d) => ({ date: d.date, sales: d.sales, forecast: d.forecast, profit: d.sales > 0 ? bridge(d).profit : null }));
+  const states = await dayStates(finished);
+  const notIn = [...states.values()].filter((s) => s === "notIn").length;
+  return weekWrap({ from, days, labor: r.total.labor, budget: r.budget?.sales ?? null, prevSales: prev?.total.sales ?? null, notIn });
 }

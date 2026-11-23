@@ -6,16 +6,15 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { VIZ_VARS } from "./viz-vars";
 
 /*
- * P&L story charts. One color per job, the same on every chart here:
- *   food & drink cost  violet   (an estimate is the same hue, hatched)
- *   labor              pink     (--series-2, as on the hour-by-hour chart)
- *   profit             blue
- *   card fees          teal
- *   comps & discounts  the sales grey, hatched (money that never came in)
- * Validated as an adjacent categorical set (dataviz validate_palette) in both
- * modes: light #6250d6 · #d9467a · #2563eb on #fff, dark #9085e9 · #de5a88 ·
- * #3d76ea on #1a1a18; fees #0f8577 / #2fae9e sit apart from all three. Values
- * and labels stay in text tokens.
+ * P&L story charts. One colour per job, the global money tokens (globals.css),
+ * the same on every page that draws money:
+ *   sales              --money-sales (blue)
+ *   food & drink cost  --money-goods (orange; an estimate is the same hue, hatched)
+ *   labor              --money-wages (magenta, as on the hour-by-hour chart)
+ *   card fees          --money-fees  (violet)
+ *   what's kept        --money-kept  (ink: the bottom line, never a status colour)
+ *   comps & discounts  grey, hatched (money that never came in)
+ * The set is validated in globals.css. Values and labels stay in text tokens.
  */
 export { VIZ_VARS };
 
@@ -42,7 +41,7 @@ const compact = (n: number) => (Math.abs(n) >= 10_000 ? `$${Math.round(n / 1000)
 
 export function Swatch({ kind }: { kind: "cogs" | "est" | "labor" | "profit" | "fixed" | "sales" | "fees" | "discounts" }) {
   const style: CSSProperties =
-    kind === "est" ? hatch("var(--viz-cogs)") : kind === "discounts" ? hatch("var(--ink-2)") : { background: kind === "fixed" ? "var(--muted)" : kind === "sales" ? "var(--ink-2)" : `var(--viz-${kind})` };
+    kind === "est" ? hatch("var(--viz-cogs)") : kind === "discounts" ? hatch("var(--ink-2)") : { background: kind === "fixed" ? "var(--muted)" : kind === "sales" ? "var(--money-sales)" : `var(--viz-${kind})` };
   return <span aria-hidden className="inline-block size-2.5 shrink-0 rounded-[3px]" style={style} />;
 }
 
@@ -58,6 +57,8 @@ export interface BridgeStep {
   to: number;
   /** A total (sales, profit) rather than a step. */
   total?: boolean;
+  /** The figure isn't in (no timecards): no bar, a dash. */
+  missing?: boolean;
   note?: ReactNode;
 }
 
@@ -74,9 +75,9 @@ export function BridgeChart({ steps, sales }: { steps: BridgeStep[]; sales: numb
   const x = (v: number) => ((v - lo) / span) * 100;
   const zero = x(0);
   const color: Record<BridgeStep["key"], CSSProperties> = {
-    gross: { background: "color-mix(in oklab, var(--ink-2) 45%, transparent)" },
+    gross: { background: "color-mix(in oklab, var(--money-sales) 45%, transparent)" },
     discounts: hatch("var(--ink-2)"),
-    sales: { background: "var(--ink-2)" },
+    sales: { background: "var(--money-sales)" },
     cogs: { background: "var(--viz-cogs)" },
     est: hatch("var(--viz-cogs)"),
     labor: { background: "var(--viz-labor)" },
@@ -98,15 +99,15 @@ export function BridgeChart({ steps, sales }: { steps: BridgeStep[]; sales: numb
             <div className="relative col-span-2 h-3 sm:col-span-1 sm:col-start-2 sm:row-start-1">
               {/* zero line */}
               <div aria-hidden className="absolute inset-y-[-3px] w-px bg-border-strong" style={{ left: `${zero}%` }} />
-              <div
+              {!s.missing && <div
                 aria-hidden
                 className={cx("absolute inset-y-0 rounded-[4px] transition-[left,width] duration-260 ease-motion motion-reduce:transition-none", negative && "bg-bad!")}
                 style={{ left: `${x(a)}%`, width: `max(2px, ${x(b) - x(a)}%)`, ...(negative ? {} : color[s.key]) }}
-              />
+              />}
             </div>
             <div className="num col-start-2 row-start-1 text-right text-sm whitespace-nowrap sm:col-start-3">
-              <span className={cx(s.total ? "font-semibold text-ink" : "text-ink-2", negative && "text-bad")}>{s.total ? (s.to < 0 ? `−${whole(-s.to)}` : whole(s.to)) : `−${whole(s.value)}`}</span>
-              {share != null && s.key !== "sales" && s.key !== "gross" && s.key !== "discounts" && <span className="ml-1.5 text-xs text-muted">{pct(Math.abs(s.total ? s.to : s.value) / sales, 0)}</span>}
+              <span className={cx(s.total ? "font-semibold text-ink" : "text-ink-2", negative && "text-bad", s.missing && "text-muted")}>{s.missing ? "—" : s.total ? (s.to < 0 ? `−${whole(-s.to)}` : whole(s.to)) : `−${whole(s.value)}`}</span>
+              {share != null && !s.missing && s.key !== "sales" && s.key !== "gross" && s.key !== "discounts" && <span className="ml-1.5 text-xs text-muted">{pct(Math.abs(s.total ? s.to : s.value) / sales, 0)}</span>}
             </div>
             {s.note && <div className="col-span-2 -mt-0.5 text-xs text-muted sm:col-span-1 sm:col-start-2">{s.note}</div>}
           </div>
@@ -161,7 +162,7 @@ export function TrendChart({ weeks, height = 210 }: { weeks: TrendPoint[]; heigh
         {weeks.some((w) => w.cogsEstimate > 0) && <span className="inline-flex items-center gap-1.5"><Swatch kind="est" /> Estimated cost</span>}
         <span className="inline-flex items-center gap-1.5"><Swatch kind="labor" /> Labor</span>
         {weeks.some((w) => w.fees > 0) && <span className="inline-flex items-center gap-1.5"><Swatch kind="fees" /> Card fees</span>}
-        <span className="inline-flex items-center gap-1.5"><Swatch kind="profit" /> Profit</span>
+        <span className="inline-flex items-center gap-1.5"><Swatch kind="profit" /> Kept</span>
       </div>
       <div className="relative" ref={ref}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block" role="img" aria-label="Weekly sales split into cost of goods, labor and profit" onMouseLeave={() => setHover(null)}>

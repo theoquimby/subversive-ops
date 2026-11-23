@@ -180,8 +180,8 @@ export function PriceCurve({ a, fit, compact, mark = 1, name: givenName, from = 
       {plus && takeaway && (
         <Takeaway>
           {plus.low > 0
-            ? <>At {money2(plus.price)} even the cautious end of the range keeps <span className="num font-medium text-ink">{whole(plus.low)}</span> a month — about {Math.round(fit.qtyMonth - plus.qty)} fewer sold, each earning {money2(plus.d)} more.</>
-            : <>At {money2(plus.price)} the best guess is <span className="num font-medium text-ink">{signedMoney(plus.mid)}</span> a month, but the cautious end is {signedMoney(plus.low)} — try it and we&apos;ll measure.</>}
+            ? <>At {money2(plus.price)} even the cautious end of the range keeps <span className="num font-medium text-ink">{whole(plus.low)}</span> a month: about {Math.round(fit.qtyMonth - plus.qty)} fewer sold, each earning {money2(plus.d)} more.</>
+            : <>At {money2(plus.price)} the best guess is <span className="num font-medium text-ink">{signedMoney(plus.mid)}</span> a month, but the cautious end is {signedMoney(plus.low)}. Try it and we&apos;ll measure.</>}
         </Takeaway>
       )}
     </figure>
@@ -276,7 +276,7 @@ function StaffHours({ rows, comp, weeks }: { rows: HourRow[]; comp: number | nul
       <SrTable caption="People on the clock and people needed, each hour" head={["Hour", "Sales an hour", "People on", "Needed"]} rows={rows.map((r) => [r.label, whole(r.sales), r.people, r.need])} />
       {f && (
         <Takeaway>
-          At {f.label} you have <span className="num font-medium text-ink">{f.people}</span> on for {whole(f.sales)} an hour. The sales need about {f.need}{comp != null ? <>, and hours this quiet usually get {comp.toFixed(1)}</> : null} — so roughly <span className="num font-medium text-ink">{extra >= 0.95 ? Math.round(extra) : extra.toFixed(1)}</span> {Math.round(extra) === 1 ? "person is" : "people are"} waiting for guests{weeks ? <>, in {weeks.hit} of the last {weeks.total} weeks</> : null}.
+          At {f.label} you have <span className="num font-medium text-ink">{f.people}</span> on for {whole(f.sales)} an hour. The sales need about {f.need}{comp != null ? <>, and hours this quiet usually get {comp.toFixed(1)}</> : null}. So roughly <span className="num font-medium text-ink">{extra >= 0.95 ? Math.round(extra) : extra.toFixed(1)}</span> {Math.round(extra) === 1 ? "person is" : "people are"} waiting for guests{weeks ? <>, in {weeks.hit} of the last {weeks.total} weeks</> : null}.
         </Takeaway>
       )}
     </figure>
@@ -317,8 +317,8 @@ function SlowDays({ a }: { a: GraphicSource }) {
           <DotStrip
             size={13}
             groups={[
-              { n: Math.max(0, fore - Math.min(trimmed, fore)), label: "foreseeable — the schedule could have known", look: "accent" },
-              { n: Math.max(0, n - fore - Math.max(0, trimmed - Math.min(trimmed, fore))), label: "surprises — only a mid-shift call", look: "ring" },
+              { n: Math.max(0, fore - Math.min(trimmed, fore)), label: "foreseeable: the schedule could have known", look: "accent" },
+              { n: Math.max(0, n - fore - Math.max(0, trimmed - Math.min(trimmed, fore))), label: "surprises: only a mid-shift call", look: "ring" },
               { n: trimmed, label: "cut back already", look: "check" },
             ]}
           />
@@ -394,7 +394,7 @@ function SlowCalendar({ days, since, through }: { days: SlowDay[]; since: string
         {cur && (
           <Tip x={pos(cur.date).x + cell / 2} y={pos(cur.date).y} w={w}>
             <TipValue>{new Date(`${cur.date}T00:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })}{cur.pct != null ? ` · ${Math.round(cur.pct * 100)}% of normal` : ""}</TipValue>
-            <TipLabel>{cur.trimmed ? "Crew was cut back — nicely done" : `${cur.foreseen ? "Foreseeable a week ahead" : "A surprise on the day"}${cur.extra ? ` · ${cur.extra} paid hours over a trimmed day` : ""}`}</TipLabel>
+            <TipLabel>{cur.trimmed ? "Crew was cut back. Nicely done" : `${cur.foreseen ? "Foreseeable a week ahead" : "A surprise on the day"}${cur.extra ? ` · ${cur.extra} paid hours over a trimmed day` : ""}`}</TipLabel>
           </Tip>
         )}
       </div>
@@ -583,7 +583,7 @@ export function FollowSlope({ f, small }: { f: FollowSpec; small?: boolean }) {
       {!small && (
         <Takeaway>
           {inside
-            ? <>It landed inside what we&apos;d expect anyway, so far the price change looks like it did nothing either way — <span className="font-medium text-ink">{signedPct(f.effect.mid)}</span>, but anywhere from {signedPct(f.effect.low)} to {signedPct(f.effect.high)}.</>
+            ? <>It landed inside what we&apos;d expect anyway, so far the price change looks like it did nothing either way: <span className="font-medium text-ink">{signedPct(f.effect.mid)}</span>, but anywhere from {signedPct(f.effect.low)} to {signedPct(f.effect.high)}.</>
             : f.after > exp.hi
               ? <>Above what the season alone explains: the price change did about <span className="font-medium text-ink">{signedPct(f.effect.mid)}</span> (likely {signedPct(f.effect.low)} to {signedPct(f.effect.high)}).</>
               : <>Below what the season explains: guests bought about <span className="font-medium text-ink">{signedPct(f.effect.mid)}</span> of it per order (likely {signedPct(f.effect.low)} to {signedPct(f.effect.high)}).</>}

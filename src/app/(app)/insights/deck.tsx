@@ -167,7 +167,7 @@ function MoneyLine({ a, size = "lg", count }: { a: DeckAction; size?: "lg" | "md
       <span className={cx("font-semibold tracking-tight text-ink", size === "lg" ? "text-[2.75rem] leading-none sm:text-[3.25rem]" : size === "md" ? "num text-[1.05rem]" : "num text-[0.95rem]")}>
         {count ? <CountUp value={v} /> : whole(v)}
       </span>
-      <span className={cx("text-muted", size === "lg" ? "text-[0.95rem]" : "text-xs")}>{one ? "one-off" : size === "lg" ? "a month" : "/mo"}</span>
+      <span className={cx("text-muted", size === "lg" ? "text-[0.95rem]" : "text-xs")}>{one ? "once" : size === "lg" ? "a month" : "/mo"}</span>
     </div>
   );
 }
@@ -451,7 +451,7 @@ export function CompactHero({ actions }: { actions: DeckAction[] }) {
   const live = actions.filter((a) => !gone[a.key]);
   const a = live[0];
   if (!a) {
-    return <div className="rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted">You&apos;re all caught up — nothing worth chasing right now.</div>;
+    return <div className="rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted">You&apos;re all caught up. Nothing worth chasing right now.</div>;
   }
   return (
     <article key={a.key} className="lab animate-rise-in overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--lab-card-shadow)]">
@@ -469,6 +469,7 @@ export function CompactHero({ actions }: { actions: DeckAction[] }) {
         </div>
         <div className="flex shrink-0 items-center justify-between gap-4 sm:flex-col sm:items-end sm:gap-2">
           <div className="flex flex-col items-start gap-1.5 sm:items-end">
+            {(isOneOff(a) ? a.oneOff : a.monthly) ? <span className="text-[11px] text-muted">{a.vector === "save" ? "Saves about" : "Worth about"}</span> : null}
             <MoneyLine a={a} size="md" />
             {!isOneOff(a) && <ImpactRange mid={a.monthly} low={a.low} high={a.high} size="sm" label={false} className="w-24" />}
           </div>

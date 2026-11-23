@@ -11,7 +11,7 @@ export function BudgetActions() {
   const [msg, setMsg] = useState<{ bad?: boolean; text: string } | null>(null);
   const confirm = useConfirm();
   const report = (r: { error?: string; changed?: number }, what: string) =>
-    setMsg(r.error ? { bad: true, text: r.error } : { text: r.changed ? `${what} · ${r.changed} week${r.changed === 1 ? "" : "s"} updated` : "Nothing to change — those weeks are already set" });
+    setMsg(r.error ? { bad: true, text: r.error } : { text: r.changed ? `${what} · ${r.changed} week${r.changed === 1 ? "" : "s"} updated` : "Nothing to change: those weeks are already set" });
   return (
     <>
       {msg && <span className={msg.bad ? "text-sm text-bad" : "text-sm text-good"}>{msg.text}</span>}
