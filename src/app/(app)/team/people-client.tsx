@@ -2,9 +2,9 @@
 
 import { useConfirm } from "@/components/dialog";
 import { Switch } from "@/components/push-toggle";
-import { Badge, Button, Card, cx, LinkButton, Textarea } from "@/components/ui";
+import { Badge, Button, cx, LinkButton, Textarea } from "@/components/ui";
 import { shortDate } from "@/lib/format";
-import { Eye, EyeOff, MessageSquareText, Trash2, X } from "lucide-react";
+import { Eye, EyeOff, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { addFeedback, deleteFeedback, setFeedbackVisible } from "./feedback-actions";
 
@@ -20,35 +20,8 @@ export interface PersonRow {
   acks: { docId: string; title: string; ackedAt: string | null }[];
 }
 
-/** One row per person: latest note and sign-off progress. Tap opens their sheet. */
-export function PeopleNotes({ people }: { people: PersonRow[] }) {
-  const [openId, setOpenId] = useState<string | null>(null);
-  const open = people.find((p) => p.id === openId) ?? null;
-  return (
-    <>
-      <Card className="divide-y divide-border" data-tour="team.people-notes">
-        {people.map((p) => {
-          const signed = p.acks.filter((a) => a.ackedAt).length;
-          const last = p.feedback[0];
-          return (
-            <button key={p.id} type="button" onClick={() => setOpenId(p.id)} className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-surface-2/60">
-              <span className="min-w-0 flex-1">
-                <span className="block font-medium">{p.name}</span>
-                <span className="block truncate text-xs text-muted">{last ? `${FEEDBACK_LABEL[last.kind]} · ${shortDate(last.createdAt.slice(0, 10))} · ${last.body}` : "No notes yet"}</span>
-              </span>
-              {p.acks.length > 0 && <Badge tone={signed === p.acks.length ? "good" : "warn"}>{signed}/{p.acks.length} signed</Badge>}
-              <span className="num hidden w-16 text-right text-xs text-muted sm:block">{p.feedback.length} note{p.feedback.length === 1 ? "" : "s"}</span>
-              <MessageSquareText className="size-4 shrink-0 text-muted" />
-            </button>
-          );
-        })}
-      </Card>
-      {open && <PersonSheet person={open} onClose={() => setOpenId(null)} />}
-    </>
-  );
-}
-
-function PersonSheet({ person: p, onClose }: { person: PersonRow; onClose: () => void }) {
+/** One person's notes, kudos and document sign-off, opened from their row on the Team page. */
+export function PersonSheet({ person: p, onClose }: { person: PersonRow; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
