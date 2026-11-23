@@ -15,6 +15,10 @@ import { HelpTip, HelpZone } from "@/components/help";
 import { archivedLabel, baseName } from "@/domain/archiveName";
 import { RestoreButton } from "./restore-button";
 import { loadDrafts } from "@/server/services/recipe-drafts";
+import { Verdict } from "@/components/chapter";
+import { menuStory } from "@/domain/menuStory";
+import { Bars } from "../sales/bars";
+import { MoreMenu } from "./more-menu";
 
 export const metadata = { title: "Menu costs" };
 
@@ -52,6 +56,13 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
     };
   });
 
+  const dishes = tableRows.filter((r) => r.kind === "MENU");
+  const needWork = dishes.filter((r) => r.needsIngredients || r.incomplete).length;
+  const story = menuStory(dishes.map((r) => ({ name: r.name, foodCostPct: r.foodCostPct, target: r.target, price: r.menuPrice, cost: r.cost })), { needWork });
+  const shown = story.ranked.slice(0, 12);
+  const pc = (n: number) => pct(n, 0);
+  const unsaved = categories.filter((c) => !c.saved).length;
+
   return (
     <>
       <PageHeader
@@ -60,10 +71,14 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
         description="Plate costs update automatically whenever a supplier price changes."
         actions={
           <>
-            <LinkButton href="/menu/draft-beer" data-tour="menu.draft-beer-link">Draft beer</LinkButton>
-            <LinkButton href="/menu/allergens" data-tour="menu.allergens-link">Allergens</LinkButton>
-            <LinkButton href="/menu/drafts">{drafts.length ? <>Drafts <span className="num rounded-full bg-warn-bg px-1.5 text-xs text-warn">{drafts.length}</span></> : "Draft recipes"}</LinkButton>
-            <LinkButton href="/import?for=recipes">Bulk add</LinkButton>
+            <MoreMenu
+              items={[
+                { href: "/menu/draft-beer", label: "Draft beer", tour: "menu.draft-beer-link" },
+                { href: "/menu/allergens", label: "Allergens", tour: "menu.allergens-link" },
+                { href: "/menu/drafts", label: drafts.length ? "Drafts to review" : "Draft recipes", count: drafts.length },
+                { href: "/import?for=recipes", label: "Bulk add" },
+              ]}
+            />
             <LinkButton href="/menu/new" variant="primary">New recipe</LinkButton>
           </>
         }
@@ -105,7 +120,35 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
           </Table></HelpZone>
         )
       ) : (
-        <MenuTable rows={tableRows} />
+        <>
+          <Verdict
+            badge={{ tone: story.tone }}
+            title={story.headline}
+            line={story.line}
+            stats={story.average != null ? [
+              { label: "Average food cost", value: pc(story.average), hint: `across ${story.ranked.length} priced ${story.ranked.length === 1 ? "dish" : "dishes"}` },
+              { label: "Over their target", value: String(story.over), tone: story.over ? (story.tone === "bad" ? "bad" : "warn") : "neutral" },
+              { label: "Need ingredients or prices", value: String(needWork), tone: needWork ? "warn" : "neutral" },
+            ] : undefined}
+          >
+            {shown.length > 0 && (
+              <>
+                <h3 className="mb-3 text-sm font-medium text-ink">Food cost per dish, against its target</h3>
+                <Bars
+                  ariaLabel="Food cost as a share of the menu price for each dish, with its target"
+                  color="var(--money-goods)"
+                  rows={shown.map((d) => ({ key: d.name, label: d.name, hint: d.price != null && d.cost != null ? `$${d.cost.toFixed(2)} of $${d.price.toFixed(2)}` : undefined, value: d.foodCostPct, display: pc(d.foodCostPct!), tick: d.target, mark: story.named.includes(d.name) }))}
+                  tickLabel="Its food-cost target"
+                />
+                {story.ranked.length > shown.length && <p className="mt-2 text-xs text-muted">The {shown.length} highest of {story.ranked.length}; every dish is in the list below.</p>}
+              </>
+            )}
+            {story.action && (
+              <p className="mt-5 rounded-lg bg-surface-2 px-3.5 py-3 text-sm font-medium text-ink">{story.action}</p>
+            )}
+          </Verdict>
+          <MenuTable rows={tableRows} />
+        </>
       )}
 
       {!isArchived && categories.length > 0 && (
@@ -125,7 +168,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
               <tbody>
                 {categories.map((c) => (
                   <Tr key={c.name}>
-                    <Td className="font-medium">{c.name}{!c.saved && <span className="ml-2 text-xs font-normal text-muted">guessed</span>}</Td>
+                    <Td className="font-medium">{c.name}</Td>
                     <td className="border-b border-border px-2 py-1 [tr:last-child_&]:border-b-0">
                       <GridSelect value={c.cls} options={REVENUE_CLASSES.map((x) => ({ value: x.value, label: x.label }))} onSave={saveCategoryClass.bind(null, c.name)} ariaLabel={`${c.name} counts as`} />
                     </td>
@@ -134,6 +177,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
                 ))}
               </tbody>
             </Table>
+            {unsaved > 0 && <p className="mt-2 text-xs text-muted">Ops set {unsaved === categories.length ? "these" : `${unsaved} of these`} from the category name. Change any that&apos;s wrong and your choice is kept.</p>}
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-2">
               <span>Beverage cost target</span>
               <GridCell grid="menu-bev" col="target" type="number" suffix="%" value={Math.round(targets.beverage * 1000) / 10} onSave={saveBevTarget} ariaLabel="Beverage cost target" className="w-20" />

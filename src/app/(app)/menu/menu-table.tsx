@@ -57,7 +57,7 @@ export function MenuTable({ rows }: { rows: MenuRow[] }) {
       ),
     },
     { id: "kind", header: "Type", sort: (r) => KIND_LABEL[r.kind], csv: (r) => KIND_LABEL[r.kind], cell: (r) => <span className="text-ink-2">{KIND_LABEL[r.kind]}</span>, defaultHidden: true },
-    { id: "category", header: "Category", sort: (r) => r.category, csv: (r) => r.category, cell: (r) => <span className="text-ink-2">{r.category}{r.kind !== "PREP" && r.cls !== "food" && <Badge className="ml-2">{r.clsLabel}</Badge>}</span> },
+    { id: "category", header: "Category", sort: (r) => r.category, csv: (r) => r.category, cell: (r) => <span className="text-ink-2">{r.category}{r.kind !== "PREP" && r.cls !== "food" && r.clsLabel.toLowerCase() !== r.category.toLowerCase() && <Badge className="ml-2">{r.clsLabel}</Badge>}</span> },
     {
       id: "price",
       header: "Price",

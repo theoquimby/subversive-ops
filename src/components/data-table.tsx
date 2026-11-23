@@ -222,7 +222,7 @@ function usePopover(placement: "bottom-start" | "bottom-end" = "bottom-start") {
   return { open, setOpen, refs, floatingStyles, getReferenceProps, getFloatingProps, isMounted, styles };
 }
 
-function Popover({ button, children, placement, className, label }: { button: (open: boolean) => ReactNode; children: (close: () => void) => ReactNode; placement?: "bottom-start" | "bottom-end"; className?: string; label: string }) {
+export function Popover({ button, children, placement, className, label }: { button: (open: boolean) => ReactNode; children: (close: () => void) => ReactNode; placement?: "bottom-start" | "bottom-end"; className?: string; label: string }) {
   const p = usePopover(placement);
   return (
     <>
