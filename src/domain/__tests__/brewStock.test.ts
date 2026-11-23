@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayUnitFor, entryUnitsFor, fromBase, onHand, scaleBrewQty, stockStatus, usedBetween, weeksOfCover, type StockMove } from "../brewStock";
+import { displayUnitFor, entryUnitsFor, fromBase, onHand, scaleBrewQty, STATUS_LABEL, stockStatus, usedBetween, weeksOfCover, type StockMove } from "../brewStock";
 
 const LB = 453.59237;
 const at = (iso: string) => new Date(`${iso}T12:00:00Z`);
@@ -127,5 +127,22 @@ describe("status", () => {
   });
   it("counts an overdue planned brew as due now", () => {
     expect(stockStatus({ onHandBase: 0, needs: [{ on: "2026-11-10", qtyBase: 60 }], today }).status).toBe("short");
+  });
+  it("is not counted, never fine, when the shelf has never been counted", () => {
+    expect(stockStatus({ onHandBase: 0, needs: [], today, counted: false }).status).toBe("uncounted");
+  });
+  it("stays not counted even when a planned brew looks uncovered: the shelf is unknown, not empty", () => {
+    const s = stockStatus({ onHandBase: 0, needs: [{ on: "2026-11-20", qtyBase: 60 }], today, counted: false });
+    expect(s.status).toBe("uncounted");
+    expect(s.neededBase).toBe(60);
+  });
+  it("is not counted even when deliveries were logged since nothing was counted", () => {
+    expect(stockStatus({ onHandBase: 500, needs: [], today, counted: false }).status).toBe("uncounted");
+  });
+  it("reads as counted when not told otherwise", () => {
+    expect(stockStatus({ onHandBase: 0, needs: [], today }).status).toBe("fine");
+  });
+  it("labels the not-counted status in plain words", () => {
+    expect(STATUS_LABEL.uncounted).toBe("Not counted");
   });
 });

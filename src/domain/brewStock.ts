@@ -9,6 +9,8 @@
  * Status looks ahead at planned brews: stock is given to the earliest brew
  * first. "short" when a brew in the next three weeks can't be covered (or the
  * shelf is below zero), "soon" when one in the next eight weeks can't.
+ * "uncounted" when the shelf has never been counted: what's there isn't
+ * known, so it's neither fine nor short until someone counts it.
  */
 
 import { brewUnit, COUNT_UNITS } from "./brewMath";
@@ -100,14 +102,15 @@ export function weeksOfCover(onHandBase: number, usedRecent: number, neededAhead
   return Math.max(0, onHandBase) / perWeek;
 }
 
-export type StockStatus = "short" | "soon" | "fine";
-export const STATUS_LABEL: Record<StockStatus, string> = { short: "Short", soon: "Order soon", fine: "Fine" };
+export type StockStatus = "uncounted" | "short" | "soon" | "fine";
+export const STATUS_LABEL: Record<StockStatus, string> = { uncounted: "Not counted", short: "Short", soon: "Order soon", fine: "Fine" };
 
 /**
  * Give stock to planned brews in date order and see which brew first goes
  * without. A brew planned before today that hasn't been brewed counts as due now.
+ * `counted: false` (never counted) makes it "uncounted" whatever the sums say.
  */
-export function stockStatus(i: { onHandBase: number; needs: { on: ISODate; qtyBase: number }[]; today: ISODate; horizonDays?: number }): { status: StockStatus; firstShortOn: ISODate | null; neededBase: number; shortBase: number } {
+export function stockStatus(i: { onHandBase: number; needs: { on: ISODate; qtyBase: number }[]; today: ISODate; horizonDays?: number; counted?: boolean }): { status: StockStatus; firstShortOn: ISODate | null; neededBase: number; shortBase: number } {
   const end = addDays(i.today, i.horizonDays ?? STOCK_HORIZON_DAYS);
   const needs = i.needs.filter((n) => n.on <= end && n.qtyBase > 0).sort((a, b) => a.on.localeCompare(b.on));
   let left = Math.max(0, i.onHandBase);
@@ -123,6 +126,6 @@ export function stockStatus(i: { onHandBase: number; needs: { on: ISODate; qtyBa
     }
   }
   const shortBy = addDays(i.today, SHORT_DAYS);
-  const status: StockStatus = i.onHandBase < -1e-9 || (firstShortOn != null && firstShortOn <= shortBy) ? "short" : firstShortOn ? "soon" : "fine";
+  const status: StockStatus = i.counted === false ? "uncounted" : i.onHandBase < -1e-9 || (firstShortOn != null && firstShortOn <= shortBy) ? "short" : firstShortOn ? "soon" : "fine";
   return { status, firstShortOn, neededBase, shortBase };
 }

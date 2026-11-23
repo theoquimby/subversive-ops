@@ -245,7 +245,7 @@ export async function brewStockRows(): Promise<{ today: ISODate; rows: BrewStock
     const oh = onHand(ms);
     const used = usedBetween(ms, monthAgo, new Date(now.getTime() + 86_400_000));
     const mine = needs.brews.flatMap((b) => b.lines.filter((l) => l.ingredientId === i.id).map((l) => ({ on: l.dryHop && b.dryHopOn ? b.dryHopOn : b.brewOn, qtyBase: l.qtyBase, brew: b.name })));
-    const st = stockStatus({ onHandBase: oh.qtyBase, needs: mine, today });
+    const st = stockStatus({ onHandBase: oh.qtyBase, needs: mine, today, counted: oh.counted });
     const sid = supplierOf.get(i.id)?.supplierId;
     return {
       id: i.id,
