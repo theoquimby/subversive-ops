@@ -78,18 +78,6 @@ export interface WhatsNewEntry {
 export type WhatsNewData = "guestPlaces";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
-  // ---- 23 Nov · 1.53 (older history tested before the forecast reads it) ----
-  {
-    id: "2026-11-23.older-history",
-    date: "2026-11-23",
-    title: "Older sales tested before they're used",
-    line: "The scorecard checks if sales from before hourly records make the forecast closer. Used only if so.",
-    icon: "analytics",
-    area: "numbers",
-    href: "/sales/scorecard",
-    help: "sales.scorecard.numbers",
-    audience: "manager",
-  },
   // ---- 23 Nov · 1.52 (every page leads with what matters) ----
   {
     id: "2026-11-23.verdict-first",

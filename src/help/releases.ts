@@ -24,14 +24,6 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
-    version: "1.53",
-    date: "2026-11-23",
-    title: "Older sales tested before the forecast uses them",
-    summary: "The live forecast reads hourly sales. The scorecard now also replays it with the older days known only from item sales added, and the forecast reads them only if that lands closer.",
-    entries: ["2026-11-23.older-history"],
-    fixed: ["The scorecard no longer says the live forecast reads the older item-sales history when it doesn't."],
-  },
-  {
     version: "1.52",
     date: "2026-11-23",
     title: "Every page leads with what matters",
@@ -51,6 +43,7 @@ export const RELEASES: Release[] = [
       "Timecards open on the latest week waiting for approval; a week with no clock-ins is one line, not one per shift; Approve waits until there are hours.",
       "Schedule, Ordering, the order builder, Team and Prep each lead with one line on what needs doing; one need figure per item when ordering; position colours stay off red and green.",
       "Short tables no longer show search and filter controls, and dashes are gone from text across the app.",
+      "The scorecard says which sales history the live forecast reads. Any days known only from item sales are tested first and used only if they make the forecast closer.",
     ],
   },
   {
